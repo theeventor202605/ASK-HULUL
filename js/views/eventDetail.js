@@ -173,29 +173,46 @@ async function tabApproval(content, eventId) {
 
 /* ---------------- Disciplines & Inspectors ---------------- */
 async function tabDisciplines(content, eventId) {
-  var [disciplines, assignments] = await Promise.all([
-    Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId })
+  var [disciplines, assignments, eventDisciplines] = await Promise.all([
+    Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId }), Api.call('listEventDisciplines', { eventId: eventId })
   ]);
-  var disciplineOptions = disciplines.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+  var identifiedIds = eventDisciplines.map(function (ed) { return ed.disciplineId; });
+  var assignedDisciplineIds = Array.from(new Set(assignments.map(function (a) { return a.disciplineId; })));
+  var identifiedDisciplines = disciplines.filter(function (d) { return identifiedIds.indexOf(d.id) !== -1; });
+  var disciplineOptions = identifiedDisciplines.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Identify applicable disciplines</div></div>' +
-    '<div class="card-body">' + disciplines.map(d =>
-      '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
-      '<input type="checkbox" class="disc-check" value="' + d.id + '" /> ' + esc(d.name) + '</label>').join('') +
-    '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div></div></div>' +
+    '<div class="card-body">' + disciplines.map(function (d) {
+      var checked = identifiedIds.indexOf(d.id) !== -1;
+      var locked = checked && assignedDisciplineIds.indexOf(d.id) !== -1;
+      return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;' + (locked ? 'opacity:0.65;' : '') + '"' +
+        (locked ? ' title="An inspector is already assigned to this discipline — remove that assignment below before it can be unselected."' : '') + '>' +
+        '<input type="checkbox" class="disc-check" value="' + d.id + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + ' /> ' +
+        esc(d.name) + (locked ? ' 🔒' : '') + '</label>';
+    }).join('') +
+    '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div>' +
+    (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">🔒 An inspector is already assigned — remove the assignment below to unselect.</div>' : '') +
+    '</div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign inspector</div></div>' +
     '<div class="card-body form-row">' +
-      UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + disciplineOptions + '</select>') +
+      UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">No disciplines identified yet</option>') + '</select>') +
       UI.field('Qualified inspector', '<select id="fAssignInsp" class="field-input"></select>') +
-    '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn">Assign</button></div></div>' +
+    '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">Assignments</div></div><div class="card-body">' +
-    UI.table([{ key: 'disciplineId', label: 'Discipline' }, { key: 'inspectorId', label: 'Inspector' }, { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) }], assignments, {}) +
+    UI.table([
+      { key: 'disciplineName', label: 'Discipline' }, { key: 'inspectorName', label: 'Inspector' },
+      { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) },
+      { key: 'actions', label: t('actions'), render: r => '<button class="btn btn-danger btn-sm" data-remove-assign="' + r.id + '">Remove</button>' }
+    ], assignments, {}) +
     '</div></div>';
 
   document.getElementById('saveDiscBtn').onclick = async function () {
     var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
-    try { await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids }); UI.toast('Disciplines saved', 'success'); }
-    catch (err) { UI.error(err); }
+    try {
+      await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids });
+      UI.toast('Disciplines saved', 'success'); Router.resolve();
+    } catch (err) { UI.error(err); }
   };
 
   var discSelect = document.getElementById('fAssignDisc');
@@ -211,7 +228,7 @@ async function tabDisciplines(content, eventId) {
     } catch (err) { UI.error(err); }
   }
   discSelect.onchange = loadQualifiedInspectors;
-  if (disciplines.length) loadQualifiedInspectors();
+  if (identifiedDisciplines.length) loadQualifiedInspectors();
 
   document.getElementById('assignBtn').onclick = async function () {
     if (!inspSelect.value) { UI.toast('No qualified inspector selected', 'error'); return; }
@@ -220,6 +237,16 @@ async function tabDisciplines(content, eventId) {
       UI.toast('Inspector assigned', 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
+
+  content.querySelectorAll('[data-remove-assign]').forEach(function (b) {
+    b.onclick = async function () {
+      if (!window.confirm('Remove this inspector assignment?')) return;
+      try {
+        await Api.call('removeInspectorAssignment', { eventId: eventId, assignmentId: b.getAttribute('data-remove-assign') });
+        UI.toast('Assignment removed', 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
 }
 
 /* ---------------- Inspections & Checklists ---------------- */
