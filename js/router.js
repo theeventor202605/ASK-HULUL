@@ -63,9 +63,16 @@ window.Router = {
     this.add('/dashboard', renderDashboard);
     this.add('/events', renderEventsList);
     this.add('/events/:id', renderEventDetail);
+    this.add('/venues', renderVenues);
+    this.add('/sub-events', renderSubEvents);
+    this.add('/meetings', renderMeetings);
+    this.add('/disciplines', renderDisciplinesAdmin);
+    this.add('/checklist-items', renderChecklistItems);
+    this.add('/inspector-qualifications', renderInspectorQualifications);
     this.add('/users', renderUsers);
     this.add('/organizations', renderOrganizations);
     this.add('/notifications', renderNotificationsView);
+    this.add('/config', renderConfig);
     this.add('/settings', renderSettings);
     window.addEventListener('hashchange', () => this.resolve());
   }

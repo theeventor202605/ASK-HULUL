@@ -377,6 +377,13 @@ async function tabEscalations(content, eventId) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">' +
     '<div class="muted" style="font-size:13px;">Escalations run automatically every 30 minutes. You can also trigger a check manually.</div>' +
     '<button class="btn btn-secondary btn-sm" id="runEscBtn">Run check now</button></div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Manual escalation (admin override)</div></div>' +
+    '<div class="card-body form-row">' +
+      UI.field('Finding ID', '<input id="fEscFinding" class="field-input" placeholder="FND-0001" />') +
+      UI.field('Tier', '<select id="fEscTier" class="field-input"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>') +
+    '</div><div class="card-body" style="padding-top:0;">' +
+      UI.field('Recipient User ID', '<input id="fEscRecipient" class="field-input" placeholder="USR-0002" />') +
+      '<button class="btn btn-primary btn-sm" id="newEscBtn" style="margin-top:10px;">Create escalation</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_escalations') + '</div></div><div class="card-body">' +
     UI.table([
       { key: 'findingId', label: 'Finding' }, { key: 'tier', label: 'Tier', render: r => 'Tier ' + r.tier },
@@ -387,6 +394,15 @@ async function tabEscalations(content, eventId) {
   document.getElementById('runEscBtn').onclick = async function () {
     try { var res = await Api.call('runEscalationCheck', {}); UI.toast(res.triggeredCount + ' escalation(s) triggered', 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
+  };
+  document.getElementById('newEscBtn').onclick = async function () {
+    try {
+      await Api.call('createEscalation', {
+        findingId: document.getElementById('fEscFinding').value, tier: document.getElementById('fEscTier').value,
+        recipientUserId: document.getElementById('fEscRecipient').value
+      });
+      UI.toast('Escalation created', 'success'); Router.resolve();
+    } catch (err) { UI.error(err); }
   };
 }
 

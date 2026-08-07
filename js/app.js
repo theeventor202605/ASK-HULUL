@@ -4,10 +4,23 @@
 var NAV_ITEMS = [
   { path: '/dashboard', icon: '🏠', label: 'nav_dashboard', section: 'section_main' },
   { path: '/events', icon: '📅', label: 'nav_events', section: 'section_main' },
+  { path: '/sub-events', icon: '🧩', label: 'nav_subevents', section: 'section_main',
+    roles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager'] },
+  { path: '/meetings', icon: '🗓️', label: 'nav_meetings', section: 'section_main',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
   { path: '/notifications', icon: '🔔', label: 'nav_notifications', section: 'section_main' },
   { path: '/users', icon: '👥', label: 'nav_users', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
   { path: '/organizations', icon: '🏢', label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
+  { path: '/venues', icon: '📍', label: 'nav_venues', section: 'section_admin',
+    roles: ['SystemAdmin', 'EMCAdmin', 'EMCManager'] },
+  { path: '/disciplines', icon: '🛡️', label: 'nav_disciplines', section: 'section_admin',
+    roles: ['SystemAdmin', 'InspectionAdmin'] },
+  { path: '/checklist-items', icon: '✅', label: 'nav_checklist', section: 'section_admin',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
+  { path: '/inspector-qualifications', icon: '🎓', label: 'nav_qualifications', section: 'section_admin',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
+  { path: '/config', icon: '🛠️', label: 'nav_config', section: 'section_admin', roles: ['SystemAdmin'] },
   { path: '/settings', icon: '⚙️', label: 'nav_settings', section: 'section_admin' }
 ];
 
