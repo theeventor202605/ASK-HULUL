@@ -18,12 +18,28 @@ async function renderEventsList() {
         { key: 'startDateTime', label: 'Start', render: function (r) { return UI.fmtDate(r.startDateTime); } },
         { key: 'endDateTime', label: 'End', render: function (r) { return UI.fmtDate(r.endDateTime); } },
         { key: 'status', label: t('status'), render: function (r) { return UI.statusBadge(r.status); } },
-        { key: 'actions', label: t('actions'), render: function (r) { return '<a class="btn btn-secondary btn-sm" href="#/events/' + r.id + '">Open</a>'; } }
+        { key: 'actions', label: t('actions'), render: function (r) {
+            var html = '<a class="btn btn-secondary btn-sm" href="#/events/' + r.id + '">Open</a>';
+            var canDelete = r.status === 'Planning' && ['SystemAdmin', 'GAAdmin'].indexOf(HululState.user.role) !== -1;
+            if (canDelete) html += ' <button class="btn btn-danger btn-sm" data-del-event="' + r.id + '">Delete</button>';
+            return html;
+          } }
       ],
       events, {}
     ) + '</div></div>';
 
   document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos); };
+  root.querySelectorAll('[data-del-event]').forEach(function (b) {
+    b.onclick = async function () {
+      var eventId = b.getAttribute('data-del-event');
+      if (!window.confirm('Delete this event? This cannot be undone.')) return;
+      try {
+        await Api.call('deleteEvent', { eventId: eventId });
+        UI.toast('Event deleted', 'success');
+        Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
 }
 
 function openNewEventModal(venues, inspectionCos) {
