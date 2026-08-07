@@ -17,6 +17,8 @@ window.Api = {
     if (!json.ok) {
       var err = new Error(json.error ? json.error.message : 'Request failed');
       err.code = json.error ? json.error.code : 'UNKNOWN';
+      err.allowedRoles = json.error && json.error.allowedRoles;
+      err.contacts = json.error && json.error.contacts;
       if (err.code === 'UNAUTHENTICATED') { HululState.clearSession(); window.location.hash = '#/login'; }
       throw err;
     }

@@ -13,7 +13,23 @@ window.UI = {
 
   error(err) {
     console.error(err);
+    if (err && err.code === 'FORBIDDEN') { this.permissionModal(err); return; }
     this.toast(err && err.message ? err.message : 'Something went wrong', 'error');
+  },
+
+  // Shown instead of a toast for FORBIDDEN errors, since these need more room to explain
+  // who *can* do this and — when the backend was able to work it out — who that is right now.
+  permissionModal(err) {
+    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err.message || 'You are not permitted to perform this action.') + '</div>';
+    if (err.contacts && err.contacts.length) {
+      body += '<div style="margin-top:14px;"><div class="field-label">Who to contact</div>' +
+        err.contacts.map(function (c) {
+          return '<div style="padding:8px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:13px;">' +
+            '<strong>' + esc(c.name) + '</strong> — ' + esc(c.role) +
+            (c.email ? '<br/><span class="muted">' + esc(c.email) + '</span>' : '') + '</div>';
+        }).join('') + '</div>';
+    }
+    this.openModal('Not permitted', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
   },
 
   openModal(title, bodyHtml, footerButtons) {

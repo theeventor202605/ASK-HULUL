@@ -176,6 +176,7 @@ async function tabDisciplines(content, eventId) {
   var [disciplines, assignments] = await Promise.all([
     Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId })
   ]);
+  var disciplineOptions = disciplines.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Identify applicable disciplines</div></div>' +
     '<div class="card-body">' + disciplines.map(d =>
@@ -184,8 +185,8 @@ async function tabDisciplines(content, eventId) {
     '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div></div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign inspector</div></div>' +
     '<div class="card-body form-row">' +
-      UI.field('Discipline ID', '<input id="fAssignDisc" class="field-input" placeholder="DIS-0001" />') +
-      UI.field('Inspector User ID', '<input id="fAssignInsp" class="field-input" placeholder="USR-0002" />') +
+      UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + disciplineOptions + '</select>') +
+      UI.field('Qualified inspector', '<select id="fAssignInsp" class="field-input"></select>') +
     '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn">Assign</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">Assignments</div></div><div class="card-body">' +
     UI.table([{ key: 'disciplineId', label: 'Discipline' }, { key: 'inspectorId', label: 'Inspector' }, { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) }], assignments, {}) +
@@ -196,9 +197,26 @@ async function tabDisciplines(content, eventId) {
     try { await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids }); UI.toast('Disciplines saved', 'success'); }
     catch (err) { UI.error(err); }
   };
-  document.getElementById('assignBtn').onclick = async function () {
+
+  var discSelect = document.getElementById('fAssignDisc');
+  var inspSelect = document.getElementById('fAssignInsp');
+  async function loadQualifiedInspectors() {
+    if (!discSelect.value) { inspSelect.innerHTML = ''; return; }
+    inspSelect.innerHTML = '<option value="">' + t('loading') + '</option>';
     try {
-      await Api.call('assignInspector', { eventId: eventId, disciplineId: document.getElementById('fAssignDisc').value, inspectorId: document.getElementById('fAssignInsp').value });
+      var inspectors = await Api.call('listQualifiedInspectors', { disciplineId: discSelect.value, eventId: eventId });
+      inspSelect.innerHTML = inspectors.length
+        ? inspectors.map(i => '<option value="' + i.id + '">' + esc(i.name) + ' (' + esc(i.email) + ')</option>').join('')
+        : '<option value="">No qualified inspectors for this discipline</option>';
+    } catch (err) { UI.error(err); }
+  }
+  discSelect.onchange = loadQualifiedInspectors;
+  if (disciplines.length) loadQualifiedInspectors();
+
+  document.getElementById('assignBtn').onclick = async function () {
+    if (!inspSelect.value) { UI.toast('No qualified inspector selected', 'error'); return; }
+    try {
+      await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value });
       UI.toast('Inspector assigned', 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
