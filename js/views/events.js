@@ -3,7 +3,8 @@
  */
 async function renderEventsList() {
   var root = document.getElementById('viewRoot');
-  var [events, venues] = await Promise.all([Api.call('listEvents', {}), Api.call('listVenues', {})]);
+  var [events, venues, orgs] = await Promise.all([Api.call('listEvents', {}), Api.call('listVenues', {}), Api.call('listOrganizations', {})]);
+  var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('events_title') + '</div>' +
@@ -22,23 +23,27 @@ async function renderEventsList() {
       events, {}
     ) + '</div></div>';
 
-  document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues); };
+  document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos); };
 }
 
-function openNewEventModal(venues) {
+function openNewEventModal(venues, inspectionCos) {
   var venueOptions = venues.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
+  var inspCoOptions = inspectionCos.length
+    ? inspectionCos.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
+    : '<option value="">No inspection companies found</option>';
   var body =
     UI.field('Event name', '<input id="fEventName" class="field-input" />') +
     UI.field('Venue', '<select id="fVenueId" class="field-input">' + venueOptions + '</select>') +
     '<div class="form-row">' +
-      UI.field('Address', '<input id="fAddress" class="field-input" />') +
-      UI.field('City', '<input id="fCity" class="field-input" />') +
+      UI.field('Address', '<input id="fAddress" class="field-input" readonly />') +
+      UI.field('City', '<input id="fCity" class="field-input" readonly />') +
     '</div>' +
+    '<div class="muted" style="font-size:11.5px;margin:-6px 0 12px;">Address & city are pulled from the selected venue.</div>' +
     '<div class="form-row">' +
       UI.field('Start', '<input id="fStart" type="datetime-local" class="field-input" />') +
       UI.field('End', '<input id="fEnd" type="datetime-local" class="field-input" />') +
     '</div>' +
-    UI.field('Inspection Company ID', '<input id="fInspCo" class="field-input" placeholder="ORG-0001" />');
+    UI.field('Inspection Company', '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>');
 
   UI.openModal(t('new_event'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -59,4 +64,13 @@ function openNewEventModal(venues) {
         } catch (err) { UI.error(err); }
       } }
   ]);
+
+  var venueSelect = document.getElementById('fVenueId');
+  function fillFromVenue() {
+    var venue = venues.filter(function (v) { return v.id === venueSelect.value; })[0];
+    document.getElementById('fAddress').value = venue ? venue.address : '';
+    document.getElementById('fCity').value = venue ? venue.city : '';
+  }
+  venueSelect.onchange = fillFromVenue;
+  fillFromVenue();
 }
