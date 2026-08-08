@@ -177,8 +177,10 @@ async function tabApproval(content, eventId) {
 // of controls that would just come back "Not permitted" when clicked.
 var DISCIPLINE_MANAGER_ROLES = ['ProjectManager', 'SystemAdmin'];
 
-async function tabDisciplines(content, eventId) {
+async function tabDisciplines(content, eventId, detail) {
   var canManage = DISCIPLINE_MANAGER_ROLES.indexOf(HululState.user.role) !== -1;
+  var zones = (detail && detail.zones) || [];
+  var zonesRequired = zones.length > 1;
   var [disciplines, assignments, eventDisciplines] = await Promise.all([
     Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId }), Api.call('listEventDisciplines', { eventId: eventId })
   ]);
@@ -208,11 +210,19 @@ async function tabDisciplines(content, eventId) {
         '<div class="card-body form-row">' +
           UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">No disciplines identified yet</option>') + '</select>') +
           UI.field('Qualified inspector', '<select id="fAssignInsp" class="field-input"></select>') +
-        '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>'
+        '</div>' +
+        (zonesRequired
+          ? '<div class="card-body" style="padding-top:0;">' + UI.field('Zones (required — this venue has multiple zones)',
+              zones.map(function (z) { return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
+                '<input type="checkbox" class="assign-zone-check" value="' + z.id + '" /> ' + esc(z.name) + '</label>'; }).join('')
+            ) + '</div>'
+          : '') +
+        '<div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>'
       : '') +
     '<div class="card"><div class="card-header"><div class="card-title">Assignments</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: 'Discipline' }, { key: 'inspectorName', label: 'Inspector' },
+      { key: 'zoneNames', label: 'Zones', render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
       { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-danger btn-sm" data-remove-assign="' + r.id + '">Remove</button>' }] : []),
       assignments, {}) +
@@ -245,8 +255,10 @@ async function tabDisciplines(content, eventId) {
 
   document.getElementById('assignBtn').onclick = async function () {
     if (!inspSelect.value) { UI.toast('No qualified inspector selected', 'error'); return; }
+    var zoneIds = Array.from(content.querySelectorAll('.assign-zone-check:checked')).map(c => c.value);
+    if (zonesRequired && !zoneIds.length) { UI.toast('This venue has multiple zones — select at least one', 'error'); return; }
     try {
-      await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value });
+      await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value, zoneIds: zoneIds });
       UI.toast('Inspector assigned', 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
