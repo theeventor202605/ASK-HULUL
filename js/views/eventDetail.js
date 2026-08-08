@@ -72,16 +72,24 @@ function infoRow(label, val) {
 }
 
 /* ---------------- Venue & Zones ---------------- */
+// Matches createZone/deleteZone's backend requireRole — only these roles get zone controls.
+var ZONE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
+
 async function tabVenue(content, eventId, detail) {
+  var canManage = ZONE_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Venue</div></div>' +
     '<div class="card-body">' + infoRow('Name', detail.venue && detail.venue.name) + infoRow('Address', detail.venue && detail.venue.address) +
     infoRow('City', detail.venue && detail.venue.city) + '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">Zones</div>' +
-    '<button class="btn btn-primary btn-sm" id="newZoneBtn">+ Add zone</button></div>' +
-    '<div class="card-body">' + UI.table([{ key: 'name', label: 'Zone' }, { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) }], detail.zones, {}) +
+    (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">+ Add zone</button>' : '') + '</div>' +
+    '<div class="card-body">' + UI.table([
+      { key: 'name', label: 'Zone' }, { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-danger btn-sm" data-del-zone="' + r.id + '">Delete</button>' }] : []),
+      detail.zones, {}) +
     '</div></div>';
-  document.getElementById('newZoneBtn').onclick = function () {
+
+  if (canManage) document.getElementById('newZoneBtn').onclick = function () {
     UI.openModal('Add zone', UI.field('Zone name', '<input id="fZoneName" class="field-input" />'), [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
       { label: t('create'), className: 'btn-primary', onClick: async function () {
@@ -92,6 +100,51 @@ async function tabVenue(content, eventId, detail) {
         } }
     ]);
   };
+
+  if (!canManage) return;
+  content.querySelectorAll('[data-del-zone]').forEach(function (b) {
+    b.onclick = async function () { openDeleteZoneModal_(b.getAttribute('data-del-zone'), detail.zones); };
+  });
+}
+
+// Deleting a zone soft-deletes it (hidden everywhere, but old records still resolve its name).
+// If it has assignments/logs tied to it, offer — but don't require — moving that work to another
+// active zone in the same venue first.
+async function openDeleteZoneModal_(zoneId, allZones) {
+  var zone = allZones.filter(function (z) { return z.id === zoneId; })[0];
+  var impact;
+  try { impact = await Api.call('listZoneImpact', { zoneId: zoneId }); } catch (err) { UI.error(err); return; }
+
+  var otherZones = allZones.filter(function (z) { return z.id !== zoneId; });
+  var body = '<div style="font-size:13.5px;line-height:1.6;">';
+  if (impact.hasImpact) {
+    var parts = [];
+    if (impact.assignmentsCount) parts.push(impact.assignmentsCount + ' inspector assignment(s)');
+    if (impact.logsCount) parts.push(impact.logsCount + ' log(s)');
+    if (impact.participantsCount) parts.push(impact.participantsCount + ' participant(s)');
+    body += '<div>"' + esc(zone ? zone.name : zoneId) + '" has ' + parts.join(', ') + ' tied to it.</div>' +
+      '<div class="muted" style="margin-top:6px;">You can optionally move this to another zone, or just delete — nothing breaks either way.</div>';
+    if (otherZones.length) {
+      body += '<div style="margin-top:12px;">' + UI.field('Move to zone (optional)',
+        '<select id="fReassignZone" class="field-input"><option value="">Don\'t reassign</option>' +
+        otherZones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('') + '</select>'
+      ) + '</div>';
+    }
+  } else {
+    body += '<div>Delete "' + esc(zone ? zone.name : zoneId) + '"? This zone has no assignments or logs tied to it.</div>';
+  }
+  body += '</div>';
+
+  UI.openModal('Delete zone', body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: 'Delete', className: 'btn-danger', onClick: async function () {
+        try {
+          var reassignSelect = document.getElementById('fReassignZone');
+          await Api.call('deleteZone', { zoneId: zoneId, reassignToZoneId: reassignSelect ? reassignSelect.value : '' });
+          UI.closeModal(); UI.toast('Zone deleted', 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 /* ---------------- Templates ---------------- */
