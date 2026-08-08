@@ -29,7 +29,8 @@ async function renderChecklistItems() {
         '<button class="btn btn-primary" id="newItemBtn">+ New item</button>'
         : '') +
       (canDedupe ? '<button class="btn btn-danger" id="dedupeBtn">Remove duplicates</button>' : '') +
-    '</div></div>';
+    '</div></div>' +
+    '<div id="ciBody"></div>';
 
   document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
   if (canManage) {
@@ -83,11 +84,11 @@ async function renderChecklistItems() {
   };
 
   if (!phases.length) {
-    root.innerHTML += '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
+    document.getElementById('ciBody').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
     return;
   }
 
-  root.innerHTML +=
+  document.getElementById('ciBody').innerHTML =
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       '<div class="card" style="width:230px;flex-shrink:0;">' +
         '<div class="card-header"><div class="card-title">Phase</div></div>' +
