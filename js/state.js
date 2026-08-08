@@ -21,6 +21,7 @@ window.HululState = {
   },
   clearSession() {
     this.token = null; this.user = null;
+    this.orgLogoLoaded = false; this.orgLogoUrl = '';
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');
   }
 };

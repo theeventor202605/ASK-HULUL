@@ -34,6 +34,27 @@ function showApp() {
   renderSidebar();
   renderUserChip();
   refreshNotifBadge();
+  loadOrgLogo();
+}
+
+// Shows the signed-in user's GA/EMC/Inspection Company logo in the topbar on every page.
+// showApp() runs on every route change, but the logo only needs fetching once per session — the
+// orgLogoLoaded flag skips the repeat calls; a full page reload (or fresh login) picks up any
+// change a SystemAdmin made in the meantime.
+async function loadOrgLogo() {
+  var img = document.getElementById('orgLogoImg');
+  if (HululState.orgLogoLoaded) {
+    if (HululState.orgLogoUrl) { img.src = HululState.orgLogoUrl; img.title = (HululState.orgName || ''); img.classList.remove('hidden'); } else img.classList.add('hidden');
+    return;
+  }
+  HululState.orgLogoLoaded = true;
+  try {
+    var org = await Api.call('getMyOrg', {});
+    HululState.orgLogoUrl = org && org.logoUrl ? org.logoUrl : '';
+    HululState.orgName = org && org.name ? org.name : '';
+  } catch (e) { HululState.orgLogoUrl = ''; }
+  if (HululState.orgLogoUrl) { img.src = HululState.orgLogoUrl; img.title = (HululState.orgName || ''); img.classList.remove('hidden'); }
+  else img.classList.add('hidden');
 }
 
 function renderSidebar() {
