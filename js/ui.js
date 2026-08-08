@@ -64,7 +64,8 @@ window.UI = {
       Open: ['badge-open', 'Open'], InReview: ['badge-inreview', 'In Review'], Resolved: ['badge-resolved', 'Resolved'],
       ReOpen: ['badge-reopen', 'Re-open'], Rejected: ['badge-rejected', 'Rejected'],
       Approved: ['badge-resolved', 'Approved'], 'Not Approved': ['badge-rejected', 'Not Approved'],
-      Pending: ['badge-neutral', 'Pending'], Scheduled: ['badge-open', 'Scheduled'], Completed: ['badge-resolved', 'Completed']
+      Pending: ['badge-neutral', 'Pending'], Scheduled: ['badge-open', 'Scheduled'], Completed: ['badge-resolved', 'Completed'],
+      Planning: ['badge-neutral', 'Planning'], VenueApproved: ['badge-resolved', 'Venue Approved'], VenueRejected: ['badge-rejected', 'Venue Rejected']
     };
     var m = map[status] || ['badge-neutral', status || '—'];
     return '<span class="badge ' + m[0] + '"><span class="badge-dot"></span>' + esc(m[1]) + '</span>';
