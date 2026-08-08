@@ -181,8 +181,9 @@ async function tabDisciplines(content, eventId, detail) {
   var canManage = DISCIPLINE_MANAGER_ROLES.indexOf(HululState.user.role) !== -1;
   var zones = (detail && detail.zones) || [];
   var zonesRequired = zones.length > 1;
-  var [disciplines, assignments, eventDisciplines] = await Promise.all([
-    Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId }), Api.call('listEventDisciplines', { eventId: eventId })
+  var [disciplines, assignments, eventDisciplines, gaps] = await Promise.all([
+    Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId }), Api.call('listEventDisciplines', { eventId: eventId }),
+    Api.call('listCoverageGaps', { eventId: eventId })
   ]);
   var identifiedIds = eventDisciplines.map(function (ed) { return ed.disciplineId; });
   var assignedDisciplineIds = Array.from(new Set(assignments.map(function (a) { return a.disciplineId; })));
@@ -205,6 +206,7 @@ async function tabDisciplines(content, eventId, detail) {
         (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">🔒 An inspector is already assigned — remove the assignment below to unselect.</div>' : '')
       : '<div class="muted" style="font-size:11.5px;margin-top:10px;">Read-only — only a Project Manager or System Admin can change this.</div>') +
     '</div></div>' +
+    renderCoverageGapsCard_(gaps, canManage) +
     (canManage
       ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign inspector</div></div>' +
         '<div class="card-body form-row">' +
@@ -272,6 +274,50 @@ async function tabDisciplines(content, eventId, detail) {
       } catch (err) { UI.error(err); }
     };
   });
+
+  // Coverage-gap "Quick assign" chips pre-fill the form above (discipline, qualified inspector,
+  // and — if this venue has multiple zones — the specific uncovered zones) so the PM only has to
+  // review and hit Assign, instead of re-finding the same discipline/inspector combo by hand.
+  content.querySelectorAll('[data-qa-insp]').forEach(function (btn) {
+    btn.onclick = async function () {
+      discSelect.value = btn.getAttribute('data-qa-disc');
+      await loadQualifiedInspectors();
+      inspSelect.value = btn.getAttribute('data-qa-insp');
+      var zoneIds = (btn.getAttribute('data-qa-zones') || '').split(',').filter(Boolean);
+      content.querySelectorAll('.assign-zone-check').forEach(function (cb) { cb.checked = zoneIds.indexOf(cb.value) !== -1; });
+      document.getElementById('assignBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+  });
+}
+
+// Summarizes listCoverageGaps() into a card: which identified disciplines still have zones (or,
+// for a single/no-zone venue, the whole venue) without an assigned inspector, and which
+// qualified-but-unassigned Inspectors could fill each gap. Shown to every viewer (it's just
+// information), but the "Quick assign" shortcut only appears for roles that can act on it.
+function renderCoverageGapsCard_(gaps, canManage) {
+  var body;
+  if (!gaps || !gaps.items || !gaps.items.length) {
+    body = '<div class="muted" style="font-size:13px;">✅ Every identified discipline is fully covered' + (gaps && gaps.zoneMode ? ' across all zones.' : '.') + '</div>';
+  } else {
+    body = gaps.items.map(function (item) {
+      var whereText = gaps.zoneMode
+        ? 'Uncovered zones: <strong>' + item.uncoveredZones.map(function (z) { return esc(z.name); }).join(', ') + '</strong>'
+        : '<strong>Not yet assigned</strong>';
+      var zoneIdsAttr = gaps.zoneMode ? item.uncoveredZones.map(function (z) { return z.id; }).join(',') : '';
+      var inspectorsHtml = item.availableInspectors.length
+        ? item.availableInspectors.map(function (i) {
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:12.5px;">' +
+              '<span><strong>' + esc(i.name) + '</strong> <span class="muted">' + esc(i.email) + '</span></span>' +
+              (canManage ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">Quick assign</button>' : '') +
+              '</div>';
+          }).join('')
+        : '<div class="muted" style="font-size:12px;margin-top:6px;">No qualified, unassigned inspectors available for this discipline.</div>';
+      return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
+        '<div style="font-weight:600;font-size:13.5px;">' + esc(item.disciplineName) + '</div>' +
+        '<div style="font-size:12.5px;margin-top:2px;">' + whereText + '</div>' + inspectorsHtml + '</div>';
+    }).join('');
+  }
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Coverage gaps</div></div><div class="card-body">' + body + '</div></div>';
 }
 
 /* ---------------- Inspections & Checklists ---------------- */
