@@ -319,12 +319,13 @@ async function tabDisciplines(content, eventId, detail) {
   };
 
   content.querySelectorAll('[data-remove-assign]').forEach(function (b) {
-    b.onclick = async function () {
-      if (!window.confirm('Remove this inspector assignment?')) return;
-      try {
-        await Api.call('removeInspectorAssignment', { eventId: eventId, assignmentId: b.getAttribute('data-remove-assign') });
-        UI.toast('Assignment removed', 'success'); Router.resolve();
-      } catch (err) { UI.error(err); }
+    b.onclick = function () {
+      UI.confirmModal('Remove this inspector assignment?', async function () {
+        try {
+          await Api.call('removeInspectorAssignment', { eventId: eventId, assignmentId: b.getAttribute('data-remove-assign') });
+          UI.toast('Assignment removed', 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      }, { confirmLabel: 'Remove' });
     };
   });
 
@@ -523,7 +524,7 @@ function openFindingModal(eventId) {
   var body =
     UI.field('Description', '<textarea id="fDesc" class="field-input" rows="2"></textarea>') +
     UI.field('Suggested action', '<input id="fAction" class="field-input" />') +
-    '<div class="form-row">' + UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option></select>') +
+    '<div class="form-row">' + UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
     UI.field('Resolution window (hours)', '<input id="fWindow" type="number" class="field-input" value="24" />') + '</div>' +
     '<div class="form-row">' + UI.field('Sub-zone', '<input id="fSubZone" class="field-input" />') + UI.field('Location', '<input id="fLocation" class="field-input" />') + '</div>';
   UI.openModal('Log finding', body, [

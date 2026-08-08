@@ -93,11 +93,12 @@ async function renderEventsList() {
       };
     });
     wrap.querySelectorAll('[data-del-event]').forEach(function (b) {
-      b.onclick = async function () {
+      b.onclick = function () {
         var eventId = b.getAttribute('data-del-event');
-        if (!window.confirm('Delete this event? This cannot be undone.')) return;
-        try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast('Event deleted', 'success'); Router.resolve(); }
-        catch (err) { UI.error(err); }
+        UI.confirmModal('Delete this event? This cannot be undone.', async function () {
+          try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast('Event deleted', 'success'); Router.resolve(); }
+          catch (err) { UI.error(err); }
+        }, { confirmLabel: 'Delete' });
       };
     });
   }

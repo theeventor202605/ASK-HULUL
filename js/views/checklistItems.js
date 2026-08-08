@@ -46,7 +46,7 @@ async function renderChecklistItems() {
       UI.field('Category', '<input id="fCiCategory" class="field-input" placeholder="Food & Beverage" />') +
       UI.field('Description', '<textarea id="fCiDesc" class="field-input" rows="2"></textarea>') +
       '<div class="form-row">' +
-      UI.field('Default risk', '<select id="fCiRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option></select>') +
+      UI.field('Default risk', '<select id="fCiRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
       UI.field('Default window (hours)', '<input id="fCiWindow" type="number" class="field-input" value="24" />') + '</div>' +
       UI.field('Phase', '<select id="fCiPhase" class="field-input"><option>Readiness</option><option>Operational</option></select>');
     UI.openModal('New checklist item', body, [

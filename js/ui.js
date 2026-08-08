@@ -28,6 +28,21 @@ window.UI = {
     this.openModal('Error', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
   },
 
+  // Replaces the browser's native window.confirm() with a popup in the app's own style.
+  // onConfirm can be async; the modal closes first either way so a slow request doesn't leave a
+  // stuck dialog on screen.
+  confirmModal(message, onConfirm, opts) {
+    opts = opts || {};
+    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(message) + '</div>';
+    this.openModal(opts.title || 'Are you sure?', body, [
+      { label: opts.cancelLabel || t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+      { label: opts.confirmLabel || 'Confirm', className: opts.confirmClass || 'btn-danger', onClick: function () {
+          UI.closeModal();
+          onConfirm();
+        } }
+    ]);
+  },
+
   // Shown instead of a toast for FORBIDDEN errors, since these need more room to explain
   // who *can* do this and — when the backend was able to work it out — who that is right now.
   permissionModal(err) {
@@ -83,7 +98,7 @@ window.UI = {
   },
 
   riskBadge(risk) {
-    var cls = risk === 'High' ? 'badge-high' : risk === 'Medium' ? 'badge-medium' : risk === 'Low' ? 'badge-low' : 'badge-neutral';
+    var cls = risk === 'Critical' ? 'badge-critical' : risk === 'High' ? 'badge-high' : risk === 'Medium' ? 'badge-medium' : risk === 'Low' ? 'badge-low' : 'badge-neutral';
     return '<span class="badge ' + cls + '">' + esc(risk || '—') + '</span>';
   },
 
