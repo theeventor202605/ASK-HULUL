@@ -172,7 +172,13 @@ async function tabApproval(content, eventId) {
 }
 
 /* ---------------- Disciplines & Inspectors ---------------- */
+// Only Project Managers (and SystemAdmin) can identify disciplines / assign / unassign
+// inspectors — everyone else viewing this tab gets a read-only view of the same data instead
+// of controls that would just come back "Not permitted" when clicked.
+var DISCIPLINE_MANAGER_ROLES = ['ProjectManager', 'SystemAdmin'];
+
 async function tabDisciplines(content, eventId) {
+  var canManage = DISCIPLINE_MANAGER_ROLES.indexOf(HululState.user.role) !== -1;
   var [disciplines, assignments, eventDisciplines] = await Promise.all([
     Api.call('listDisciplines', {}), Api.call('listInspectorAssignments', { eventId: eventId }), Api.call('listEventDisciplines', { eventId: eventId })
   ]);
@@ -185,27 +191,34 @@ async function tabDisciplines(content, eventId) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Identify applicable disciplines</div></div>' +
     '<div class="card-body">' + disciplines.map(function (d) {
       var checked = identifiedIds.indexOf(d.id) !== -1;
-      var locked = checked && assignedDisciplineIds.indexOf(d.id) !== -1;
+      var locked = !canManage || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
+      var lockReason = !canManage ? 'Only a Project Manager or System Admin can change this.' : 'An inspector is already assigned to this discipline — remove that assignment below before it can be unselected.';
       return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;' + (locked ? 'opacity:0.65;' : '') + '"' +
-        (locked ? ' title="An inspector is already assigned to this discipline — remove that assignment below before it can be unselected."' : '') + '>' +
+        (locked ? ' title="' + lockReason + '"' : '') + '>' +
         '<input type="checkbox" class="disc-check" value="' + d.id + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + ' /> ' +
-        esc(d.name) + (locked ? ' 🔒' : '') + '</label>';
+        esc(d.name) + (checked && assignedDisciplineIds.indexOf(d.id) !== -1 ? ' 🔒' : '') + '</label>';
     }).join('') +
-    '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div>' +
-    (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">🔒 An inspector is already assigned — remove the assignment below to unselect.</div>' : '') +
+    (canManage
+      ? '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div>' +
+        (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">🔒 An inspector is already assigned — remove the assignment below to unselect.</div>' : '')
+      : '<div class="muted" style="font-size:11.5px;margin-top:10px;">Read-only — only a Project Manager or System Admin can change this.</div>') +
     '</div></div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign inspector</div></div>' +
-    '<div class="card-body form-row">' +
-      UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">No disciplines identified yet</option>') + '</select>') +
-      UI.field('Qualified inspector', '<select id="fAssignInsp" class="field-input"></select>') +
-    '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>' +
+    (canManage
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign inspector</div></div>' +
+        '<div class="card-body form-row">' +
+          UI.field('Discipline', '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">No disciplines identified yet</option>') + '</select>') +
+          UI.field('Qualified inspector', '<select id="fAssignInsp" class="field-input"></select>') +
+        '</div><div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>'
+      : '') +
     '<div class="card"><div class="card-header"><div class="card-title">Assignments</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: 'Discipline' }, { key: 'inspectorName', label: 'Inspector' },
-      { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) },
-      { key: 'actions', label: t('actions'), render: r => '<button class="btn btn-danger btn-sm" data-remove-assign="' + r.id + '">Remove</button>' }
-    ], assignments, {}) +
+      { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-danger btn-sm" data-remove-assign="' + r.id + '">Remove</button>' }] : []),
+      assignments, {}) +
     '</div></div>';
+
+  if (!canManage) return;
 
   document.getElementById('saveDiscBtn').onclick = async function () {
     var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
@@ -250,7 +263,17 @@ async function tabDisciplines(content, eventId) {
 }
 
 /* ---------------- Inspections & Checklists ---------------- */
+// Scheduling is a Project Manager (or SystemAdmin) action; recording results is the assigned
+// Inspector's (or SystemAdmin's) alone. Hiding what a viewer can't actually use avoids the
+// "click it, get told Not permitted" dead end — e.g. a GAAdmin/EMCManager browsing this tab
+// would otherwise see every inspection's Record results button even though none are theirs.
+var INSPECTION_SCHEDULER_ROLES = ['ProjectManager', 'SystemAdmin'];
+function canRecordInspection_(r) {
+  return HululState.user.role === 'SystemAdmin' || (HululState.user.role === 'Inspector' && r.inspectorId === HululState.user.id);
+}
+
 async function tabInspections(content, eventId) {
+  var canSchedule = INSPECTION_SCHEDULER_ROLES.indexOf(HululState.user.role) !== -1;
   var [inspections, assignments, checklistItems] = await Promise.all([
     Api.call('listInspections', { eventId: eventId }),
     Api.call('listInspectorAssignments', { eventId: eventId }),
@@ -264,56 +287,62 @@ async function tabInspections(content, eventId) {
   }).join('');
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Schedule inspection</div></div>' +
-    '<div class="card-body form-row">' +
-      UI.field('Inspector', '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No inspectors assigned yet</option>') + '</select>') +
-      UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
-    '</div><div class="card-body form-row" style="padding-top:0;">' +
-      UI.field('Checklist type', '<select id="fInsChecklist" class="field-input"></select>') +
-      UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Operational Readiness</option><option>Operational Inspection</option></select>') +
-    '</div><div class="card-body" style="padding-top:0;">' +
-      UI.field('Scheduled at', '<input id="fInsWhen" type="datetime-local" class="field-input" />') +
-      '<button class="btn btn-primary btn-sm" id="scheduleBtn" style="margin-top:10px;"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>' +
+    (canSchedule
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Schedule inspection</div></div>' +
+        '<div class="card-body form-row">' +
+          UI.field('Inspector', '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No inspectors assigned yet</option>') + '</select>') +
+          UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
+        '</div><div class="card-body form-row" style="padding-top:0;">' +
+          UI.field('Checklist type', '<select id="fInsChecklist" class="field-input"></select>') +
+          UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Operational Readiness</option><option>Operational Inspection</option></select>') +
+        '</div><div class="card-body" style="padding-top:0;">' +
+          UI.field('Scheduled at', '<input id="fInsWhen" type="datetime-local" class="field-input" />') +
+          '<button class="btn btn-primary btn-sm" id="scheduleBtn" style="margin-top:10px;"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>'
+      : '') +
     '<div class="card"><div class="card-header"><div class="card-title">Inspections</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: 'Discipline' }, { key: 'checklistType', label: 'Checklist' }, { key: 'phase', label: 'Phase' },
       { key: 'inspectorName', label: 'Inspector' },
       { key: 'scheduledAt', label: 'When', render: r => UI.fmtDate(r.scheduledAt) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'actions', label: t('actions'), render: r => r.status !== 'Completed' ? '<button class="btn btn-secondary btn-sm" data-record="' + r.id + '" data-checklist="' + r.checklistType + '">Record results</button>' : '—' }
+      { key: 'actions', label: t('actions'), render: r => (r.status !== 'Completed' && canRecordInspection_(r))
+          ? '<button class="btn btn-secondary btn-sm" data-record="' + r.id + '" data-checklist="' + r.checklistType + '">Record results</button>' : '—' }
     ], inspections, {}) + '</div></div>';
 
-  var assignSelect = document.getElementById('fInsAssignment');
-  var discField = document.getElementById('fInsDisc');
-  var checklistSelect = document.getElementById('fInsChecklist');
+  if (canSchedule) {
+    var assignSelect = document.getElementById('fInsAssignment');
+    var discField = document.getElementById('fInsDisc');
+    var checklistSelect = document.getElementById('fInsChecklist');
 
-  function syncFromAssignment() {
-    var opt = assignSelect.options[assignSelect.selectedIndex];
-    var disciplineName = opt ? (opt.getAttribute('data-discipline') || '') : '';
-    discField.value = disciplineName;
-    var typesForDiscipline = Array.from(new Set(
-      checklistItems.filter(function (i) { return i.category === disciplineName; }).map(function (i) { return i.checklistType; })
-    )).sort();
-    checklistSelect.innerHTML = typesForDiscipline.length
-      ? typesForDiscipline.map(c => '<option>' + esc(c) + '</option>').join('')
-      : '<option value="">No checklist items for this discipline</option>';
+    var syncFromAssignment = function () {
+      var opt = assignSelect.options[assignSelect.selectedIndex];
+      var disciplineName = opt ? (opt.getAttribute('data-discipline') || '') : '';
+      discField.value = disciplineName;
+      var typesForDiscipline = Array.from(new Set(
+        checklistItems.filter(function (i) { return i.category === disciplineName; }).map(function (i) { return i.checklistType; })
+      )).sort();
+      checklistSelect.innerHTML = typesForDiscipline.length
+        ? typesForDiscipline.map(c => '<option>' + esc(c) + '</option>').join('')
+        : '<option value="">No checklist items for this discipline</option>';
+    };
+    assignSelect.onchange = syncFromAssignment;
+    if (assignments.length) syncFromAssignment();
+
+    document.getElementById('scheduleBtn').onclick = async function () {
+      var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
+      if (!assignment) { UI.toast('Select an assigned inspector first', 'error'); return; }
+      if (!checklistSelect.value) { UI.toast('No checklist type available for this discipline yet', 'error'); return; }
+      try {
+        await Api.call('scheduleInspection', {
+          eventId: eventId, disciplineId: assignment.disciplineId, inspectorId: assignment.inspectorId,
+          checklistType: checklistSelect.value, phase: document.getElementById('fInsPhase').value,
+          scheduledAt: document.getElementById('fInsWhen').value
+        });
+        UI.toast('Inspection scheduled', 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
   }
-  assignSelect.onchange = syncFromAssignment;
-  if (assignments.length) syncFromAssignment();
 
-  document.getElementById('scheduleBtn').onclick = async function () {
-    var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
-    if (!assignment) { UI.toast('Select an assigned inspector first', 'error'); return; }
-    if (!checklistSelect.value) { UI.toast('No checklist type available for this discipline yet', 'error'); return; }
-    try {
-      await Api.call('scheduleInspection', {
-        eventId: eventId, disciplineId: assignment.disciplineId, inspectorId: assignment.inspectorId,
-        checklistType: checklistSelect.value, phase: document.getElementById('fInsPhase').value,
-        scheduledAt: document.getElementById('fInsWhen').value
-      });
-      UI.toast('Inspection scheduled', 'success'); Router.resolve();
-    } catch (err) { UI.error(err); }
-  };
   content.querySelectorAll('[data-record]').forEach(btn => {
     btn.onclick = () => openRecordResultsModal(eventId, btn.getAttribute('data-record'), btn.getAttribute('data-checklist'));
   });
