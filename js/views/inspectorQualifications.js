@@ -8,20 +8,25 @@ async function renderInspectorQualifications(params) {
     Api.call('listUsers', { role: 'Inspector' }), Api.call('listDisciplines', {})
   ]);
   var selectedId = params && params.inspectorId ? params.inspectorId : (inspectors[0] && inspectors[0].id);
+  var currentQuals = selectedId ? await Api.call('listInspectorQualifications', { inspectorId: selectedId }) : [];
+  var currentIds = currentQuals.map(function (d) { return d.id; });
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_qualifications') + '</div>' +
     '<div class="page-subtitle">Discipline qualification profile per Inspector</div></div></div>' +
     (inspectors.length
-      ? '<div class="card"><div class="card-body">' +
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
         UI.field('Inspector', '<select id="fQualInspector" class="field-input">' +
           inspectors.map(i => '<option value="' + i.id + '"' + (i.id === selectedId ? ' selected' : '') + '>' + esc(i.name) + ' (' + esc(i.email) + ')</option>').join('') +
           '</select>') +
         '<div style="margin-top:12px;">' + disciplines.map(d =>
           '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
-          '<input type="checkbox" class="qual-check" value="' + d.id + '" /> ' + esc(d.name) + '</label>').join('') + '</div>' +
+          '<input type="checkbox" class="qual-check" value="' + d.id + '"' + (currentIds.indexOf(d.id) !== -1 ? ' checked' : '') + ' /> ' + esc(d.name) + '</label>').join('') + '</div>' +
         '<div><button class="btn btn-primary btn-sm" id="saveQualBtn" style="margin-top:12px;">' + t('save') + '</button></div>' +
         '<div class="muted" style="font-size:12px;margin-top:8px;">Saving replaces this Inspector\'s full qualification set with the checked disciplines.</div>' +
+        '</div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">Currently qualified in</div></div><div class="card-body">' +
+        UI.table([{ key: 'name', label: 'Discipline' }, { key: 'code', label: 'Code' }], currentQuals, { emptyText: 'No disciplines saved for this Inspector yet.' }) +
         '</div></div>'
       : '<div class="empty-state">No Inspector accounts found yet.</div>');
 
@@ -34,7 +39,7 @@ async function renderInspectorQualifications(params) {
     var ids = Array.from(document.querySelectorAll('.qual-check:checked')).map(c => c.value);
     try {
       await Api.call('setInspectorQualifications', { inspectorId: document.getElementById('fQualInspector').value, disciplineIds: ids });
-      UI.toast('Qualifications saved', 'success');
+      UI.toast('Qualifications saved', 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
 }
