@@ -43,6 +43,28 @@ window.UI = {
     ]);
   },
 
+  // Live progress bar shown while a batch of async operations (CSV row imports, etc.) runs, so
+  // the user sees something is happening instead of the app appearing to hang for however long
+  // the row-by-row API calls take. Call .update(current, label) after each item completes, then
+  // UI.closeModal() when done (typically right before showing a results modal).
+  progressModal(title, total) {
+    var body =
+      '<div id="progressLabel" style="font-size:13px;margin-bottom:10px;">Starting…</div>' +
+      '<div style="background:#f1f3f9;border-radius:8px;height:10px;overflow:hidden;">' +
+        '<div id="progressBarFill" style="background:var(--accent);height:100%;width:0%;transition:width .15s;"></div>' +
+      '</div>';
+    this.openModal(title, body, []);
+    return {
+      update: function (current, label) {
+        var pct = total ? Math.min(100, Math.round((current / total) * 100)) : 0;
+        var fill = document.getElementById('progressBarFill');
+        var lbl = document.getElementById('progressLabel');
+        if (fill) fill.style.width = pct + '%';
+        if (lbl) lbl.textContent = label || (current + ' of ' + total + ' processed…');
+      }
+    };
+  },
+
   // Shown instead of a toast for FORBIDDEN errors, since these need more room to explain
   // who *can* do this and — when the backend was able to work it out — who that is right now.
   permissionModal(err) {

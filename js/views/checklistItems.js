@@ -139,6 +139,12 @@ async function importChecklistItemsCsv(file) {
     return;
   }
 
+  var totalRows = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i].length && !rows[i].every(function (c) { return c.trim() === ''; })) totalRows++;
+  }
+  var progress = UI.progressModal('Importing checklist items…', totalRows);
+  var processed = 0;
   var results = { created: [], failed: [] };
   for (var r = 1; r < rows.length; r++) {
     var row = rows[r];
@@ -147,6 +153,8 @@ async function importChecklistItemsCsv(file) {
     var category = (row[idxCategory] || '').trim();
     var description = (row[idxDesc] || '').trim();
     var label = description || checklistType || '(unnamed)';
+    processed++;
+    progress.update(processed, processed + ' of ' + totalRows + (label ? ' — ' + label : ''));
     if (!checklistType || !category || !description) {
       results.failed.push({ row: r + 1, name: label, reason: 'Checklist Type, Category, and Description are required' });
       continue;
@@ -164,6 +172,7 @@ async function importChecklistItemsCsv(file) {
       results.failed.push({ row: r + 1, name: label, reason: err.message });
     }
   }
+  UI.closeModal();
   showImportResults_(results);
   if (results.created.length) Router.resolve();
 }

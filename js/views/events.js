@@ -282,11 +282,19 @@ async function importEventsCsv(file, venues, inspectionCos) {
     return;
   }
 
+  var totalRows = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i].length && !rows[i].every(function (c) { return c.trim() === ''; })) totalRows++;
+  }
+  var progress = UI.progressModal('Importing events…', totalRows);
+  var processed = 0;
   var results = { created: [], failed: [] };
   for (var r = 1; r < rows.length; r++) {
     var row = rows[r];
     if (!row.length || row.every(function (c) { return c.trim() === ''; })) continue;
     var name = (row[idxName] || '').trim();
+    processed++;
+    progress.update(processed, processed + ' of ' + totalRows + (name ? ' — ' + name : ''));
     var venueName = (row[idxVenue] || '').trim();
     var venue = venues.filter(function (v) { return v.name.toLowerCase() === venueName.toLowerCase(); })[0];
     if (!venue) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'Venue "' + venueName + '" not found' }); continue; }
@@ -313,6 +321,7 @@ async function importEventsCsv(file, venues, inspectionCos) {
       results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: err.message });
     }
   }
+  UI.closeModal();
   showImportResults_(results);
   if (results.created.length) Router.resolve();
 }
