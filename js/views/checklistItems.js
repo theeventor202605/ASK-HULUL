@@ -1,8 +1,9 @@
 /**
  * HULUL - Checklist Items admin view (reference catalogue used by Inspections). Setup.gs seeds
  * the defaults; this page lets SystemAdmin/InspectionAdmin/ProjectManager add more.
- * Grouped as Category tabs (Fire Safety, Crowd Safety, …) with Checklist sub-tabs
- * (Restaurants, Food Truck, …) underneath, since the full list grows quickly.
+ * Two stacked lists on the left narrow the set down: Phase (Readiness/Operational), then
+ * Category within that phase. Checklist Type is a tab bar on the right, since a given
+ * Phase+Category combo can still span several checklist types (Restaurants, Food Truck, …).
  */
 // Matches createChecklistItem's backend requireRole — only these roles get New/Import controls.
 var CHECKLIST_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'];
@@ -11,8 +12,8 @@ async function renderChecklistItems() {
   var root = document.getElementById('viewRoot');
   var canManage = CHECKLIST_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
   var items = await Api.call('listChecklistItems', {});
-  var categories = Array.from(new Set(items.map(function (i) { return i.category; }))).sort();
-  var view = { category: categories[0] || '', checklistType: '' };
+  var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
+  var view = { phase: phases[0] || '', category: '', checklistType: '' };
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_checklist') + '</div>' +
@@ -24,10 +25,7 @@ async function renderChecklistItems() {
         '<input type="file" id="ciImportCsvInput" accept=".csv" style="display:none;" />' +
         '<button class="btn btn-primary" id="newItemBtn">+ New item</button>'
         : '') +
-    '</div></div>' +
-    '<div class="tabbar" id="catTabbar"></div>' +
-    '<div class="tabbar" id="typeTabbar" style="margin-top:-10px;"></div>' +
-    '<div id="ciTableWrap"></div>';
+    '</div></div>';
 
   document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
   if (canManage) {
@@ -64,31 +62,68 @@ async function renderChecklistItems() {
     ]);
   };
 
-  if (!categories.length) {
-    document.getElementById('ciTableWrap').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
+  if (!phases.length) {
+    root.innerHTML += '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
     return;
   }
-  renderCategoryTabs();
 
-  function renderCategoryTabs() {
-    var catTabbar = document.getElementById('catTabbar');
-    catTabbar.innerHTML = categories.map(function (c) {
-      return '<div class="tab-btn ' + (c === view.category ? 'active' : '') + '" data-cat="' + esc(c) + '">' + esc(c) + '</div>';
+  root.innerHTML +=
+    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
+      '<div class="card" style="width:230px;flex-shrink:0;">' +
+        '<div class="card-header"><div class="card-title">Phase</div></div>' +
+        '<div id="ciPhasePanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
+        '<div class="card-header" style="border-top:1px solid var(--border);"><div class="card-title">Category</div></div>' +
+        '<div id="ciCategoryPanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div class="tabbar" id="typeTabbar"></div>' +
+        '<div id="ciTableWrap"></div>' +
+      '</div>' +
+    '</div>';
+
+  var rowStyle = 'padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:2px;';
+
+  function renderPhasePanel() {
+    var panel = document.getElementById('ciPhasePanel');
+    panel.innerHTML = phases.map(function (p) {
+      var active = p === view.phase;
+      return '<div class="ci-phase-row" data-phase="' + esc(p) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(p) + '</div>';
     }).join('');
-    catTabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
-      btn.onclick = function () { view.category = btn.getAttribute('data-cat'); view.checklistType = ''; renderCategoryTabs(); };
+    panel.querySelectorAll('.ci-phase-row').forEach(function (row) {
+      row.onclick = function () {
+        view.phase = row.getAttribute('data-phase');
+        view.category = ''; view.checklistType = '';
+        renderPhasePanel(); renderCategoryPanel();
+      };
+    });
+  }
+
+  function renderCategoryPanel() {
+    var categoriesInPhase = Array.from(new Set(
+      items.filter(function (i) { return i.phase === view.phase; }).map(function (i) { return i.category; })
+    )).sort();
+    if (!view.category || categoriesInPhase.indexOf(view.category) === -1) view.category = categoriesInPhase[0] || '';
+    var panel = document.getElementById('ciCategoryPanel');
+    panel.innerHTML = categoriesInPhase.length
+      ? categoriesInPhase.map(function (c) {
+          var active = c === view.category;
+          return '<div class="ci-cat-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(c) + '</div>';
+        }).join('')
+      : '<div class="muted" style="font-size:12px;padding:6px 10px;">No categories under this phase.</div>';
+    panel.querySelectorAll('.ci-cat-row').forEach(function (row) {
+      row.onclick = function () { view.category = row.getAttribute('data-cat'); view.checklistType = ''; renderCategoryPanel(); renderTypeTabs(); };
     });
     renderTypeTabs();
   }
 
   function renderTypeTabs() {
     var typesInCat = Array.from(new Set(
-      items.filter(function (i) { return i.category === view.category; }).map(function (i) { return i.checklistType; })
+      items.filter(function (i) { return i.phase === view.phase && i.category === view.category; }).map(function (i) { return i.checklistType; })
     )).sort();
     if (!view.checklistType || typesInCat.indexOf(view.checklistType) === -1) view.checklistType = typesInCat[0] || '';
     var typeTabbar = document.getElementById('typeTabbar');
     typeTabbar.innerHTML = typesInCat.map(function (ty) {
-      return '<div class="tab-btn ' + (ty === view.checklistType ? 'active' : '') + '" style="font-size:12px;padding:8px 12px;" data-type="' + esc(ty) + '">' + esc(ty) + '</div>';
+      return '<div class="tab-btn ' + (ty === view.checklistType ? 'active' : '') + '" data-type="' + esc(ty) + '">' + esc(ty) + '</div>';
     }).join('');
     typeTabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
       btn.onclick = function () { view.checklistType = btn.getAttribute('data-type'); renderTypeTabs(); };
@@ -97,12 +132,15 @@ async function renderChecklistItems() {
   }
 
   function renderTable() {
-    var filtered = items.filter(function (i) { return i.category === view.category && i.checklistType === view.checklistType; });
+    var filtered = items.filter(function (i) { return i.phase === view.phase && i.category === view.category && i.checklistType === view.checklistType; });
     document.getElementById('ciTableWrap').innerHTML = '<div class="card"><div class="card-body">' + UI.table([
       { key: 'description', label: 'Description' }, { key: 'defaultRisk', label: 'Default risk', render: r => UI.riskBadge(r.defaultRisk) },
-      { key: 'defaultWindowHours', label: 'Window (h)' }, { key: 'phase', label: 'Phase' }
+      { key: 'defaultWindowHours', label: 'Window (h)' }
     ], filtered, {}) + '</div></div>';
   }
+
+  renderPhasePanel();
+  renderCategoryPanel();
 }
 
 /* ---------------- CSV export / import ----------------
