@@ -406,7 +406,7 @@ async function tabInspections(content, eventId) {
           UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
         '</div><div class="card-body form-row" style="padding-top:0;">' +
           UI.field('Checklist type', '<select id="fInsChecklist" class="field-input"></select>') +
-          UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Operational Readiness</option><option>Operational Inspection</option></select>') +
+          UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Opening</option><option>Operational</option></select>') +
         '</div><div class="card-body" style="padding-top:0;">' +
           UI.field('Scheduled at', '<input id="fInsWhen" type="datetime-local" class="field-input" />') +
           '<button class="btn btn-primary btn-sm" id="scheduleBtn" style="margin-top:10px;"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>'
@@ -655,8 +655,8 @@ async function tabReports(content, eventId) {
   var reports = await Api.call('listReports', { eventId: eventId });
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;gap:10px;">' +
-    '<button class="btn btn-primary btn-sm" id="genReadinessBtn">Generate Operational Readiness report</button>' +
-    '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">Generate Operational Inspection report</button></div></div>' +
+    '<button class="btn btn-primary btn-sm" id="genReadinessBtn">Generate Opening report</button>' +
+    '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">Generate Operational report</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_reports') + '</div></div><div class="card-body">' +
     reports.map(r =>
       '<div style="border-bottom:1px solid #f0f1f6;padding:12px 0;">' +
@@ -665,8 +665,8 @@ async function tabReports(content, eventId) {
     ).join('') + (reports.length ? '' : '<div class="empty-state">' + t('no_data') + '</div>') +
     '</div></div>';
 
-  document.getElementById('genReadinessBtn').onclick = () => gen('Operational Readiness');
-  document.getElementById('genInspectionBtn').onclick = () => gen('Operational Inspection');
+  document.getElementById('genReadinessBtn').onclick = () => gen('Opening');
+  document.getElementById('genInspectionBtn').onclick = () => gen('Operational');
   async function gen(type) {
     try { await Api.call('generateReport', { eventId: eventId, type: type }); UI.toast('Report generated', 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
