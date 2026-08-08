@@ -256,9 +256,6 @@ async function tabInspections(content, eventId) {
     Api.call('listInspectorAssignments', { eventId: eventId }),
     Api.call('listChecklistItems', {})
   ]);
-  var checklistTypes = Array.from(new Set(checklistItems.map(i => i.checklistType))).sort();
-  var inspectorNameById = {};
-  assignments.forEach(function (a) { inspectorNameById[a.inspectorId] = a.inspectorName; });
   var inspectorAssignCount = {};
   assignments.forEach(function (a) { inspectorAssignCount[a.inspectorId] = (inspectorAssignCount[a.inspectorId] || 0) + 1; });
   var assignOptions = assignments.map(function (a) {
@@ -272,16 +269,15 @@ async function tabInspections(content, eventId) {
       UI.field('Inspector', '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No inspectors assigned yet</option>') + '</select>') +
       UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
     '</div><div class="card-body form-row" style="padding-top:0;">' +
-      UI.field('Checklist type', '<select id="fInsChecklist" class="field-input">' +
-        (checklistTypes.length ? checklistTypes.map(c => '<option>' + esc(c) + '</option>').join('') : '<option value="">No checklist items yet</option>') + '</select>') +
+      UI.field('Checklist type', '<select id="fInsChecklist" class="field-input"></select>') +
       UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Operational Readiness</option><option>Operational Inspection</option></select>') +
     '</div><div class="card-body" style="padding-top:0;">' +
       UI.field('Scheduled at', '<input id="fInsWhen" type="datetime-local" class="field-input" />') +
       '<button class="btn btn-primary btn-sm" id="scheduleBtn" style="margin-top:10px;"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">Inspections</div></div><div class="card-body">' +
     UI.table([
-      { key: 'checklistType', label: 'Checklist' }, { key: 'phase', label: 'Phase' },
-      { key: 'inspectorId', label: 'Inspector', render: r => esc(inspectorNameById[r.inspectorId] || r.inspectorId) },
+      { key: 'disciplineName', label: 'Discipline' }, { key: 'checklistType', label: 'Checklist' }, { key: 'phase', label: 'Phase' },
+      { key: 'inspectorName', label: 'Inspector' },
       { key: 'scheduledAt', label: 'When', render: r => UI.fmtDate(r.scheduledAt) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'actions', label: t('actions'), render: r => r.status !== 'Completed' ? '<button class="btn btn-secondary btn-sm" data-record="' + r.id + '" data-checklist="' + r.checklistType + '">Record results</button>' : '—' }
@@ -289,20 +285,30 @@ async function tabInspections(content, eventId) {
 
   var assignSelect = document.getElementById('fInsAssignment');
   var discField = document.getElementById('fInsDisc');
-  function syncDiscipline() {
+  var checklistSelect = document.getElementById('fInsChecklist');
+
+  function syncFromAssignment() {
     var opt = assignSelect.options[assignSelect.selectedIndex];
-    discField.value = opt ? (opt.getAttribute('data-discipline') || '') : '';
+    var disciplineName = opt ? (opt.getAttribute('data-discipline') || '') : '';
+    discField.value = disciplineName;
+    var typesForDiscipline = Array.from(new Set(
+      checklistItems.filter(function (i) { return i.category === disciplineName; }).map(function (i) { return i.checklistType; })
+    )).sort();
+    checklistSelect.innerHTML = typesForDiscipline.length
+      ? typesForDiscipline.map(c => '<option>' + esc(c) + '</option>').join('')
+      : '<option value="">No checklist items for this discipline</option>';
   }
-  assignSelect.onchange = syncDiscipline;
-  syncDiscipline();
+  assignSelect.onchange = syncFromAssignment;
+  if (assignments.length) syncFromAssignment();
 
   document.getElementById('scheduleBtn').onclick = async function () {
     var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
     if (!assignment) { UI.toast('Select an assigned inspector first', 'error'); return; }
+    if (!checklistSelect.value) { UI.toast('No checklist type available for this discipline yet', 'error'); return; }
     try {
       await Api.call('scheduleInspection', {
         eventId: eventId, disciplineId: assignment.disciplineId, inspectorId: assignment.inspectorId,
-        checklistType: document.getElementById('fInsChecklist').value, phase: document.getElementById('fInsPhase').value,
+        checklistType: checklistSelect.value, phase: document.getElementById('fInsPhase').value,
         scheduledAt: document.getElementById('fInsWhen').value
       });
       UI.toast('Inspection scheduled', 'success'); Router.resolve();
