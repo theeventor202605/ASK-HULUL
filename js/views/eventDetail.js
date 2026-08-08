@@ -386,10 +386,9 @@ function canRecordInspection_(r) {
 
 async function tabInspections(content, eventId) {
   var canSchedule = INSPECTION_SCHEDULER_ROLES.indexOf(HululState.user.role) !== -1;
-  var [inspections, assignments, checklistItems] = await Promise.all([
+  var [inspections, assignments] = await Promise.all([
     Api.call('listInspections', { eventId: eventId }),
-    Api.call('listInspectorAssignments', { eventId: eventId }),
-    Api.call('listChecklistItems', {})
+    Api.call('listInspectorAssignments', { eventId: eventId })
   ]);
   var inspectorAssignCount = {};
   assignments.forEach(function (a) { inspectorAssignCount[a.inspectorId] = (inspectorAssignCount[a.inspectorId] || 0) + 1; });
@@ -398,44 +397,42 @@ async function tabInspections(content, eventId) {
     return '<option value="' + a.id + '" data-discipline="' + esc(a.disciplineName) + '">' + esc(label) + '</option>';
   }).join('');
 
+  // Field order per REQ: Phase, Inspector, Discipline, Scheduled at. Checklist type is gone — by
+  // default every checklist type under the discipline is the inspector's own call to work through
+  // (see Record results below); nothing not yet done is ever hidden.
   content.innerHTML =
     (canSchedule
       ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Schedule inspection</div></div>' +
         '<div class="card-body form-row">' +
-          UI.field('Inspector', '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No inspectors assigned yet</option>') + '</select>') +
-          UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
-        '</div><div class="card-body form-row" style="padding-top:0;">' +
-          UI.field('Checklist type', '<select id="fInsChecklist" class="field-input"></select>') +
           UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Opening</option><option>Operational</option></select>') +
-        '</div><div class="card-body" style="padding-top:0;">' +
+          UI.field('Inspector', '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No inspectors assigned yet</option>') + '</select>') +
+        '</div><div class="card-body form-row" style="padding-top:0;">' +
+          UI.field('Discipline', '<input id="fInsDisc" class="field-input" readonly />') +
           UI.field('Scheduled at', '<input id="fInsWhen" type="datetime-local" class="field-input" />') +
-          '<button class="btn btn-primary btn-sm" id="scheduleBtn" style="margin-top:10px;"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>'
+        '</div><div class="card-body" style="padding-top:0;">' +
+          '<button class="btn btn-primary btn-sm" id="scheduleBtn"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>'
       : '') +
     '<div class="card"><div class="card-header"><div class="card-title">Inspections</div></div><div class="card-body">' +
     UI.table([
-      { key: 'disciplineName', label: 'Discipline' }, { key: 'checklistType', label: 'Checklist' }, { key: 'phase', label: 'Phase' },
+      { key: 'disciplineName', label: 'Discipline' }, { key: 'phase', label: 'Phase' },
       { key: 'inspectorName', label: 'Inspector' },
       { key: 'scheduledAt', label: 'When', render: r => UI.fmtDate(r.scheduledAt) },
+      { key: 'progress', label: 'Progress', render: r => r.coverage ? (r.coverage.done + ' / ' + r.coverage.total + ' checklist items') : '—' },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'actions', label: t('actions'), render: r => (r.status !== 'Completed' && canRecordInspection_(r))
-          ? '<button class="btn btn-secondary btn-sm" data-record="' + r.id + '" data-checklist="' + r.checklistType + '">Record results</button>' : '—' }
+      { key: 'actions', label: t('actions'), render: r => {
+          if (!canRecordInspection_(r) || r.status === 'Completed') return '—';
+          if (new Date(r.scheduledAt) > new Date()) return '<span class="muted" style="font-size:11.5px;">Not due yet</span>';
+          return '<button class="btn btn-secondary btn-sm" data-record="' + r.id + '">Record results</button>';
+        } }
     ], inspections, {}) + '</div></div>';
 
   if (canSchedule) {
     var assignSelect = document.getElementById('fInsAssignment');
     var discField = document.getElementById('fInsDisc');
-    var checklistSelect = document.getElementById('fInsChecklist');
 
     var syncFromAssignment = function () {
       var opt = assignSelect.options[assignSelect.selectedIndex];
-      var disciplineName = opt ? (opt.getAttribute('data-discipline') || '') : '';
-      discField.value = disciplineName;
-      var typesForDiscipline = Array.from(new Set(
-        checklistItems.filter(function (i) { return i.category === disciplineName; }).map(function (i) { return i.checklistType; })
-      )).sort();
-      checklistSelect.innerHTML = typesForDiscipline.length
-        ? typesForDiscipline.map(c => '<option>' + esc(c) + '</option>').join('')
-        : '<option value="">No checklist items for this discipline</option>';
+      discField.value = opt ? (opt.getAttribute('data-discipline') || '') : '';
     };
     assignSelect.onchange = syncFromAssignment;
     if (assignments.length) syncFromAssignment();
@@ -443,11 +440,10 @@ async function tabInspections(content, eventId) {
     document.getElementById('scheduleBtn').onclick = async function () {
       var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
       if (!assignment) { UI.toast('Select an assigned inspector first', 'error'); return; }
-      if (!checklistSelect.value) { UI.toast('No checklist type available for this discipline yet', 'error'); return; }
       try {
         await Api.call('scheduleInspection', {
           eventId: eventId, disciplineId: assignment.disciplineId, inspectorId: assignment.inspectorId,
-          checklistType: checklistSelect.value, phase: document.getElementById('fInsPhase').value,
+          phase: document.getElementById('fInsPhase').value,
           scheduledAt: document.getElementById('fInsWhen').value
         });
         UI.toast('Inspection scheduled', 'success'); Router.resolve();
@@ -456,36 +452,160 @@ async function tabInspections(content, eventId) {
   }
 
   content.querySelectorAll('[data-record]').forEach(btn => {
-    btn.onclick = () => openRecordResultsModal(eventId, btn.getAttribute('data-record'), btn.getAttribute('data-checklist'));
+    var inspection = inspections.filter(i => i.id === btn.getAttribute('data-record'))[0];
+    btn.onclick = () => openRecordResultsModal(eventId, inspection);
   });
 }
 
-async function openRecordResultsModal(eventId, inspectionId, checklistType) {
-  var items = await Api.call('listChecklistItems', { checklistType: checklistType });
-  if (!items.length) items = await Api.call('listChecklistItems', {});
-  var body = items.map(function (it) {
-    return '<div style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
-      '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
-      '<div class="muted" style="font-size:11.5px;margin-bottom:6px;">' + esc(it.category) + ' · default risk ' + esc(it.defaultRisk) + '</div>' +
-      '<select class="field-input result-state" data-item="' + it.id + '" style="display:inline-block;width:auto;">' +
-      '<option value="Ticked">Ticked</option><option value="Crossed">Crossed</option><option value="N/A">N/A</option></select>' +
-      '</div>';
-  }).join('') || '<div class="empty-state">No checklist items found for this type — add some in the ChecklistItems sheet.</div>';
-
-  UI.openModal('Record results — ' + checklistType, body, [
-    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: t('save'), className: 'btn-primary', onClick: async function () {
-        var results = Array.from(document.querySelectorAll('.result-state')).map(function (sel) {
-          return { checklistItemId: sel.getAttribute('data-item'), state: sel.value };
-        });
-        try {
-          var res = await Api.call('recordInspectionResults', { inspectionId: inspectionId, results: results });
-          UI.closeModal();
-          UI.toast(res.findingsCreated.length + ' finding(s) created', 'success');
-          Router.resolve();
-        } catch (err) { UI.error(err); }
-      } }
+// Record results: shows every Checklist item under the inspection's discipline+phase that hasn't
+// been recorded yet (across ALL checklist types — the inspector picks which to do, and anything
+// left is simply still open for next time). Marking an item Crossed requires a Risk Logging: notes,
+// suggested action, and at least one photo/video. Evidence uploads start the moment a file is
+// selected (in the background, with its own progress bar) rather than waiting for Save.
+async function openRecordResultsModal(eventId, inspection) {
+  var [items, existingResults] = await Promise.all([
+    Api.call('listChecklistItems', {}),
+    Api.call('listInspectionResults', { inspectionId: inspection.id })
   ]);
+  var doneIds = {};
+  existingResults.forEach(function (r) { doneIds[r.checklistItemId] = true; });
+  var scope = items.filter(function (i) { return i.category === inspection.disciplineName && i.phase === inspection.phase; });
+  var openItems = scope.filter(function (i) { return !doneIds[i.id]; });
+  var doneCount = scope.length - openItems.length;
+
+  if (!scope.length) {
+    UI.openModal('Record results', '<div class="empty-state">No checklist items are set up for this discipline/phase yet.</div>',
+      [{ label: 'Close', className: 'btn-secondary', onClick: UI.closeModal }]);
+    return;
+  }
+  if (!openItems.length) {
+    UI.openModal('Record results', '<div class="empty-state">All checklist items for this inspection have already been recorded.</div>',
+      [{ label: 'Close', className: 'btn-secondary', onClick: UI.closeModal }]);
+    return;
+  }
+
+  var pendingFiles = {};
+  openItems.forEach(function (it) { pendingFiles[it.id] = []; });
+
+  var byType = {};
+  openItems.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
+
+  var body =
+    (doneCount ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + doneCount + ' item(s) already recorded for this inspection — not shown below.</div>' : '') +
+    Object.keys(byType).sort().map(function (typeName) {
+      return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName) + '</div>' +
+        byType[typeName].map(recordResultRowHtml_).join('');
+    }).join('');
+
+  UI.openModal('Record results — ' + esc(inspection.disciplineName) + ' (' + esc(inspection.phase) + ')', body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: function () { saveInspectionResults_(eventId, inspection, openItems, pendingFiles); } }
+  ]);
+
+  wireRecordResultRows_(eventId, openItems, pendingFiles);
+}
+
+function recordResultRowHtml_(it) {
+  return '<div class="result-row" data-row="' + it.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
+    '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-bottom:6px;">default risk ' + esc(it.defaultRisk) + ' · window ' + esc(it.defaultWindowHours) + 'h</div>' +
+    '<select class="field-input result-state" data-item="' + it.id + '" style="display:inline-block;width:auto;">' +
+    '<option value="Ticked">Ticked</option><option value="Crossed">Crossed</option><option value="N/A">N/A</option></select>' +
+    '<div class="crossed-extra" data-extra="' + it.id + '" style="display:none;margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;">' +
+      '<div class="field-label" style="font-size:11.5px;">Notes / what was found</div>' +
+      '<textarea class="field-input result-notes" data-item="' + it.id + '" rows="2" style="margin-bottom:6px;"></textarea>' +
+      '<div class="field-label" style="font-size:11.5px;">Suggested action</div>' +
+      '<input class="field-input result-action" data-item="' + it.id + '" style="margin-bottom:6px;" />' +
+      '<div class="field-label" style="font-size:11.5px;">Risk Logging evidence — photo or video (required)</div>' +
+      '<input type="file" class="result-evidence" data-item="' + it.id + '" accept="image/*,video/*" multiple />' +
+      '<div class="evidence-list" data-evlist="' + it.id + '" style="margin-top:6px;"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function wireRecordResultRows_(eventId, openItems, pendingFiles) {
+  document.querySelectorAll('.result-state').forEach(function (sel) {
+    sel.onchange = function () {
+      var extra = document.querySelector('[data-extra="' + sel.getAttribute('data-item') + '"]');
+      if (extra) extra.style.display = sel.value === 'Crossed' ? 'block' : 'none';
+    };
+  });
+  document.querySelectorAll('.result-evidence').forEach(function (input) {
+    input.onchange = function () {
+      var itemId = input.getAttribute('data-item');
+      Array.from(input.files).forEach(function (file) { uploadEvidenceFile_(eventId, itemId, file, pendingFiles); });
+      input.value = '';
+    };
+  });
+}
+
+// Kicks off the upload the moment a file is picked ("stored locally then uploaded in the
+// background"): the File stays in memory (pendingFiles) while an XHR streams it up with a live
+// byte-progress bar, independent of the rest of the form.
+function uploadEvidenceFile_(eventId, itemId, file, pendingFiles) {
+  var entry = { name: file.name, status: 'uploading', pct: 0, url: '' };
+  pendingFiles[itemId].push(entry);
+  renderEvidenceList_(itemId, pendingFiles);
+  fileToBase64(file).then(function (base64) {
+    return Api.uploadWithProgress('uploadEvidence', { eventId: eventId, fileBase64: base64, fileName: file.name, mimeType: file.type },
+      function (loaded, total) {
+        entry.pct = Math.round((loaded / total) * 100);
+        renderEvidenceList_(itemId, pendingFiles);
+      });
+  }).then(function (res) {
+    entry.status = 'done'; entry.url = res.url; entry.pct = 100;
+    renderEvidenceList_(itemId, pendingFiles);
+  }).catch(function (err) {
+    entry.status = 'error'; entry.error = err.message || 'Upload failed';
+    renderEvidenceList_(itemId, pendingFiles);
+  });
+}
+
+function renderEvidenceList_(itemId, pendingFiles) {
+  var el = document.querySelector('[data-evlist="' + itemId + '"]');
+  if (!el) return;
+  el.innerHTML = (pendingFiles[itemId] || []).map(function (f) {
+    if (f.status === 'uploading') {
+      return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' — uploading ' + f.pct + '%' +
+        '<div style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin-top:2px;">' +
+        '<div style="background:var(--accent);height:100%;width:' + f.pct + '%;transition:width .1s;"></div></div></div>';
+    }
+    if (f.status === 'done') return '<div style="font-size:11.5px;margin-top:4px;color:var(--success);">✓ ' + esc(f.name) + '</div>';
+    return '<div style="font-size:11.5px;margin-top:4px;color:var(--danger);">✕ ' + esc(f.name) + ' — ' + esc(f.error || 'failed, try again') + '</div>';
+  }).join('');
+}
+
+async function saveInspectionResults_(eventId, inspection, openItems, pendingFiles) {
+  var results = [];
+  for (var i = 0; i < openItems.length; i++) {
+    var it = openItems[i];
+    var row = document.querySelector('[data-row="' + it.id + '"]');
+    if (!row) continue;
+    var state = row.querySelector('.result-state').value;
+    var entry = { checklistItemId: it.id, state: state };
+    if (state === 'Crossed') {
+      var files = pendingFiles[it.id] || [];
+      if (files.some(function (f) { return f.status === 'uploading'; })) {
+        UI.toast('Evidence is still uploading for "' + it.description + '" — please wait for it to finish', 'error');
+        return;
+      }
+      var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
+      if (!urls.length) {
+        UI.toast('A photo or video is required for "' + it.description + '" since it is marked Crossed', 'error');
+        return;
+      }
+      entry.notes = row.querySelector('.result-notes').value;
+      entry.suggestedAction = row.querySelector('.result-action').value;
+      entry.evidenceUrls = urls;
+    }
+    results.push(entry);
+  }
+  try {
+    var res = await Api.call('recordInspectionResults', { inspectionId: inspection.id, results: results });
+    UI.closeModal();
+    UI.toast(res.findingsCreated.length + ' finding(s) created', 'success');
+    Router.resolve();
+  } catch (err) { UI.error(err); }
 }
 
 /* ---------------- Findings (Risk Logging) ---------------- */
