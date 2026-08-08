@@ -2,7 +2,11 @@
  * HULUL - shared UI helpers: toasts, modals, badges, tables, formatting.
  */
 window.UI = {
+  // Error-type toasts are routed to a popup instead (see errorModal below) — every call site
+  // across the app that does UI.toast(msg, 'error') for a validation message (empty CSV, missing
+  // selection, etc.) automatically becomes a popup this way, with no need to touch each call site.
   toast(message, type) {
+    if (type === 'error') { this.errorModal({ message: message }); return; }
     var root = document.getElementById('toastRoot');
     var el = document.createElement('div');
     el.className = 'toast ' + (type || '');
@@ -14,7 +18,14 @@ window.UI = {
   error(err) {
     console.error(err);
     if (err && err.code === 'FORBIDDEN') { this.permissionModal(err); return; }
-    this.toast(err && err.message ? err.message : 'Something went wrong', 'error');
+    this.errorModal(err);
+  },
+
+  // Generic error popup for anything that isn't a FORBIDDEN permission error (those get the
+  // richer permissionModal below, with contacts).
+  errorModal(err) {
+    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err && err.message ? err.message : 'Something went wrong') + '</div>';
+    this.openModal('Error', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
   },
 
   // Shown instead of a toast for FORBIDDEN errors, since these need more room to explain
