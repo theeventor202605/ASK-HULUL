@@ -1,54 +1,70 @@
 /**
  * HULUL - Events list view + "New Event" creation (REQ-EVT-01/02).
- * Venues are shown as a side panel (a venue can host many events over time) that filters the
- * table on the right, rather than cramming every venue into one flat list.
+ * One "Event" (e.g. "Riyadh Season 2026") is often really a program that runs at many venues —
+ * each venue gets its own Event record sharing the same name. The side panel groups by that
+ * shared name so you can browse "every venue under this event" instead of one flat table.
  */
+// Only these roles can create/import events (matches createEvent's backend requireRole), so only
+// they need the Organizations lookup (used to build the Inspection Company dropdown). Everyone
+// else — Inspectors, EMC/Inspection analysts, Vendors, etc. — just views the events already
+// scoped to them by listEvents. Fetching listOrganizations unconditionally used to break the
+// whole page for those roles: it 403s for anyone outside its allow-list, and since it was in the
+// same Promise.all as listEvents/listVenues, that one rejection failed the entire page load.
+var EVENT_MANAGE_ROLES = ['SystemAdmin', 'GAAdmin', 'GAUser'];
+
 async function renderEventsList() {
   var root = document.getElementById('viewRoot');
-  var [events, venues, orgs] = await Promise.all([Api.call('listEvents', {}), Api.call('listVenues', {}), Api.call('listOrganizations', {})]);
+  var canManage = EVENT_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  var [events, venues, orgs] = await Promise.all([
+    Api.call('listEvents', {}), Api.call('listVenues', {}),
+    canManage ? Api.call('listOrganizations', {}) : Promise.resolve([])
+  ]);
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
   var venueById = {};
   venues.forEach(function (v) { venueById[v.id] = v; });
-  var view = { venueId: '' };
+  var view = { name: '' };
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('events_title') + '</div>' +
     '<div class="page-subtitle">All events across your organisation</div></div>' +
     '<div style="display:flex;gap:8px;">' +
       '<button class="btn btn-secondary" id="exportCsvBtn">Export CSV</button>' +
-      '<button class="btn btn-secondary" id="importCsvBtn">Import CSV</button>' +
-      '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />' +
-      '<button class="btn btn-primary" id="newEventBtn">+ ' + t('new_event') + '</button>' +
+      (canManage ?
+        '<button class="btn btn-secondary" id="importCsvBtn">Import CSV</button>' +
+        '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />' +
+        '<button class="btn btn-primary" id="newEventBtn">+ ' + t('new_event') + '</button>'
+        : '') +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:230px;flex-shrink:0;"><div class="card-header"><div class="card-title">Venues</div></div>' +
-      '<div id="venuePanel" style="padding:8px;max-height:560px;overflow-y:auto;"></div></div>' +
+      '<div class="card" style="width:230px;flex-shrink:0;"><div class="card-header"><div class="card-title">Events</div></div>' +
+      '<div id="eventPanel" style="padding:8px;max-height:560px;overflow-y:auto;"></div></div>' +
       '<div class="card" style="flex:1;min-width:0;"><div class="card-body" id="eventsTableWrap"></div></div>' +
     '</div>';
 
-  renderVenuePanel();
+  renderEventPanel();
   renderEventsTable();
 
-  function renderVenuePanel() {
+  function renderEventPanel() {
     var counts = {};
-    events.forEach(function (e) { counts[e.venueId] = (counts[e.venueId] || 0) + 1; });
-    var panel = document.getElementById('venuePanel');
+    events.forEach(function (e) { counts[e.name] = (counts[e.name] || 0) + 1; });
+    var names = Array.from(new Set(events.map(function (e) { return e.name; }))).sort();
+    var panel = document.getElementById('eventPanel');
     var rowStyle = 'padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:2px;';
-    var html = '<div class="venue-row" data-venue="" style="' + rowStyle + 'font-weight:700;' +
-      (!view.venueId ? 'background:var(--accent);color:#fff;' : '') + '">All venues <span style="opacity:.75;font-size:11.5px;">(' + events.length + ')</span></div>';
-    html += venues.map(function (v) {
-      var active = view.venueId === v.id;
-      return '<div class="venue-row" data-venue="' + v.id + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' +
-        esc(v.name) + ' <span style="opacity:.75;font-size:11.5px;">(' + (counts[v.id] || 0) + ')</span></div>';
+    var html = '<div class="event-row" data-name="" style="' + rowStyle + 'font-weight:700;' +
+      (!view.name ? 'background:var(--accent);color:#fff;' : '') + '">All events <span style="opacity:.75;font-size:11.5px;">(' + events.length + ')</span></div>';
+    html += names.map(function (n) {
+      var active = view.name === n;
+      return '<div class="event-row" data-name="' + esc(n) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' +
+        esc(n) + ' <span style="opacity:.75;font-size:11.5px;">(' + (counts[n] || 0) + ')</span></div>';
     }).join('');
     panel.innerHTML = html;
-    panel.querySelectorAll('.venue-row').forEach(function (row) {
-      row.onclick = function () { view.venueId = row.getAttribute('data-venue'); renderVenuePanel(); renderEventsTable(); };
+    panel.querySelectorAll('.event-row').forEach(function (row) {
+      row.onclick = function () { view.name = row.getAttribute('data-name'); renderEventPanel(); renderEventsTable(); };
     });
   }
 
   function renderEventsTable() {
-    var filtered = view.venueId ? events.filter(function (e) { return e.venueId === view.venueId; }) : events;
+    var filtered = view.name ? events.filter(function (e) { return e.name === view.name; }) : events;
     var wrap = document.getElementById('eventsTableWrap');
     wrap.innerHTML = UI.table(
       [
@@ -86,18 +102,20 @@ async function renderEventsList() {
     });
   }
 
-  document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos); };
   document.getElementById('exportCsvBtn').onclick = function () {
-    var filtered = view.venueId ? events.filter(function (e) { return e.venueId === view.venueId; }) : events;
+    var filtered = view.name ? events.filter(function (e) { return e.name === view.name; }) : events;
     exportEventsCsv(filtered, venueById);
   };
-  var importInput = document.getElementById('importCsvInput');
-  document.getElementById('importCsvBtn').onclick = function () { importInput.click(); };
-  importInput.onchange = function (e) {
-    var file = e.target.files[0];
-    if (file) importEventsCsv(file, venues, inspectionCos);
-    e.target.value = '';
-  };
+  if (canManage) {
+    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos); };
+    var importInput = document.getElementById('importCsvInput');
+    document.getElementById('importCsvBtn').onclick = function () { importInput.click(); };
+    importInput.onchange = function (e) {
+      var file = e.target.files[0];
+      if (file) importEventsCsv(file, venues, inspectionCos);
+      e.target.value = '';
+    };
+  }
 }
 
 function openNewEventModal(venues, inspectionCos) {
@@ -199,7 +217,9 @@ function exportEventsCsv(rows, venueById) {
       r.name, venue ? venue.name : r.venueId, r.address, r.city, r.startDateTime, r.endDateTime, r.status, r.code, r.project
     ].map(csvEscape_).join(','));
   });
-  var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  // Leading UTF-8 BOM: without it, Excel guesses the system ANSI codepage instead of UTF-8 and
+  // renders any non-Latin text (Arabic address/city, etc.) as mojibake.
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url; a.download = 'hulul-events-' + new Date().toISOString().slice(0, 10) + '.csv';
