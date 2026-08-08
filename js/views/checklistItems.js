@@ -1,7 +1,7 @@
 /**
  * HULUL - Checklist Items admin view (reference catalogue used by Inspections). Setup.gs seeds
  * the defaults; this page lets SystemAdmin/InspectionAdmin/ProjectManager add more.
- * Two stacked lists on the left narrow the set down: Phase (Readiness/Operational), then
+ * Two stacked lists on the left narrow the set down: Phase (Opening/Operational), then
  * Category within that phase. Checklist Type is a tab bar on the right, since a given
  * Phase+Category combo can still span several checklist types (Restaurants, Food Truck, …).
  */
@@ -67,7 +67,7 @@ async function renderChecklistItems() {
       '<div class="form-row">' +
       UI.field('Default risk', '<select id="fCiRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
       UI.field('Default window (hours)', '<input id="fCiWindow" type="number" class="field-input" value="24" />') + '</div>' +
-      UI.field('Phase', '<select id="fCiPhase" class="field-input"><option>Readiness</option><option>Operational</option></select>');
+      UI.field('Phase', '<select id="fCiPhase" class="field-input"><option>Opening</option><option>Operational</option></select>');
     UI.openModal('New checklist item', body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
       { label: t('create'), className: 'btn-primary', onClick: async function () {
