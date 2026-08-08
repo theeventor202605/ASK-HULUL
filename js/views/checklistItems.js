@@ -7,10 +7,13 @@
  */
 // Matches createChecklistItem's backend requireRole — only these roles get New/Import controls.
 var CHECKLIST_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'];
+// dedupeChecklistItems is a narrower, more destructive action — matches its own backend requireRole.
+var CHECKLIST_DEDUPE_ROLES = ['SystemAdmin', 'InspectionAdmin'];
 
 async function renderChecklistItems() {
   var root = document.getElementById('viewRoot');
   var canManage = CHECKLIST_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  var canDedupe = CHECKLIST_DEDUPE_ROLES.indexOf(HululState.user.role) !== -1;
   var items = await Api.call('listChecklistItems', {});
   var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
   var view = { phase: phases[0] || '', category: '', checklistType: '' };
@@ -25,6 +28,7 @@ async function renderChecklistItems() {
         '<input type="file" id="ciImportCsvInput" accept=".csv" style="display:none;" />' +
         '<button class="btn btn-primary" id="newItemBtn">+ New item</button>'
         : '') +
+      (canDedupe ? '<button class="btn btn-danger" id="dedupeBtn">Remove duplicates</button>' : '') +
     '</div></div>';
 
   document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
@@ -37,6 +41,22 @@ async function renderChecklistItems() {
       e.target.value = '';
     };
   }
+  if (canDedupe) document.getElementById('dedupeBtn').onclick = function () {
+    // Duplicate = same Description + Default risk + Window + Phase, regardless of Checklist
+    // Type/Category — matches createChecklistItem's new dedup check, which now blocks new
+    // duplicates from being created in the first place. This just cleans up existing ones.
+    UI.confirmModal(
+      'Scan the whole catalogue for items with the same Description, Default risk, Window, and Phase, and delete every duplicate beyond the first? This cannot be undone.',
+      async function () {
+        try {
+          var res = await Api.call('dedupeChecklistItems', {});
+          UI.toast(res.removed ? (res.removed + ' duplicate(s) removed') : 'No duplicates found', 'success');
+          Router.resolve();
+        } catch (err) { UI.error(err); }
+      },
+      { title: 'Remove duplicates', confirmLabel: 'Remove duplicates' }
+    );
+  };
 
   if (canManage) document.getElementById('newItemBtn').onclick = function () {
     var body =
