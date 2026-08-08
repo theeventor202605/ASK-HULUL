@@ -9,7 +9,7 @@ async function renderOrganizations() {
     '<div class="page-subtitle">Government Authorities, EMCs, and Inspection Companies</div></div>' +
     '<button class="btn btn-primary" id="newOrgBtn">+ New organization</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'logoUrl', label: 'Logo', render: r => r.logoUrl ? '<img src="' + esc(r.logoUrl) + '" alt="" style="height:28px;width:auto;max-width:100px;object-fit:contain;border-radius:6px;" />' : '<span class="muted">—</span>' },
+      { key: 'logoUrl', label: 'Logo', render: r => r.logoUrl ? '<img src="' + esc(r.logoUrl) + '" alt="" width="28" height="28" style="height:28px;width:auto;max-width:100px;object-fit:contain;border-radius:6px;" onerror="this.style.display=\'none\'" />' : '<span class="muted">—</span>' },
       { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
       { key: 'status', label: t('status'), render: r => UI.statusBadge('Resolved') },
       { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
@@ -41,7 +41,7 @@ async function renderOrganizations() {
 function openUploadLogoModal_(orgId, orgs) {
   var org = orgs.filter(function (o) { return o.id === orgId; })[0];
   var body =
-    (org && org.logoUrl ? '<div style="margin-bottom:10px;"><img src="' + esc(org.logoUrl) + '" alt="" style="height:48px;width:auto;max-width:200px;object-fit:contain;border-radius:8px;" /></div>' : '') +
+    (org && org.logoUrl ? '<div style="margin-bottom:10px;"><img src="' + esc(org.logoUrl) + '" alt="" width="48" height="48" style="height:48px;width:auto;max-width:200px;object-fit:contain;border-radius:8px;" onerror="this.style.display=\'none\'" /></div>' : '') +
     UI.field('Logo image', '<input type="file" id="fOrgLogo" accept="image/*" class="field-input" />');
   UI.openModal('Upload logo — ' + (org ? esc(org.name) : ''), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
