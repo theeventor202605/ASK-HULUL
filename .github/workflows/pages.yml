@@ -21,4 +21,8 @@ jobs:
         with:
           path: frontend
       - id: deployment
+<<<<<<< HEAD
         uses: actions/deploy-pages@v4
+=======
+        uses: actions/deploy-pages@v4
+>>>>>>> origin/main
