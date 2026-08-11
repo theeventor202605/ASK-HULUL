@@ -9,6 +9,16 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # actions/deploy-pages@v4 isn't updated for Node.js 24 yet (open upstream issue:
+    # github.com/actions/deploy-pages/issues/410) -- GitHub started forcing all Actions onto
+    # Node 24 by default, and under Node 24 this action fails outright with
+    # "HttpError: self-signed certificate; ... try running Node.js with --use-system-ca" before
+    # it ever gets to deploy anything. This is GitHub's own documented escape hatch (see the
+    # "Node.js 20 actions are deprecated" warning banner in the Actions run log) to opt this job
+    # back onto Node 20 until the action itself is fixed -- remove once deploy-pages ships a
+    # Node 24-compatible release.
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
