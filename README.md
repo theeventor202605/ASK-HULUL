@@ -45,6 +45,12 @@ a Venue is a shared catalog entry any EMCAdmin/EMCManager/SystemAdmin can manage
 rents it is chosen independently, per Event, on the Create/Edit Event form (a required "Renting
 EMC" field), not defaulted from the Venue.
 
+In-app technical Support is also included: a topbar button on every page lets any user report an
+issue with a screenshot (optionally highlighted), a written remark, and a short voice note; a
+shared queue (worked by the new SupportAgent role and SystemAdmin) tracks each ticket through
+Open → In Progress → Resolved → Completed, with the raiser approving or rejecting the fix before
+it's closed. See `docs/DATA_MODEL.md`'s Notes for the full lifecycle.
+
 Two things are intentionally partial and flagged for a follow-up pass — see "Known gaps" in
 `docs/DEPLOYMENT.md`: full Arabic translation of every field label (chrome/navigation is bilingual
 now, per-view field labels are English-first), and live GPS capture on evidence upload (the API

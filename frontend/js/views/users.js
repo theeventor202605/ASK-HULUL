@@ -2,7 +2,7 @@
  * HULUL - Users & Roles admin view (REQ-ACC).
  */
 var CREATABLE_ROLES_BY_ACTOR = {
-  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin'],
+  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin', 'SupportAgent'],
   GAAdmin: ['GAUser'], EMCAdmin: ['EventManager', 'EMCManager', 'EMCAnalyst', 'Operator', 'Vendor'],
   InspectionAdmin: ['ProjectManager', 'InspectionAnalyst', 'Inspector']
 };

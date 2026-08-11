@@ -46,7 +46,10 @@ window.ICON_DEFAULTS = {
   warning_banner: '⚠️', file_upload_done: '✓', file_upload_failed: '✕', active_selected: '✓',
   checklist_done: '✅', checklist_pending: '🟡',
   kpi_total: '📊', kpi_open: '🔵', kpi_inreview: '🟣', kpi_reopen: '↩️', kpi_rejected: '⛔',
-  kpi_resolved: '✅', kpi_active_events: '🎪'
+  kpi_resolved: '✅', kpi_active_events: '🎪',
+  // Support tickets (Support.gs / support.js)
+  mic_record: '🎙️', mic_stop: '⏹', screen_record: '🎥', resolve_ticket: '✅',
+  approve_ticket: '👍', reject_ticket: '↩️'
 };
 
 // Picker metadata: groups + friendly labels for every ICON_DEFAULTS key, shown in Settings > Icons
@@ -79,6 +82,11 @@ window.ICON_KEY_GROUPS = [
     { key: 'kpi_total', label: 'Total' }, { key: 'kpi_open', label: 'Open' }, { key: 'kpi_inreview', label: 'In Review' },
     { key: 'kpi_reopen', label: 'Re-open' }, { key: 'kpi_rejected', label: 'Rejected' }, { key: 'kpi_resolved', label: 'Resolved' },
     { key: 'kpi_active_events', label: 'Active events' }
+  ] },
+  { group: 'Support tickets', keys: [
+    { key: 'mic_record', label: 'Start voice recording' }, { key: 'mic_stop', label: 'Stop voice recording' },
+    { key: 'screen_record', label: 'Record screen + voice' }, { key: 'resolve_ticket', label: 'Mark ticket resolved' },
+    { key: 'approve_ticket', label: 'Approve resolution' }, { key: 'reject_ticket', label: 'Reject resolution' }
   ] }
 ];
 

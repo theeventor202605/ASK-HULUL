@@ -112,7 +112,21 @@ var SCHEMA = {
   // every Event at the venue); set means this Place (and the Participant/login it provisions) only
   // exists for that one Event and gets deactivated once the Event ends -- see the Event Places page
   // (findings.js-style dedicated route) and deactivateEndedEventPlaceAccounts below.
-  Places:                 ['id','venueId','zoneId','name','type','location','lat','lng','createdBy','createdAt','accountIds','eventId']
+  Places:                 ['id','venueId','zoneId','name','type','location','lat','lng','createdBy','createdAt','accountIds','eventId'],
+  // In-app technical support ticketing (see Support.gs) -- platform-level, not scoped to an Event or
+  // Organization. screenshotUrl/voiceNoteUrl are the raiser's initial capture (see
+  // frontend/js/views/support.js's raise-a-ticket flow); the back-and-forth after that lives in
+  // SupportTicketComments below. reopenCount mirrors Findings.reopenCount's convention (see
+  // Findings.gs) -- how many times the raiser has rejected a resolution, tracked for visibility only
+  // (no hard cap, unlike Findings).
+  SupportTickets:         ['id','createdBy','subject','remarks','pageContext','screenshotUrl','voiceNoteUrl','status','assignedTo','reopenCount','createdAt','updatedAt','resolvedAt','completedAt'],
+  // One row per message in a ticket's thread -- from either the raiser or Support/SystemAdmin.
+  // voiceNoteUrl: an optional recorded remark (either side can attach one). recordingUrl/
+  // recordingMimeType: an optional screen+voice walkthrough recording -- Support/SystemAdmin only
+  // (enforced in addTicketComment, Support.gs), a first for this app (see MediaRecorder/
+  // getDisplayMedia usage in support.js), capped to a short duration client-side to fit the existing
+  // base64-upload pipeline (see uploadTicketMedia).
+  SupportTicketComments:  ['id','ticketId','authorId','message','voiceNoteUrl','recordingUrl','recordingMimeType','createdAt']
 };
 
 var ROLES = {
@@ -120,7 +134,10 @@ var ROLES = {
   GA_ADMIN: 'GAAdmin', GA_USER: 'GAUser',
   EMC_ADMIN: 'EMCAdmin', EVENT_MANAGER: 'EventManager', EMC_MANAGER: 'EMCManager', EMC_ANALYST: 'EMCAnalyst',
   INSPECTION_ADMIN: 'InspectionAdmin', PROJECT_MANAGER: 'ProjectManager', INSPECTION_ANALYST: 'InspectionAnalyst', INSPECTOR: 'Inspector',
-  VENDOR: 'Vendor', OPERATOR: 'Operator', EXHIBITOR: 'Exhibitor'
+  VENDOR: 'Vendor', OPERATOR: 'Operator', EXHIBITOR: 'Exhibitor',
+  // Platform-level, not tied to any GA/EMC/Inspection org -- works the shared Support ticket queue
+  // (see Support.gs) alongside SystemAdmin. Created by SystemAdmin (ACCOUNT_CREATION_MATRIX, Auth.gs).
+  SUPPORT_AGENT: 'SupportAgent'
 };
 
 // Human-readable labels for role codes, used to build "who can do this" permission messages.
@@ -128,7 +145,8 @@ var ROLE_LABELS = {
   SystemAdmin: 'System Admin', GAAdmin: 'GA Admin', GAUser: 'GA User', EMCAdmin: 'EMC Admin',
   EventManager: 'Event Manager', EMCManager: 'EMC Manager', EMCAnalyst: 'EMC Analyst',
   InspectionAdmin: 'Inspection Admin', ProjectManager: 'Project Manager', InspectionAnalyst: 'Inspection Analyst',
-  Inspector: 'Inspector', Vendor: 'Vendor', Operator: 'Operator', Exhibitor: 'Exhibitor'
+  Inspector: 'Inspector', Vendor: 'Vendor', Operator: 'Operator', Exhibitor: 'Exhibitor',
+  SupportAgent: 'Support Agent'
 };
 function roleLabel_(role) { return ROLE_LABELS[role] || role; }
 
@@ -375,7 +393,7 @@ var ID_PREFIX = {
   InspectorQualifications: 'IQ', InspectorAssignments: 'IA', ChecklistItems: 'CHK', Inspections: 'INS',
   InspectionResults: 'IR', Findings: 'FND', Escalations: 'ESC', Resolutions: 'RES', Participants: 'PAR',
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
-  Projects: 'PRJ'
+  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

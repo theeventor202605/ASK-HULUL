@@ -93,7 +93,7 @@ function adminResetPassword(actingUser, targetUserId, newPassword) {
 // ---- RBAC -----------------------------------------------------------------
 // Section 5.1 account hierarchy: who may create which accounts.
 var ACCOUNT_CREATION_MATRIX = {
-  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin'],
+  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin', 'SupportAgent'],
   GAAdmin: ['GAUser'],
   EMCAdmin: ['EventManager', 'EMCManager', 'EMCAnalyst', 'Operator', 'Vendor'],
   InspectionAdmin: ['ProjectManager', 'InspectionAnalyst', 'Inspector'],

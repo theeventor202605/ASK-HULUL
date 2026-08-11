@@ -207,6 +207,16 @@ var ROUTES = {
   clearAllNotifications: function (u) { return clearAllNotifications(u); },
   sendNotification: function (u, p) { return sendNotification(u, p); },
 
+  // Support tickets (in-app technical support -- Support.gs)
+  createTicket: function (u, p) { return createTicket(u, p); },
+  listTickets: function (u, p) { return listTickets(u, p); },
+  getTicketDetail: function (u, p) { return getTicketDetail(u, p); },
+  addTicketComment: function (u, p) { return addTicketComment(u, p); },
+  resolveTicket: function (u, p) { return resolveTicket(u, p); },
+  approveTicketResolution: function (u, p) { return approveTicketResolution(u, p); },
+  rejectTicketResolution: function (u, p) { return rejectTicketResolution(u, p); },
+  uploadTicketMedia: function (u, p) { return uploadTicketMedia(u, p); },
+
   // Config (SystemAdmin only)
   listConfig: function (u) { return listConfig(u); },
   setConfig: function (u, p) { return setConfigEntry(u, p); },

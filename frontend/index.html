@@ -82,6 +82,10 @@
 <!-- Renders QR codes entirely client-side (Place account credentials modal, venues.js) -- no
      network call with the account's email/password, unlike a hosted QR-image API. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- DOM-screenshot capture for the Support ticket flow (js/views/support.js) -- rasterizes the
+     current page's DOM into a canvas client-side, no OS-level screen-share permission prompt
+     (REQ from the Support feature spec: capture-on-click, no dialog). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body class="h-full">
@@ -130,6 +134,7 @@
         </div>
         <div class="topbar-actions">
           <img id="orgLogoImg" class="org-logo hidden" alt="Organization logo" width="34" height="34" onerror="this.classList.add('hidden')" />
+          <button id="supportBtn" class="icon-btn" aria-label="Report a technical issue" title="Report a technical issue">🛟</button>
           <button id="notifBtn" class="icon-btn" aria-label="Notifications">
             🔔<span id="notifBadge" class="notif-badge hidden">0</span>
           </button>
@@ -151,6 +156,10 @@
   <div id="toastRoot" class="toast-root"></div>
   <div id="modalRoot" class="modal-root hidden"></div>
   <div id="notifPanel" class="notif-panel hidden"></div>
+  <!-- Full-screen (not .modal-box -- that maxes out at 520px, too small for a screenshot to
+       annotate) overlay for the Support "raise a ticket" flow: capture -> draw a highlight box ->
+       record a voice note -> write remarks -> submit. Built/torn down by js/views/support.js. -->
+  <div id="supportCaptureOverlay" class="support-capture-overlay hidden"></div>
 
   <script src="js/config.js"></script>
   <script src="js/i18n.js"></script>
@@ -166,6 +175,10 @@
   <script src="js/views/projects.js"></script>
   <script src="js/views/eventDetail.js"></script>
   <script src="js/evidence.js"></script>
+  <!-- Needs fileToBase64 (defined in eventDetail.js, used app-wide) and ICON/UI/Api, all already
+       loaded above; must itself load before router.js/app.js since app.js's wireChrome wires up
+       #supportBtn to a function this file defines. -->
+  <script src="js/views/support.js"></script>
   <script src="js/views/findings.js"></script>
   <script src="js/views/venues.js"></script>
   <script src="js/views/eventPlaces.js"></script>

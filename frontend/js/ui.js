@@ -123,7 +123,9 @@ window.UI = {
       // with the Venue Approval / Findings decisions above, which keep their own separate statuses.
       Evaluated: ['badge-resolved', 'Evaluated'], Missed: ['badge-rejected', 'Missed'],
       Pending: ['badge-neutral', 'Pending'], Scheduled: ['badge-open', 'Scheduled'], Completed: ['badge-resolved', 'Completed'],
-      Planning: ['badge-neutral', 'Planning'], VenueApproved: ['badge-resolved', 'Venue Approved'], VenueRejected: ['badge-rejected', 'Venue Rejected']
+      Planning: ['badge-neutral', 'Planning'], VenueApproved: ['badge-resolved', 'Venue Approved'], VenueRejected: ['badge-rejected', 'Venue Rejected'],
+      // Support tickets (Support.gs) -- Open/Resolved/Completed/Rejected all reuse maps above.
+      InProgress: ['badge-inreview', 'In Progress']
     };
     var m = map[status] || ['badge-neutral', status || '—'];
     return '<span class="badge ' + m[0] + '"><span class="badge-dot"></span>' + esc(m[1]) + '</span>';

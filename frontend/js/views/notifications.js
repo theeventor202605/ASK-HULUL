@@ -12,6 +12,11 @@ var NOTIF_TAB_BY_RELATED_ = {
 };
 
 function notifTargetHash_(n) {
+  // Support tickets (Support.gs) are platform-level, not tied to an Event -- notify_() is always
+  // called with eventId '' for these (see createTicket/addTicketComment/etc.), so the eventId
+  // check below would otherwise make every ticket notification unclickable. Checked first since
+  // relatedType, not eventId, is what actually tells them apart here.
+  if (n.relatedType === 'SupportTickets') return n.relatedId ? '#/support/' + n.relatedId : null;
   if (!n.eventId) return null;
   return '#/events/' + n.eventId + '?tab=' + (NOTIF_TAB_BY_RELATED_[n.relatedType] || 'overview');
 }

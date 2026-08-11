@@ -12,6 +12,11 @@ var NAV_ITEMS = [
   { path: '/meetings', icon: '🗓️', label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
   { path: '/notifications', icon: '🔔', label: 'nav_notifications', section: 'section_main' },
+  // Support/SystemAdmin see the whole shared queue here (support.js's renderSupport branches on
+  // role); everyone else sees only "My Tickets" -- the ones they've personally raised via the
+  // #supportBtn capture flow (wireChrome below) -- so this stays visible to every role, no
+  // `roles` restriction, unlike the admin-only items further down.
+  { path: '/support', icon: '🛟', label: 'nav_support', section: 'section_main' },
   { path: '/users', icon: '👥', label: 'nav_users', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
   { path: '/organizations', icon: '🏢', label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
@@ -173,6 +178,10 @@ function wireChrome() {
   document.getElementById('mobileNavBtn').onclick = function () {
     document.getElementById('sidebar').classList.toggle('mobile-open');
   };
+  // openSupportCapture lives in js/views/support.js (loaded before this file, see index.html) --
+  // takes a DOM screenshot of whatever page is currently open behind it (REQ: report an issue from
+  // anywhere in the app) and walks the user through annotate -> voice note -> remarks -> submit.
+  document.getElementById('supportBtn').onclick = function () { openSupportCapture(); };
   document.getElementById('notifBtn').onclick = async function () {
     var panel = document.getElementById('notifPanel');
     if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }

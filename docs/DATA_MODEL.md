@@ -26,12 +26,14 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 | Resolutions | id, findingId, participantId, evidenceUrls, remarks, submittedAt, reviewedBy, decision, comments, reviewedAt |
 | Participants | id, eventId, type, name, zoneId, location, contactEmail, userId, createdAt |
 | Reports | id, eventId, type, generatedAt, generatedBy, summaryJson |
-| Notifications | id, userId, type, message, relatedType, relatedId, isRead, createdAt |
+| Notifications | id, userId, type, message, relatedType, relatedId, isRead, createdAt, eventId |
 | AuditLog | id, actor, action, targetType, targetId, timestamp, details |
 | Config | key, value |
+| SupportTickets | id, createdBy, subject, remarks, pageContext, screenshotUrl, voiceNoteUrl, status, assignedTo, reopenCount, createdAt, updatedAt, resolvedAt, completedAt |
+| SupportTicketComments | id, ticketId, authorId, message, voiceNoteUrl, recordingUrl, recordingMimeType, createdAt |
 
 ## Roles (Section 2.2 / 5.1)
-`SystemAdmin, GAAdmin, GAUser, EMCAdmin, EventManager, EMCManager, EMCAnalyst, InspectionAdmin, ProjectManager, InspectionAnalyst, Inspector, Vendor, Operator, Exhibitor`
+`SystemAdmin, GAAdmin, GAUser, EMCAdmin, EventManager, EMCManager, EMCAnalyst, InspectionAdmin, ProjectManager, InspectionAnalyst, Inspector, Vendor, Operator, Exhibitor, SupportAgent`
 
 ## Notes
 - EMC / Venue / Event relationship (decoupled): a Venue is a shared catalog entry, not owned by or
@@ -47,3 +49,4 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 - Passwords: salted SHA-256 via `Utilities.computeDigest`, unique salt per user. Never stored in plaintext.
 - `status` on Findings: `Open, InReview, Resolved, ReOpen, Rejected` (matches the reference UI's Logs Overview cards).
 - Escalation tiers and delay hours are configurable in the `Config` sheet (`escalationTier2DelayHours`, `escalationTier3DelayHours`), defaulting to values set in `Setup.gs`.
+- Support tickets (`backend/Support.gs`, `frontend/js/views/support.js`): in-app technical support, raised by any user from anywhere in the app via the topbar Support button — captures a DOM screenshot (html2canvas, no OS permission prompt) with an optional highlight box drawn on it, plus a remark and an optional short (~90s) voice note. Platform-level, not scoped to an Event or Organization. Lifecycle: `Open` (raised) → `InProgress` (auto-set the first time SupportAgent/SystemAdmin opens it, or after any back-and-forth) → `Resolved` (Support marks it fixed, remarks required, raiser notified to review) → `Completed` (raiser approves, terminal) — a raiser rejecting a `Resolved` ticket sends it back to `InProgress` with further comments/voice note (`reopenCount` tracks how many times, no hard cap, mirrors `Findings.reopenCount`'s convention). Both SupportAgent and SystemAdmin can work the shared queue; SupportAgent accounts are created the same way as any other SystemAdmin-created role (`ACCOUNT_CREATION_MATRIX`, Auth.gs). Screen+voice walkthrough recordings (`getDisplayMedia` + mic, same ~90s cap) are Support/SystemAdmin-only, enforced both in the UI and server-side (`addTicketComment` rejects `recordingUrl` from anyone else).
