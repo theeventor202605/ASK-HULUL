@@ -1,0 +1,216 @@
+/**
+ * HULUL - Code.gs
+ * Web App entry point. Deployed as: Execute as "Me", Access "Anyone".
+ *
+ * CORS NOTE: the frontend lives on GitHub Pages (a different origin), so every
+ * request from it is cross-origin. Apps Script Web Apps cannot handle a custom
+ * OPTIONS preflight, so the frontend MUST send POST requests with
+ * `Content-Type: text/plain;charset=utf-8` (a "simple request" that skips
+ * preflight) with a JSON string as the body; this file parses it manually.
+ * GET requests are used only for lightweight, non-sensitive calls (e.g. ping).
+ */
+
+function doGet(e) {
+  try {
+    var action = e.parameter.action || 'ping';
+    if (action === 'ping') return jsonOut_({ ok: true, service: 'HULUL', time: nowIso_() });
+    var result = dispatch_(action, e.parameter, e.parameter.token);
+    return jsonOut_({ ok: true, data: result });
+  } catch (err) {
+    return jsonOut_(errorPayload_(err));
+  }
+}
+
+function doPost(e) {
+  try {
+    var body = {};
+    if (e.postData && e.postData.contents) {
+      body = JSON.parse(e.postData.contents);
+    }
+    var action = body.action || (e.parameter && e.parameter.action);
+    var result = dispatch_(action, body.payload || {}, body.token);
+    return jsonOut_({ ok: true, data: result });
+  } catch (err) {
+    return jsonOut_(errorPayload_(err));
+  }
+}
+
+function errorPayload_(err) {
+  var code = err && err.code ? err.code : 'SERVER_ERROR';
+  var message = err && err.message ? err.message : String(err);
+  var error = { code: code, message: message };
+  if (err && err.allowedRoles) error.allowedRoles = err.allowedRoles;
+  if (err && err.contacts) error.contacts = err.contacts;
+  return { ok: false, error: error };
+}
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Actions that do not require a logged-in user.
+var PUBLIC_ACTIONS = { login: 1, ping: 1, redeemQuickLogin: 1 };
+
+function dispatch_(action, payload, token) {
+  if (!action) throw new HululError('BAD_REQUEST', 'Missing action');
+  var user = null;
+  if (!PUBLIC_ACTIONS[action]) {
+    user = getUserByToken(token);
+  }
+  var handler = ROUTES[action];
+  if (!handler) throw new HululError('NOT_FOUND', 'Unknown action: ' + action);
+  return handler(user, payload || {});
+}
+
+// ---- Route table: action name -> (user, payload) => result ---------------
+var ROUTES = {
+  // Auth
+  login: function (_u, p) { return login(p.email, p.password); },
+  logout: function (_u, p) { return logout(p.token); },
+  me: function (u) { return u; },
+  changePassword: function (u, p) { return changePassword(u.id, p.oldPassword, p.newPassword); },
+
+  // Accounts (ACC)
+  listUsers: function (u, p) { return listUsers(u, p); },
+  createUser: function (u, p) { return createUser(u, p); },
+  updateUser: function (u, p) { return updateUserAccount(u, p); },
+  deactivateUser: function (u, p) { return deactivateUser(u, p.userId); },
+  activateUser: function (u, p) { return activateUser(u, p.userId); },
+  resetPassword: function (u, p) { return adminResetPassword(u, p.userId, p.newPassword); },
+  listOrganizations: function (u) { return listOrganizations(u); },
+  createOrganization: function (u, p) { return createOrganization(u, p); },
+  updateOrganizationDomain: function (u, p) { return updateOrganizationDomain(u, p); },
+  getMyOrg: function (u) { return getMyOrg(u); },
+  getEventBrandingLogos: function (u, p) { return getEventBrandingLogos(u, p); },
+  uploadOrgLogo: function (u, p) { return uploadOrgLogo(u, p); },
+  getOrgLabels: function (u, p) { return getOrgLabels(u, p); },
+  setOrgLabels: function (u, p) { return setOrgLabels(u, p); },
+  getAppIcons: function (u, p) { return getAppIcons(u, p); },
+  setAppIcons: function (u, p) { return setAppIcons(u, p); },
+  auditLog: function (u, p) { return listAuditLog(u, p); },
+
+  // Projects (grouping of several Events)
+  listProjects: function (u, p) { return listProjects(u, p); },
+  createProject: function (u, p) { return createProject(u, p); },
+  updateProject: function (u, p) { return updateProject(u, p); },
+  deleteProject: function (u, p) { return deleteProject(u, p); },
+
+  // Events / Venues / Zones (EVT)
+  listEvents: function (u, p) { return listEvents(u, p); },
+  getEvent: function (u, p) { return getEventDetail(u, p.eventId); },
+  createEvent: function (u, p) { return createEvent(u, p); },
+  updateEvent: function (u, p) { return updateEvent(u, p); },
+  deleteEvent: function (u, p) { return deleteEvent(u, p); },
+  createSubEvent: function (u, p) { return createSubEvent(u, p); },
+  listSubEvents: function (u, p) { return listSubEvents(u, p); },
+  listVenues: function (u, p) { return listVenues(u, p); },
+  createVenue: function (u, p) { return createVenue(u, p); },
+  updateVenue: function (u, p) { return updateVenue(u, p); },
+  listVenueImpact: function (u, p) { return listVenueImpact(u, p); },
+  deleteVenue: function (u, p) { return deleteVenue(u, p); },
+  listZones: function (u, p) { return listZones(u, p); },
+  createZone: function (u, p) { return createZone(u, p); },
+  deleteZone: function (u, p) { return deleteZone(u, p); },
+  listZoneImpact: function (u, p) { return listZoneImpact(u, p); },
+  assignEventManager: function (u, p) { return assignEventManagerToVenue(u, p); },
+
+  // Places (PLC)
+  listPlaces: function (u, p) { return listPlaces(u, p); },
+  createPlace: function (u, p) { return createPlace(u, p); },
+  addPlaceAccount: function (u, p) { return addPlaceAccount(u, p); },
+  getPlaceAccountCredentials: function (u, p) { return getPlaceAccountCredentials(u, p); },
+  deletePlace: function (u, p) { return deletePlace(u, p); },
+  redeemQuickLogin: function (_u, p) { return redeemQuickLogin(p.token); },
+
+  // Templates (TPL)
+  listTemplateLibrary: function (u, p) { return listTemplateLibrary(u, p); },
+  createLibraryTemplate: function (u, p) { return createLibraryTemplate(u, p); },
+  uploadLibraryTemplateVersion: function (u, p) { return uploadLibraryTemplateVersion(u, p); },
+  getEventTemplates: function (u, p) { return getEventTemplates(u, p); },
+  sendTemplates: function (u, p) { return sendTemplates(u, p); },
+  openEventTemplate: function (u, p) { return openEventTemplate(u, p); },
+  uploadEventTemplateFile: function (u, p) { return uploadEventTemplateFile(u, p); },
+  submitEventTemplate: function (u, p) { return submitEventTemplate(u, p); },
+  reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
+  setTemplatesDeadline: function (u, p) { return setTemplatesDeadline(u, p); },
+  getTemplateProcessRoles: function (u, p) { return getTemplateProcessRoles(u); },
+  getTemplateProcessConfig: function (u, p) { return getTemplateProcessConfig(u); },
+  setTemplateProcessConfig: function (u, p) { return setTemplateProcessConfig(u, p); },
+  scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
+  listMeetings: function (u, p) { return listMeetings(u, p); },
+
+  // Venue approval (VAP)
+  recordRecommendation: function (u, p) { return recordRecommendation(u, p); },
+  recordVenueDecision: function (u, p) { return recordVenueDecision(u, p); },
+  listVenueEvaluations: function (u, p) { return listVenueEvaluations(u, p); },
+  reassignVenue: function (u, p) { return reassignVenue(u, p); },
+
+  // Disciplines / Inspectors (DIS)
+  listDisciplines: function () { return listDisciplines(); },
+  createDiscipline: function (u, p) { return createDiscipline(u, p); },
+  identifyDisciplines: function (u, p) { return identifyDisciplines(u, p); },
+  listEventDisciplines: function (u, p) { return listEventDisciplines(p.eventId); },
+  setInspectorQualifications: function (u, p) { return setInspectorQualifications(u, p); },
+  listInspectorQualifications: function (u, p) { return listInspectorQualifications(u, p); },
+  listQualifiedInspectors: function (u, p) { return listQualifiedInspectors(u, p); },
+  assignInspector: function (u, p) { return assignInspector(u, p); },
+  removeInspectorAssignment: function (u, p) { return removeInspectorAssignment(u, p); },
+  listInspectorAssignments: function (u, p) { return listInspectorAssignments(u, p); },
+  listCoverageGaps: function (u, p) { return listCoverageGaps(u, p); },
+
+  // Inspections & checklists (INS)
+  listChecklistItems: function (u, p) { return listChecklistItems(p); },
+  createChecklistItem: function (u, p) { return createChecklistItem(u, p); },
+  bulkCreateChecklistItems: function (u, p) { return bulkCreateChecklistItems(u, p); },
+  updateChecklistItem: function (u, p) { return updateChecklistItem(u, p); },
+  deleteChecklistItem: function (u, p) { return deleteChecklistItem(u, p); },
+  dedupeChecklistItems: function (u) { return dedupeChecklistItems(u); },
+  scheduleInspection: function (u, p) { return scheduleInspection(u, p); },
+  updateInspection: function (u, p) { return updateInspection(u, p); },
+  deleteInspection: function (u, p) { return deleteInspection(u, p); },
+  listInspections: function (u, p) { return listInspections(u, p); },
+  listInspectionResults: function (u, p) { return listInspectionResults(u, p); },
+  recordInspectionResults: function (u, p) { return recordInspectionResults(u, p); },
+  listInspectionParticipants: function (u, p) { return listInspectionParticipants(u, p); },
+  uploadEvidence: function (u, p) { return uploadEvidence(u, p); },
+
+  // Findings (NCF) -- full Risk Logging workflow (Open -> Viewed -> Submitted -> InReview -> ...)
+  listFindings: function (u, p) { return listFindings(u, p); },
+  createFinding: function (u, p) { return createFinding(u, p); },
+  updateFinding: function (u, p) { return updateFinding(u, p); },
+  viewFinding: function (u, p) { return viewFinding(u, p); },
+  resolveFinding: function (u, p) { return resolveFinding(u, p); },
+  reviewFindingResolution: function (u, p) { return reviewFindingResolution(u, p); },
+
+  // Resolutions & escalations (RES) -- submitResolution/reviewResolution removed, superseded by
+  // resolveFinding/reviewFindingResolution above (see Resolutions.gs header comment).
+  listResolutions: function (u, p) { return listResolutions(u, p); },
+  listEscalations: function (u, p) { return listEscalations(u, p); },
+  createEscalation: function (u, p) { return createEscalation(u, p); },
+  runEscalationCheck: function (u) { return runEscalationCheck(u); },
+
+  // Participants (PAR)
+  listParticipants: function (u, p) { return listParticipants(u, p); },
+  createParticipant: function (u, p) { return createParticipant(u, p); },
+  updateParticipant: function (u, p) { return updateParticipant(u, p); },
+  bulkAssignParticipantDisciplines: function (u, p) { return bulkAssignParticipantDisciplines(u, p); },
+  dedupeParticipants: function (u, p) { return dedupeParticipants(u, p); },
+
+  // Reports (RPT)
+  generateReport: function (u, p) { return generateReport(u, p); },
+  listReports: function (u, p) { return listReports(u, p); },
+
+  // Notifications
+  listNotifications: function (u, p) { return listNotifications(u, p); },
+  markNotificationRead: function (u, p) { return markNotificationRead(u, p.notificationId); },
+  deleteNotification: function (u, p) { return deleteNotification(u, p.notificationId); },
+  clearAllNotifications: function (u) { return clearAllNotifications(u); },
+  sendNotification: function (u, p) { return sendNotification(u, p); },
+
+  // Config (SystemAdmin only)
+  listConfig: function (u) { return listConfig(u); },
+  setConfig: function (u, p) { return setConfigEntry(u, p); },
+
+  // Dashboard
+  dashboardSummary: function (u, p) { return dashboardSummary(u, p); }
+};

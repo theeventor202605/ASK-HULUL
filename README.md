@@ -38,9 +38,13 @@ JSON API.
 
 All 10 functional modules (ACC, EVT, TPL, VAP, DIS, INS, NCF, RES, PAR, RPT) are implemented,
 including RBAC, audit logging, tiered escalation (via a 30-minute time-driven trigger), evidence
-uploads to Drive, and email notifications. Two things are intentionally partial and flagged for
+uploads to Drive, and email notifications. Three things are intentionally partial and flagged for
 a follow-up pass — see "Known gaps" in `docs/DEPLOYMENT.md`: full Arabic translation of every
-field label (chrome/navigation is bilingual now, per-view field labels are English-first), and
+field label (chrome/navigation is bilingual now, per-view field labels are English-first),
 live GPS capture on evidence upload (the API accepts `lat`/`lng`, but the frontend doesn't yet
-call `navigator.geolocation` — a small addition, noted in the doc).
+call `navigator.geolocation` — a small addition, noted in the doc), and an EMC picker on the
+Create/Edit Event and Reassign Venue screens (the backend now accepts an explicit `emcId` so a
+Venue can be rented to any EMC per Event, not just the venue's own operator — see
+`docs/DATA_MODEL.md`'s Notes — but the frontend doesn't expose that field yet, so it still
+silently defaults to the venue's operating EMC until that UI is added).
 "# ASK-HULUL" 

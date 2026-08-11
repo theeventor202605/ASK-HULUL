@@ -1,0 +1,21 @@
+.clasp.json
+node_modules/
+.DS_Store
+*.log
+
+# Business documents - not part of the codebase
+/00 - Current Documents/
+/Issues/
+/*.docx
+/*.xlsx
+/*.pptx
+/*.pdf
+/*.jpg
+/*.jpeg
+/*.png
+/*.svg
+
+# Editor/app lock & backup files
+/~$*
+/.$*
+/*.bkp
