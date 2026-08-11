@@ -87,10 +87,9 @@ creates their own org's users).
 - **Multi-admin System Admin**: `ACCOUNT_CREATION_MATRIX` already allows SystemAdmin to create
   more SystemAdmins (REQ-ACC-01); do this from **Users & Roles** once logged in as the seeded
   admin.
-- **EMC picker on Event forms**: a Venue is operated by one default EMC, but can be *rented* to
-  any EMC per Event (see `docs/DATA_MODEL.md` Notes). `createEvent`/`updateEvent`/`reassignVenue`
-  already accept an explicit `emcId` and validate it against Organizations, but
-  `frontend/js/views/events.js` and the Reassign Venue flow don't yet render an EMC dropdown —
-  they still rely on the default (the venue's own operating EMC). Add the picker (populate from
-  `listOrganizations` filtered to `type === 'EMC'`) to actually let GA rent a venue out to a
-  different EMC from the UI.
+- **Reassign Venue screen**: `reassignVenue` (VenueApproval.gs, REQ-VAP-04/REQ-EVT-12 — re-pick the
+  Venue for an Event after a venue-decision rejection, optionally changing the renting EMC too) has
+  no frontend UI yet — nothing in `frontend/js/views/eventDetail.js`'s Venue Approval tab calls it.
+  `recordVenueDecision`'s "Not Approved" path sets the Event to `VenueRejected` but there's currently
+  no button to act on that. Add a "Reassign venue" action (Venue + EMC pickers, same shape as the
+  New Event form in `events.js`) to that tab.

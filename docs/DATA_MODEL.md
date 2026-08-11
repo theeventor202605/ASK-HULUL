@@ -7,9 +7,9 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 | Organizations | id, type, name, status, createdAt |
 | Users | id, name, email, orgType, orgId, role, status, passwordHash, passwordSalt, createdBy, createdAt, lastLoginAt |
 | Sessions | token, userId, createdAt, expiresAt |
-| Venues | id, name, address, city, emcId (operating/default EMC — see Notes), createdAt |
+| Venues | id, name, address, city, emcId (legacy, unused — see Notes), createdAt |
 | Zones | id, venueId, name, createdAt |
-| Events | id, name, code, project, venueId, address, city, startDateTime, endDateTime, emcId (renting EMC for this event — see Notes), inspectionCoId, eventManagerId, status, createdBy, createdAt |
+| Events | id, name, code, project, venueId, address, city, startDateTime, endDateTime, emcId (renting EMC for this event, required — see Notes), inspectionCoId, eventManagerId, status, createdBy, createdAt |
 | SubEvents | id, eventId, name, startDateTime, endDateTime |
 | VenueEvaluations | id, eventId, venueId, inspectionCoId, recommendation, recommendationBy, recommendationAt, decision, decisionBy, decisionAt, status |
 | Templates | id, eventId, type, status, fileUrl, fileName, uploadedBy, updatedAt |
@@ -34,14 +34,16 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 `SystemAdmin, GAAdmin, GAUser, EMCAdmin, EventManager, EMCManager, EMCAnalyst, InspectionAdmin, ProjectManager, InspectionAnalyst, Inspector, Vendor, Operator, Exhibitor`
 
 ## Notes
-- EMC / Venue / Event relationship: an EMC *operates* one or more Venues, but that's an
-  administrative default, not an exclusive lock — `Venues.emcId` just says who maintains that
-  venue's zones/boundary/etc. A Venue is *rented* to exactly one EMC per Event, recorded
-  independently on `Events.emcId` (defaults to the venue's operating EMC when GA doesn't pick a
-  different one at creation, but can be set/changed to any EMC — e.g. EMC-B renting a venue
-  EMC-A normally operates). Every EMC-scoped permission/visibility check in the backend keys off
-  `Events.emcId`, not `Venues.emcId`, so this is the field that actually governs who can act on a
-  given event.
+- EMC / Venue / Event relationship (decoupled): a Venue is a shared catalog entry, not owned by or
+  connected to any one EMC organization — any SystemAdmin/EMCAdmin/EMCManager can create, edit, or
+  delete any Venue, and every authenticated user can see the full Venue list (`listVenues` has no
+  org-scoped filtering). `Venues.emcId` is a legacy column left in the sheet only so existing
+  physical rows don't shift columns (see Utils.gs SCHEMA); the app never reads or writes it. A
+  Venue is *rented* to exactly one EMC per Event, recorded on `Events.emcId` — GA picks the Venue
+  and the renting EMC as two independent, required fields when creating the Event (no default to
+  fall back to, since the Venue no longer implies one). Every EMC-scoped permission/visibility
+  check in the backend keys off `Events.emcId` (including Event Places' `assertCanManagePlace_` in
+  Places.gs), so this is the field that actually governs who can act on a given event.
 - Passwords: salted SHA-256 via `Utilities.computeDigest`, unique salt per user. Never stored in plaintext.
 - `status` on Findings: `Open, InReview, Resolved, ReOpen, Rejected` (matches the reference UI's Logs Overview cards).
 - Escalation tiers and delay hours are configurable in the `Config` sheet (`escalationTier2DelayHours`, `escalationTier3DelayHours`), defaulting to values set in `Setup.gs`.

@@ -1,39 +1,37 @@
 /**
  * HULUL - Events.gs  (REQ-EVT-01..12)
  * Events, Venues, Zones, Sub-Events.
+ *
+ * REQ (decoupling pass): a Venue is no longer connected to any one EMC organization -- it's a
+ * shared catalog entry any EMCAdmin/EMCManager/SystemAdmin can add to and manage, and every
+ * authenticated user can see the full list (no more org-scoped filtering in listVenues). The
+ * EMC/Venue/Event relationship now lives entirely on the Event: which EMC is renting a Venue for a
+ * given Event is chosen explicitly when that Event is created (p.emcId, required -- see
+ * createEvent/assertEmcOrg_), not inherited or defaulted from the Venue. The Venues sheet still has
+ * a legacy `emcId` column (left in place so existing physical rows don't shift columns -- see
+ * Utils.gs SCHEMA's Venues comment) but the app no longer reads or writes it anywhere.
  */
 
 // Deleted venues (status: 'Deleted') are hidden from every normal listing -- e.g. so a soft-deleted
 // venue can't be picked when creating an Event -- but includeDeleted lets the Venues admin page and
-// the Edit Venue form (which needs to load a venue by id regardless of status) see it anyway.
+// the Edit Venue form (which needs to load a venue by id regardless of status) see it anyway. Open
+// to any authenticated user -- a Venue isn't scoped to one organization (see file header comment).
 function listVenues(user, p) {
-  var all = p && p.includeDeleted ? getAll('Venues') : getAll('Venues').filter(function (v) { return v.status !== 'Deleted'; });
-  if (user.role !== ROLES.SYSTEM_ADMIN && (user.orgType === 'EMC')) {
-    all = all.filter(function (v) { return v.emcId === user.orgId; });
-  }
-  if (p && p.emcId) all = all.filter(function (v) { return v.emcId === p.emcId; });
-  return all;
+  return p && p.includeDeleted ? getAll('Venues') : getAll('Venues').filter(function (v) { return v.status !== 'Deleted'; });
 }
 
-// emcId here is the venue's operating/default EMC -- who administers its zones/boundary/etc. It is
-// NOT an exclusive lock on which EMC may run Events at this venue: any EMC can be assigned as the
-// renting EMC for a specific Event (Events.emcId, see assertEmcOrg_/createEvent), regardless of who
-// operates the venue itself. See docs/DATA_MODEL.md's Notes section for the full rationale.
+// A Venue is a shared catalog entry, not owned by any one EMC (see file header comment) -- any
+// SystemAdmin/EMCAdmin/EMCManager can add one, and which EMC ends up renting it for a given Event is
+// chosen independently at Event creation (createEvent's required p.emcId).
 function createVenue(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
-  // EMC Admin/Manager can only ever file a venue under their own organization -- emcId comes from
-  // the signed-in user's session, never from client input, so there's no way to (accidentally or
-  // otherwise) create a venue under a different EMC. SystemAdmin isn't tied to one EMC, so they
-  // must pick one explicitly (p.emcId).
-  var emcId = user.role === ROLES.SYSTEM_ADMIN ? p.emcId : user.orgId;
-  if (!emcId) throw new HululError('BAD_REQUEST', 'emcId is required');
   // p.boundary arrives as an array of {lat,lng} points (drawn on the map, see venues.js) or is
   // omitted entirely -- stringifyBoundary_ handles both that and a malformed/too-short array by
   // storing '' (no boundary yet), same as leaving it undrawn.
   var venue = {
     id: newId('Venues'), name: p.name, address: p.address || '', city: p.city || '',
-    lat: p.lat || '', lng: p.lng || '', emcId: emcId, createdAt: nowIso_(), status: 'Active',
+    lat: p.lat || '', lng: p.lng || '', createdAt: nowIso_(), status: 'Active',
     boundary: p.boundary ? stringifyBoundary_(p.boundary) : ''
   };
   insertRow('Venues', venue);
@@ -41,16 +39,12 @@ function createVenue(user, p) {
   return venue;
 }
 
-// Only name/address/city/lat/lng are editable -- the operating EMC (emcId) is set once at creation
-// and never changes here, since Zones/Places already hang off of it by the time anyone would want
-// to "move" a venue to a different administering organization. This does NOT restrict which EMC
-// can rent the venue for a given Event -- that's Events.emcId, set independently (see createEvent/
-// updateEvent/reassignVenue).
+// name/address/city/lat/lng/boundary are editable by any SystemAdmin/EMCAdmin/EMCManager -- a Venue
+// isn't scoped to one organization (see file header comment), so there's no owning-org check here.
 function updateVenue(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
-  if (user.role !== ROLES.SYSTEM_ADMIN && venue.emcId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s venue');
   var patch = {};
   ['name', 'address', 'city', 'lat', 'lng'].forEach(function (f) { if (p[f] !== undefined) patch[f] = p[f]; });
   // boundary is redrawn/cleared as a whole array (or []/null to clear it), never patched piecemeal.
@@ -89,7 +83,6 @@ function deleteVenue(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
-  if (user.role !== ROLES.SYSTEM_ADMIN && venue.emcId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s venue');
   if (venue.status === 'Deleted') throw new HululError('BAD_REQUEST', 'Venue is already deleted');
   var impact = venueImpact_(p.venueId);
   if (impact.zonesCount > 0 || impact.placesCount > 0 || impact.eventsCount > 0 || impact.evaluationsCount > 0) {
@@ -187,10 +180,9 @@ function deleteZone(user, p) {
   return { ok: true };
 }
 
-// A Venue is operated by one "default" EMC (Venues.emcId) but is not exclusively theirs -- any EMC
-// may rent it for a specific Event. This is what actually validates and resolves an Event's renting
-// EMC wherever it's set directly (createEvent/updateEvent/reassignVenue), since that's no longer
-// implicitly correct-by-construction the way copying it off the Venue always was.
+// A Venue is a shared catalog entry, not owned by any EMC (see file header comment) -- any EMC may
+// rent it for a specific Event. This is what actually validates and resolves an Event's renting EMC
+// wherever it's set (createEvent/updateEvent/reassignVenue).
 function assertEmcOrg_(emcId) {
   var org = getById('Organizations', emcId);
   if (!org || org.type !== 'EMC') throw new HululError('BAD_REQUEST', 'emcId must reference an EMC organization');
@@ -198,20 +190,20 @@ function assertEmcOrg_(emcId) {
 }
 
 // REQ-EVT-01/02/04: GA creates Event with Venue + Inspection Co assigned at creation.
-// REQ (rental model): the Event's own emcId -- not the Venue's -- is what governs which EMC's
-// users (EMC Manager/Event Manager/etc.) can see and act on this Event (see listEvents'
-// orgType==='EMC' branch and every requireRole(..., event.emcId)-style check downstream). GA may
-// pick it explicitly (e.g. EMC-B renting a venue EMC-A normally operates); defaulting to the
-// venue's own operating EMC keeps the common case (the operating EMC runs its own event) a no-op.
+// REQ (decoupling pass): Venue and EMC are chosen independently at Event creation -- the Venue no
+// longer has an "operating EMC" to default from, so GA must explicitly pick the renting EMC
+// (p.emcId, required) every time, same as picking the Venue itself. The Event's own emcId is what
+// governs which EMC's users (EMC Manager/Event Manager/etc.) can see and act on this Event (see
+// listEvents' orgType==='EMC' branch and every requireRole(..., event.emcId)-style check downstream).
 function createEvent(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER]);
-  ['name', 'venueId', 'address', 'city', 'startDateTime', 'endDateTime', 'inspectionCoId'].forEach(function (f) {
+  ['name', 'venueId', 'address', 'city', 'startDateTime', 'endDateTime', 'inspectionCoId', 'emcId'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   if (p.projectId && !getById('Projects', p.projectId)) throw new HululError('NOT_FOUND', 'Project not found');
-  var emcId = p.emcId ? assertEmcOrg_(p.emcId).id : venue.emcId;
+  var emcId = assertEmcOrg_(p.emcId).id;
   var event = {
     id: newId('Events'), name: p.name, code: p.code || ('EVT-' + Date.now().toString(36).toUpperCase()),
     project: p.project || '', venueId: p.venueId, address: p.address, city: p.city,

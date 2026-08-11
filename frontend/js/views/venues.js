@@ -6,11 +6,11 @@
  * the Leaflet map needs real room to be usable, and a modal's ~520px/90vh box was too cramped for
  * search + map + all the location fields together. Both routes share one form (renderVenueForm_).
  *
- * EMC Admin/Manager no longer type an EMC Org ID when creating -- it's derived from their own
- * signed-in session (see createVenue in Events.gs, which ignores any client-supplied emcId for
- * anyone but SystemAdmin, who isn't tied to a single EMC and gets a picker instead). The owning
- * org can't be changed once a venue exists -- updateVenue doesn't accept emcId -- so Edit always
- * shows it read-only.
+ * REQ (decoupling pass): a Venue is no longer connected to an EMC Org here -- it's a shared catalog
+ * entry any SystemAdmin/EMCAdmin/EMCManager can create, edit, or delete, and every authenticated
+ * user sees the full list (see listVenues/createVenue/updateVenue/deleteVenue in Events.gs). Which
+ * EMC ends up renting a Venue is chosen independently, per Event, on the New Event form
+ * (events.js) -- not tied to the Venue record itself.
  *
  * Location (address/city/lat/lng) can be found via the Leaflet + OpenStreetMap place search below,
  * or dragging the map pin, or just typed in manually -- the map is a convenience, never required.
@@ -40,8 +40,6 @@ async function renderVenues() {
   var root = document.getElementById('viewRoot');
   var canManage = EMC_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
   var venues = await Api.call('listVenues', {});
-  var orgsById = {};
-  try { (await Api.call('listOrganizations', {})).forEach(function (o) { orgsById[o.id] = o; }); } catch (e) { /* fall back to raw id below */ }
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('venue_plural')) + '</div>' +
@@ -49,7 +47,6 @@ async function renderVenues() {
     '<button class="btn btn-primary" id="newVenueBtn">+ New ' + esc(Term('venue').toLowerCase()) + '</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: 'Name' }, { key: 'address', label: 'Address' }, { key: 'city', label: 'City' },
-      { key: 'emcId', label: 'EMC Org', render: r => esc(orgsById[r.emcId] ? orgsById[r.emcId].name : r.emcId) },
       { key: 'lat', label: 'Coordinates', render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
       { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
       { key: 'actions', label: 'Actions', render: r =>
@@ -104,15 +101,12 @@ async function renderEditVenue(params) {
 }
 
 // Shared by New Venue (existingVenue === null) and Edit Venue (existingVenue is the row being
-// edited). The owning EMC organization is only ever chosen at creation time -- editing always
-// shows it read-only, since updateVenue (Events.gs) doesn't accept an emcId change.
+// edited). No EMC organization field here -- a Venue isn't connected to one (see file header
+// comment); which EMC rents it is chosen per-Event instead (events.js's New Event form).
 async function renderVenueForm_(existingVenue) {
   destroyVenueMap_(); // in case a previous visit to this page left one behind (e.g. browser back)
   var root = document.getElementById('viewRoot');
   var isEdit = !!existingVenue;
-  var isSystemAdmin = HululState.user.role === 'SystemAdmin';
-  var emcOrgs = [];
-  var orgName = '';
 
   // REQ: "no vendors showing on the [venue] map" -- when editing an existing venue, show its
   // already-registered places (vendors/operators/exhibitors) as dots on the map for context while
@@ -125,25 +119,6 @@ async function renderVenueForm_(existingVenue) {
     } catch (e) { /* map still works without them */ }
   }
 
-  if (isEdit) {
-    try {
-      var org = (await Api.call('listOrganizations', {})).filter(function (o) { return o.id === existingVenue.emcId; })[0];
-      orgName = (org && org.name) || existingVenue.emcId;
-    } catch (e) { orgName = existingVenue.emcId; }
-  } else if (isSystemAdmin) {
-    emcOrgs = (await Api.call('listOrganizations', {})).filter(function (o) { return o.type === 'EMC'; });
-  } else {
-    try { var myOrg = await Api.call('getMyOrg', {}); orgName = (myOrg && myOrg.name) || HululState.user.orgId; }
-    catch (e) { orgName = HululState.user.orgId; }
-  }
-
-  var emcFieldHtml = (isEdit || !isSystemAdmin)
-    ? UI.field('Organization', '<input class="field-input" value="' + esc(orgName) + '" disabled />')
-    : UI.field('EMC Organization', '<select id="fVEmc" class="field-input">' +
-        (emcOrgs.length ? emcOrgs.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
-          : '<option value="">No EMC organizations found</option>') +
-      '</select>');
-
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + (isEdit ? 'Edit ' : 'New ') + esc(Term('venue')) + '</div>' +
     '<div class="page-subtitle">' + (isEdit ? 'Update ' + esc(Term('venue').toLowerCase()) + ' information' : 'Add a ' + esc(Term('venue').toLowerCase()) + ' your ' + esc(Term('event_plural').toLowerCase()) + ' can be held at') + '</div></div>' +
@@ -151,7 +126,6 @@ async function renderVenueForm_(existingVenue) {
     '<div class="card">' +
       '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
         UI.field('Name', '<input id="fVName" class="field-input" value="' + (isEdit ? esc(existingVenue.name) : '') + '" />') +
-        emcFieldHtml +
         '<div style="margin-top:10px;position:relative;">' +
           '<div style="display:flex;flex-direction:column;gap:4px;">' +
             UI.field('Search a place (optional)', '<input id="fVSearch" class="field-input" placeholder="Type a place name…" autocomplete="off" />') +
@@ -197,7 +171,6 @@ async function renderVenueForm_(existingVenue) {
         payload.venueId = existingVenue.id;
         await Api.call('updateVenue', payload);
       } else {
-        if (isSystemAdmin) payload.emcId = document.getElementById('fVEmc').value;
         await Api.call('createVenue', payload);
       }
       destroyVenueMap_();
@@ -457,7 +430,9 @@ async function renderVenuePlaces(params) {
   if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(Term('venue')) + ' not found.</div>'; return; }
 
   var role = HululState.user.role;
-  var canManage = EMC_MANAGE_ROLES.indexOf(role) !== -1 && (role === 'SystemAdmin' || venue.emcId === HululState.user.orgId);
+  // A Venue isn't org-scoped (see file header comment) -- any EMC_MANAGE_ROLES member can manage
+  // any venue's Places catalog.
+  var canManage = EMC_MANAGE_ROLES.indexOf(role) !== -1;
   var hasBoundary = !!parseBoundaryClient_(venue.boundary);
 
   var [zones, places] = await Promise.all([
@@ -469,7 +444,10 @@ async function renderVenuePlaces(params) {
   var usersById = {};
   if (creatorIds.length) {
     try {
-      (await Api.call('listUsers', { orgId: venue.emcId })).forEach(function (u) { usersById[u.id] = u; });
+      // No org to scope this by anymore (a Venue Place isn't tied to one EMC) -- listUsers scopes
+      // itself to the caller's own org automatically for org-bound roles (see scopeToOrg,
+      // Accounts.gs), so an unscoped call is both simpler and correct here.
+      (await Api.call('listUsers', {})).forEach(function (u) { usersById[u.id] = u; });
     } catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
   }
 

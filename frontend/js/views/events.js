@@ -3,6 +3,11 @@
  * Two independent, combinable side filters: Project (see Projects.gs/projects.js -- a GA-level
  * grouping of several Events) above Venue -- picking one of each narrows the table by both at
  * once (e.g. "this Project, at this Venue").
+ *
+ * REQ (decoupling pass): a Venue is no longer connected to any one EMC organization (see Events.gs
+ * / venues.js file header comments), so it can no longer supply a default renting EMC when an Event
+ * is created. GA now picks the Venue and the renting EMC as two independent fields on this same New
+ * Event form (createEvent's p.emcId is required).
  */
 // Only these roles can create/import events (matches createEvent's backend requireRole), so only
 // they need the Organizations lookup (used to build the Inspection Company dropdown). Everyone
@@ -21,6 +26,9 @@ async function renderEventsList() {
     Api.call('listProjects', {})
   ]);
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
+  var emcOrgs = orgs.filter(function (o) { return o.type === 'EMC'; });
+  var emcOrgById = {};
+  emcOrgs.forEach(function (o) { emcOrgById[o.id] = o; });
   var venueById = {};
   venues.forEach(function (v) { venueById[v.id] = v; });
   var projectById = {};
@@ -158,7 +166,7 @@ async function renderEventsList() {
     wrap.querySelectorAll('[data-edit-event]').forEach(function (b) {
       b.onclick = function () {
         var ev = events.filter(function (e) { return e.id === b.getAttribute('data-edit-event'); })[0];
-        openEditEventModal(ev, venueById, projects);
+        openEditEventModal(ev, venueById, emcOrgs, projects);
       };
     });
     wrap.querySelectorAll('[data-del-event]').forEach(function (b) {
@@ -173,15 +181,15 @@ async function renderEventsList() {
   }
 
   document.getElementById('exportCsvBtn').onclick = function () {
-    exportEventsCsv(filteredEvents_(), venueById);
+    exportEventsCsv(filteredEvents_(), venueById, emcOrgById);
   };
   if (canManage) {
-    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, projects); };
+    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects); };
     var importInput = document.getElementById('importCsvInput');
     document.getElementById('importCsvBtn').onclick = function () { importInput.click(); };
     importInput.onchange = function (e) {
       var file = e.target.files[0];
-      if (file) importEventsCsv(file, venues, inspectionCos);
+      if (file) importEventsCsv(file, venues, inspectionCos, emcOrgs);
       e.target.value = '';
     };
   }
@@ -190,11 +198,16 @@ async function renderEventsList() {
 // projects/presetProjectId are optional -- presetProjectId pre-selects (and locks in, via the
 // caller passing it) that Project when this modal is opened from a Project's own page (see
 // renderProjectDetail in projects.js) so the new event is immediately grouped under it.
-function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
+// emcOrgs: the renting EMC is chosen here independently of the Venue (a Venue isn't connected to
+// any one EMC -- see file header comment) and is required by createEvent (Events.gs).
+function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProjectId) {
   var venueOptions = venues.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
   var inspCoOptions = inspectionCos.length
     ? inspectionCos.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
     : '<option value="">No inspection companies found</option>';
+  var emcOptions = (emcOrgs || []).length
+    ? emcOrgs.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
+    : '<option value="">No EMC organizations found</option>';
   var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === presetProjectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
@@ -209,6 +222,7 @@ function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
       UI.field('Start', '<input id="fStart" type="datetime-local" class="field-input" />') +
       UI.field('End', '<input id="fEnd" type="datetime-local" class="field-input" />') +
     '</div>' +
+    UI.field('Renting EMC', '<select id="fEmcId" class="field-input">' + emcOptions + '</select>') +
     UI.field('Inspection Company', '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>') +
     UI.field(Term('project') + ' (optional)', '<select id="fProjectId" class="field-input">' + projectOptions + '</select>');
 
@@ -216,6 +230,8 @@ function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         try {
+          var emcId = document.getElementById('fEmcId').value;
+          if (!emcId) { UI.toast('Renting EMC is required', 'error'); return; }
           await Api.call('createEvent', {
             name: document.getElementById('fEventName').value,
             venueId: document.getElementById('fVenueId').value,
@@ -223,6 +239,7 @@ function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
             city: document.getElementById('fCity').value,
             startDateTime: document.getElementById('fStart').value,
             endDateTime: document.getElementById('fEnd').value,
+            emcId: emcId,
             inspectionCoId: document.getElementById('fInspCo').value,
             projectId: document.getElementById('fProjectId').value
           });
@@ -246,10 +263,15 @@ function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
 // Venue and Inspection Company aren't editable here (updateEvent doesn't patch them) — fixing
 // those means recreating the event. This covers the common fix: a wrong name/address/city/time,
 // plus moving the event into a different Project (or out of one, via "No project") -- the other
-// way to do that being renderProjectDetail's "Add existing events" / "Remove from project".
-function openEditEventModal(event, venueById, projects) {
+// way to do that being renderProjectDetail's "Add existing events" / "Remove from project". The
+// renting EMC IS editable here (updateEvent accepts emcId) -- unlike Venue/Inspection Co it isn't
+// fixed at creation, since GA may need to re-rent the venue to a different EMC later.
+function openEditEventModal(event, venueById, emcOrgs, projects) {
   if (!event) return;
   var venue = venueById[event.venueId];
+  var emcOptions = (emcOrgs || []).map(function (o) {
+    return '<option value="' + o.id + '"' + (o.id === event.emcId ? ' selected' : '') + '>' + esc(o.name) + '</option>';
+  }).join('');
   var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === event.projectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
@@ -263,6 +285,7 @@ function openEditEventModal(event, venueById, projects) {
       UI.field('Start', '<input id="fEditStart" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.startDateTime)) + '" />') +
       UI.field('End', '<input id="fEditEnd" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.endDateTime)) + '" />') +
     '</div>' +
+    UI.field('Renting EMC', '<select id="fEditEmcId" class="field-input">' + emcOptions + '</select>') +
     UI.field(Term('project') + ' (optional)', '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>');
   UI.openModal('Edit ' + Term('event'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -275,6 +298,7 @@ function openEditEventModal(event, venueById, projects) {
             city: document.getElementById('fEditCity').value,
             startDateTime: document.getElementById('fEditStart').value,
             endDateTime: document.getElementById('fEditEnd').value,
+            emcId: document.getElementById('fEditEmcId').value,
             projectId: document.getElementById('fEditProjectId').value
           });
           UI.closeModal(); UI.toast(Term('event') + ' updated', 'success'); Router.resolve();
@@ -290,13 +314,15 @@ function csvEscape_(v) {
   return s;
 }
 
-function exportEventsCsv(rows, venueById) {
-  var headers = ['Event Name', 'Venue', 'Address', 'City', 'Start', 'End', 'Status', 'Code', 'Project'];
+function exportEventsCsv(rows, venueById, emcOrgById) {
+  var headers = ['Event Name', 'Venue', 'Address', 'City', 'Start', 'End', 'EMC', 'Status', 'Code', 'Project'];
   var lines = [headers.map(csvEscape_).join(',')];
   rows.forEach(function (r) {
     var venue = venueById[r.venueId];
+    var emc = emcOrgById && emcOrgById[r.emcId];
     lines.push([
-      r.name, venue ? venue.name : r.venueId, r.address, r.city, r.startDateTime, r.endDateTime, r.status, r.code, r.project
+      r.name, venue ? venue.name : r.venueId, r.address, r.city, r.startDateTime, r.endDateTime,
+      emc ? emc.name : r.emcId, r.status, r.code, r.project
     ].map(csvEscape_).join(','));
   });
   // Leading UTF-8 BOM: without it, Excel guesses the system ANSI codepage instead of UTF-8 and
@@ -343,7 +369,7 @@ function normalizeDateTimeLocal(raw) {
   return s;
 }
 
-async function importEventsCsv(file, venues, inspectionCos) {
+async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
   var text = await file.text();
   var rows = parseCsv_(text);
   if (!rows.length) { UI.toast('Empty CSV file', 'error'); return; }
@@ -355,6 +381,7 @@ async function importEventsCsv(file, venues, inspectionCos) {
   var idxCity = col('city');
   var idxStart = col('start');
   var idxEnd = col('end');
+  var idxEmc = col('emc') !== -1 ? col('emc') : col('renting emc');
   var idxInsp = col('inspection company') !== -1 ? col('inspection company') : col('inspection co');
   var idxCode = col('code');
   var idxProject = col('project');
@@ -379,6 +406,14 @@ async function importEventsCsv(file, venues, inspectionCos) {
     var venueName = (row[idxVenue] || '').trim();
     var venue = venues.filter(function (v) { return v.name.toLowerCase() === venueName.toLowerCase(); })[0];
     if (!venue) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'Venue "' + venueName + '" not found' }); continue; }
+    // REQ (decoupling pass): a Venue no longer implies a renting EMC, so it must come from the CSV
+    // itself now -- same "blank column defaults to the only option" convenience Inspection Company
+    // already had, for the common single-EMC-org case.
+    var emcName = idxEmc !== -1 ? (row[idxEmc] || '').trim() : '';
+    var emcOrg = emcName
+      ? (emcOrgs || []).filter(function (o) { return o.name.toLowerCase() === emcName.toLowerCase(); })[0]
+      : (emcOrgs && emcOrgs.length === 1 ? emcOrgs[0] : undefined);
+    if (!emcOrg) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'EMC "' + emcName + '" not found (or ambiguous with no EMC column)' }); continue; }
     var inspName = idxInsp !== -1 ? (row[idxInsp] || '').trim() : '';
     var inspCo = inspName
       ? inspectionCos.filter(function (o) { return o.name.toLowerCase() === inspName.toLowerCase(); })[0]
@@ -391,6 +426,7 @@ async function importEventsCsv(file, venues, inspectionCos) {
       city: (idxCity !== -1 && row[idxCity] && row[idxCity].trim()) || venue.city,
       startDateTime: normalizeDateTimeLocal(row[idxStart]),
       endDateTime: normalizeDateTimeLocal(row[idxEnd]),
+      emcId: emcOrg.id,
       inspectionCoId: inspCo.id,
       code: idxCode !== -1 ? (row[idxCode] || '').trim() : '',
       project: idxProject !== -1 ? (row[idxProject] || '').trim() : ''

@@ -9,13 +9,16 @@
  * frontend still references its own copy of the same constant/formula for the pre-boundary UI.)
  *
  * Two kinds, distinguished by eventId (see Utils.gs SCHEMA comment):
- *  - Venue Places (eventId blank) -- permanent, managed by whoever manages the Venue itself
- *    (SystemAdmin / EMC Admin / EMC Manager), cover every Event held at the venue. Venues > Places.
+ *  - Venue Places (eventId blank) -- permanent, cover every Event held at the venue. A Venue is a
+ *    shared catalog entry, not owned by any one EMC (see Events.gs file header comment), so any
+ *    SystemAdmin / EMC Admin / EMC Manager can manage any venue's Places -- no owning-org check.
+ *    Venues > Places.
  *  - Event Places (eventId set) -- REQ: a vendor "may just be attending this season of events," so
- *    these are registered under one specific Event instead, managed by whoever manages that Event's
- *    other on-the-ground infrastructure (SystemAdmin / EMC Admin / EMC Manager / Event Manager --
- *    same set as createZone/deleteZone in Events.gs), and every account they provision is
- *    auto-deactivated once that Event ends (see deactivateEndedEventPlaceAccounts). Event > Participants tab.
+ *    these are registered under one specific Event instead, managed by whoever's allowed to act on
+ *    that Event's renting EMC (event.emcId -- see Events.gs) or is that Event's own Event Manager
+ *    (SystemAdmin / EMC Admin / EMC Manager / Event Manager -- same set as createZone/deleteZone in
+ *    Events.gs), and every account they provision is auto-deactivated once that Event ends (see
+ *    deactivateEndedEventPlaceAccounts). Event > Participants tab.
  * Listing is open to any authenticated user, matching listVenues/listZones.
  *
  * Every Place auto-provisions a login-capable Users account (role = the Place's type: Vendor/
@@ -61,17 +64,18 @@ function listPlaces(user, p) {
 
 // Shared by createPlace/addPlaceAccount/getPlaceAccountCredentials/deletePlace: resolves and
 // authorizes against either a Venue Place or an Event Place depending on whether `event` is given.
+// Venue Places aren't org-scoped at all (see Events.gs file header comment) -- any role in the
+// manage list can act on any venue's permanent Places. Event Places key off the Event's own renting
+// EMC (event.emcId), not the Venue, since that's the org relationship that's actually authoritative
+// for an Event (see createEvent/updateEvent).
 function assertCanManagePlace_(user, venue, event) {
   if (event) {
     requireRole(user, EVENT_PLACE_MANAGE_ROLES);
-    if (user.role !== ROLES.SYSTEM_ADMIN && venue.emcId !== user.orgId && event.eventManagerId !== user.id) {
+    if (user.role !== ROLES.SYSTEM_ADMIN && event.emcId !== user.orgId && event.eventManagerId !== user.id) {
       throw new HululError('FORBIDDEN', 'Not your event');
     }
   } else {
     requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
-    if (user.role !== ROLES.SYSTEM_ADMIN && venue.emcId !== user.orgId) {
-      throw new HululError('FORBIDDEN', 'Not your organization\'s venue');
-    }
   }
 }
 
@@ -118,7 +122,7 @@ function createPlace(user, p) {
   insertRow('Places', place);
   audit(user.id, 'CREATE_PLACE', 'Places', place.id, { type: p.type, eventId: place.eventId });
 
-  var account = provisionPlaceAccount_(user, place, venue);
+  var account = provisionPlaceAccount_(user, place, event);
   return { place: getById('Places', place.id), account: account };
 }
 
@@ -133,7 +137,7 @@ function addPlaceAccount(user, p) {
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   var event = place.eventId ? getById('Events', place.eventId) : null;
   assertCanManagePlace_(user, venue, event);
-  var account = provisionPlaceAccount_(user, place, venue);
+  var account = provisionPlaceAccount_(user, place, event);
   return { place: getById('Places', place.id), account: account };
 }
 
@@ -214,17 +218,22 @@ function deactivateEndedEventPlaceAccounts() {
 // and mints a reusable quick-login token for its QR code. Returns everything the frontend needs to
 // show/print a credentials card: the plaintext password is only ever available here, right after
 // creation -- Users.gs never stores or returns it again.
-function provisionPlaceAccount_(actingUser, place, venue) {
+// orgId (for the account's email domain slug and Users.orgId) comes from the Place's Event's
+// renting EMC when there is one (event.emcId -- the org relationship that's actually authoritative
+// for an Event, see Events.gs) -- a permanent Venue Place has no event and so no EMC context at all
+// (a Venue is a shared catalog entry, not owned by any one EMC), and falls back to a generic domain.
+function provisionPlaceAccount_(actingUser, place, event) {
   var role = mapParticipantRole_(place.type);
-  var org = venue.emcId ? getById('Organizations', venue.emcId) : null;
+  var orgId = event ? event.emcId : '';
+  var org = orgId ? getById('Organizations', orgId) : null;
   var domain = placeAccountDomain_(org);
-  var seq = nextPlaceAccountSeq_(venue.emcId, role);
+  var seq = nextPlaceAccountSeq_(orgId, role);
   var email = role.toLowerCase() + Utilities.formatString('%03d', seq) + '@' + domain;
   var plainPassword = PLACE_ACCOUNT_DEFAULT_PASSWORD;
 
   var loginUser = createUserWithPassword({
     id: newId('Users'), name: place.name, email: email, orgType: 'PARTICIPANT',
-    orgId: venue.emcId || '', role: role, createdBy: actingUser.id
+    orgId: orgId || '', role: role, createdBy: actingUser.id
   }, plainPassword);
 
   var participant = {

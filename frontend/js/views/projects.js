@@ -267,6 +267,7 @@ async function renderProjectDetail(params) {
   var project = projects.filter(function (pr) { return pr.id === projectId; })[0];
   if (!project) { root.innerHTML = '<div class="empty-state">' + esc(Term('project')) + ' not found.</div>'; return; }
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
+  var emcOrgs = orgs.filter(function (o) { return o.type === 'EMC'; });
   var venueById = {}; venues.forEach(function (v) { venueById[v.id] = v; });
   var linked = events.filter(function (e) { return e.projectId === projectId; });
   var unlinked = events.filter(function (e) { return e.projectId !== projectId; });
@@ -306,7 +307,7 @@ async function renderProjectDetail(params) {
   if (!canManage) return;
 
   document.getElementById('editProjectBtn').onclick = function () { openEditProjectModal_(project); };
-  document.getElementById('newProjectEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, projects, projectId); };
+  document.getElementById('newProjectEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects, projectId); };
   document.getElementById('addExistingEventsBtn').onclick = function () { openAddExistingEventsModal_(project, unlinked, venueById); };
   root.querySelectorAll('[data-remove-event]').forEach(function (btn) {
     btn.onclick = async function () {

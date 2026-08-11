@@ -49,11 +49,11 @@ function recordVenueDecision(user, p) {
 
 // REQ-VAP-04 / REQ-EVT-12: on rejection, assign a new Venue/EMC and restart the template workflow,
 // preserving the rejected evaluation's history.
-// REQ (rental model): reassigning the Venue doesn't have to change which EMC is renting it for this
-// Event -- GA may pass p.emcId explicitly (any EMC, not just the new venue's own operator); only
-// falls back to the new venue's operating EMC when nothing is supplied, same default createEvent
-// uses. If the renting EMC actually changes, the previously assigned Event Manager (who belonged to
-// the old EMC) is cleared -- same safeguard as updateEvent's emcId patch.
+// REQ (decoupling pass): reassigning the Venue doesn't have to change which EMC is renting it for
+// this Event -- a Venue has no "operating EMC" to default from anymore (see Events.gs file header
+// comment), so this simply keeps the Event's current renting EMC unless GA explicitly passes a
+// different p.emcId. If the renting EMC actually changes, the previously assigned Event Manager
+// (who belonged to the old EMC) is cleared -- same safeguard as updateEvent's emcId patch.
 function reassignVenue(user, p) {
   requireRole(user, [ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.SYSTEM_ADMIN]);
   var event = getById('Events', p.eventId);
@@ -65,7 +65,7 @@ function reassignVenue(user, p) {
   var old = currentVenueEvaluation_(p.eventId);
   if (old) updateRow('VenueEvaluations', old.id, { status: 'superseded' });
 
-  var emcId = p.emcId ? assertEmcOrg_(p.emcId).id : venue.emcId;
+  var emcId = p.emcId ? assertEmcOrg_(p.emcId).id : event.emcId;
   var eventPatch = {
     venueId: p.venueId, emcId: emcId,
     inspectionCoId: p.inspectionCoId || event.inspectionCoId, status: 'Planning'

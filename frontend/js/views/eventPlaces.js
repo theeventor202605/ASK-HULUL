@@ -34,8 +34,11 @@ async function tabParticipants(content, eventId, detail) {
   var venue = detail && detail.venue;
   var event = detail && detail.event;
   var role = HululState.user.role;
+  // Event Places key off the Event's own renting EMC (event.emcId), not the Venue -- a Venue isn't
+  // connected to any one EMC (see Events.gs file header comment), so that's the authoritative org
+  // relationship here, matching assertCanManagePlace_ in Places.gs.
   var canManage = !!venue && EVENT_PLACE_MANAGE_ROLES.indexOf(role) !== -1 &&
-    (role === 'SystemAdmin' || venue.emcId === HululState.user.orgId || (event && event.eventManagerId === HululState.user.id));
+    (role === 'SystemAdmin' || (event && event.emcId === HululState.user.orgId) || (event && event.eventManagerId === HululState.user.id));
   var canManageDisciplines = DISCIPLINE_MANAGER_ROLES.indexOf(role) !== -1;
   var canDedupe = PARTICIPANT_DEDUPE_ROLES.indexOf(role) !== -1;
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
@@ -58,7 +61,7 @@ async function tabParticipants(content, eventId, detail) {
   var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
   var usersById = {};
   if (creatorIds.length) {
-    try { (await Api.call('listUsers', { orgId: venue.emcId })).forEach(function (u) { usersById[u.id] = u; }); }
+    try { (await Api.call('listUsers', { orgId: event && event.emcId })).forEach(function (u) { usersById[u.id] = u; }); }
     catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
   }
 
