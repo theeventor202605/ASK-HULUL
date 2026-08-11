@@ -17,7 +17,9 @@ async function renderUsers() {
   var root = document.getElementById('viewRoot');
   var users = await Api.call('listUsers', {});
   var creatable = CREATABLE_ROLES_BY_ACTOR[HululState.user.role] || [];
-  var orgs = (HululState.user.role === 'SystemAdmin' && creatable.length) ? await Api.call('listOrganizations', {}) : [];
+  var orgs = [];
+  try { orgs = await Api.call('listOrganizations', {}); } catch (e) { /* fall back to raw id below */ }
+  var orgsById = {}; orgs.forEach(function (o) { orgsById[o.id] = o; });
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_users') + '</div>' +
@@ -25,10 +27,11 @@ async function renderUsers() {
     (creatable.length ? '<button class="btn btn-primary" id="newUserBtn">+ New account</button>' : '') + '</div>' +
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Role' },
-      { key: 'orgId', label: 'Org' }, { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status === 'Active' ? 'Resolved' : 'Rejected') },
+      { key: 'orgId', label: 'Org', render: r => r.orgId ? esc(orgsById[r.orgId] ? orgsById[r.orgId].name : r.orgId) : '—' },
+      { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status === 'Active' ? 'Resolved' : 'Rejected') },
       { key: 'actions', label: t('actions'), render: r => (r.status === 'Active'
-          ? '<button class="btn btn-danger btn-sm" data-deact="' + r.id + '">Deactivate</button>'
-          : '<button class="btn btn-secondary btn-sm" data-act="' + r.id + '">Activate</button>') }
+          ? '<button class="btn btn-secondary btn-sm btn-icon" title="Deactivate" data-deact="' + r.id + '">' + ICON('deactivate') + '</button>'
+          : '<button class="btn btn-secondary btn-sm btn-icon" title="Activate" data-act="' + r.id + '">' + ICON('activate') + '</button>') }
     ], users, {}) + '</div></div>';
 
   if (creatable.length) document.getElementById('newUserBtn').onclick = () => openNewUserModal(creatable, orgs);

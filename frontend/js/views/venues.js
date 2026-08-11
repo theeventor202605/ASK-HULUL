@@ -1,0 +1,915 @@
+/**
+ * HULUL - Venues admin view (SystemAdmin / EMCAdmin / EMCManager: create, edit, and soft-delete
+ * venues ahead of Events).
+ *
+ * New/Edit Venue is a full in-app page (routes: #/venues/new, #/venues/:id/edit), not a modal --
+ * the Leaflet map needs real room to be usable, and a modal's ~520px/90vh box was too cramped for
+ * search + map + all the location fields together. Both routes share one form (renderVenueForm_).
+ *
+ * EMC Admin/Manager no longer type an EMC Org ID when creating -- it's derived from their own
+ * signed-in session (see createVenue in Events.gs, which ignores any client-supplied emcId for
+ * anyone but SystemAdmin, who isn't tied to a single EMC and gets a picker instead). The owning
+ * org can't be changed once a venue exists -- updateVenue doesn't accept emcId -- so Edit always
+ * shows it read-only.
+ *
+ * Location (address/city/lat/lng) can be found via the Leaflet + OpenStreetMap place search below,
+ * or dragging the map pin, or just typed in manually -- the map is a convenience, never required.
+ *
+ * Delete is soft (status: 'Deleted', filtered out of listVenues by default) and only allowed when
+ * nothing has been built on top of the venue yet -- no Zones, Places, Events, or Venue Evaluations
+ * (see listVenueImpact / deleteVenue in Events.gs). Otherwise the button explains what's attached.
+ */
+var VENUE_DEFAULT_CENTER = [24.7136, 46.6753]; // Riyadh -- a sensible default until a place is picked
+var EMC_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager']; // who can create/edit/delete Venues and Places
+var venueMapInstance_ = null;
+var venueMapMarker_ = null;
+var venueMapFullscreenCleanup_ = null;
+var venueSearchTimer_ = null;
+var venueBoundaryLayer_ = null; // FeatureGroup holding the single drawn boundary polygon, if any
+// Bumped by every destroyVenueMap_()/initVenueMap_() call. initVenueMap_ defers actual map
+// creation by a setTimeout(0) tick (see its own comment); if renderVenueForm_ ever runs twice in
+// quick succession (e.g. a double-navigation to Edit Venue before the first render's map-init
+// tick has fired yet), BOTH deferred callbacks would otherwise find the same live #venueMap div
+// and both call HululLeaflet.map('venueMap') on it -- Leaflet allows this once but throws "Map
+// container is being reused by another instance" on the second call. Each deferred callback
+// captures the generation counter's value at schedule time and bails if a newer
+// destroy/init has since bumped it, so only the LAST-scheduled callback ever actually runs.
+var venueMapGen_ = 0;
+
+async function renderVenues() {
+  var root = document.getElementById('viewRoot');
+  var canManage = EMC_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  var venues = await Api.call('listVenues', {});
+  var orgsById = {};
+  try { (await Api.call('listOrganizations', {})).forEach(function (o) { orgsById[o.id] = o; }); } catch (e) { /* fall back to raw id below */ }
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(Term('venue_plural')) + '</div>' +
+    '<div class="page-subtitle">' + esc(Term('venue_plural') + ' available to assign to ' + Term('event_plural')) + '</div></div>' +
+    '<button class="btn btn-primary" id="newVenueBtn">+ New ' + esc(Term('venue').toLowerCase()) + '</button></div>' +
+    '<div class="card"><div class="card-body">' + UI.table([
+      { key: 'name', label: 'Name' }, { key: 'address', label: 'Address' }, { key: 'city', label: 'City' },
+      { key: 'emcId', label: 'EMC Org', render: r => esc(orgsById[r.emcId] ? orgsById[r.emcId].name : r.emcId) },
+      { key: 'lat', label: 'Coordinates', render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
+      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
+      { key: 'actions', label: 'Actions', render: r =>
+          '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
+            '<button class="btn btn-secondary btn-sm btn-icon" title="Places" data-manage-places="' + esc(r.id) + '">' + ICON('location_pin') + '</button>' +
+            (canManage
+              ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
+                '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-venue="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+              : '') +
+          '</div>'
+      }
+    ], venues, {}) + '</div></div>';
+
+  document.getElementById('newVenueBtn').onclick = function () { window.location.hash = '#/venues/new'; };
+  document.querySelectorAll('[data-manage-places]').forEach(function (btn) {
+    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-manage-places') + '/places'; };
+  });
+  document.querySelectorAll('[data-edit-venue]').forEach(function (btn) {
+    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-edit-venue') + '/edit'; };
+  });
+  document.querySelectorAll('[data-delete-venue]').forEach(function (btn) {
+    btn.onclick = function () { confirmDeleteVenue_(btn.getAttribute('data-delete-venue')); };
+  });
+}
+
+async function confirmDeleteVenue_(venueId) {
+  try {
+    var impact = await Api.call('listVenueImpact', { venueId: venueId });
+    if (impact.hasImpact) {
+      var parts = [];
+      if (impact.zonesCount) parts.push(impact.zonesCount + ' ' + (impact.zonesCount === 1 ? Term('zone') : Term('zone_plural')).toLowerCase());
+      if (impact.placesCount) parts.push(impact.placesCount + ' place' + (impact.placesCount === 1 ? '' : 's'));
+      if (impact.eventsCount) parts.push(impact.eventsCount + ' ' + (impact.eventsCount === 1 ? Term('event') : Term('event_plural')).toLowerCase());
+      if (impact.evaluationsCount) parts.push(impact.evaluationsCount + ' venue evaluation' + (impact.evaluationsCount === 1 ? '' : 's'));
+      UI.toast('Can\'t delete — this ' + Term('venue').toLowerCase() + ' already has ' + parts.join(', ') + ' tied to it.', 'error');
+      return;
+    }
+    UI.confirmModal('Delete this ' + Term('venue').toLowerCase() + '? This can\'t be undone.', async function () {
+      try { await Api.call('deleteVenue', { venueId: venueId }); UI.toast(Term('venue') + ' deleted', 'success'); Router.resolve(); }
+      catch (err) { UI.error(err); }
+    }, { title: 'Delete ' + Term('venue').toLowerCase(), confirmLabel: 'Delete' });
+  } catch (err) { UI.error(err); }
+}
+
+async function renderNewVenue() { await renderVenueForm_(null); }
+
+async function renderEditVenue(params) {
+  var venues = await Api.call('listVenues', { includeDeleted: true });
+  var venue = venues.filter(function (v) { return v.id === params.id; })[0];
+  if (!venue) { document.getElementById('viewRoot').innerHTML = '<div class="empty-state">' + esc(Term('venue')) + ' not found.</div>'; return; }
+  await renderVenueForm_(venue);
+}
+
+// Shared by New Venue (existingVenue === null) and Edit Venue (existingVenue is the row being
+// edited). The owning EMC organization is only ever chosen at creation time -- editing always
+// shows it read-only, since updateVenue (Events.gs) doesn't accept an emcId change.
+async function renderVenueForm_(existingVenue) {
+  destroyVenueMap_(); // in case a previous visit to this page left one behind (e.g. browser back)
+  var root = document.getElementById('viewRoot');
+  var isEdit = !!existingVenue;
+  var isSystemAdmin = HululState.user.role === 'SystemAdmin';
+  var emcOrgs = [];
+  var orgName = '';
+
+  // REQ: "no vendors showing on the [venue] map" -- when editing an existing venue, show its
+  // already-registered places (vendors/operators/exhibitors) as dots on the map for context while
+  // drawing/adjusting the boundary, same colored-dot style as the Event > Venue & Zones "Places map".
+  var venuePlacesWithCoords = [];
+  if (isEdit) {
+    try {
+      var vPlaces = await Api.call('listPlaces', { venueId: existingVenue.id });
+      venuePlacesWithCoords = vPlaces.filter(function (p) { return p.lat !== '' && p.lat != null && p.lng !== '' && p.lng != null; });
+    } catch (e) { /* map still works without them */ }
+  }
+
+  if (isEdit) {
+    try {
+      var org = (await Api.call('listOrganizations', {})).filter(function (o) { return o.id === existingVenue.emcId; })[0];
+      orgName = (org && org.name) || existingVenue.emcId;
+    } catch (e) { orgName = existingVenue.emcId; }
+  } else if (isSystemAdmin) {
+    emcOrgs = (await Api.call('listOrganizations', {})).filter(function (o) { return o.type === 'EMC'; });
+  } else {
+    try { var myOrg = await Api.call('getMyOrg', {}); orgName = (myOrg && myOrg.name) || HululState.user.orgId; }
+    catch (e) { orgName = HululState.user.orgId; }
+  }
+
+  var emcFieldHtml = (isEdit || !isSystemAdmin)
+    ? UI.field('Organization', '<input class="field-input" value="' + esc(orgName) + '" disabled />')
+    : UI.field('EMC Organization', '<select id="fVEmc" class="field-input">' +
+        (emcOrgs.length ? emcOrgs.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
+          : '<option value="">No EMC organizations found</option>') +
+      '</select>');
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + (isEdit ? 'Edit ' : 'New ') + esc(Term('venue')) + '</div>' +
+    '<div class="page-subtitle">' + (isEdit ? 'Update ' + esc(Term('venue').toLowerCase()) + ' information' : 'Add a ' + esc(Term('venue').toLowerCase()) + ' your ' + esc(Term('event_plural').toLowerCase()) + ' can be held at') + '</div></div>' +
+    '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="card">' +
+      '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
+        UI.field('Name', '<input id="fVName" class="field-input" value="' + (isEdit ? esc(existingVenue.name) : '') + '" />') +
+        emcFieldHtml +
+        '<div style="margin-top:10px;position:relative;">' +
+          '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            UI.field('Search a place (optional)', '<input id="fVSearch" class="field-input" placeholder="Type a place name…" autocomplete="off" />') +
+          '</div>' +
+          // z-index must clear Leaflet's own panes/controls (it uses up to 1000 internally, e.g.
+          // .leaflet-top/.leaflet-bottom) or this dropdown renders invisibly underneath the map.
+          '<div id="fVSearchResults" style="position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;display:none;background:#fff;box-shadow:var(--shadow-md);z-index:2000;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:10px;">' +
+          '<button class="map-toggle-btn" type="button" id="toggleVenueSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
+        '</div>' +
+        '<div id="venueMap" style="height:340px;border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border);"></div>' +
+        '<div class="muted" style="font-size:11px;margin-top:6px;">Search above, or drag the pin, to fill in the location — or just type the fields below manually. Use the polygon tool on the map (optional) to draw this ' + esc(Term('venue').toLowerCase()) + '\'s boundary — Places will need to land inside it once drawn; leave undrawn to keep placement unrestricted.' +
+          (venuePlacesWithCoords.length ? ' Dots show this ' + esc(Term('venue').toLowerCase()) + '\'s ' + venuePlacesWithCoords.length + ' already-registered place(s).' : '') + '</div>' +
+        UI.field('Address', '<input id="fVAddress" class="field-input" value="' + (isEdit ? esc(existingVenue.address) : '') + '" />') +
+        UI.field('City', '<input id="fVCity" class="field-input" value="' + (isEdit ? esc(existingVenue.city) : '') + '" />') +
+        '<div class="form-row">' +
+          UI.field('Latitude', '<input id="fVLat" type="number" step="any" class="field-input" placeholder="24.7136" value="' + (isEdit && existingVenue.lat !== '' ? esc(String(existingVenue.lat)) : '') + '" />') +
+          UI.field('Longitude', '<input id="fVLng" type="number" step="any" class="field-input" placeholder="46.6753" value="' + (isEdit && existingVenue.lng !== '' ? esc(String(existingVenue.lng)) : '') + '" />') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+        '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" id="createVenueBtn">' + (isEdit ? 'Save changes' : t('create')) + '</button>' +
+      '</div>' +
+    '</div>';
+
+  document.getElementById('backVenuesBtn').onclick = goBackToVenues_;
+  document.getElementById('cancelVenueBtn').onclick = goBackToVenues_;
+  document.getElementById('createVenueBtn').onclick = async function () {
+    try {
+      var name = document.getElementById('fVName').value.trim();
+      if (!name) { UI.toast('Name is required', 'error'); return; }
+      var payload = {
+        name: name,
+        address: document.getElementById('fVAddress').value,
+        city: document.getElementById('fVCity').value,
+        lat: document.getElementById('fVLat').value,
+        lng: document.getElementById('fVLng').value,
+        boundary: getVenueBoundaryValue_()
+      };
+      if (isEdit) {
+        payload.venueId = existingVenue.id;
+        await Api.call('updateVenue', payload);
+      } else {
+        if (isSystemAdmin) payload.emcId = document.getElementById('fVEmc').value;
+        await Api.call('createVenue', payload);
+      }
+      destroyVenueMap_();
+      UI.toast(Term('venue') + (isEdit ? ' updated' : ' created'), 'success');
+      window.location.hash = '#/venues';
+    } catch (err) { UI.error(err); }
+  };
+
+  var startCenter = (isEdit && existingVenue.lat && existingVenue.lng) ? [Number(existingVenue.lat), Number(existingVenue.lng)] : null;
+  var existingBoundary = isEdit ? parseBoundaryClient_(existingVenue.boundary) : null;
+  initVenueMap_(startCenter, existingBoundary, venuePlacesWithCoords);
+  wireVenueSearch_();
+}
+
+function goBackToVenues_() {
+  destroyVenueMap_();
+  window.location.hash = '#/venues';
+}
+
+// Leaflet needs the #venueMap div to already have real dimensions when .map() runs -- it does
+// here since the page is already in the DOM, but a tick of setTimeout keeps this safe even if
+// that ever changes. If Leaflet failed to load (e.g. its CDN is blocked on this network), the
+// placeholder box says so instead of just sitting blank -- manual address/city/lat/lng entry
+// keeps working either way.
+//
+// Uses window.HululLeaflet (aliased in index.html right after leaflet.js loads), NOT the bare
+// global `L` -- this app's own labels.js declares a global function Term(key) (the terminology
+// lookup used everywhere as Term('venue') etc.) which loads afterward and clobbers Leaflet's
+// identically-named global. Referencing L here would silently pick up the wrong thing.
+function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
+  var el = document.getElementById('venueMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = 'Map unavailable (couldn\'t load the map library) — search still works if the network allows it, or fill in the fields below manually.';
+    return;
+  }
+  var center = startCenter || VENUE_DEFAULT_CENTER;
+  var myGen = ++venueMapGen_;
+  setTimeout(function () {
+    if (myGen !== venueMapGen_) return; // superseded by a newer render before this tick fired
+    var mapEl = document.getElementById('venueMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    venueMapInstance_ = HululLeaflet.map('venueMap').setView(center, startCenter ? 15 : 6);
+    // Single hostname (no a/b/c subdomains) -- matches OSM's current tile usage policy; the old
+    // lettered-subdomain form ({s}.tile...) is deprecated and can silently serve nothing.
+    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(venueMapInstance_);
+    // REQ: "no satellite toggle ... on the [venue] map" -- same OSM/ArcGIS swap as venues.js's own
+    // Add-a-Place map (initPlaceMap_ below) and eventPlaces.js's Add-participant map.
+    var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
+    });
+    var showingSatellite = false;
+    var venueSatBtn = document.getElementById('toggleVenueSatelliteBtn');
+    if (venueSatBtn) venueSatBtn.onclick = function () {
+      showingSatellite = !showingSatellite;
+      if (showingSatellite) { venueMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('map_toggle') + ' Map'; }
+      else { venueMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+    };
+    // REQ: "Drawing boundaries on small map is hard, need to be able to extend map to full screen" --
+    // see UI.wireMapFullscreen (ui.js) for why this isn't the browser Fullscreen API. The satellite
+    // toggle lives above the map (not inside it), so it's passed as an extraControl -- same fix as
+    // the earlier "satellite toggle disappeared in full screen" bug on the Add-a-Place map.
+    venueMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, venueMapInstance_, [venueSatBtn]);
+
+    // REQ: "no vendors showing on the [venue] map" -- plot this venue's already-registered places
+    // (vendors/operators/exhibitors) for context, same colored-dot style as eventDetail.js's own
+    // "Places map" (EVENT_PLACE_TYPE_COLORS_/place-marker-icon, defined there -- that file loads
+    // before this one, see index.html).
+    (placesWithCoords || []).forEach(function (pl) {
+      var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
+      var icon = HululLeaflet.divIcon({
+        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
+        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
+      });
+      HululLeaflet.marker([Number(pl.lat), Number(pl.lng)], { icon: icon })
+        .addTo(venueMapInstance_)
+        .bindTooltip(esc(pl.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+    });
+
+    venueMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(venueMapInstance_);
+    venueMapMarker_.on('dragend', function () {
+      var pos = venueMapMarker_.getLatLng();
+      setVenueLatLng_(pos.lat, pos.lng);
+    });
+    venueMapInstance_.on('click', function (e) {
+      venueMapMarker_.setLatLng(e.latlng);
+      setVenueLatLng_(e.latlng.lat, e.latlng.lng);
+    });
+
+    // Boundary drawing (Leaflet.draw, see index.html) -- REQ: "Allow to draw venue boundaries when
+    // creating venue... restriction now will be venue boundary" (replaces the old 1km-radius check,
+    // see createPlace in Places.gs). Only one polygon is meaningful per venue, so a freshly-drawn one
+    // replaces any previous one (see the CREATED handler below); the plugin's own edit/trash toolbar
+    // handles reshaping or clearing whichever polygon is currently on the map. Wrapped in try/catch --
+    // Leaflet.draw is a third-party plugin (CDN can fail to load, or throw on a Leaflet version it
+    // doesn't fully support) and a failure here must never take down the base map (tiles/pin/search),
+    // which are the parts that actually matter for saving a venue at all.
+    try {
+      venueBoundaryLayer_ = HululLeaflet.featureGroup().addTo(venueMapInstance_);
+      if (HululLeaflet.Control && HululLeaflet.Control.Draw) {
+        var drawControl = new HululLeaflet.Control.Draw({
+          draw: { polygon: { allowIntersection: false, showArea: true }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
+          edit: { featureGroup: venueBoundaryLayer_ }
+        });
+        venueMapInstance_.addControl(drawControl);
+        venueMapInstance_.on(HululLeaflet.Draw.Event.CREATED, function (e) {
+          venueBoundaryLayer_.clearLayers();
+          venueBoundaryLayer_.addLayer(e.layer);
+        });
+      }
+      if (existingBoundary && existingBoundary.length >= 3) {
+        venueBoundaryLayer_.addLayer(HululLeaflet.polygon(existingBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
+      }
+    } catch (e) {
+      console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
+    }
+
+    // Leaflet measures the container's size at creation time; if it was 0x0 for even a moment
+    // (page still painting, etc.) the tiles it fetched will be wrong until told to re-measure.
+    setTimeout(function () { if (venueMapInstance_) venueMapInstance_.invalidateSize(); }, 150);
+  }, 0);
+}
+
+function destroyVenueMap_() {
+  venueMapGen_++; // invalidate any still-pending initVenueMap_ setTimeout from an earlier render
+  if (venueMapFullscreenCleanup_) { venueMapFullscreenCleanup_(); venueMapFullscreenCleanup_ = null; }
+  if (venueMapInstance_) { venueMapInstance_.remove(); venueMapInstance_ = null; venueMapMarker_ = null; venueBoundaryLayer_ = null; }
+}
+
+function setVenueLatLng_(lat, lng) {
+  var latEl = document.getElementById('fVLat'), lngEl = document.getElementById('fVLng');
+  if (latEl) latEl.value = Number(lat).toFixed(6);
+  if (lngEl) lngEl.value = Number(lng).toFixed(6);
+}
+
+// Reads the currently-drawn boundary polygon (if any) back into a plain {lat,lng}[] array for the
+// createVenue/updateVenue payload -- null when nothing's drawn (leaves/clears the boundary server-side).
+function getVenueBoundaryValue_() {
+  if (!venueBoundaryLayer_) return null;
+  var layers = venueBoundaryLayer_.getLayers();
+  if (!layers.length) return null;
+  var ring = layers[0].getLatLngs()[0]; // polygon rings: [[{lat,lng},...]]
+  return ring.map(function (ll) { return { lat: ll.lat, lng: ll.lng }; });
+}
+
+// Mirrors the backend's parseBoundary_ (Utils.gs) client-side, for pre-populating the map when
+// editing a venue/zone that already has a boundary on record.
+function parseBoundaryClient_(boundaryField) {
+  if (!boundaryField) return null;
+  try {
+    var pts = JSON.parse(boundaryField);
+    return (Array.isArray(pts) && pts.length >= 3) ? pts : null;
+  } catch (e) { return null; }
+}
+
+// Mirrors the backend's pointInPolygon_ (Utils.gs) client-side, for instant feedback when placing a
+// pin -- createPlace re-checks authoritatively and is what actually enforces the boundary.
+function pointInPolygonClient_(lat, lng, points) {
+  if (!points || points.length < 3) return false;
+  var inside = false;
+  for (var i = 0, j = points.length - 1; i < points.length; j = i++) {
+    var yi = Number(points[i].lat), xi = Number(points[i].lng);
+    var yj = Number(points[j].lat), xj = Number(points[j].lng);
+    var intersect = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Debounced OpenStreetMap Nominatim place search. Picking a result fills address/city/lat/lng and
+// moves the map pin -- purely a shortcut for the manual fields, never required to create a venue.
+function wireVenueSearch_() {
+  var input = document.getElementById('fVSearch');
+  var results = document.getElementById('fVSearchResults');
+  if (!input) return;
+  input.oninput = function () {
+    clearTimeout(venueSearchTimer_);
+    var q = input.value.trim();
+    if (q.length < 3) { results.style.display = 'none'; results.innerHTML = ''; return; }
+    venueSearchTimer_ = setTimeout(function () { runVenueSearch_(q, input, results); }, 400);
+  };
+}
+
+async function runVenueSearch_(q, input, results) {
+  var places = [];
+  try {
+    var res = await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=' + encodeURIComponent(q));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    places = await res.json();
+  } catch (e) {
+    // Nominatim itself is reachable in general -- if this fails, it's almost always a browser
+    // privacy/ad-block extension silently dropping the request (the same class of issue we saw
+    // with a blocked map-tile CDN earlier). Say so instead of leaving the box looking unresponsive.
+    if (results && document.body.contains(results)) {
+      results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--danger);">Search unavailable — a browser extension may be blocking it. Fill in the fields below manually instead.</div>';
+      results.style.display = 'block';
+    }
+    return;
+  }
+  if (!input || !results || !document.body.contains(results)) return; // page may have navigated away meanwhile
+  if (!places.length) {
+    results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-600);">No matches</div>';
+    results.style.display = 'block';
+    return;
+  }
+  results.innerHTML = places.map(function (place, i) {
+    return '<div class="venue-search-result" data-idx="' + i + '" style="padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--border);">' + esc(place.display_name) + '</div>';
+  }).join('');
+  results.style.display = 'block';
+  results.querySelectorAll('.venue-search-result').forEach(function (row) {
+    row.onclick = function () {
+      var place = places[Number(row.getAttribute('data-idx'))];
+      applyVenueSearchResult_(place);
+      results.style.display = 'none'; results.innerHTML = ''; input.value = place.display_name;
+    };
+  });
+}
+
+function applyVenueSearchResult_(place) {
+  var lat = Number(place.lat), lng = Number(place.lon);
+  setVenueLatLng_(lat, lng);
+  var addr = place.address || {};
+  var city = addr.city || addr.town || addr.village || addr.municipality || '';
+  document.getElementById('fVCity').value = city;
+  document.getElementById('fVAddress').value = place.display_name;
+  if (venueMapInstance_ && venueMapMarker_) {
+    venueMapInstance_.setView([lat, lng], 14);
+    venueMapMarker_.setLatLng([lat, lng]);
+  }
+}
+
+/* ---------------- Places (a Venue's reusable catalog of physical spots) ----------------
+ * Route: #/venues/:id/places. Distinct from Participants (event-scoped Vendors/Operators/
+ * Exhibitors) -- a Place lives on the Venue itself so it can be reused across every Event held
+ * there. Location must land inside the Venue's drawn boundary polygon (see initVenueMap_ above) --
+ * enforced here for immediate feedback, and again (authoritatively) server-side in createPlace. A
+ * Venue with no boundary drawn yet is unrestricted.
+ */
+var PLACE_TYPES = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
+var PLACE_MAX_DISTANCE_KM = 1;
+var placeMapInstance_ = null;
+var placeMapMarker_ = null;
+var placeMapBoundaryLayer_ = null;
+var placeMapFullscreenCleanup_ = null;
+var placeMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_ above -- see its comment
+
+async function renderVenuePlaces(params) {
+  destroyPlaceMap_();
+  var root = document.getElementById('viewRoot');
+  var venueId = params.id;
+  var venues = await Api.call('listVenues', {});
+  var venue = venues.filter(function (v) { return v.id === venueId; })[0];
+  if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(Term('venue')) + ' not found.</div>'; return; }
+
+  var role = HululState.user.role;
+  var canManage = EMC_MANAGE_ROLES.indexOf(role) !== -1 && (role === 'SystemAdmin' || venue.emcId === HululState.user.orgId);
+  var hasBoundary = !!parseBoundaryClient_(venue.boundary);
+
+  var [zones, places] = await Promise.all([
+    Api.call('listZones', { venueId: venueId }), Api.call('listPlaces', { venueId: venueId })
+  ]);
+  var zonesById = {}; zones.forEach(function (z) { zonesById[z.id] = z; });
+
+  var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
+  var usersById = {};
+  if (creatorIds.length) {
+    try {
+      (await Api.call('listUsers', { orgId: venue.emcId })).forEach(function (u) { usersById[u.id] = u; });
+    } catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
+  }
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">Places — ' + esc(venue.name) + '</div>' +
+    '<div class="page-subtitle">Reusable spots at this ' + esc(Term('venue').toLowerCase()) + ' for Vendors, Operators, and Exhibitors</div></div>' +
+    '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' Back</button></div>' +
+    (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
+    '<div class="card"><div class="card-body">' + UI.table([
+      { key: 'name', label: 'Name' },
+      { key: 'type', label: 'Type' },
+      { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
+      { key: 'location', label: 'Location', render: r => r.location ? esc(r.location) : '—' },
+      { key: 'lat', label: 'Coordinates', render: r => (r.lat !== '' && r.lng !== '') ? (Number(r.lat).toFixed(5) + ', ' + Number(r.lng).toFixed(5)) : '—' },
+      // Auto-provisioned login(s) for this place (see provisionPlaceAccount_ in Places.gs) --
+      // usually one, but can be more than one for separate shift staff (addPlaceAccount below).
+      { key: 'accounts', label: 'Account(s)', render: r => (r.accounts && r.accounts.length)
+          ? r.accounts.map(a => '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">' +
+              '<span>' + esc(a.email) + (a.status !== 'Active' ? ' <span class="muted">(inactive)</span>' : '') + '</span>' +
+              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="View credentials" data-view-creds="' + esc(a.id) + '">' + ICON('view_credentials') + '</button>' : '') +
+            '</div>').join('')
+          : '—' },
+      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
+      { key: 'createdBy', label: 'Created By', render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
+    ].concat(canManage ? [{ key: 'actions', label: 'Actions', render: r =>
+        '<button class="btn btn-secondary btn-sm btn-icon" title="Add another account" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
+      places, { emptyText: 'No places yet.' }) + '</div></div>';
+
+  document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
+
+  if (canManage) {
+    wirePlaceForm_(venue, zones);
+    document.querySelectorAll('[data-delete-place]').forEach(function (btn) {
+      btn.onclick = function () {
+        UI.confirmModal('Remove this place? This can\'t be undone.', async function () {
+          try { await Api.call('deletePlace', { placeId: btn.getAttribute('data-delete-place') }); UI.toast('Place deleted', 'success'); Router.resolve(); }
+          catch (err) { UI.error(err); }
+        }, { title: 'Delete place', confirmLabel: 'Delete' });
+      };
+    });
+    document.querySelectorAll('[data-add-account]').forEach(function (btn) {
+      btn.onclick = async function () {
+        var placeId = btn.getAttribute('data-add-account');
+        var place = places.filter(function (pl) { return pl.id === placeId; })[0];
+        try {
+          var res = await Api.call('addPlaceAccount', { placeId: placeId });
+          showPlaceAccountModal_(place || res.place, res.account);
+        } catch (err) { UI.error(err); }
+      };
+    });
+    // Re-shows an existing account's credentials/QR (getPlaceAccountCredentials in Places.gs) --
+    // the password is a fixed constant, not a secret that was lost, so there's nothing to "reset."
+    document.querySelectorAll('[data-view-creds]').forEach(function (btn) {
+      btn.onclick = async function () {
+        var userId = btn.getAttribute('data-view-creds');
+        var place = places.filter(function (pl) { return (pl.accountIds || '').split(',').indexOf(userId) !== -1; })[0];
+        try {
+          var account = await Api.call('getPlaceAccountCredentials', { userId: userId });
+          showPlaceAccountModal_(place, account);
+        } catch (err) { UI.error(err); }
+      };
+    });
+  }
+}
+
+// Shown right after createPlace/addPlaceAccount, and re-shown any time later via the "🔑 View
+// credentials" button (see getPlaceAccountCredentials in Places.gs) -- the password is always the
+// same fixed constant, never randomly generated, so re-showing it later is safe/meaningful rather
+// than a security hole. quickLoginToken lets a QR code sign the participant straight in (see
+// maybeHandleQuickLogin_ in app.js) with no typing required, and stays valid indefinitely, so the
+// same QR can be printed once and reused every shift.
+function showPlaceAccountModal_(place, account) {
+  var name = place ? place.name : account.name;
+  var quickUrl = window.location.origin + window.location.pathname + '#/quick-login?token=' + encodeURIComponent(account.quickLoginToken);
+  var qrDataUrl = ''; // filled in once the QR renders below; the Print/Share handlers close over this var
+  var body =
+    '<div style="font-size:13.5px;line-height:1.7;">' +
+      '<div style="margin-bottom:12px;">A ' + esc(account.role) + ' login for <strong>' + esc(name) + '</strong>.</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">Email</span><span style="font-weight:600;">' + esc(account.email) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">Password</span><span style="font-weight:600;">' + esc(account.password) + '</span></div>' +
+      '<div class="muted" style="font-size:11.5px;margin:12px 0 8px;">Scan on the participant\'s phone to sign them in automatically — no typing required. The same code keeps working every time.</div>' +
+      '<div id="placeAccountQr" style="display:flex;justify-content:center;padding:6px 0;"></div>' +
+    '</div>';
+  UI.openModal('Account credentials', body, [
+    { label: ICON('print') + ' Print', className: 'btn-secondary', onClick: function () { printPlaceAccountCredentials_(name, account, qrDataUrl); } },
+    { label: ICON('share') + ' Share', className: 'btn-secondary', onClick: function () { sharePlaceAccountCredentials_(name, account, quickUrl); } },
+    { label: t('close'), className: 'btn-primary', onClick: UI.closeModal }
+  ]);
+  var qrEl = document.getElementById('placeAccountQr');
+  if (qrEl && typeof QRCode !== 'undefined') {
+    new QRCode(qrEl, { text: quickUrl, width: 176, height: 176 });
+    // qrcodejs renders synchronously via canvas (falling back to an <img> on old browsers) -- grab
+    // a data URL from whichever it produced so Print/Share have a self-contained image to use.
+    var canvas = qrEl.querySelector('canvas');
+    var img = qrEl.querySelector('img');
+    qrDataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : '');
+  } else if (qrEl) {
+    qrEl.innerHTML = '<div class="muted" style="font-size:11.5px;">QR code unavailable — share the email/password above instead.</div>';
+  }
+}
+
+// Opens a small, print-only window (so the whole app UI doesn't end up on paper) with just the
+// name/email/password and QR image, and triggers the browser's print dialog on it.
+function printPlaceAccountCredentials_(name, account, qrDataUrl) {
+  var w = window.open('', '_blank', 'width=420,height=640');
+  if (!w) { UI.toast('Please allow pop-ups to print', 'error'); return; }
+  w.document.write(
+    '<!DOCTYPE html><html><head><title>' + esc(name) + ' — login</title>' +
+    '<meta charset="UTF-8" /><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;padding:28px;text-align:center;color:#111;}' +
+      'h2{margin:0 0 18px;}' +
+      '.row{display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid #ddd;text-align:left;font-size:14px;}' +
+      'img{margin-top:18px;width:200px;height:200px;}' +
+      'p{font-size:12px;color:#666;margin-top:14px;}' +
+    '</style></head><body>' +
+      '<h2>' + esc(name) + '</h2>' +
+      '<div class="row"><span>Email</span><strong>' + esc(account.email) + '</strong></div>' +
+      '<div class="row"><span>Password</span><strong>' + esc(account.password) + '</strong></div>' +
+      (qrDataUrl ? '<img src="' + qrDataUrl + '" alt="Quick sign-in QR code" />' : '') +
+      '<p>Scan the QR code to sign in automatically.</p>' +
+    '</body></html>'
+  );
+  w.document.close();
+  w.focus();
+  // Give the <img> a moment to paint before the print dialog snapshots the page.
+  setTimeout(function () { w.print(); }, 300);
+}
+
+// Web Share API when available (mobile browsers, and some desktop Chrome builds) -- falls back to
+// copying the same text to the clipboard, which covers everywhere else.
+async function sharePlaceAccountCredentials_(name, account, quickUrl) {
+  var text = name + ' login\nEmail: ' + account.email + '\nPassword: ' + account.password + '\nQuick sign-in: ' + quickUrl;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'HULUL login — ' + name, text: text }); return; }
+    catch (e) { return; } // user cancelled the native share sheet -- not an error worth a toast
+  }
+  try { await navigator.clipboard.writeText(text); UI.toast('Copied to clipboard', 'success'); }
+  catch (e) { UI.toast('Could not copy — copy the details manually', 'error'); }
+}
+
+// Zone field for a Place form: a single-select (No zone / All Zones / one zone) for Vendor/
+// Exhibitor/Other places, or a multi-checkbox block (All Zones + any number of specific zones) for
+// Operator places -- Operators commonly cover several zones during a shift, everyone else covers at
+// most one. wireZoneField_ toggles between the two based on the paired Type dropdown; getZoneFieldValue_
+// reads back whichever mode is active into the single string shape the backend expects (blank / 'ALL' /
+// single id / comma-joined list -- see zoneFieldCoversZone_/zoneFieldIds_ in Utils.gs). `prefix`
+// namespaces element ids/classes so this can be dropped into more than one form on the same page.
+//
+// REQ: "When a zone is set there will be no need to set zones for venues, it will pick up
+// automatically." -- autoDetectZone_ below, called whenever a place/participant's pin is placed or
+// moved, does a point-in-polygon test against every zone's own drawn boundary and auto-fills this
+// single-select when the pin lands inside exactly one of them, replacing it with a small read-only
+// "Auto-detected: X" row (ZoneAutoWrap) instead of asking the user to pick manually. Scoped to
+// single-select only -- multi-zone (Operator) coverage isn't something one point can represent, so
+// that mode is untouched and stays fully manual. A "Change" link (ZoneAutoChangeBtn) lets the user
+// override if the auto-pick is wrong; once they do, autoDetectZone_ stops re-overwriting their
+// choice on later pin moves (see the userOverride dataset flag).
+function zoneFieldHtml_(zones, prefix) {
+  var singleOptions = '<option value="">No zone</option><option value="ALL">All Zones</option>' +
+    zones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('');
+  var checkboxRows = '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;font-weight:600;">' +
+      '<input type="checkbox" id="' + prefix + 'ZoneAll" /> All Zones</label>' +
+    (zones.length ? zones.map(function (z) {
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
+        '<input type="checkbox" class="' + prefix + 'ZoneCheck" value="' + z.id + '" /> ' + esc(z.name) + '</label>';
+    }).join('') : '<div class="muted" style="font-size:12px;padding:3px 0;">No ' + esc(Term('zone_plural').toLowerCase()) + ' set up yet.</div>');
+  return (
+    '<div id="' + prefix + 'ZoneSingle">' +
+      '<div id="' + prefix + 'ZoneAutoWrap" style="display:none;">' +
+        '<label class="field-label">' + esc(Term('zone')) + '</label>' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);font-size:12.5px;">' +
+          '<span id="' + prefix + 'ZoneAutoLabel" style="flex:1;"></span>' +
+          '<button type="button" id="' + prefix + 'ZoneAutoChangeBtn" class="map-toggle-btn" style="padding:3px 8px;font-size:11px;">Change</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="' + prefix + 'ZoneManualWrap">' +
+        UI.field(Term('zone') + ' (optional)', '<select id="' + prefix + 'ZoneSelect" class="field-input">' + singleOptions + '</select>') +
+      '</div>' +
+    '</div>' +
+    '<div id="' + prefix + 'ZoneMulti" style="display:none;">' +
+      '<label class="field-label">' + esc(Term('zone_plural')) + ' (optional — Operators may cover more than one)</label>' +
+      '<div style="max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;">' + checkboxRows + '</div>' +
+    '</div>'
+  );
+}
+
+function wireZoneField_(prefix, typeSelectId) {
+  var typeSelect = document.getElementById(typeSelectId);
+  var singleEl = document.getElementById(prefix + 'ZoneSingle');
+  var multiEl = document.getElementById(prefix + 'ZoneMulti');
+  var allCheck = document.getElementById(prefix + 'ZoneAll');
+  var zoneChecks = document.querySelectorAll('.' + prefix + 'ZoneCheck');
+  function sync() {
+    var isMulti = typeSelect && typeSelect.value === 'Operator';
+    if (singleEl) singleEl.style.display = isMulti ? 'none' : '';
+    if (multiEl) multiEl.style.display = isMulti ? '' : 'none';
+  }
+  if (typeSelect) typeSelect.onchange = sync;
+  sync();
+  if (allCheck) allCheck.onchange = function () {
+    if (allCheck.checked) zoneChecks.forEach(function (c) { c.checked = false; c.disabled = true; });
+    else zoneChecks.forEach(function (c) { c.disabled = false; });
+  };
+  zoneChecks.forEach(function (c) {
+    c.onchange = function () { if (c.checked && allCheck) { allCheck.checked = false; zoneChecks.forEach(function (cc) { cc.disabled = false; }); } };
+  });
+
+  var changeBtn = document.getElementById(prefix + 'ZoneAutoChangeBtn');
+  if (changeBtn) changeBtn.onclick = function () {
+    var select = document.getElementById(prefix + 'ZoneSelect');
+    if (select) select.dataset.userOverride = '1';
+    var autoWrap = document.getElementById(prefix + 'ZoneAutoWrap');
+    var manualWrap = document.getElementById(prefix + 'ZoneManualWrap');
+    if (autoWrap) autoWrap.style.display = 'none';
+    if (manualWrap) manualWrap.style.display = '';
+  };
+}
+
+// Point-in-polygon test against every zone's own drawn boundary (parseBoundaryClient_/
+// pointInPolygonClient_, both below) -- the first match wins (zones aren't expected to overlap; if
+// they ever do, this is a reasonable tie-break, not a hard guarantee). No-ops safely wherever the
+// Auto/Manual wrapper elements don't exist (Operator's multi-checkbox mode, or a form that never
+// rendered zoneFieldHtml_ at all) and once the user has clicked "Change" to override.
+function autoDetectZone_(prefix, zones, lat, lng) {
+  var autoWrap = document.getElementById(prefix + 'ZoneAutoWrap');
+  var manualWrap = document.getElementById(prefix + 'ZoneManualWrap');
+  var select = document.getElementById(prefix + 'ZoneSelect');
+  var autoLabel = document.getElementById(prefix + 'ZoneAutoLabel');
+  if (!autoWrap || !manualWrap || !select) return;
+  if (select.dataset.userOverride === '1') return;
+  var match = (zones || []).filter(function (z) {
+    var b = parseBoundaryClient_(z.boundary);
+    return b && pointInPolygonClient_(lat, lng, b);
+  })[0];
+  if (match) {
+    select.value = match.id;
+    if (autoLabel) autoLabel.textContent = 'Auto-detected: ' + match.name;
+    autoWrap.style.display = '';
+    manualWrap.style.display = 'none';
+  } else {
+    autoWrap.style.display = 'none';
+    manualWrap.style.display = '';
+  }
+}
+
+function getZoneFieldValue_(prefix) {
+  var multiEl = document.getElementById(prefix + 'ZoneMulti');
+  var isMulti = multiEl && multiEl.style.display !== 'none';
+  if (!isMulti) {
+    var sel = document.getElementById(prefix + 'ZoneSelect');
+    return sel ? sel.value : '';
+  }
+  var allCheck = document.getElementById(prefix + 'ZoneAll');
+  if (allCheck && allCheck.checked) return 'ALL';
+  var ids = [];
+  document.querySelectorAll('.' + prefix + 'ZoneCheck').forEach(function (c) { if (c.checked) ids.push(c.value); });
+  return ids.join(',');
+}
+
+// Renders a stored zoneId field (blank / 'ALL' / single id / comma-list) as human-readable zone
+// name(s) for display in tables. Shared by venues.js/eventPlaces.js/eventDetail.js. blankText lets
+// callers override what an unset field means in their context -- e.g. a Place with no zone is simply
+// "unassigned" (default '—'), while a Participant with no zoneId is treated as covering every zone
+// for inspection purposes (pass 'All zones').
+function zoneDisplayNames_(zoneIdField, zonesById, blankText) {
+  if (!zoneIdField) return blankText !== undefined ? blankText : '—';
+  if (zoneIdField === 'ALL') return 'All Zones';
+  return String(zoneIdField).split(',').filter(Boolean).map(function (id) {
+    return zonesById[id] ? zonesById[id].name : id;
+  }).join(', ');
+}
+
+function renderAddPlaceCard_(zones, hasBoundary) {
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add a place</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="map-toggle-btn" type="button" id="useMyLocationBtn">' + ICON('location_pin') + ' Use my location</button>' +
+        '<button class="map-toggle-btn" type="button" id="toggleSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
+      '</div></div>' +
+    '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<div style="max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
+        UI.field('Name', '<input id="fPlName" class="field-input" />') +
+        '<div class="form-row">' +
+          UI.field('Type', '<select id="fPlType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
+          '<div>' + zoneFieldHtml_(zones, 'fPl') + '</div>' +
+        '</div>' +
+        UI.field('Location (optional)', '<input id="fPlLocation" class="field-input" placeholder="e.g. Near Gate A, north entrance" />') +
+        '<div class="form-row">' +
+          UI.field('Latitude', '<input id="fPlLat" type="number" step="any" class="field-input" />') +
+          UI.field('Longitude', '<input id="fPlLng" type="number" step="any" class="field-input" />') +
+        '</div>' +
+      '</div>' +
+      '<div id="placeMap" style="height:360px;width:100%;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--border);"></div>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' +
+        (hasBoundary
+          ? 'Click or drag the pin to set the exact spot — must stay within the ' + esc(Term('venue').toLowerCase()) + ' boundary (shaded area).'
+          : 'This ' + esc(Term('venue').toLowerCase()) + ' has no boundary drawn yet, so location isn\'t map-restricted — click the map or type coordinates manually.') +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+      '<button class="btn btn-primary" id="addPlaceBtn">Add place</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function wirePlaceForm_(venue, zones) {
+  initPlaceMap_(venue, zones);
+  wireZoneField_('fPl', 'fPlType');
+  document.getElementById('addPlaceBtn').onclick = async function () {
+    try {
+      var name = document.getElementById('fPlName').value.trim();
+      if (!name) { UI.toast('Name is required', 'error'); return; }
+      var payload = {
+        venueId: venue.id, name: name, type: document.getElementById('fPlType').value,
+        zoneId: getZoneFieldValue_('fPl'), location: document.getElementById('fPlLocation').value,
+        lat: document.getElementById('fPlLat').value, lng: document.getElementById('fPlLng').value
+      };
+      var res = await Api.call('createPlace', payload);
+      UI.toast('Place added', 'success');
+      await Router.resolve();
+      showPlaceAccountModal_(res.place, res.account);
+    } catch (err) { UI.error(err); }
+  };
+}
+
+// Same HululLeaflet-alias reasoning as initVenueMap_ above (this app's own labels.js clobbers the
+// bare global L). The map is centered on the Venue and, when the Venue has a boundary drawn on
+// record (see initVenueMap_/Leaflet.draw), shows it shaded -- clicks/drags outside it are rejected
+// client-side for instant feedback, and rejected again (authoritatively) server-side in createPlace.
+// A venue with no boundary drawn yet is unrestricted, same fallback as no venue coords at all.
+function initPlaceMap_(venue, zones) {
+  var el = document.getElementById('placeMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = 'Map unavailable (couldn\'t load the map library) — type coordinates manually below.';
+    return;
+  }
+  var hasCoords = !!(venue.lat && venue.lng);
+  var boundary = parseBoundaryClient_(venue.boundary);
+  var center = hasCoords ? [Number(venue.lat), Number(venue.lng)] : VENUE_DEFAULT_CENTER;
+  var myGen = ++placeMapGen_;
+  setTimeout(function () {
+    if (myGen !== placeMapGen_) return; // superseded by a newer render before this tick fired
+    var mapEl = document.getElementById('placeMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    placeMapInstance_ = HululLeaflet.map('placeMap').setView(center, hasCoords ? 16 : 6);
+    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(placeMapInstance_);
+    // BUG (REQ report): "The satellite layer toggle disappeared" -- it and "Use my location" render
+    // in the card header above the map, not inside it, so going full screen (map covers the whole
+    // viewport) was leaving them behind, invisible underneath. Passed here so wireMapFullscreen
+    // brings them along into the map while active and puts them back on exit.
+    placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_, [
+      document.getElementById('useMyLocationBtn'), document.getElementById('toggleSatelliteBtn')
+    ]);
+    var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
+    });
+    var showingSatellite = false;
+    var satBtn = document.getElementById('toggleSatelliteBtn');
+    if (satBtn) satBtn.onclick = function () {
+      showingSatellite = !showingSatellite;
+      if (showingSatellite) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' Map'; }
+      else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+    };
+    if (boundary) {
+      placeMapBoundaryLayer_ = HululLeaflet.polygon(boundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.06, weight: 1.5
+      }).addTo(placeMapInstance_);
+      placeMapInstance_.fitBounds(placeMapBoundaryLayer_.getBounds(), { padding: [20, 20] });
+    }
+    placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
+    setPlaceLatLng_(center[0], center[1]);
+    autoDetectZone_('fPl', zones, center[0], center[1]);
+
+    // Shared by drag, click, and "Use my location" -- rejects (with the same message) any point
+    // outside the venue's drawn boundary when one exists; otherwise moves the pin and re-centres the
+    // lat/lng fields. recenter=true also pans/zooms the map itself, used for "Use my location" since
+    // that point may be far outside the current view.
+    function tryPlacePin_(lat, lng, recenter) {
+      if (boundary && !pointInPolygonClient_(lat, lng, boundary)) {
+        UI.toast('Must stay within the ' + Term('venue').toLowerCase() + ' boundary', 'error');
+        return false;
+      }
+      placeMapMarker_.setLatLng([lat, lng]);
+      placeMapMarker_._hululLastValid = [lat, lng];
+      setPlaceLatLng_(lat, lng);
+      autoDetectZone_('fPl', zones, lat, lng);
+      if (recenter) placeMapInstance_.setView([lat, lng], 17);
+      return true;
+    }
+
+    placeMapMarker_.on('dragend', function () {
+      var pos = placeMapMarker_.getLatLng();
+      if (!tryPlacePin_(pos.lat, pos.lng, false)) placeMapMarker_.setLatLng(placeMapMarker_._hululLastValid || center);
+    });
+    placeMapMarker_._hululLastValid = center;
+    placeMapInstance_.on('click', function (e) { tryPlacePin_(e.latlng.lat, e.latlng.lng, false); });
+
+    var locBtn = document.getElementById('useMyLocationBtn');
+    if (locBtn) locBtn.onclick = function () {
+      if (!navigator.geolocation) { UI.toast('Geolocation isn\'t available in this browser', 'error'); return; }
+      locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' Locating…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
+        tryPlacePin_(pos.coords.latitude, pos.coords.longitude, true);
+      }, function (err) {
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
+        UI.toast(err && err.code === 1 ? 'Location permission denied' : 'Could not get your location', 'error');
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+    };
+
+    setTimeout(function () { if (placeMapInstance_) placeMapInstance_.invalidateSize(); }, 150);
+  }, 0);
+}
+
+function destroyPlaceMap_() {
+  placeMapGen_++; // invalidate any still-pending initPlaceMap_ setTimeout from an earlier render
+  if (placeMapFullscreenCleanup_) { placeMapFullscreenCleanup_(); placeMapFullscreenCleanup_ = null; }
+  if (placeMapInstance_) { placeMapInstance_.remove(); placeMapInstance_ = null; placeMapMarker_ = null; placeMapBoundaryLayer_ = null; }
+}
+
+function setPlaceLatLng_(lat, lng) {
+  var latEl = document.getElementById('fPlLat'), lngEl = document.getElementById('fPlLng');
+  if (latEl) latEl.value = Number(lat).toFixed(6);
+  if (lngEl) lngEl.value = Number(lng).toFixed(6);
+}
+
+// Same haversine formula as the backend's (Places.gs) -- used here only for instant client-side
+// feedback; createPlace re-checks authoritatively and is what actually enforces the limit.
+function haversineKm_(lat1, lng1, lat2, lng2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}

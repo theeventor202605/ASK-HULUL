@@ -1,8 +1,8 @@
 /**
  * HULUL - Events list view + "New Event" creation (REQ-EVT-01/02).
- * One "Event" (e.g. "Riyadh Season 2026") is often really a program that runs at many venues —
- * each venue gets its own Event record sharing the same name. The side panel groups by that
- * shared name so you can browse "every venue under this event" instead of one flat table.
+ * Two independent, combinable side filters: Project (see Projects.gs/projects.js -- a GA-level
+ * grouping of several Events) above Venue -- picking one of each narrows the table by both at
+ * once (e.g. "this Project, at this Venue").
  */
 // Only these roles can create/import events (matches createEvent's backend requireRole), so only
 // they need the Organizations lookup (used to build the Inspection Company dropdown). Everyone
@@ -15,73 +15,142 @@ var EVENT_MANAGE_ROLES = ['SystemAdmin', 'GAAdmin', 'GAUser'];
 async function renderEventsList() {
   var root = document.getElementById('viewRoot');
   var canManage = EVENT_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
-  var [events, venues, orgs] = await Promise.all([
+  var [events, venues, orgs, projects] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}),
-    canManage ? Api.call('listOrganizations', {}) : Promise.resolve([])
+    canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]),
+    Api.call('listProjects', {})
   ]);
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
   var venueById = {};
   venues.forEach(function (v) { venueById[v.id] = v; });
-  var view = { name: '' };
+  var projectById = {};
+  projects.forEach(function (pr) { projectById[pr.id] = pr; });
+  var view = { projectId: '', venueId: '' };
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + t('events_title') + '</div>' +
-    '<div class="page-subtitle">All events across your organisation</div></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(Term('event_plural')) + '</div>' +
+    '<div class="page-subtitle">' + esc('All ' + Term('event_plural') + ' across your organisation') + '</div></div>' +
     '<div style="display:flex;gap:8px;">' +
       '<button class="btn btn-secondary" id="exportCsvBtn">Export CSV</button>' +
       (canManage ?
         '<button class="btn btn-secondary" id="importCsvBtn">Import CSV</button>' +
         '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />' +
-        '<button class="btn btn-primary" id="newEventBtn">+ ' + t('new_event') + '</button>'
+        '<button class="btn btn-primary" id="newEventBtn">+ New ' + esc(Term('event')) + '</button>'
         : '') +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:230px;flex-shrink:0;"><div class="card-header"><div class="card-title">Events</div></div>' +
-      '<div id="eventPanel" style="padding:8px;max-height:560px;overflow-y:auto;"></div></div>' +
+      '<div style="width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">' +
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('project_plural')) + '</div></div>' +
+        '<div id="projectFilterPanel" style="padding:8px;max-height:280px;overflow-y:auto;"></div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('venue_plural')) + '</div></div>' +
+        '<div id="venueFilterPanel" style="padding:8px;max-height:280px;overflow-y:auto;"></div></div>' +
+      '</div>' +
       '<div class="card" style="flex:1;min-width:0;"><div class="card-body" id="eventsTableWrap"></div></div>' +
     '</div>';
 
-  renderEventPanel();
+  renderProjectFilterPanel();
+  renderVenueFilterPanel();
   renderEventsTable();
 
-  function renderEventPanel() {
-    var counts = {};
-    events.forEach(function (e) { counts[e.name] = (counts[e.name] || 0) + 1; });
-    var names = Array.from(new Set(events.map(function (e) { return e.name; }))).sort();
-    var panel = document.getElementById('eventPanel');
+  // Shared by both filter panels below -- an "All ___" row plus one row per group with a live
+  // count, and (for Projects only) a trailing "No project" bucket so unassigned events are still
+  // reachable as their own filter instead of only visible via "All".
+  function filterPanelHtml_(allLabel, rows, activeId) {
     var rowStyle = 'padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:2px;';
-    var html = '<div class="event-row" data-name="" style="' + rowStyle + 'font-weight:700;' +
-      (!view.name ? 'background:var(--accent);color:#fff;' : '') + '">All events <span style="opacity:.75;font-size:11.5px;">(' + events.length + ')</span></div>';
-    html += names.map(function (n) {
-      var active = view.name === n;
-      return '<div class="event-row" data-name="' + esc(n) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' +
-        esc(n) + ' <span style="opacity:.75;font-size:11.5px;">(' + (counts[n] || 0) + ')</span></div>';
+    var total = rows.reduce(function (sum, r) { return sum + r.count; }, 0);
+    var html = '<div class="filter-row" data-id="" style="' + rowStyle + 'font-weight:700;' +
+      (!activeId ? 'background:var(--accent);color:#fff;' : '') + '">' + esc(allLabel) +
+      ' <span style="opacity:.75;font-size:11.5px;">(' + total + ')</span></div>';
+    html += rows.map(function (r) {
+      var active = activeId === r.id;
+      return '<div class="filter-row" data-id="' + esc(r.id) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' +
+        esc(r.name) + ' <span style="opacity:.75;font-size:11.5px;">(' + r.count + ')</span></div>';
     }).join('');
-    panel.innerHTML = html;
-    panel.querySelectorAll('.event-row').forEach(function (row) {
-      row.onclick = function () { view.name = row.getAttribute('data-name'); renderEventPanel(); renderEventsTable(); };
+    return html;
+  }
+
+  function eventMatchesProject_(e, projectId) {
+    if (!projectId) return true;
+    if (projectId === '__none__') return !e.projectId;
+    return e.projectId === projectId;
+  }
+
+  // Each panel's own options are computed from events filtered by every OTHER active filter, but
+  // never by its own -- so picking a Project narrows which Venues can even be selected (and vice
+  // versa) instead of the two filters staying independent of each other. General rule: a filter's
+  // option list only ever shows options that still have at least one matching row.
+  function eventsFilteredExcept_(exclude) {
+    return events.filter(function (e) {
+      if (exclude !== 'project' && !eventMatchesProject_(e, view.projectId)) return false;
+      if (exclude !== 'venue' && view.venueId && e.venueId !== view.venueId) return false;
+      return true;
+    });
+  }
+
+  function filteredEvents_() { return eventsFilteredExcept_(null); }
+
+  function renderProjectFilterPanel() {
+    var base = eventsFilteredExcept_('project'); // respects the Venue filter, ignores its own
+    var counts = {}, noProject = 0;
+    base.forEach(function (e) { if (e.projectId) counts[e.projectId] = (counts[e.projectId] || 0) + 1; else noProject++; });
+    var rows = projects.filter(function (pr) { return counts[pr.id]; })
+      .map(function (pr) { return { id: pr.id, name: pr.name, count: counts[pr.id] }; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+    if (noProject) rows.push({ id: '__none__', name: 'No ' + Term('project').toLowerCase(), count: noProject });
+    // The active Venue filter may have made the currently-selected Project impossible (0 matches)
+    // -- fall back to "All Projects" rather than showing that dead-end combination.
+    if (view.projectId && !rows.some(function (r) { return r.id === view.projectId; })) view.projectId = '';
+    var panel = document.getElementById('projectFilterPanel');
+    panel.innerHTML = filterPanelHtml_('All ' + Term('project_plural'), rows, view.projectId);
+    panel.querySelectorAll('.filter-row').forEach(function (row) {
+      row.onclick = function () {
+        view.projectId = row.getAttribute('data-id');
+        renderProjectFilterPanel(); renderVenueFilterPanel(); renderEventsTable();
+      };
+    });
+  }
+
+  function renderVenueFilterPanel() {
+    var base = eventsFilteredExcept_('venue'); // respects the Project filter, ignores its own
+    var counts = {};
+    base.forEach(function (e) { counts[e.venueId] = (counts[e.venueId] || 0) + 1; });
+    var rows = Array.from(new Set(base.map(function (e) { return e.venueId; }))).filter(Boolean)
+      .map(function (vid) { return { id: vid, name: venueById[vid] ? venueById[vid].name : vid, count: counts[vid] || 0 }; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+    if (view.venueId && !rows.some(function (r) { return r.id === view.venueId; })) view.venueId = '';
+    var panel = document.getElementById('venueFilterPanel');
+    panel.innerHTML = filterPanelHtml_('All ' + Term('venue_plural'), rows, view.venueId);
+    panel.querySelectorAll('.filter-row').forEach(function (row) {
+      row.onclick = function () {
+        view.venueId = row.getAttribute('data-id');
+        renderVenueFilterPanel(); renderProjectFilterPanel(); renderEventsTable();
+      };
     });
   }
 
   function renderEventsTable() {
-    var filtered = view.name ? events.filter(function (e) { return e.name === view.name; }) : events;
+    var filtered = filteredEvents_();
     var wrap = document.getElementById('eventsTableWrap');
     wrap.innerHTML = UI.table(
       [
-        { key: 'name', label: 'Event', render: function (r) { return '<a href="#/events/' + r.id + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.name) + '</a>'; } },
-        { key: 'venueId', label: 'Venue', render: function (r) { return esc(venueById[r.venueId] ? venueById[r.venueId].name : r.venueId); } },
+        { key: 'name', label: Term('event'), render: function (r) { return '<a href="#/events/' + r.id + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.name) + '</a>'; } },
+        { key: 'venueId', label: Term('venue'), render: function (r) { return esc(venueById[r.venueId] ? venueById[r.venueId].name : r.venueId); } },
+        { key: 'projectId', label: Term('project'), render: function (r) { return r.projectId && projectById[r.projectId]
+            ? '<a href="#/projects/' + r.projectId + '" style="color:var(--accent);text-decoration:none;">' + esc(projectById[r.projectId].name) + '</a>'
+            : '<span class="muted">—</span>'; } },
         { key: 'code', label: 'Code' },
         { key: 'city', label: 'City' },
         { key: 'startDateTime', label: 'Start', render: function (r) { return UI.fmtDate(r.startDateTime); } },
         { key: 'endDateTime', label: 'End', render: function (r) { return UI.fmtDate(r.endDateTime); } },
         { key: 'status', label: t('status'), render: function (r) { return UI.statusBadge(r.status); } },
         { key: 'actions', label: t('actions'), render: function (r) {
-            var html = '<a class="btn btn-secondary btn-sm" href="#/events/' + r.id + '">Open</a>';
+            var html = '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
+              '<a class="btn btn-secondary btn-sm btn-icon" title="Open" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
             var canEdit = ['SystemAdmin', 'GAAdmin', 'GAUser'].indexOf(HululState.user.role) !== -1;
-            if (canEdit) html += ' <button class="btn btn-secondary btn-sm" data-edit-event="' + r.id + '">Edit</button>';
+            if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
             var canDelete = r.status === 'Planning' && ['SystemAdmin', 'GAAdmin'].indexOf(HululState.user.role) !== -1;
-            if (canDelete) html += ' <button class="btn btn-danger btn-sm" data-del-event="' + r.id + '">Delete</button>';
-            return html;
+            if (canDelete) html += '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-event="' + r.id + '">' + ICON('delete') + '</button>';
+            return html + '</div>';
           } }
       ],
       filtered, {}
@@ -89,25 +158,25 @@ async function renderEventsList() {
     wrap.querySelectorAll('[data-edit-event]').forEach(function (b) {
       b.onclick = function () {
         var ev = events.filter(function (e) { return e.id === b.getAttribute('data-edit-event'); })[0];
-        openEditEventModal(ev, venueById);
+        openEditEventModal(ev, venueById, projects);
       };
     });
     wrap.querySelectorAll('[data-del-event]').forEach(function (b) {
-      b.onclick = async function () {
+      b.onclick = function () {
         var eventId = b.getAttribute('data-del-event');
-        if (!window.confirm('Delete this event? This cannot be undone.')) return;
-        try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast('Event deleted', 'success'); Router.resolve(); }
-        catch (err) { UI.error(err); }
+        UI.confirmModal('Delete this ' + Term('event') + '? This cannot be undone.', async function () {
+          try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast(Term('event') + ' deleted', 'success'); Router.resolve(); }
+          catch (err) { UI.error(err); }
+        }, { confirmLabel: 'Delete' });
       };
     });
   }
 
   document.getElementById('exportCsvBtn').onclick = function () {
-    var filtered = view.name ? events.filter(function (e) { return e.name === view.name; }) : events;
-    exportEventsCsv(filtered, venueById);
+    exportEventsCsv(filteredEvents_(), venueById);
   };
   if (canManage) {
-    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos); };
+    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, projects); };
     var importInput = document.getElementById('importCsvInput');
     document.getElementById('importCsvBtn').onclick = function () { importInput.click(); };
     importInput.onchange = function (e) {
@@ -118,26 +187,32 @@ async function renderEventsList() {
   }
 }
 
-function openNewEventModal(venues, inspectionCos) {
+// projects/presetProjectId are optional -- presetProjectId pre-selects (and locks in, via the
+// caller passing it) that Project when this modal is opened from a Project's own page (see
+// renderProjectDetail in projects.js) so the new event is immediately grouped under it.
+function openNewEventModal(venues, inspectionCos, projects, presetProjectId) {
   var venueOptions = venues.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
   var inspCoOptions = inspectionCos.length
     ? inspectionCos.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
     : '<option value="">No inspection companies found</option>';
+  var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
+    (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === presetProjectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
-    UI.field('Event name', '<input id="fEventName" class="field-input" />') +
-    UI.field('Venue', '<select id="fVenueId" class="field-input">' + venueOptions + '</select>') +
+    UI.field(Term('event') + ' name', '<input id="fEventName" class="field-input" />') +
+    UI.field(Term('venue'), '<select id="fVenueId" class="field-input">' + venueOptions + '</select>') +
     '<div class="form-row">' +
       UI.field('Address', '<input id="fAddress" class="field-input" readonly />') +
       UI.field('City', '<input id="fCity" class="field-input" readonly />') +
     '</div>' +
-    '<div class="muted" style="font-size:11.5px;margin:-6px 0 12px;">Address & city are pulled from the selected venue.</div>' +
+    '<div class="muted" style="font-size:11.5px;margin:-6px 0 12px;">Address & city are pulled from the selected ' + esc(Term('venue').toLowerCase()) + '.</div>' +
     '<div class="form-row">' +
       UI.field('Start', '<input id="fStart" type="datetime-local" class="field-input" />') +
       UI.field('End', '<input id="fEnd" type="datetime-local" class="field-input" />') +
     '</div>' +
-    UI.field('Inspection Company', '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>');
+    UI.field('Inspection Company', '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>') +
+    UI.field(Term('project') + ' (optional)', '<select id="fProjectId" class="field-input">' + projectOptions + '</select>');
 
-  UI.openModal(t('new_event'), body, [
+  UI.openModal('New ' + Term('event'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         try {
@@ -148,10 +223,11 @@ function openNewEventModal(venues, inspectionCos) {
             city: document.getElementById('fCity').value,
             startDateTime: document.getElementById('fStart').value,
             endDateTime: document.getElementById('fEnd').value,
-            inspectionCoId: document.getElementById('fInspCo').value
+            inspectionCoId: document.getElementById('fInspCo').value,
+            projectId: document.getElementById('fProjectId').value
           });
           UI.closeModal();
-          UI.toast('Event created', 'success');
+          UI.toast(Term('event') + ' created', 'success');
           Router.resolve();
         } catch (err) { UI.error(err); }
       } }
@@ -168,13 +244,17 @@ function openNewEventModal(venues, inspectionCos) {
 }
 
 // Venue and Inspection Company aren't editable here (updateEvent doesn't patch them) — fixing
-// those means recreating the event. This covers the common fix: a wrong name/address/city/time.
-function openEditEventModal(event, venueById) {
+// those means recreating the event. This covers the common fix: a wrong name/address/city/time,
+// plus moving the event into a different Project (or out of one, via "No project") -- the other
+// way to do that being renderProjectDetail's "Add existing events" / "Remove from project".
+function openEditEventModal(event, venueById, projects) {
   if (!event) return;
   var venue = venueById[event.venueId];
+  var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
+    (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === event.projectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
-    (venue ? '<div class="muted" style="font-size:12px;margin-bottom:12px;">Venue: ' + esc(venue.name) + ' — not editable here (fixed at creation)</div>' : '') +
-    UI.field('Event name', '<input id="fEditName" class="field-input" value="' + esc(event.name) + '" />') +
+    (venue ? '<div class="muted" style="font-size:12px;margin-bottom:12px;">' + esc(Term('venue')) + ': ' + esc(venue.name) + ' — not editable here (fixed at creation)</div>' : '') +
+    UI.field(Term('event') + ' name', '<input id="fEditName" class="field-input" value="' + esc(event.name) + '" />') +
     '<div class="form-row">' +
       UI.field('Address', '<input id="fEditAddress" class="field-input" value="' + esc(event.address) + '" />') +
       UI.field('City', '<input id="fEditCity" class="field-input" value="' + esc(event.city) + '" />') +
@@ -182,8 +262,9 @@ function openEditEventModal(event, venueById) {
     '<div class="form-row">' +
       UI.field('Start', '<input id="fEditStart" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.startDateTime)) + '" />') +
       UI.field('End', '<input id="fEditEnd" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.endDateTime)) + '" />') +
-    '</div>';
-  UI.openModal('Edit event', body, [
+    '</div>' +
+    UI.field(Term('project') + ' (optional)', '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>');
+  UI.openModal('Edit ' + Term('event'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         try {
@@ -193,9 +274,10 @@ function openEditEventModal(event, venueById) {
             address: document.getElementById('fEditAddress').value,
             city: document.getElementById('fEditCity').value,
             startDateTime: document.getElementById('fEditStart').value,
-            endDateTime: document.getElementById('fEditEnd').value
+            endDateTime: document.getElementById('fEditEnd').value,
+            projectId: document.getElementById('fEditProjectId').value
           });
-          UI.closeModal(); UI.toast('Event updated', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(Term('event') + ' updated', 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -281,11 +363,19 @@ async function importEventsCsv(file, venues, inspectionCos) {
     return;
   }
 
+  var totalRows = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i].length && !rows[i].every(function (c) { return c.trim() === ''; })) totalRows++;
+  }
+  var progress = UI.progressModal('Importing events…', totalRows);
+  var processed = 0;
   var results = { created: [], failed: [] };
   for (var r = 1; r < rows.length; r++) {
     var row = rows[r];
     if (!row.length || row.every(function (c) { return c.trim() === ''; })) continue;
     var name = (row[idxName] || '').trim();
+    processed++;
+    progress.update(processed, processed + ' of ' + totalRows + (name ? ' — ' + name : ''));
     var venueName = (row[idxVenue] || '').trim();
     var venue = venues.filter(function (v) { return v.name.toLowerCase() === venueName.toLowerCase(); })[0];
     if (!venue) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'Venue "' + venueName + '" not found' }); continue; }
@@ -312,13 +402,14 @@ async function importEventsCsv(file, venues, inspectionCos) {
       results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: err.message });
     }
   }
+  UI.closeModal();
   showImportResults_(results);
   if (results.created.length) Router.resolve();
 }
 
 function showImportResults_(results) {
   var body = '<div style="font-size:13.5px;">' +
-    '<div style="margin-bottom:8px;"><strong>' + results.created.length + '</strong> event(s) created successfully.</div>' +
+    '<div style="margin-bottom:8px;"><strong>' + results.created.length + '</strong> ' + esc(results.created.length === 1 ? Term('event') : Term('event_plural')) + ' created successfully.</div>' +
     (results.failed.length
       ? '<div style="color:var(--danger);font-weight:600;margin-bottom:6px;">' + results.failed.length + ' row(s) failed:</div>' +
         '<div style="max-height:240px;overflow-y:auto;">' + results.failed.map(function (f) {

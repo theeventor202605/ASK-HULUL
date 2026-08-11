@@ -1,0 +1,380 @@
+/**
+ * HULUL - Checklist Items admin view (reference catalogue used by Inspections). Setup.gs seeds
+ * the defaults; this page lets SystemAdmin/InspectionAdmin/ProjectManager add more, edit, or
+ * soft-delete existing ones (deleteChecklistItem marks status:'Deleted' -- the row stays so any
+ * inspection/finding that already referenced it keeps resolving, it's just hidden from the
+ * catalogue and from inspectionScopeItems_ going forward; same pattern as Venues/Zones deletion).
+ * Two stacked lists on the left narrow the set down: Phase (Opening/Operational), then
+ * Discipline within that phase. Checklist Type is a tab bar on the right, since a given
+ * Phase+Discipline combo can still span several checklist types (Restaurants, Food Truck, …).
+ * "Discipline" here is stored on the backend as the item's `category` field (unchanged, to avoid a
+ * data migration) but the New/Edit Item form picks it from the real Disciplines list via dropdown
+ * instead of free text -- free text let a typo'd/differently-cased category silently diverge from
+ * the actual discipline name, which inspectionScopeItems_ (Inspections.gs) matches on exactly, so a
+ * mismatch meant those items would never show up for any inspection at all.
+ */
+// Matches createChecklistItem/updateChecklistItem/deleteChecklistItem's backend requireRole — only
+// these roles get New/Edit/Delete/Import controls.
+var CHECKLIST_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'];
+// dedupeChecklistItems is a narrower, more destructive action — matches its own backend requireRole.
+var CHECKLIST_DEDUPE_ROLES = ['SystemAdmin', 'InspectionAdmin'];
+
+async function renderChecklistItems() {
+  var root = document.getElementById('viewRoot');
+  var canManage = CHECKLIST_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  var canDedupe = CHECKLIST_DEDUPE_ROLES.indexOf(HululState.user.role) !== -1;
+  var [items, disciplines] = await Promise.all([Api.call('listChecklistItems', {}), Api.call('listDisciplines', {})]);
+  var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
+  var view = { phase: phases[0] || '', category: '', checklistType: '' };
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(Term('checklistItem_plural')) + '</div>' +
+    '<div class="page-subtitle">' + esc(Term('checklistItem') + ' catalogue used when recording ' + Term('inspection').toLowerCase() + ' results') + '</div></div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="btn btn-secondary" id="ciExportCsvBtn">Export CSV</button>' +
+      (canManage ?
+        '<button class="btn btn-secondary" id="ciImportCsvBtn">Import CSV</button>' +
+        '<input type="file" id="ciImportCsvInput" accept=".csv" style="display:none;" />' +
+        '<button class="btn btn-primary" id="newItemBtn">+ New item</button>'
+        : '') +
+      (canDedupe ? '<button class="btn btn-danger" id="dedupeBtn">Remove duplicates</button>' : '') +
+    '</div></div>' +
+    '<div id="ciBody"></div>';
+
+  document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
+  if (canManage) {
+    var ciImportInput = document.getElementById('ciImportCsvInput');
+    document.getElementById('ciImportCsvBtn').onclick = function () { ciImportInput.click(); };
+    ciImportInput.onchange = function (e) {
+      var file = e.target.files[0];
+      if (file) importChecklistItemsCsv(file, disciplines);
+      e.target.value = '';
+    };
+  }
+  if (canDedupe) document.getElementById('dedupeBtn').onclick = function () {
+    // Duplicate = same Description + Phase + Checklist Type + Discipline, regardless of Default
+    // risk/Window — matches createChecklistItem's dedup check, which blocks new duplicates from
+    // being created in the first place. This just cleans up existing ones.
+    UI.confirmModal(
+      'Scan the whole catalogue for items with the same Description, Phase, Checklist Type, and Discipline, and delete every duplicate beyond the first? This cannot be undone.',
+      async function () {
+        try {
+          var res = await Api.call('dedupeChecklistItems', {});
+          UI.toast(res.removed ? (res.removed + ' duplicate(s) removed') : 'No duplicates found', 'success');
+          Router.resolve();
+        } catch (err) { UI.error(err); }
+      },
+      { title: 'Remove duplicates', confirmLabel: 'Remove duplicates' }
+    );
+  };
+
+  if (canManage) document.getElementById('newItemBtn').onclick = function () {
+    openChecklistItemForm_(items, disciplines, {
+      title: 'New ' + Term('checklistItem'),
+      submitLabel: t('create'),
+      initial: {},
+      onSubmit: async function (payload) {
+        await Api.call('createChecklistItem', payload);
+        UI.closeModal(); UI.toast(Term('checklistItem') + ' created', 'success'); Router.resolve();
+      }
+    });
+  };
+
+  if (!phases.length) {
+    document.getElementById('ciBody').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
+    return;
+  }
+
+  document.getElementById('ciBody').innerHTML =
+    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
+      '<div class="card" style="width:230px;flex-shrink:0;">' +
+        '<div class="card-header"><div class="card-title">Phase</div></div>' +
+        '<div id="ciPhasePanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
+        '<div class="card-header" style="border-top:1px solid var(--border);"><div class="card-title">' + esc(Term('discipline')) + '</div></div>' +
+        '<div id="ciCategoryPanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div class="tabbar" id="typeTabbar"></div>' +
+        '<div id="ciTableWrap"></div>' +
+      '</div>' +
+    '</div>';
+
+  var rowStyle = 'padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:2px;';
+
+  function renderPhasePanel() {
+    var panel = document.getElementById('ciPhasePanel');
+    panel.innerHTML = phases.map(function (p) {
+      var active = p === view.phase;
+      return '<div class="ci-phase-row" data-phase="' + esc(p) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(p) + '</div>';
+    }).join('');
+    panel.querySelectorAll('.ci-phase-row').forEach(function (row) {
+      row.onclick = function () {
+        view.phase = row.getAttribute('data-phase');
+        view.category = ''; view.checklistType = '';
+        renderPhasePanel(); renderCategoryPanel();
+      };
+    });
+  }
+
+  function renderCategoryPanel() {
+    var categoriesInPhase = Array.from(new Set(
+      items.filter(function (i) { return i.phase === view.phase; }).map(function (i) { return i.category; })
+    )).sort();
+    if (!view.category || categoriesInPhase.indexOf(view.category) === -1) view.category = categoriesInPhase[0] || '';
+    var panel = document.getElementById('ciCategoryPanel');
+    panel.innerHTML = categoriesInPhase.length
+      ? categoriesInPhase.map(function (c) {
+          var active = c === view.category;
+          return '<div class="ci-cat-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(c) + '</div>';
+        }).join('')
+      : '<div class="muted" style="font-size:12px;padding:6px 10px;">No ' + esc(Term('discipline_plural').toLowerCase()) + ' under this phase.</div>';
+    panel.querySelectorAll('.ci-cat-row').forEach(function (row) {
+      row.onclick = function () { view.category = row.getAttribute('data-cat'); view.checklistType = ''; renderCategoryPanel(); renderTypeTabs(); };
+    });
+    renderTypeTabs();
+  }
+
+  function renderTypeTabs() {
+    var typesInCat = Array.from(new Set(
+      items.filter(function (i) { return i.phase === view.phase && i.category === view.category; }).map(function (i) { return i.checklistType; })
+    )).sort();
+    if (!view.checklistType || typesInCat.indexOf(view.checklistType) === -1) view.checklistType = typesInCat[0] || '';
+    var typeTabbar = document.getElementById('typeTabbar');
+    typeTabbar.innerHTML = typesInCat.map(function (ty) {
+      return '<div class="tab-btn ' + (ty === view.checklistType ? 'active' : '') + '" data-type="' + esc(ty) + '">' + esc(ty) + '</div>';
+    }).join('');
+    typeTabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
+      btn.onclick = function () { view.checklistType = btn.getAttribute('data-type'); renderTypeTabs(); };
+    });
+    renderTable();
+  }
+
+  function renderTable() {
+    var filtered = items.filter(function (i) { return i.phase === view.phase && i.category === view.category && i.checklistType === view.checklistType; });
+    var wrap = document.getElementById('ciTableWrap');
+    wrap.innerHTML = '<div class="card"><div class="card-body">' + UI.table([
+      { key: 'description', label: 'Description' }, { key: 'defaultRisk', label: 'Default risk', render: r => UI.riskBadge(r.defaultRisk) },
+      { key: 'defaultWindowHours', label: 'Window (h)' }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+        '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-ci="' + r.id + '">' + ICON('edit') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-ci="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+      filtered, {}) + '</div></div>';
+
+    if (!canManage) return;
+    wrap.querySelectorAll('[data-edit-ci]').forEach(function (btn) {
+      btn.onclick = function () {
+        var item = items.filter(function (i) { return i.id === btn.getAttribute('data-edit-ci'); })[0];
+        if (!item) return;
+        openChecklistItemForm_(items, disciplines, {
+          title: 'Edit ' + Term('checklistItem'),
+          submitLabel: t('save'),
+          initial: item,
+          onSubmit: async function (payload) {
+            await Api.call('updateChecklistItem', Object.assign({ itemId: item.id }, payload));
+            UI.closeModal(); UI.toast(Term('checklistItem') + ' updated', 'success'); Router.resolve();
+          }
+        });
+      };
+    });
+    wrap.querySelectorAll('[data-delete-ci]').forEach(function (btn) {
+      btn.onclick = function () {
+        var itemId = btn.getAttribute('data-delete-ci');
+        UI.confirmModal(
+          'Delete this ' + Term('checklistItem').toLowerCase() + '? It\'s removed from the catalogue and from future ' + Term('inspection_plural').toLowerCase() +
+          ', but any ' + Term('inspection').toLowerCase() + ' or finding that already referenced it keeps working.',
+          async function () {
+            try {
+              await Api.call('deleteChecklistItem', { itemId: itemId });
+              UI.toast(Term('checklistItem') + ' deleted', 'success'); Router.resolve();
+            } catch (err) { UI.error(err); }
+          },
+          { confirmLabel: 'Delete' }
+        );
+      };
+    });
+  }
+
+  renderPhasePanel();
+  renderCategoryPanel();
+}
+
+// Shared by "+ New item" and each row's Edit button -- builds the Phase / Discipline / Checklist
+// type / Description / Default risk / Default window form and wires it up. Discipline comes from
+// the real Disciplines list (see file-header comment for why); Checklist type is a dropdown scoped
+// to whichever types already exist under the selected Discipline, re-filtered live whenever
+// Discipline changes, plus an "Add new type" option that reveals a text input. `opts.initial` is
+// either {} (new item) or an existing item's own fields (edit) to prefill every field with.
+function openChecklistItemForm_(items, disciplines, opts) {
+  var initial = opts.initial || {};
+  var typesByDiscipline = {};
+  items.forEach(function (i) {
+    if (!i.category || !i.checklistType) return;
+    (typesByDiscipline[i.category] = typesByDiscipline[i.category] || {})[i.checklistType] = true;
+  });
+  var typesForDiscipline_ = function (disciplineName) {
+    return typesByDiscipline[disciplineName] ? Object.keys(typesByDiscipline[disciplineName]).sort() : [];
+  };
+  var typeSelectHtml_ = function (types, selectedType) {
+    var matched = selectedType && types.indexOf(selectedType) !== -1;
+    return types.map(function (ty) { return '<option value="' + esc(ty) + '"' + (ty === selectedType ? ' selected' : '') + '>' + esc(ty) + '</option>'; }).join('') +
+      '<option value="__new__"' + (!types.length && !matched ? ' selected' : '') + '>+ Add new type…</option>';
+  };
+  var disciplineOptions = disciplines.map(function (d) {
+    return '<option value="' + esc(d.name) + '"' + (d.name === initial.category ? ' selected' : '') + '>' + esc(d.name) + '</option>';
+  }).join('');
+  var initialDiscipline = initial.category || (disciplines.length ? disciplines[0].name : '');
+  var initialTypes = typesForDiscipline_(initialDiscipline);
+
+  var body =
+    UI.field('Phase', '<select id="fCiPhase" class="field-input"><option' + (initial.phase === 'Operational' ? '' : ' selected') + '>Opening</option><option' + (initial.phase === 'Operational' ? ' selected' : '') + '>Operational</option></select>') +
+    UI.field(Term('discipline'), disciplines.length
+      ? '<select id="fCiCategory" class="field-input">' + disciplineOptions + '</select>'
+      : '<select id="fCiCategory" class="field-input" disabled><option value="">Create a ' + esc(Term('discipline').toLowerCase()) + ' first (' + esc(Term('discipline_plural')) + ' page)</option></select>') +
+    UI.field('Checklist type',
+      '<select id="fCiTypeSelect" class="field-input">' + typeSelectHtml_(initialTypes, initial.checklistType) + '</select>' +
+      '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />'
+    ) +
+    UI.field('Description', '<textarea id="fCiDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>') +
+    '<div class="form-row">' +
+    UI.field('Default risk', '<select id="fCiRisk" class="field-input">' +
+      ['Low', 'Medium', 'High', 'Critical'].map(function (r) {
+        return '<option' + (r === (initial.defaultRisk || 'Medium') ? ' selected' : '') + '>' + r + '</option>';
+      }).join('') + '</select>') +
+    UI.field('Default window (hours)', '<input id="fCiWindow" type="number" class="field-input" value="' + (initial.defaultWindowHours != null && initial.defaultWindowHours !== '' ? initial.defaultWindowHours : 24) + '" />') + '</div>';
+
+  UI.openModal(opts.title, body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: opts.submitLabel, className: 'btn-primary', onClick: async function () {
+        if (!disciplines.length) { UI.toast('Create a ' + Term('discipline').toLowerCase() + ' first', 'error'); return; }
+        var typeSelect = document.getElementById('fCiTypeSelect');
+        var checklistType = typeSelect.value === '__new__' ? document.getElementById('fCiTypeNew').value.trim() : typeSelect.value;
+        if (!checklistType) { UI.toast('Checklist type is required', 'error'); return; }
+        var payload = {
+          checklistType: checklistType, category: document.getElementById('fCiCategory').value,
+          description: document.getElementById('fCiDesc').value, defaultRisk: document.getElementById('fCiRisk').value,
+          defaultWindowHours: Number(document.getElementById('fCiWindow').value), phase: document.getElementById('fCiPhase').value
+        };
+        try { await opts.onSubmit(payload); } catch (err) { UI.error(err); }
+      } }
+  ]);
+
+  var disciplineSelectEl = document.getElementById('fCiCategory');
+  var typeSelectEl = document.getElementById('fCiTypeSelect');
+  var typeNewEl = document.getElementById('fCiTypeNew');
+  var syncNewTypeVisibility_ = function () {
+    typeNewEl.style.display = typeSelectEl.value === '__new__' ? '' : 'none';
+    if (typeSelectEl.value === '__new__') typeNewEl.focus();
+  };
+  typeSelectEl.onchange = syncNewTypeVisibility_;
+  if (disciplineSelectEl && !disciplineSelectEl.disabled) {
+    disciplineSelectEl.onchange = function () {
+      var types = typesForDiscipline_(disciplineSelectEl.value);
+      typeSelectEl.innerHTML = typeSelectHtml_(types, null);
+      typeNewEl.value = '';
+      syncNewTypeVisibility_();
+    };
+  }
+}
+
+/* ---------------- CSV export / import ----------------
+ * Reuses csvEscape_, parseCsv_, and showImportResults_ from events.js (loaded on the same page). */
+function exportChecklistItemsCsv(rows) {
+  var headers = ['Checklist Type', 'Discipline', 'Description', 'Default Risk', 'Window Hours', 'Phase'];
+  var lines = [headers.map(csvEscape_).join(',')];
+  rows.forEach(function (r) {
+    lines.push([r.checklistType, r.category, r.description, r.defaultRisk, r.defaultWindowHours, r.phase].map(csvEscape_).join(','));
+  });
+  // Leading UTF-8 BOM so Excel renders non-Latin text (Arabic descriptions, etc.) correctly instead of mojibake.
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'hulul-checklist-items-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Bulk-import batch size: sent to the bulkCreateChecklistItems route (see Inspections.gs) in
+// chunks of this size rather than all-at-once, purely to keep each Apps Script call's payload/
+// execution time comfortable for very large CSVs. A typical few-hundred-row import is 1-2 calls
+// total, instead of the old one-network-round-trip-per-row loop (~1s/row -- 300 rows took ~5 min).
+var CHECKLIST_IMPORT_BATCH_SIZE_ = 200;
+
+async function importChecklistItemsCsv(file, disciplines) {
+  var text = await file.text();
+  var rows = parseCsv_(text);
+  if (!rows.length) { UI.toast('Empty CSV file', 'error'); return; }
+  var headers = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+  var col = function (name) { return headers.indexOf(name); };
+  var idxType = col('checklist type') !== -1 ? col('checklist type') : col('checklisttype');
+  // Accepts either header name -- 'discipline' going forward, 'category' for older exports/sheets
+  // made before this column was renamed.
+  var idxCategory = col('discipline') !== -1 ? col('discipline') : col('category');
+  var idxDesc = col('description');
+  var idxRisk = col('default risk') !== -1 ? col('default risk') : col('defaultrisk');
+  var idxWindow = col('window hours') !== -1 ? col('window hours') : col('defaultwindowhours');
+  var idxPhase = col('phase');
+  if (idxType === -1 || idxCategory === -1 || idxDesc === -1) {
+    UI.toast('CSV needs at least: Checklist Type, Discipline, Description columns', 'error');
+    return;
+  }
+  // Same reasoning as the New Item form's dropdown: a Discipline value that doesn't exactly match
+  // an existing discipline name would silently never show up for any inspection (Inspections.gs
+  // inspectionScopeItems_ matches on it exactly) -- reject those rows up front instead.
+  var validNames = {};
+  disciplines.forEach(function (d) { validNames[d.name] = true; });
+
+  // Pass 1 (local, instant): parse + validate every row and split into ones we'll send to the
+  // backend vs. ones that already fail client-side checks (required fields / unknown discipline).
+  var results = { created: [], failed: [] };
+  var toSend = [];
+  for (var r = 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row.length || row.every(function (c) { return c.trim() === ''; })) continue;
+    var checklistType = (row[idxType] || '').trim();
+    var category = (row[idxCategory] || '').trim();
+    var description = (row[idxDesc] || '').trim();
+    var label = description || checklistType || '(unnamed)';
+    if (!checklistType || !category || !description) {
+      results.failed.push({ row: r + 1, name: label, reason: 'Checklist Type, Discipline, and Description are required' });
+      continue;
+    }
+    if (!validNames[category]) {
+      results.failed.push({ row: r + 1, name: label, reason: 'Discipline "' + category + '" doesn\'t match an existing discipline name exactly (see the Disciplines page)' });
+      continue;
+    }
+    toSend.push({
+      row: r + 1, checklistType: checklistType, category: category, description: description,
+      defaultRisk: idxRisk !== -1 ? (row[idxRisk] || '').trim() : '',
+      defaultWindowHours: idxWindow !== -1 && row[idxWindow] && row[idxWindow].trim() ? Number(row[idxWindow]) : undefined,
+      phase: idxPhase !== -1 ? (row[idxPhase] || '').trim() : ''
+    });
+  }
+
+  // Pass 2 (network): send whatever passed local validation to the backend in a handful of batch
+  // calls -- each call dedupes + writes its whole chunk in one shot server-side (see
+  // bulkCreateChecklistItems in Inspections.gs), instead of one createChecklistItem call per row.
+  if (toSend.length) {
+    var progress = UI.progressModal('Importing checklist items…', toSend.length);
+    var sent = 0;
+    for (var i = 0; i < toSend.length; i += CHECKLIST_IMPORT_BATCH_SIZE_) {
+      var chunk = toSend.slice(i, i + CHECKLIST_IMPORT_BATCH_SIZE_);
+      try {
+        var res = await Api.call('bulkCreateChecklistItems', { items: chunk });
+        results.created = results.created.concat(res.created);
+        results.failed = results.failed.concat(res.failed);
+      } catch (err) {
+        // Whole-batch failure (e.g. network drop mid-import) -- attribute it to every row in this
+        // chunk so nothing silently vanishes from the results.
+        chunk.forEach(function (item) {
+          results.failed.push({ row: item.row, name: item.description, reason: err.message });
+        });
+      }
+      sent += chunk.length;
+      progress.update(sent, sent + ' of ' + toSend.length);
+    }
+    UI.closeModal();
+  }
+  results.failed.sort(function (a, b) { return a.row - b.row; });
+  showImportResults_(results);
+  if (results.created.length) Router.resolve();
+}

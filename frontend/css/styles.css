@@ -1,0 +1,335 @@
+/* HULUL — modern design system, built on top of Tailwind's CDN utilities. */
+
+:root{
+  --brand-900:#0f172a; --brand-800:#141c33; --brand-700:#1c2743;
+  --accent:#4f46e5; --accent-600:#4338ca; --accent-soft:#eef2ff;
+  --surface:#f6f7fb; --card:#ffffff; --border:#e6e8f0;
+  --text-900:#0f172a; --text-600:#475569; --text-400:#94a3b8;
+  --success:#16a34a; --success-soft:#ecfdf3;
+  --warning:#d97706; --warning-soft:#fffbeb;
+  --danger:#dc2626; --danger-soft:#fef2f2;
+  --critical:#7f1d1d;
+  --info:#2563eb; --info-soft:#eff6ff;
+  --radius-lg:16px; --radius-md:12px; --radius-sm:8px;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+  --shadow-md:0 8px 24px rgba(15,23,42,.08);
+  --font-en:'Inter',system-ui,sans-serif; --font-ar:'Tajawal',system-ui,sans-serif;
+  /* Theme (Settings > Appearance, theme.js) -- these six vars are the only thing each of the 5
+     themes below actually overrides, plus --accent/--accent-600/--accent-soft. Everything else
+     (surface/card/border/status colors) stays constant across themes so badges, toasts, etc. keep
+     a consistent meaning -- only the sidebar's look and the accent (buttons, links, focus rings,
+     nav-item.active) change. Indigo (this block) is the default, applied when data-theme is unset
+     or ="indigo". */
+  --sidebar-bg:#0f172a; --sidebar-text:#c3c8e4; --sidebar-text-strong:#e2e5f5;
+  --sidebar-muted:#5c6690; --sidebar-hover-bg:#1b2440; --sidebar-border:#1e2745;
+}
+
+/* ---------- Themes (Settings > Appearance) ---------- */
+html[data-theme="ocean"]{
+  --accent:#2563eb; --accent-600:#1d4ed8; --accent-soft:#eff6ff;
+  --sidebar-bg:#0b1f38; --sidebar-text:#bcd0e8; --sidebar-text-strong:#e7f0fa;
+  --sidebar-muted:#5a7a9c; --sidebar-hover-bg:#15304f; --sidebar-border:#1c3a5c;
+}
+html[data-theme="emerald"]{
+  --accent:#059669; --accent-600:#047857; --accent-soft:#ecfdf5;
+  --sidebar-bg:#0b2018; --sidebar-text:#bfe0d1; --sidebar-text-strong:#e6f7ee;
+  --sidebar-muted:#548a72; --sidebar-hover-bg:#123a2b; --sidebar-border:#1b4634;
+}
+html[data-theme="sunset"]{
+  --accent:#ea580c; --accent-600:#c2410c; --accent-soft:#fff7ed;
+  --sidebar-bg:#241209; --sidebar-text:#e6c9ae; --sidebar-text-strong:#fdf0e2;
+  --sidebar-muted:#a3765a; --sidebar-hover-bg:#3a2012; --sidebar-border:#452818;
+}
+/* The "light colours" option: a light sidebar instead of the dark-navy default, plus a fresh
+   accent so it reads as its own theme rather than just an inverted Indigo. */
+html[data-theme="light"]{
+  --accent:#0d9488; --accent-600:#0f766e; --accent-soft:#ecfdf9;
+  --sidebar-bg:#ffffff; --sidebar-text:#475569; --sidebar-text-strong:#0f172a;
+  --sidebar-muted:#94a3b8; --sidebar-hover-bg:#eef1f7; --sidebar-border:#e6e8f0;
+}
+html,body{height:100%;}
+body{ background:var(--surface); color:var(--text-900); font-family:var(--font-en); -webkit-font-smoothing:antialiased; }
+html[dir="rtl"] body{ font-family:var(--font-ar); }
+.hidden{ display:none !important; }
+
+/* ---------- Auth screen ---------- */
+.auth-shell{ min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(1200px 600px at 20% -10%, #232b4d 0%, var(--brand-900) 55%, #070b16 100%); padding:24px; }
+.auth-card{ width:100%; max-width:400px; background:var(--card); border-radius:var(--radius-lg); box-shadow:var(--shadow-md); padding:32px; }
+.auth-brand{ display:flex; align-items:center; gap:12px; margin-bottom:28px; }
+.brand-mark{ width:40px; height:40px; border-radius:11px; background:linear-gradient(135deg,var(--accent),#7c3aed); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; flex:none; }
+.brand-name{ font-weight:800; font-size:20px; letter-spacing:.02em; }
+.brand-sub{ font-size:12px; color:var(--text-600); }
+.auth-form{ display:flex; flex-direction:column; gap:6px; }
+.field-label{ font-size:12px; font-weight:600; color:var(--text-600); margin-top:10px; }
+.field-input, select.field-input, textarea.field-input{
+  border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; font-size:14px;
+  background:#fff; outline:none; transition:border-color .15s, box-shadow .15s;
+  /* width/box-sizing/font weren't set here before -- fine inside a .form-row grid (which stretches
+     its children anyway), but a field placed directly in a plain block (e.g. the Crossed-item Notes/
+     Suggested action fields in the Record results modal) fell back to the browser's tiny default
+     textarea/input size and a monospace textarea font, looking "off shape" next to every other field. */
+  width:100%; box-sizing:border-box; font-family:inherit; display:block; }
+.field-input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+textarea.field-input{ resize:vertical; min-height:64px; }
+.auth-error{ background:var(--danger-soft); color:var(--danger); font-size:13px; padding:8px 10px; border-radius:var(--radius-sm); }
+.lang-toggle-btn{ margin-top:18px; font-size:12px; font-weight:600; color:var(--text-600); background:none; border:1px solid var(--border);
+  border-radius:999px; padding:6px 14px; cursor:pointer; }
+.lang-toggle-btn:hover{ background:var(--accent-soft); color:var(--accent-600); }
+
+/* ---------- Buttons ---------- */
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:13.5px; font-weight:600;
+  padding:9px 16px; border-radius:var(--radius-sm); cursor:pointer; border:1px solid transparent; transition:.15s; }
+.btn-primary{ background:var(--accent); color:#fff; } .btn-primary:hover{ background:var(--accent-600); }
+.btn-secondary{ background:#fff; color:var(--text-900); border-color:var(--border); } .btn-secondary:hover{ background:#f1f3f9; }
+.btn-danger{ background:var(--danger); color:#fff; } .btn-danger:hover{ background:#b91c1c; }
+.btn-ghost{ background:transparent; color:var(--text-600); } .btn-ghost:hover{ background:#eef0f6; }
+.btn-sm{ padding:6px 12px; font-size:12.5px; }
+/* Icon-only action buttons (table row actions app-wide) -- square-ish padding instead of .btn-sm's
+   text padding, and a bit larger font since an emoji glyph at 12.5px reads smaller than text does.
+   Always paired with a title="" attribute for a hover tooltip, since there's no visible label. */
+.btn-icon{ padding:6px 9px; font-size:14px; line-height:1; }
+.w-full{ width:100%; }
+
+/* Click guard (app-wide, wired once in ui.js): every .btn gets disabled + this look for 10s right
+   after it's clicked, so a slow request or a second tap can't fire the same action twice and hit
+   the backend with a stale id / duplicate-create error. Grayscale + dimmed reads as "already
+   handled" regardless of the button's original color, and the checkmark confirms the click landed. */
+.btn:disabled{ cursor:not-allowed; filter:grayscale(.4) brightness(1.05); opacity:.6; }
+.btn.btn-clicked{ animation:btnClickPulse .2s ease; }
+.btn.btn-clicked::after{ content:'✓'; font-weight:700; }
+@keyframes btnClickPulse{ 0%{ transform:scale(1); } 45%{ transform:scale(.93); } 100%{ transform:scale(1); } }
+
+/* ---------------- Place map markers (Event > Venue & Zones tab) ----------------
+   Leaflet divIcon content is just the dot -- its color is set per-marker inline, from
+   EVENT_PLACE_TYPE_COLORS_ (one color per Operator/Vendor/Exhibitor/Other). The name is a Leaflet
+   tooltip (shown on hover, and forced open on the one that's is-focused) rather than a permanently
+   visible label -- with several dots close together, permanently-shown labels overlapped and
+   became unreadable; a tooltip only ever shows one name at a time per interaction. */
+.place-marker{ width:14px; height:14px; }
+.place-marker-dot{ width:14px; height:14px; border-radius:50%; border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(15,23,42,.35); transition:transform .2s, background .2s; }
+.place-marker.is-focused .place-marker-dot{ background:var(--danger) !important; transform:scale(1.4); }
+.place-marker-tooltip{ font-size:11px; font-weight:700; color:var(--text-900); }
+.place-type-swatch{ display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
+
+/* ---------------- Live inspection (Inspections & Checklist Items tab, choose-participant screen) ----------------
+   "My location" -- a pulsing blue dot (same idea as Google Maps' own you-are-here marker) so it
+   reads as distinct from the yellow/green/grey participant dots. The map recenters on this every
+   GPS tick (updateLiveInspectionMyPosition_) rather than the dot moving around a fixed map. */
+.my-location-dot{ width:14px; height:14px; border-radius:50%; background:var(--info); border:3px solid #fff;
+  box-shadow:0 0 0 4px rgba(37,99,235,.35), 0 1px 4px rgba(15,23,42,.4); animation:myLocationPulse 2s ease-in-out infinite; }
+@keyframes myLocationPulse{ 0%,100%{ box-shadow:0 0 0 4px rgba(37,99,235,.35), 0 1px 4px rgba(15,23,42,.4); }
+  50%{ box-shadow:0 0 0 8px rgba(37,99,235,.15), 0 1px 4px rgba(15,23,42,.4); } }
+.participant-nearest-row{ display:flex; justify-content:space-between; align-items:center; gap:10px;
+  border-bottom:1px solid #f0f1f6; padding:10px 4px; cursor:pointer; }
+.participant-nearest-row:hover{ background:#fafbff; }
+
+/* Map satellite/default toggle -- deliberately NOT .btn (styled to match .btn-secondary.btn-sm
+   manually instead): the app-wide click guard in ui.js disables any .btn for 10s after a click,
+   which is right for one-shot actions but wrong for a toggle the user may want to flip right back. */
+.map-toggle-btn{ display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); background:#fff;
+  color:var(--text-900); transition:.15s; }
+.map-toggle-btn:hover{ background:#f1f3f9; }
+
+/* ---------- App shell ---------- */
+.app-shell{ display:flex; min-height:100vh; }
+.sidebar{ width:248px; flex:none; background:var(--sidebar-bg); color:var(--sidebar-text-strong); display:flex; flex-direction:column;
+  padding:18px 14px; position:sticky; top:0; height:100vh; transition:width .18s, background .15s; border-inline-end:1px solid var(--sidebar-border); }
+.sidebar.collapsed{ width:76px; }
+.sidebar.collapsed .brand-name, .sidebar.collapsed .nav-label, .sidebar.collapsed .lang-toggle-btn{ display:none; }
+.sidebar-brand{ display:flex; align-items:center; gap:10px; padding:6px 6px 18px; }
+.sidebar-collapse-btn{ margin-inline-start:auto; background:none; border:none; color:var(--sidebar-muted); cursor:pointer; font-size:16px; }
+.sidebar-nav{ display:flex; flex-direction:column; gap:2px; overflow-y:auto; flex:1; }
+.nav-section{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--sidebar-muted); font-weight:700; margin:14px 10px 6px; }
+.nav-item{ display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; color:var(--sidebar-text); font-size:13.5px;
+  font-weight:500; cursor:pointer; text-decoration:none; }
+.nav-item:hover{ background:var(--sidebar-hover-bg); color:var(--sidebar-text-strong); }
+.nav-item.active{ background:var(--accent); color:#fff; }
+.nav-icon{ width:18px; text-align:center; flex:none; }
+.sidebar-footer{ padding-top:10px; border-top:1px solid var(--sidebar-border); margin-top:8px; }
+.sidebar-footer .lang-toggle-btn{ color:var(--sidebar-text); border-color:var(--sidebar-border); width:100%; }
+
+.app-main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.topbar{ position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px; padding:12px 24px;
+  background:rgba(246,247,251,.85); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+.topbar-search{ flex:1; max-width:420px; }
+.topbar-search input{ width:100%; border:1px solid var(--border); background:#fff; border-radius:999px; padding:9px 16px; font-size:13.5px; outline:none; }
+.topbar-search input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.topbar-actions{ display:flex; align-items:center; gap:14px; margin-inline-start:auto; }
+.org-logo{ height:34px; width:auto; max-width:130px; object-fit:contain; border-radius:6px; }
+.icon-btn{ position:relative; background:#fff; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:15px; }
+.icon-btn:hover{ background:#f1f3f9; }
+.notif-badge{ position:absolute; top:-4px; inset-inline-end:-4px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
+  border-radius:999px; min-width:16px; height:16px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+.user-chip{ display:flex; align-items:center; gap:10px; cursor:pointer; }
+.avatar{ width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#7c3aed); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+.user-chip-name{ font-size:13px; font-weight:700; line-height:1.2; }
+.user-chip-role{ font-size:11px; color:var(--text-600); }
+
+.view-root{ padding:24px; max-width:1400px; width:100%; margin:0 auto; }
+
+/* ---------- Page header ---------- */
+.page-header{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; margin-bottom:20px; }
+.page-title{ font-size:22px; font-weight:800; }
+.page-subtitle{ font-size:13px; color:var(--text-600); margin-top:2px; }
+.breadcrumb{ font-size:12.5px; color:var(--text-400); margin-bottom:6px; }
+.breadcrumb a{ color:var(--accent); cursor:pointer; text-decoration:none; }
+
+/* ---------- Cards / KPIs ---------- */
+.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+.kpi-card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px;
+  box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:10px; }
+.kpi-top{ display:flex; align-items:center; justify-content:space-between; }
+.kpi-label{ font-size:12.5px; color:var(--text-600); font-weight:600; }
+.kpi-icon{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.kpi-value{ font-size:26px; font-weight:800; }
+
+.card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
+.card-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); gap:10px; flex-wrap:wrap; }
+.card-title{ font-size:15px; font-weight:700; }
+
+/* Projects list/detail (projects.js) -- a horizontal date line per project: a square dot at each
+   end (overall start/end) plus one round dot per event start/end -- all the same size -- positioned
+   proportionally by calendar date (time-of-day ignored), with a rotated date label under each
+   plotted dot. */
+.project-timeline{ position:relative; height:26px; margin:44px 4px 40px; }
+.project-timeline-track{ position:absolute; top:50%; left:0; right:0; height:3px; background:var(--border); border-radius:2px; transform:translateY(-50%); }
+.tl-dot{ position:absolute; top:50%; width:16px; height:16px; border-radius:50%; transform:translate(-50%,-50%);
+  border:2px solid var(--card); box-shadow:0 0 0 1px rgba(0,0,0,.08); z-index:2; }
+/* First/last dots (overall project start/end) -- square instead of round, so they read as the
+   anchors of the line even though every dot is now the same size. */
+.tl-dot-big{ border-radius:0; z-index:3; }
+.tl-dot-green{ background:#16a34a; }
+.tl-dot-red{ background:#dc2626; }
+.tl-dot-now{ width:16px; height:16px; z-index:1; background:#eab308; border-color:#eab308;
+  box-shadow:0 0 0 3px rgba(234,179,8,.25); animation:tlBlink 3s step-start infinite; }
+@keyframes tlBlink { 50% { opacity:.15; } }
+/* Anchored by its RIGHT edge (not left) at top:right, so the rotated text's upper-right corner
+   sits exactly at the dot -- the label then trails down-and-left away from it, which is what keeps
+   it hugging the dot instead of drifting off to the side. */
+.tl-date-label{ position:absolute; top:100%; margin-top:1px; font-size:10px; color:var(--text-600);
+  white-space:nowrap; transform:rotate(315deg); transform-origin:top right; }
+.tl-legend-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-inline-end:4px; vertical-align:middle; }
+.tl-legend-dot.tl-dot-now{ animation:none; }
+.tl-legend-sep{ display:inline-block; width:1px; height:12px; background:var(--border); vertical-align:middle; }
+/* Sits permanently above whichever dot's date is chronologically closest to right now -- unlike
+   every other dot here, this one is always-visible text, not just a hover title. */
+.tl-nearest-label{ position:absolute; bottom:100%; margin-bottom:6px; transform:translateX(-50%);
+  font-size:10.5px; font-weight:700; line-height:1.3; text-align:center; white-space:nowrap; }
+.card-body{ padding:18px 20px; }
+
+/* ---------- Tabs ---------- */
+.tabbar{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:18px; overflow-x:auto; }
+.tab-btn{ padding:10px 14px; font-size:13px; font-weight:600; color:var(--text-600); border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap; }
+.tab-btn:hover{ color:var(--text-900); }
+.tab-btn.active{ color:var(--accent); border-color:var(--accent); }
+
+/* ---------- Tables ---------- */
+.table-wrap{ overflow-x:auto; }
+.table-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+.table-filter-input{ max-width:260px; padding:7px 10px !important; font-size:13px !important; }
+table.data-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+table.data-table th{ text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-400);
+  font-weight:700; padding:10px 14px; border-bottom:1px solid var(--border); white-space:nowrap; }
+html[dir="rtl"] table.data-table th{ text-align:right; }
+table.data-table th.th-sortable{ cursor:pointer; user-select:none; }
+table.data-table th.th-sortable:hover{ color:var(--accent-600); }
+.th-sort-arrow{ display:inline-block; width:9px; font-size:9px; }
+table.data-table td{ padding:12px 14px; border-bottom:1px solid #f0f1f6; vertical-align:middle; }
+table.data-table tr:hover td{ background:#fafbff; }
+
+/* ---------- Badges ---------- */
+.badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
+.badge-dot{ width:6px; height:6px; border-radius:50%; }
+.badge-open{ background:var(--info-soft); color:var(--info); } .badge-open .badge-dot{ background:var(--info); }
+.badge-inreview{ background:#f5f3ff; color:#7c3aed; } .badge-inreview .badge-dot{ background:#7c3aed; }
+.badge-resolved{ background:var(--success-soft); color:var(--success); } .badge-resolved .badge-dot{ background:var(--success); }
+.badge-reopen{ background:var(--warning-soft); color:var(--warning); } .badge-reopen .badge-dot{ background:var(--warning); }
+.badge-rejected{ background:var(--danger-soft); color:var(--danger); } .badge-rejected .badge-dot{ background:var(--danger); }
+.badge-low{ background:var(--success-soft); color:var(--success); } .badge-medium{ background:var(--warning-soft); color:var(--warning); }
+.badge-high{ background:var(--danger-soft); color:var(--danger); } .badge-neutral{ background:#f1f3f9; color:var(--text-600); }
+.badge-critical{ background:var(--critical); color:#fff; } .badge-critical .badge-dot{ background:#fff; }
+
+/* ---------- Forms / modal ---------- */
+/* z-index note: Leaflet's own controls/panes go up to 1000 (.leaflet-top/.leaflet-bottom is 1000),
+   and any map is embedded directly in the page flow now (Event > Venue & Zones tab), not inside a
+   modal -- these three overlays all need to clear that or they render invisibly behind a map's
+   zoom buttons/tiles. Same reasoning as fVSearchResults' z-index in venues.js. */
+.modal-root{ position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:1600; padding:20px; }
+.modal-box{ background:#fff; border-radius:var(--radius-lg); width:100%; max-width:520px; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-md); }
+.modal-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+.modal-title{ font-weight:700; font-size:15px; }
+.modal-body{ padding:18px 20px; display:flex; flex-direction:column; gap:4px; }
+.modal-footer{ display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid var(--border); }
+.form-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* ---------- Map full screen toggle (UI.wireMapFullscreen, ui.js) ----------
+   Higher than Leaflet's own panes/controls (max 1000, see the z-index note above) and higher than
+   the modal stack (1600/1700) too -- if a venue/zone map is ever opened from within a modal in the
+   future, "full screen" should still mean the whole viewport, above everything. */
+.hulul-map-fullscreen{
+  position:fixed !important; inset:12px !important; width:auto !important; height:auto !important;
+  z-index:1900; border-radius:var(--radius-sm); transition:inset .2s ease;
+}
+.hulul-map-fullscreen-lock{ overflow:hidden; }
+.hulul-map-fullscreen-btn{
+  position:absolute; top:10px; right:10px; z-index:1000; /* same pane ceiling as Leaflet's own controls */
+  width:34px; height:34px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:#fff; box-shadow:var(--shadow-md); cursor:pointer; font-size:16px; line-height:1;
+  display:flex; align-items:center; justify-content:center; padding:0;
+}
+/* Holds any buttons UI.wireMapFullscreen reparents in from outside the map (e.g. venues.js's
+   Satellite / "Use my location" toggles) while full screen is active -- bottom-left, clear of the
+   fullscreen button (top-right) and Leaflet's own zoom control (top-left). Empty and inert outside
+   full screen, so it's harmless to always have in the DOM. */
+.hulul-map-fullscreen-extra-controls{
+  position:absolute; left:10px; bottom:10px; z-index:1000; display:flex; gap:8px;
+}
+.hulul-map-fullscreen-extra-controls:empty{ display:none; }
+.hulul-map-fullscreen-btn:hover{ background:var(--surface); }
+
+/* ---------- Toasts ---------- */
+.toast-root{ position:fixed; bottom:20px; inset-inline-end:20px; display:flex; flex-direction:column; gap:8px; z-index:1700; }
+.toast{ background:var(--brand-900); color:#fff; padding:11px 16px; border-radius:10px; font-size:13px; box-shadow:var(--shadow-md); min-width:220px; }
+.toast.success{ background:#166534; } .toast.error{ background:#991b1b; }
+
+/* ---------- Notif panel ---------- */
+.notif-panel{ position:fixed; top:64px; inset-inline-end:24px; width:340px; max-height:70vh; overflow-y:auto; background:#fff;
+  border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); z-index:1500; }
+.notif-panel-header{ position:sticky; top:0; background:#fff; display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700; }
+.notif-item{ padding:12px 16px; border-bottom:1px solid #f0f1f6; font-size:13px; }
+.notif-item .meta{ font-size:11px; color:var(--text-400); margin-top:3px; }
+
+/* ---------- Two-way toggle (eventDetail.js Schedule inspection hours assistant) ---------- */
+.toggle-pair{ display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; flex:none; }
+.toggle-pair-btn{ padding:6px 10px; font-size:11.5px; font-weight:600; background:#fff; color:var(--text-600);
+  cursor:pointer; border:none; white-space:nowrap; }
+.toggle-pair-btn + .toggle-pair-btn{ border-inline-start:1px solid var(--border); }
+.toggle-pair-btn.active{ background:var(--accent); color:#fff; }
+
+/* ---------- Settings > Icons (settings.js) ---------- */
+/* A compact swatch grid (one 44px square per icon key) instead of one row per icon -- the label is
+   a hover tooltip (title attr) plus a live search filter rather than always-visible text, which is
+   what keeps 45+ icon keys from turning the Icons tab into a huge scrolling list. */
+.icon-settings-group{ margin-bottom:16px; }
+.icon-settings-group-title{ font-size:11px; font-weight:700; color:var(--text-600); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+.icon-swatch{ width:44px; height:44px; border-radius:10px; border:1px solid var(--border); background:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer; transition:.12s; }
+.icon-swatch:hover{ border-color:var(--accent); background:var(--accent-soft); transform:translateY(-1px); }
+
+/* ---------- Misc ---------- */
+.muted{ color:var(--text-600); }
+.empty-state{ text-align:center; padding:40px 20px; color:var(--text-400); font-size:13.5px; }
+.lg-hidden{ display:none; }
+@media (max-width: 900px){
+  .sidebar{ position:fixed; inset-inline-start:0; z-index:50; transform:translateX(-110%); transition:transform .2s; }
+  html[dir="rtl"] .sidebar{ transform:translateX(110%); }
+  .sidebar.mobile-open{ transform:translateX(0); }
+  .lg-hidden{ display:inline-flex; }
+  .form-row{ grid-template-columns:1fr; }
+}

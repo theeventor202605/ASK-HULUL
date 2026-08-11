@@ -5,8 +5,10 @@ window.HululState = {
   user: null,
   token: null,
   lang: localStorage.getItem('hulul_lang') || 'en',
+  theme: localStorage.getItem('hulul_theme') || 'indigo',
   currentEventId: null,
   notifications: [],
+  notifBadgeLoadedAt: 0,
 
   setSession(token, user) {
     this.token = token; this.user = user;
@@ -21,6 +23,10 @@ window.HululState = {
   },
   clearSession() {
     this.token = null; this.user = null;
+    this.orgLogoLoaded = false; this.orgLogoUrl = '';
+    this.orgLabelsLoaded = false; this.orgLabels = {};
+    this.appIconsLoaded = false; this.appIcons = {};
+    this.notifBadgeLoadedAt = 0;
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');
   }
 };

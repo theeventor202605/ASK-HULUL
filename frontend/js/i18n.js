@@ -7,10 +7,11 @@ window.HULUL_I18N = {
   en: {
     tagline: 'Event Readiness & Compliance Platform', email: 'Email', password: 'Password', signIn: 'Sign in',
     searchPlaceholder: 'Search events, findings, users…',
-    nav_dashboard: 'Dashboard', nav_events: 'Events', nav_users: 'Users & Roles', nav_orgs: 'Organizations',
+    nav_dashboard: 'Dashboard', nav_events: 'Events', nav_projects: 'Projects', nav_users: 'Users & Roles', nav_orgs: 'Organizations',
     nav_notifications: 'Notifications', nav_settings: 'Settings', nav_logout: 'Log out',
     nav_venues: 'Venues', nav_subevents: 'Sub-Events', nav_meetings: 'Meetings', nav_disciplines: 'Disciplines',
     nav_checklist: 'Checklist Items', nav_qualifications: 'Inspector Qualifications', nav_config: 'Config',
+    nav_template_library: 'Template Library',
     section_main: 'Main', section_admin: 'Administration',
     dashboard_title: 'Dashboard', dashboard_subtitle: "Here's what's happening across your events",
     kpi_total: 'Total Logs', kpi_open: 'Open', kpi_inreview: 'In Review', kpi_resolved: 'Resolved',
@@ -20,15 +21,17 @@ window.HULUL_I18N = {
     tab_inspections: 'Inspections & Checklists', tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
     tab_escalations: 'Escalations', tab_participants: 'Participants', tab_reports: 'Reports',
     save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Actions', status: 'Status',
-    loading: 'Loading…', no_data: 'Nothing here yet.'
+    loading: 'Loading…', no_data: 'Nothing here yet.',
+    filter: 'Filter', export_csv: 'Export CSV', no_matches: 'No rows match your filter.'
   },
   ar: {
     tagline: 'منصة جاهزية الفعاليات والامتثال', email: 'البريد الإلكتروني', password: 'كلمة المرور', signIn: 'تسجيل الدخول',
     searchPlaceholder: 'ابحث عن الفعاليات والملاحظات والمستخدمين…',
-    nav_dashboard: 'لوحة التحكم', nav_events: 'الفعاليات', nav_users: 'المستخدمون والأدوار', nav_orgs: 'الجهات',
+    nav_dashboard: 'لوحة التحكم', nav_events: 'الفعاليات', nav_projects: 'المشاريع', nav_users: 'المستخدمون والأدوار', nav_orgs: 'الجهات',
     nav_notifications: 'الإشعارات', nav_settings: 'الإعدادات', nav_logout: 'تسجيل الخروج',
     nav_venues: 'المواقع', nav_subevents: 'الفعاليات الفرعية', nav_meetings: 'الاجتماعات', nav_disciplines: 'التخصصات',
     nav_checklist: 'عناصر قوائم المراجعة', nav_qualifications: 'تأهيل المفتشين', nav_config: 'الإعدادات العامة',
+    nav_template_library: 'مكتبة القوالب',
     section_main: 'الرئيسية', section_admin: 'الإدارة',
     dashboard_title: 'لوحة التحكم', dashboard_subtitle: 'ملخص ما يجري في فعالياتك',
     kpi_total: 'إجمالي السجلات', kpi_open: 'مفتوح', kpi_inreview: 'قيد المراجعة', kpi_resolved: 'تم الحل',
@@ -38,7 +41,8 @@ window.HULUL_I18N = {
     tab_inspections: 'التفتيش وقوائم المراجعة', tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_reports: 'التقارير',
     save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'إجراءات', status: 'الحالة',
-    loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.'
+    loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.',
+    filter: 'تصفية', export_csv: 'تصدير CSV', no_matches: 'لا توجد صفوف مطابقة للتصفية.'
   }
 };
 

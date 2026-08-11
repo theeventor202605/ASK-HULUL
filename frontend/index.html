@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HULUL — Event Readiness &amp; Compliance Platform</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='23' font-family='Arial,Helvetica,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<!-- Pinned to 1.8.0, NOT the latest 1.9.x -- leaflet-draw (below) hasn't been updated since 2018 and
+     is broadly broken on Leaflet 1.9+ (a well-known, widely-reported incompatibility: see
+     https://github.com/Leaflet/Leaflet/issues/8521, "Leaflet 1.9.1 breaks leaflet-draw"). It first
+     surfaced as every single map on the site going blank grey (TouchExtend's global init hook threw
+     inside every L.map() call, drawing-related or not), and after patching that one spot it
+     immediately surfaced again elsewhere (marker editing this time) -- a sign of a real version
+     mismatch, not an isolated bug, so patching it symptom-by-symptom was the wrong approach. 1.8.0
+     is the last version leaflet-draw was actually built/tested against; every Leaflet API this app
+     uses (map/tileLayer/marker/circle/polygon/featureGroup/divIcon, setView/fitBounds/addTo/on) has
+     been stable since well before 1.8, so this downgrade doesn't affect anything else on the site. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.8.0/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.8.0/dist/leaflet.js"></script>
+<!-- leaflet-draw (loaded next) self-attaches global init hooks that fire for EVERY map and marker
+     on the whole site, drawing-related or not -- e.g. TouchExtend (touch-based vertex editing) on
+     every map, Edit.Marker (click-to-drag-edit a marker's position) on every draggable marker. Two
+     separate ones threw here under real conditions ("...reading 'on'" inside L.DomEvent.on, then
+     "...reading 'Marker'" from a different hook). UPDATE: the actual root cause of both (and of a
+     third crash inside Control.Draw's own initialize) was tracked down to labels.js's terminology
+     lookup being a same-named global `function L(...)`, permanently overwriting window.L before
+     leaflet-draw's own bare `L.X` internals ever ran -- see the comment above the HululLeaflet
+     alias below for the full story; that's the real fix now (labels.js's lookup is Term(), not
+     L(), so window.L is never touched by app code again). This callInitHooks patch is kept as a
+     defensive second layer in case some *other* future plugin's init hook throws for an unrelated
+     reason -- it's cheap insurance, not required for leaflet-draw anymore. Must run after
+     leaflet.js (so L.Map/L.Marker/etc. already exist) and before leaflet-draw.js (so its hook
+     registrations, added later, still get invoked through the patched, exception-safe
+     callInitHooks whenever a map/marker is actually constructed). -->
+<script>
+  (function () {
+    if (!window.L) return;
+    // Leaflet's Class.extend() generates a SEPARATE callInitHooks closure for every single class
+    // (L.Map, L.Marker, L.Polygon, ... each gets its own copy, none of them actually inherited from
+    // a shared L.Class.prototype.callInitHooks -- there isn't one) so there's no single shared spot
+    // to patch once; each class that might have a broken hook pushed onto it needs patching
+    // individually. This covers every core class leaflet-draw is known to (or plausibly could)
+    // attach a global addInitHook to.
+    ['Map', 'Marker', 'Polyline', 'Polygon', 'Rectangle', 'Circle', 'CircleMarker', 'Layer', 'Handler'].forEach(function (name) {
+      var Klass = window.L[name];
+      if (!Klass || !Klass.prototype || typeof Klass.prototype.callInitHooks !== 'function') return;
+      var orig = Klass.prototype.callInitHooks;
+      Klass.prototype.callInitHooks = function () {
+        try { orig.apply(this, arguments); }
+        catch (e) { console.error('[HULUL] Ignored a broken plugin init-hook on L.' + name + ' (likely leaflet-draw) so it still works:', e); }
+      };
+    });
+  })();
+</script>
+<!-- Polygon-drawing toolbar (venue/zone boundary drawing, venues.js/eventDetail.js) -- extends the
+     same L namespace Leaflet just created (L.Control.Draw etc.), so load order relative to the
+     HululLeaflet alias below doesn't matter: both end up pointing at the same mutated object. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<!-- ROOT CAUSE, finally found: HULUL's own labels.js used to declare its terminology lookup as a
+     global `function L(key)`, identically named to Leaflet's own global `window.L`. A same-named
+     global function declaration permanently overwrites window.L the moment labels.js's script
+     runs (early, well before any page/map is ever opened) -- and leaflet-draw's minified bundle
+     reads the *global* `L` identifier at CALL time, not load time, for its own internal
+     cross-references (Control.Draw's initialize does `L.Control.prototype...`, TouchExtend's/
+     Edit.Marker's init hooks do `L.DomEvent...`/`L.Edit.Marker`, DrawToolbar's getModeHandlers
+     does `new L.Draw.Polygon(...)`, etc). Since all of those run later -- whenever a user actually
+     opens a map, draws a shape, or drags a marker -- window.L had *already* become the labels
+     function by then, not Leaflet, so whichever L.X sub-property leaflet-draw's internals tried to
+     read next was undefined. That's the actual cause of every "Cannot read properties of
+     undefined" crash chased across venues.js/eventDetail.js's map init code this whole time. Fixed
+     properly at the source: labels.js's lookup is now named Term(), not L(), so window.L is never
+     touched by app code and stays the real Leaflet namespace, permanently, for leaflet-draw's own
+     internals to read correctly no matter when they run.
+     HululLeaflet is kept below anyway, as the convention app code (venues.js/eventDetail.js) uses
+     for its OWN Leaflet calls -- harmless now, just no longer load-bearing for the fix above. -->
+<script>window.HululLeaflet = window.L;</script>
+<!-- Renders QR codes entirely client-side (Place account credentials modal, venues.js) -- no
+     network call with the account's email/password, unlike a hosted QR-image API. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="h-full">
+
+  <!-- ===== Login screen ===== -->
+  <div id="loginScreen" class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-mark">H</div>
+        <div>
+          <div class="brand-name">HULUL</div>
+          <div class="brand-sub" data-i18n="tagline">Event Readiness &amp; Compliance Platform</div>
+        </div>
+      </div>
+      <form id="loginForm" class="auth-form">
+        <label class="field-label" data-i18n="email">Email</label>
+        <input required type="email" id="loginEmail" class="field-input" placeholder="you@organisation.com" autocomplete="username" />
+        <label class="field-label" data-i18n="password">Password</label>
+        <input required type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password" />
+        <div id="loginError" class="auth-error hidden"></div>
+        <button type="submit" class="btn btn-primary w-full mt-2" data-i18n="signIn">Sign in</button>
+      </form>
+      <button id="langToggleLogin" class="lang-toggle-btn">EN / AR</button>
+    </div>
+  </div>
+
+  <!-- ===== App shell ===== -->
+  <div id="appShell" class="app-shell hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark">H</div>
+        <span class="brand-name">HULUL</span>
+        <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" aria-label="Collapse">‹</button>
+      </div>
+      <nav id="sidebarNav" class="sidebar-nav"></nav>
+      <div class="sidebar-footer">
+        <button id="langToggleApp" class="lang-toggle-btn">EN / AR</button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button id="mobileNavBtn" class="icon-btn lg-hidden">☰</button>
+        <div class="topbar-search">
+          <input id="globalSearch" type="text" placeholder="Search events, findings, users…" />
+        </div>
+        <div class="topbar-actions">
+          <img id="orgLogoImg" class="org-logo hidden" alt="Organization logo" width="34" height="34" onerror="this.classList.add('hidden')" />
+          <button id="notifBtn" class="icon-btn" aria-label="Notifications">
+            🔔<span id="notifBadge" class="notif-badge hidden">0</span>
+          </button>
+          <div id="userMenuBtn" class="user-chip">
+            <div class="avatar" id="userAvatar">?</div>
+            <div class="user-chip-text">
+              <div id="userChipName" class="user-chip-name">—</div>
+              <div id="userChipRole" class="user-chip-role">—</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main id="viewRoot" class="view-root"></main>
+    </div>
+  </div>
+
+  <!-- ===== Shared overlays ===== -->
+  <div id="toastRoot" class="toast-root"></div>
+  <div id="modalRoot" class="modal-root hidden"></div>
+  <div id="notifPanel" class="notif-panel hidden"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/labels.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/views/login.js"></script>
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/events.js"></script>
+  <script src="js/views/projects.js"></script>
+  <script src="js/views/eventDetail.js"></script>
+  <script src="js/evidence.js"></script>
+  <script src="js/views/findings.js"></script>
+  <script src="js/views/venues.js"></script>
+  <script src="js/views/eventPlaces.js"></script>
+  <script src="js/views/subEvents.js"></script>
+  <script src="js/views/meetings.js"></script>
+  <script src="js/views/disciplines.js"></script>
+  <script src="js/views/checklistItems.js"></script>
+  <script src="js/views/inspectorQualifications.js"></script>
+  <script src="js/views/templateLibrary.js"></script>
+  <script src="js/views/users.js"></script>
+  <script src="js/views/organizations.js"></script>
+  <script src="js/views/notifications.js"></script>
+  <script src="js/views/config.js"></script>
+  <script src="js/views/settings.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
