@@ -898,7 +898,7 @@ function initPlaceMap_(venue, zones, places) {
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
     setPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fPl', zones, center[0], center[1]);
-    suggestFromNearestPlace_('fPlName', center[0], center[1], places, function (n) { return n; });
+    suggestNameFromMap_('fPlName', center[0], center[1]);
     suggestFromNearestPlace_('fPlLocation', center[0], center[1], places, function (n) { return 'Near ' + n; });
 
     // Shared by drag, click, and "Use my location" -- rejects (with the same message) any point
@@ -914,7 +914,7 @@ function initPlaceMap_(venue, zones, places) {
       placeMapMarker_._hululLastValid = [lat, lng];
       setPlaceLatLng_(lat, lng);
       autoDetectZone_('fPl', zones, lat, lng);
-      suggestFromNearestPlace_('fPlName', lat, lng, places, function (n) { return n; });
+      suggestNameFromMap_('fPlName', lat, lng);
       suggestFromNearestPlace_('fPlLocation', lat, lng, places, function (n) { return 'Near ' + n; });
       if (recenter) placeMapInstance_.setView([lat, lng], 17);
       return true;
@@ -985,14 +985,17 @@ function nearestPlaceName_(lat, lng, places) {
   return nearest ? nearest.name : null;
 }
 
-// Auto-fills a field with a suggestion derived from the closest existing place's name, as an
-// editable starting point -- same REQ as nearestPlaceName_ above, used both for the Name field
-// itself (format = identity, e.g. "Samad Liraqi") and the Location field ("Near Samad Liraqi").
-// Stops touching the field the moment the user types in it themselves (fieldEl.dataset.userEdited,
-// set by a one-time 'input' listener wireSuggestableField_ below wires up) -- same
-// don't-clobber-manual-input convention autoDetectZone_ uses (dataset.userOverride) for the zone
-// field above. No-ops quietly if there's no candidate place with coordinates yet, or the field isn't
-// on the page.
+// Auto-fills a field with a suggestion derived from the closest ALREADY-REGISTERED place in our own
+// DB, as an editable starting point -- used for the Location field ("Near Samad Liraqi"). NOT used
+// for the Name field (see suggestNameFromMap_ below) -- REQ report: "instead of adding Okai in the
+// name textbox, it added the nearest vendor on my DB... What I wanted is to have Okai in the name
+// textbox not the nearest existing place in my DB" -- the Name suggestion needs the real-world
+// place shown on the map tile at the dropped pin, which is a different data source entirely (OSM,
+// not our own Places/Participants). Stops touching the field the moment the user types in it
+// themselves (fieldEl.dataset.userEdited, set by a one-time 'input' listener wireSuggestableField_
+// below wires up) -- same don't-clobber-manual-input convention autoDetectZone_ uses
+// (dataset.userOverride) for the zone field above. No-ops quietly if there's no candidate place with
+// coordinates yet, or the field isn't on the page.
 function suggestFromNearestPlace_(fieldId, lat, lng, places, format) {
   var el = document.getElementById(fieldId);
   if (!el || el.dataset.userEdited === '1') return;
@@ -1000,10 +1003,39 @@ function suggestFromNearestPlace_(fieldId, lat, lng, places, format) {
   if (name) el.value = format(name);
 }
 
-// Wires the one-time 'input' listener suggestFromNearestPlace_ needs to know a field's current value
-// was typed by the user, not left over from its own last auto-fill -- call once per wire*Form_,
-// right after the field exists in the DOM (before any pin placement can fire a suggestion).
+// Wires the one-time 'input' listener suggestFromNearestPlace_/suggestNameFromMap_ need to know a
+// field's current value was typed by the user, not left over from its own last auto-fill -- call
+// once per wire*Form_, right after the field exists in the DOM (before any pin placement can fire a
+// suggestion).
 function wireSuggestableField_(fieldId) {
   var el = document.getElementById(fieldId);
   if (el) el.addEventListener('input', function () { el.dataset.userEdited = '1'; });
+}
+
+// REQ report: the Name field's suggestion needs the real-world business/POI name shown on the map
+// tile itself at the dropped pin (e.g. "Okai"), not our own DB's nearest registered place (that was
+// the original wrong behavior). Reverse-geocodes via the same OpenStreetMap Nominatim service
+// wireVenueSearch_ already calls directly from the browser (no backend proxy) for the venue address
+// search box above -- zoom=18 asks for POI/building-level detail rather than a whole street or
+// suburb. Nominatim's own reverse response puts a matched POI's name at the top level (data.name),
+// or under namedetails, or (a Nominatim quirk) keyed by its own category under address (e.g.
+// address.amenity/shop/tourism) -- tried in that order. suggestSeq_ guards against an older, slower
+// response landing after a newer pin placement already fired a fresh request. Silently does nothing
+// on a network hiccup, rate-limit, or no match at that spot -- this is only ever a convenience
+// suggestion, never something the form depends on to work.
+var suggestNameFromMapSeq_ = 0;
+async function suggestNameFromMap_(fieldId, lat, lng) {
+  var el = document.getElementById(fieldId);
+  if (!el || el.dataset.userEdited === '1') return;
+  var mySeq = ++suggestNameFromMapSeq_;
+  try {
+    var res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1&namedetails=1');
+    if (mySeq !== suggestNameFromMapSeq_ || !res.ok) return; // superseded, or Nominatim itself errored
+    var data = await res.json();
+    if (mySeq !== suggestNameFromMapSeq_ || el.dataset.userEdited === '1') return;
+    var addr = data.address || {};
+    var name = (data.namedetails && data.namedetails.name) || data.name ||
+      addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.building || null;
+    if (name) el.value = name;
+  } catch (e) { /* offline/blocked -- the form still works, just without a name suggestion */ }
 }

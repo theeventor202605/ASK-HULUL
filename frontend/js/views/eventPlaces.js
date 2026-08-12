@@ -327,7 +327,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     eventPlaceMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(eventPlaceMapInstance_);
     setEventPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fEP', zones, center[0], center[1]);
-    suggestFromNearestPlace_('fEPName', center[0], center[1], places, function (n) { return n; });
+    suggestNameFromMap_('fEPName', center[0], center[1]);
     suggestFromNearestPlace_('fEPLocation', center[0], center[1], places, function (n) { return 'Near ' + n; });
 
     function tryEventPlacePin_(lat, lng, recenter) {
@@ -339,7 +339,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
       eventPlaceMapMarker_._hululLastValid = [lat, lng];
       setEventPlaceLatLng_(lat, lng);
       autoDetectZone_('fEP', zones, lat, lng);
-      suggestFromNearestPlace_('fEPName', lat, lng, places, function (n) { return n; });
+      suggestNameFromMap_('fEPName', lat, lng);
       suggestFromNearestPlace_('fEPLocation', lat, lng, places, function (n) { return 'Near ' + n; });
       if (recenter) eventPlaceMapInstance_.setView([lat, lng], 17);
       return true;
