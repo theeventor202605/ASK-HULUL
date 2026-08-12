@@ -210,9 +210,16 @@ function rejectTicketResolution(user, p) {
 function uploadTicketMedia(user, p) {
   if (!p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
   var folder = getOrCreateFolder_('HULUL Support Tickets');
-  var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), p.mimeType || 'application/octet-stream', p.fileName || 'attachment');
+  var mimeType = p.mimeType || 'application/octet-stream';
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), mimeType, p.fileName || 'attachment');
   var file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   audit(user.id, 'UPLOAD_SUPPORT_MEDIA', 'SupportTickets', '', { fileName: p.fileName || file.getName() });
-  return { url: file.getUrl(), fileId: file.getId(), fileName: p.fileName || file.getName(), mimeType: p.mimeType || '' };
+  // file.getUrl() returns Drive's HTML viewer page, not raw bytes -- unusable as an <img src>, which
+  // is why screenshots rendered as a broken image on the ticket page. Same fix as uploadOrgLogo
+  // (Accounts.gs): the thumbnail endpoint reliably serves an embeddable image for image mime types.
+  var url = mimeType.indexOf('image/') === 0
+    ? 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000'
+    : file.getUrl();
+  return { url: url, fileId: file.getId(), fileName: p.fileName || file.getName(), mimeType: mimeType };
 }

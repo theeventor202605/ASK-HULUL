@@ -126,6 +126,35 @@ function createPlace(user, p) {
   return { place: getById('Places', place.id), account: account };
 }
 
+// REQ: "Add a helper button to identify all places within the venue boundary and add them
+// automatically." The actual map lookup (Overpass API) happens client-side (venues.js), same
+// call-OSM-directly-from-the-browser pattern already used for the venue address search and the
+// closest-map-POI Name suggestion -- this endpoint is only the bulk-create step, once the PM has
+// reviewed candidates in the picker modal and confirmed which ones to actually add. Loops createPlace
+// so every existing validation (boundary containment, zone ownership, type check) and side effect
+// (account provisioning -- REQ: "no duplicated allowed, check by name and geolocation" is enforced
+// client-side before this ever runs, precisely so a bad batch doesn't spam real login accounts) runs
+// exactly the same as a single manual Add-a-place submission. One bad entry in the batch (e.g. a
+// zoneId that no longer exists by the time this runs) is skipped and reported rather than aborting
+// the rest of the import.
+function bulkImportPlaces(user, p) {
+  var entries = (p && p.places) || [];
+  if (!entries.length) return { created: [], createdCount: 0, failed: [] };
+  var created = [];
+  var failed = [];
+  entries.forEach(function (entry) {
+    try {
+      var payload = Object.assign({}, entry, { venueId: p.venueId, eventId: p.eventId });
+      var res = createPlace(user, payload);
+      created.push(res.place);
+    } catch (e) {
+      failed.push({ name: entry.name, reason: (e && e.message) || 'Failed to create' });
+    }
+  });
+  if (created.length) audit(user.id, 'BULK_IMPORT_PLACES', 'Places', '', { count: created.length, venueId: p.venueId, eventId: p.eventId });
+  return { created: created, createdCount: created.length, failed: failed };
+}
+
 // REQ: "one place can have more than one account" -- separate morning/afternoon shift staff, each
 // able to respond to risk logging independently. Always the same role/type as the place itself
 // (there's no way to pick a different one here) so the "vendor place -> vendor account" rule holds
@@ -165,6 +194,69 @@ function getPlaceAccountCredentials(user, p) {
   var existingToken = findWhere('QuickLoginTokens', function (t) { return t.userId === account.id; })[0];
   var quickLoginToken = existingToken ? existingToken.token : mintQuickLoginToken_(account.id);
   return { id: account.id, name: account.name, email: account.email, password: PLACE_ACCOUNT_DEFAULT_PASSWORD, role: account.role, quickLoginToken: quickLoginToken };
+}
+
+// REQ: "allow to edit a place." Same validation as createPlace (type, zone ownership, boundary
+// containment) but patches the existing row instead of inserting one, and never re-provisions an
+// account -- editing a place must not spam a second login for the same physical spot. name/zoneId/
+// location/lat/lng are also pushed onto every linked account's Participant row (place.accountIds),
+// same "shared physical-spot fields propagate to every sibling account" rule updateParticipant
+// (Participants.gs) uses -- those Participant rows were only ever a snapshot taken at creation time
+// (provisionPlaceAccount_), so without this an edited Place would drift out of sync with what the
+// Participants tab / live inspection map shows for the same spot.
+function updatePlace(user, p) {
+  var place = getById('Places', p.placeId);
+  if (!place) throw new HululError('NOT_FOUND', 'Place not found');
+  var venue = getById('Venues', place.venueId);
+  if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
+  var event = place.eventId ? getById('Events', place.eventId) : null;
+  assertCanManagePlace_(user, venue, event);
+
+  var name = p.name !== undefined ? String(p.name).trim() : place.name;
+  if (!name) throw new HululError('BAD_REQUEST', 'name is required');
+  var type = p.type !== undefined ? p.type : place.type;
+  if (PLACE_TYPES.indexOf(type) === -1) throw new HululError('BAD_REQUEST', 'Invalid place type');
+
+  var zoneId = p.zoneId !== undefined ? p.zoneId : place.zoneId;
+  if (zoneId && zoneId !== 'ALL') {
+    var zoneIds = String(zoneId).split(',').filter(Boolean);
+    if (zoneIds.length > 1 && type !== 'Operator') {
+      throw new HululError('BAD_REQUEST', 'Only Operators can be assigned to more than one zone');
+    }
+    zoneIds.forEach(function (zid) {
+      var zone = getById('Zones', zid);
+      if (!zone || zone.venueId !== place.venueId) throw new HululError('BAD_REQUEST', 'zoneId must belong to this venue');
+    });
+  }
+
+  var lat = place.lat, lng = place.lng;
+  if (p.lat !== undefined || p.lng !== undefined) {
+    if (p.lat === '' || p.lng === '' || p.lat === undefined || p.lng === undefined) {
+      lat = ''; lng = '';
+    } else {
+      lat = Number(p.lat); lng = Number(p.lng);
+      if (isNaN(lat) || isNaN(lng)) throw new HululError('BAD_REQUEST', 'lat/lng must be numbers');
+      var boundary = parseBoundary_(venue.boundary);
+      if (boundary && !pointInPolygon_(lat, lng, boundary)) {
+        throw new HululError('BAD_REQUEST', 'This spot is outside the venue boundary.');
+      }
+    }
+  }
+
+  var location = p.location !== undefined ? p.location : place.location;
+
+  updateRow('Places', place.id, { name: name, type: type, zoneId: zoneId || '', location: location || '', lat: lat, lng: lng });
+
+  var accountIds = place.accountIds ? String(place.accountIds).split(',').filter(Boolean) : [];
+  if (accountIds.length) {
+    var sharedPatch = { name: name, zoneId: zoneId || '', location: location || '', lat: lat, lng: lng };
+    getAll('Participants').forEach(function (pt) {
+      if (accountIds.indexOf(pt.userId) !== -1) updateRow('Participants', pt.id, sharedPatch);
+    });
+  }
+
+  audit(user.id, 'UPDATE_PLACE', 'Places', place.id, { name: name, type: type });
+  return { place: getById('Places', place.id) };
 }
 
 function deletePlace(user, p) {

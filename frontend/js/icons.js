@@ -41,6 +41,7 @@ window.ICON_DEFAULTS = {
   satellite_toggle: '🛰️', map_toggle: '🗺️', open_calendar: '📅', record_results: '📝',
   export_csv: '⬇', logout: '↩', capture_photo: '📷',
   map_fullscreen_enter: '⤢', map_fullscreen_exit: '⤡', detect_places: '🔎',
+  page_prev: '←', page_next: '→',
   // Status & badges
   mark_read: '✅', coverage_complete: '✅', locked_indicator: '🔒', gps_locating: '📡',
   warning_banner: '⚠️', file_upload_done: '✓', file_upload_failed: '✕', active_selected: '✓',
@@ -70,7 +71,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'record_results', label: 'Record inspection results' }, { key: 'export_csv', label: 'Export CSV' },
     { key: 'logout', label: 'Log out' }, { key: 'capture_photo', label: 'Take photo / video (evidence)' },
     { key: 'map_fullscreen_enter', label: 'Expand map to full screen' }, { key: 'map_fullscreen_exit', label: 'Exit full screen map' },
-    { key: 'detect_places', label: 'Detect places in boundary' }
+    { key: 'detect_places', label: 'Detect places in boundary' },
+    { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' }
   ] },
   { group: 'Status & Badges', keys: [
     { key: 'mark_read', label: 'Mark notification read' }, { key: 'coverage_complete', label: 'Coverage complete banner' },

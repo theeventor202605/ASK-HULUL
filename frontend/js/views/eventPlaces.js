@@ -192,41 +192,84 @@ async function tabParticipantDisciplines(content, eventId, detail) {
     if (!ids.length) return '—';
     return ids.map(function (id) { return disciplinesById[id] ? esc(disciplinesById[id].name) : id; }).join(', ');
   }
+  function hasDiscipline_(pt) { return !!(pt.disciplineIds && String(pt.disciplineIds).split(',').filter(Boolean).length); }
+
+  // REQ: "add a button to toggle between assigned and unassigned participants." Kept as a plain
+  // closure variable (not module-level) since a fresh one of these is created every time this tab is
+  // rendered -- no state needs to survive a re-visit, and a module-level var would leak the last venue's
+  // filter choice into the next one.
+  var disciplineFilterMode_ = 'all'; // 'all' | 'assigned' | 'unassigned'
+  function filteredParticipants_() {
+    if (disciplineFilterMode_ === 'assigned') return participants.filter(hasDiscipline_);
+    if (disciplineFilterMode_ === 'unassigned') return participants.filter(function (pt) { return !hasDiscipline_(pt); });
+    return participants;
+  }
 
   content.innerHTML =
     '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">Which ' + esc(Term('discipline_plural').toLowerCase()) + ' each ' + esc(Term('participant').toLowerCase()) +
       ' must be inspected against — includes both this event\'s own ' + esc(Term('participant_plural').toLowerCase()) + ' and any permanent ones at this ' + esc(Term('venue').toLowerCase()) + '.</div>' +
-    (canManageDisciplines
-      ? '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
-          '<span class="muted" style="font-size:12.5px;" id="participantSelCount">Select one or more ' + esc(Term('participant_plural').toLowerCase()) + ' below to see them on the map and apply ' + esc(Term('discipline_plural').toLowerCase()) + '.</span>' +
-          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>Apply ' + esc(Term('discipline_plural').toLowerCase()) + '…</button>' +
-        '</div></div>'
-      : '') +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+      '<div class="btn-group" id="disciplineFilterToggle" style="display:flex;gap:6px;">' +
+        '<button type="button" class="btn btn-sm btn-primary" data-filter-mode="all">All</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="assigned">Assigned</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="unassigned">Unassigned</button>' +
+      '</div>' +
+      (canManageDisciplines
+        ? '<span class="muted" style="font-size:12.5px;" id="participantSelCount">Select one or more ' + esc(Term('participant_plural').toLowerCase()) + ' below to see them on the map and apply ' + esc(Term('discipline_plural').toLowerCase()) + '.</span>' +
+          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>Apply ' + esc(Term('discipline_plural').toLowerCase()) + '…</button>'
+        : '') +
+    '</div></div>' +
     '<div class="card"><div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
       '<div style="flex:1 1 320px;min-width:280px;">' +
         '<div id="participantDisciplineMap" style="height:460px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
       '</div>' +
-      '<div style="flex:2 1 480px;min-width:320px;">' + UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
-        { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
-        { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, 'All zones') },
-        { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
-      ]), participants, {}) + '</div>' +
+      '<div style="flex:2 1 480px;min-width:320px;" id="participantDisciplineTableWrap"></div>' +
     '</div></div>';
 
-  initParticipantDisciplineMap_(venue, zones, participants);
-
-  if (!canManageDisciplines) return;
+  var tableWrapEl = document.getElementById('participantDisciplineTableWrap');
   var selCountEl = document.getElementById('participantSelCount');
   var applyBtn = document.getElementById('applyDisciplinesBtn');
+
   function selectedIds_() { return Array.from(content.querySelectorAll('.participant-select:checked')).map(function (cb) { return cb.value; }); }
   function refreshSelection() {
     var ids = selectedIds_();
-    applyBtn.disabled = ids.length === 0;
-    selCountEl.textContent = ids.length ? (ids.length + ' selected') : ('Select one or more ' + Term('participant_plural').toLowerCase() + ' below to see them on the map and apply ' + Term('discipline_plural').toLowerCase() + '.');
+    if (applyBtn) applyBtn.disabled = ids.length === 0;
+    if (selCountEl) selCountEl.textContent = ids.length ? (ids.length + ' selected') : ('Select one or more ' + Term('participant_plural').toLowerCase() + ' below to see them on the map and apply ' + Term('discipline_plural').toLowerCase() + '.');
     // REQ: "When selecting a participant(s) show location on map."
     highlightParticipantsOnMap_(ids);
   }
-  content.querySelectorAll('.participant-select').forEach(function (cb) { cb.onchange = refreshSelection; });
+
+  // Rebuilds just the table + map from the current filter mode. Re-rendering into their own
+  // sub-containers (rather than the whole tab) keeps the toggle buttons and header bar stable, and
+  // lets a fresh UI.table() call re-apply pagination/filter/sort/export from scratch each time --
+  // the generic MutationObserver in ui.js picks up the new .table-wrap automatically.
+  function renderList_() {
+    var visible = filteredParticipants_();
+    tableWrapEl.innerHTML = UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
+      { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
+      { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, 'All zones') },
+      { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
+    ]), visible, {});
+    tableWrapEl.querySelectorAll('.participant-select').forEach(function (cb) { cb.onchange = refreshSelection; });
+    destroyParticipantDisciplineMap_();
+    initParticipantDisciplineMap_(venue, zones, visible);
+    refreshSelection(); // selection is scoped to whatever's currently rendered, so it resets on every re-filter
+  }
+  renderList_();
+
+  content.querySelectorAll('#disciplineFilterToggle [data-filter-mode]').forEach(function (btn) {
+    btn.onclick = function () {
+      disciplineFilterMode_ = btn.getAttribute('data-filter-mode');
+      content.querySelectorAll('#disciplineFilterToggle [data-filter-mode]').forEach(function (b) {
+        var isActive = b === btn;
+        b.classList.toggle('btn-primary', isActive);
+        b.classList.toggle('btn-secondary', !isActive);
+      });
+      renderList_();
+    };
+  });
+
+  if (!canManageDisciplines) return;
   applyBtn.onclick = function () {
     var participantIds = selectedIds_();
     if (!participantIds.length) return;

@@ -66,7 +66,13 @@ var SCHEMA = {
   InspectorQualifications:['id','userId','disciplineId'],
   InspectorAssignments:   ['id','eventId','disciplineId','inspectorId','assignedBy','assignedAt','zoneIds'],
   ChecklistItems:         ['id','checklistType','category','description','defaultRisk','defaultWindowHours','phase','status'],
-  Inspections:            ['id','eventId','disciplineId','inspectorId','checklistType','scheduledAt','phase','status'],
+  // lastLat/lastLng/lastSeenAt appended at the end (established pattern, see Venues above) -- REQ:
+  // "Inspectors live location as they start inspections. This applies to all maps." Written by
+  // pingInspectionLocation (Inspections.gs), called periodically from the inspector's own device
+  // while their live-tracking view (startLiveInspectionTracking_, eventDetail.js) is open. Blank on
+  // every pre-existing row and on any inspection an inspector hasn't opened yet, which
+  // listActiveInspectorLocations correctly treats as "nothing to show" rather than a stale (0,0) dot.
+  Inspections:            ['id','eventId','disciplineId','inspectorId','checklistType','scheduledAt','phase','status','lastLat','lastLng','lastSeenAt'],
   // participantId appended at the end (established pattern, see Venues above) -- pre-existing
   // results from before per-participant tracking existed read back with participantId === '',
   // which correctly counts toward no one's completion rather than silently miscounting.

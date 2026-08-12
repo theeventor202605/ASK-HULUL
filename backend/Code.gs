@@ -118,6 +118,8 @@ var ROUTES = {
   // Places (PLC)
   listPlaces: function (u, p) { return listPlaces(u, p); },
   createPlace: function (u, p) { return createPlace(u, p); },
+  updatePlace: function (u, p) { return updatePlace(u, p); },
+  bulkImportPlaces: function (u, p) { return bulkImportPlaces(u, p); },
   addPlaceAccount: function (u, p) { return addPlaceAccount(u, p); },
   getPlaceAccountCredentials: function (u, p) { return getPlaceAccountCredentials(u, p); },
   deletePlace: function (u, p) { return deletePlace(u, p); },
@@ -174,6 +176,8 @@ var ROUTES = {
   recordInspectionResults: function (u, p) { return recordInspectionResults(u, p); },
   listInspectionParticipants: function (u, p) { return listInspectionParticipants(u, p); },
   uploadEvidence: function (u, p) { return uploadEvidence(u, p); },
+  pingInspectionLocation: function (u, p) { return pingInspectionLocation(u, p); },
+  listActiveInspectorLocations: function (u, p) { return listActiveInspectorLocations(u, p); },
 
   // Findings (NCF) -- full Risk Logging workflow (Open -> Viewed -> Submitted -> InReview -> ...)
   listFindings: function (u, p) { return listFindings(u, p); },

@@ -210,8 +210,33 @@ window.UI = {
       '</div>';
     }
 
+    // REQ: "lists may become very long apply the x/page dropdown ... automatically appear to lists
+    // containing more than 10 items" -- gated purely on row count (not opts.toolbar), same "every
+    // table gets this for free" philosophy as the filter/sort/export above. See
+    // hululApplyPagination_ (below) for how this interacts with filtering/sorting: pagination never
+    // touches which rows MATCH, only which of the matching rows are currently on-screen.
+    var paginate = rows.length > HULUL_TABLE_DEFAULT_PAGE_SIZE_;
+    var pagerHtml = paginate
+      ? '<div class="table-pager">' +
+          '<div class="table-pager-size">' +
+            '<span class="muted" style="font-size:12px;">Show</span>' +
+            '<select class="table-page-size-select field-input">' +
+              HULUL_TABLE_PAGE_SIZE_OPTIONS_.map(function (n) {
+                return '<option value="' + n + '"' + (n === HULUL_TABLE_DEFAULT_PAGE_SIZE_ ? ' selected' : '') + '>' + n + '</option>';
+              }).join('') +
+            '</select>' +
+            '<span class="muted" style="font-size:12px;">per page</span>' +
+          '</div>' +
+          '<div class="table-pager-nav">' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-prev" title="Previous page">' + ICON('page_prev') + '</button>' +
+            '<span class="table-pager-indicator muted" style="font-size:12px;"></span>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-next" title="Next page">' + ICON('page_next') + '</button>' +
+          '</div>' +
+        '</div>'
+      : '';
+
     return '<div class="table-wrap"' + wrapAttrs + '>' + toolbarHtml +
-      '<table class="data-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      '<table class="data-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>' + pagerHtml + '</div>';
   },
 
   // String-vs-numeric-aware comparator used by the sort-on-header-click handler below: numbers
@@ -555,16 +580,71 @@ document.addEventListener('click', function (e) {
   }, 0);
 }, true);
 
-// UI.table's own filter/sort/export wiring, delegated once here (same pattern as the click-guard
-// above) so every table built by UI.table -- present and future, anywhere in the app -- gets this
-// for free. Sorting/filtering only ever move or hide the rows already in the DOM; they never
-// regenerate a row's HTML, so any per-row button handlers a view wired up right after rendering
-// stay intact.
+// UI.table's own filter/sort/export/pagination wiring, delegated once here (same pattern as the
+// click-guard above) so every table built by UI.table -- present and future, anywhere in the app --
+// gets this for free. Sorting/filtering/paging only ever move or hide the rows already in the DOM;
+// they never regenerate a row's HTML, so any per-row button handlers a view wired up right after
+// rendering stay intact.
+var HULUL_TABLE_DEFAULT_PAGE_SIZE_ = 10;
+var HULUL_TABLE_PAGE_SIZE_OPTIONS_ = [10, 25, 50, 100];
+
 function hululTableRows_(tbody) {
   return Array.prototype.slice.call(tbody.querySelectorAll('tr')).filter(function (r) {
     return !r.classList.contains('table-empty-row') && !r.classList.contains('table-filter-empty-row');
   });
 }
+
+// A row can be hidden for two independent reasons -- it doesn't match the filter box, or it's on a
+// different page -- tracked separately (data-hulul-filtered-out / row membership in the current page
+// slice) so neither one has to know about the other; final visibility is just "hidden by either."
+// Export (below) deliberately reads data-hulul-filtered-out instead of style.display so exporting
+// isn't silently limited to whatever happens to be the current page.
+function hululApplyPagination_(wrap) {
+  var pager = wrap.querySelector('.table-pager');
+  if (!pager) return; // rows.length was <= HULUL_TABLE_DEFAULT_PAGE_SIZE_ at render time -- no pager, nothing to do
+  var tbody = wrap.querySelector('tbody');
+  if (!tbody) return;
+  var pageSize = Number(wrap.dataset.hululPageSize || HULUL_TABLE_DEFAULT_PAGE_SIZE_);
+  var matching = hululTableRows_(tbody).filter(function (r) { return r.dataset.hululFilteredOut !== '1'; });
+  var totalPages = Math.max(1, Math.ceil(matching.length / pageSize));
+  var page = Math.min(Math.max(1, Number(wrap.dataset.hululPage || 1)), totalPages);
+  wrap.dataset.hululPage = String(page);
+  var start = (page - 1) * pageSize, end = start + pageSize;
+  matching.forEach(function (r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+
+  var indicator = pager.querySelector('.table-pager-indicator');
+  if (indicator) indicator.textContent = matching.length ? ('Page ' + page + ' of ' + totalPages) : '';
+  var prevBtn = pager.querySelector('.table-page-prev');
+  var nextBtn = pager.querySelector('.table-page-next');
+  if (prevBtn) prevBtn.disabled = page <= 1;
+  if (nextBtn) nextBtn.disabled = page >= totalPages;
+}
+
+// Sets initial pagination state the moment a paginated table-wrap first appears in the DOM.
+// UI.table() only returns an HTML string -- callers just splice it into innerHTML themselves (often
+// interleaved with a lot of other markup for the rest of the page), so there's no single "this
+// table just finished rendering" call every view already makes that an init step could hook into.
+// A MutationObserver on the whole document catches it generically instead. data-hulul-paginated
+// guards against re-initializing (and silently resetting back to page 1) on some later, unrelated
+// mutation inside the same subtree.
+document.addEventListener('DOMContentLoaded', function () {}); // no-op; keeps intent obvious next to the observer below
+var hululPagerObserver_ = new MutationObserver(function (mutations) {
+  mutations.forEach(function (m) {
+    Array.prototype.forEach.call(m.addedNodes || [], function (node) {
+      if (node.nodeType !== 1) return;
+      var wraps = node.classList && node.classList.contains('table-wrap') ? [node]
+        : (node.querySelectorAll ? Array.prototype.slice.call(node.querySelectorAll('.table-wrap')) : []);
+      wraps.forEach(function (wrap) {
+        if (wrap.dataset.hululPaginated === '1' || !wrap.querySelector('.table-pager')) return;
+        wrap.dataset.hululPaginated = '1';
+        wrap.dataset.hululPage = '1';
+        wrap.dataset.hululPageSize = wrap.dataset.hululPageSize || String(HULUL_TABLE_DEFAULT_PAGE_SIZE_);
+        hululApplyPagination_(wrap);
+      });
+    });
+  });
+});
+hululPagerObserver_.observe(document.body, { childList: true, subtree: true });
 
 // Filter box: substring match (case-insensitive) against each row's precomputed data-search
 // attribute (built from every exportable column's plain-text value at render time).
@@ -582,11 +662,17 @@ document.addEventListener('input', function (e) {
     var visible = 0;
     rows.forEach(function (r) {
       var match = !q || (r.getAttribute('data-search') || '').indexOf(q) !== -1;
-      r.style.display = match ? '' : 'none';
+      r.dataset.hululFilteredOut = match ? '' : '1';
       if (match) visible++;
     });
     var filterEmptyRow = tbody.querySelector('.table-filter-empty-row');
     if (filterEmptyRow) filterEmptyRow.style.display = (q && visible === 0 && rows.length > 0) ? '' : 'none';
+    if (wrap.querySelector('.table-pager')) {
+      wrap.dataset.hululPage = '1'; // the filtered result set changed -- back to page 1
+      hululApplyPagination_(wrap);
+    } else {
+      rows.forEach(function (r) { r.style.display = r.dataset.hululFilteredOut === '1' ? 'none' : ''; });
+    }
   }, 150);
 }, true);
 
@@ -613,22 +699,49 @@ document.addEventListener('click', function (e) {
       return mult * UI.compareValues(a.getAttribute('data-sv-' + idx), b.getAttribute('data-sv-' + idx));
     });
     rows.forEach(function (r) { tbody.appendChild(r); });
+    var wrap = table.closest('.table-wrap');
+    if (wrap && wrap.querySelector('.table-pager')) {
+      wrap.dataset.hululPage = '1'; // the row order changed -- "page 2" would now show different rows than before
+      hululApplyPagination_(wrap);
+    }
     return;
   }
-  // Export CSV -- only the currently-visible (post-filter) rows, in their currently-sorted order.
+  // Export CSV -- every filter-matching row (not just the current page), in their currently-sorted order.
   var exportBtn = e.target.closest ? e.target.closest('.table-export-btn') : null;
   if (exportBtn) {
-    var wrap = exportBtn.closest('.table-wrap');
-    if (!wrap) return;
-    var headers = JSON.parse(wrap.getAttribute('data-export-headers') || '[]');
-    var colIdxs = (wrap.getAttribute('data-export-cols') || '').split(',').filter(function (s) { return s !== ''; }).map(Number);
-    var tbody = wrap.querySelector('tbody');
-    if (!tbody) return;
-    var rows = hululTableRows_(tbody).filter(function (r) { return r.style.display !== 'none'; });
+    var exportWrap = exportBtn.closest('.table-wrap');
+    if (!exportWrap) return;
+    var headers = JSON.parse(exportWrap.getAttribute('data-export-headers') || '[]');
+    var colIdxs = (exportWrap.getAttribute('data-export-cols') || '').split(',').filter(function (s) { return s !== ''; }).map(Number);
+    var exportTbody = exportWrap.querySelector('tbody');
+    if (!exportTbody) return;
+    var exportRows = hululTableRows_(exportTbody).filter(function (r) { return r.dataset.hululFilteredOut !== '1'; });
     var out = [headers];
-    rows.forEach(function (r) { out.push(colIdxs.map(function (i) { return r.getAttribute('data-tx-' + i) || ''; })); });
-    UI.downloadCsv(wrap.getAttribute('data-export-name') || 'export.csv', out);
+    exportRows.forEach(function (r) { out.push(colIdxs.map(function (i) { return r.getAttribute('data-tx-' + i) || ''; })); });
+    UI.downloadCsv(exportWrap.getAttribute('data-export-name') || 'export.csv', out);
+    return;
   }
+  // Pager prev/next.
+  var prevBtn = e.target.closest ? e.target.closest('.table-page-prev') : null;
+  var nextBtn = e.target.closest ? e.target.closest('.table-page-next') : null;
+  if (prevBtn || nextBtn) {
+    var pagerWrap = (prevBtn || nextBtn).closest('.table-wrap');
+    if (!pagerWrap) return;
+    var curPage = Number(pagerWrap.dataset.hululPage || 1);
+    pagerWrap.dataset.hululPage = String(curPage + (prevBtn ? -1 : 1));
+    hululApplyPagination_(pagerWrap);
+  }
+}, true);
+
+// Pager page-size dropdown.
+document.addEventListener('change', function (e) {
+  var select = e.target.closest ? e.target.closest('.table-page-size-select') : null;
+  if (!select) return;
+  var wrap = select.closest('.table-wrap');
+  if (!wrap) return;
+  wrap.dataset.hululPageSize = select.value;
+  wrap.dataset.hululPage = '1';
+  hululApplyPagination_(wrap);
 }, true);
 
 function esc(s) {

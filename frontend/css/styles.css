@@ -283,6 +283,13 @@ table.data-table th.th-sortable:hover{ color:var(--accent-600); }
 .th-sort-arrow{ display:inline-block; width:9px; font-size:9px; }
 table.data-table td{ padding:12px 14px; border-bottom:1px solid #f0f1f6; vertical-align:middle; }
 table.data-table tr:hover td{ background:#fafbff; }
+/* REQ: "lists may become very long apply the x/page dropdown ... automatically appear to lists
+   containing more than 10 items" (UI.table's own pagination, ui.js). */
+.table-pager{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding-top:10px; margin-top:2px; border-top:1px solid var(--border); }
+.table-pager-size{ display:flex; align-items:center; gap:6px; }
+.table-pager-size select{ width:auto; padding:5px 8px; font-size:12.5px; }
+.table-pager-nav{ display:flex; align-items:center; gap:8px; }
+.table-pager-indicator{ min-width:88px; text-align:center; }
 
 /* ---------- Badges ---------- */
 .badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }

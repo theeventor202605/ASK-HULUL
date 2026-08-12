@@ -342,9 +342,18 @@ function getEventDetail(user, eventId) {
   var subEvents = findWhere('SubEvents', function (s) { return s.eventId === eventId; });
   var findings = findWhere('Findings', function (f) { return f.eventId === eventId; });
   var project = event.projectId ? getById('Projects', event.projectId) : null;
+  // REQ (Overview tab bug report): "EMC / Inspection Company showing as ORG-0003 / ORG-0005; name is
+  // expected not ID" and "Event Manager showing as -". event.emcId/inspectionCoId/eventManagerId are
+  // just foreign keys (Organizations/Users row ids) -- the frontend was rendering the raw id because
+  // nothing had ever resolved them to a display name, unlike project just above (which already went
+  // through this same getById-and-attach treatment). Resolved once here, same place, same pattern.
+  var emc = event.emcId ? getById('Organizations', event.emcId) : null;
+  var inspectionCo = event.inspectionCoId ? getById('Organizations', event.inspectionCoId) : null;
+  var eventManager = event.eventManagerId ? getById('Users', event.eventManagerId) : null;
   var buckets = findingKpiBuckets_(findings);
   return {
     event: event, venue: venue, zones: zones, subEvents: subEvents, project: project,
+    emc: emc, inspectionCo: inspectionCo, eventManager: eventManager,
     kpi: {
       totalLogs: buckets.total, open: buckets.open, inReview: buckets.inReview,
       resolved: buckets.resolved, reopened: buckets.reopen, rejected: buckets.rejected

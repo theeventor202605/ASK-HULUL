@@ -343,6 +343,84 @@ function listInspectionParticipants(user, p) {
   });
 }
 
+// REQ: "Inspectors live location as they start inspections. This applies to all maps." Called from
+// the inspector's own device roughly every 20s while their live-tracking view is open
+// (startLiveInspectionTracking_, eventDetail.js) -- deliberately NOT on every single GPS tick
+// (watchPosition can fire much more often than that) to keep write volume against the Sheets-backed
+// store reasonable. Only the assigned inspector may ping their own inspection. No audit() entry --
+// this is a high-frequency telemetry ping, not a user action worth an audit trail row (every other
+// mutation in this file does audit()).
+function pingInspectionLocation(user, p) {
+  var inspection = getById('Inspections', p.inspectionId);
+  if (!inspection) throw new HululError('NOT_FOUND', 'Inspection not found');
+  if (inspection.inspectorId !== user.id) throw new HululError('FORBIDDEN', 'Not your inspection');
+  if (p.lat === undefined || p.lat === '' || p.lat === null || p.lng === undefined || p.lng === '' || p.lng === null) {
+    throw new HululError('BAD_REQUEST', 'lat/lng are required');
+  }
+  updateRow('Inspections', p.inspectionId, { lastLat: p.lat, lastLng: p.lng, lastSeenAt: nowIso_() });
+  return { ok: true };
+}
+
+// "Currently live" freshness window -- an inspector who closed the tracking page or lost connectivity
+// stops pinging, and their dot should disappear from other users' maps again rather than sit stale
+// forever. 2 minutes comfortably survives the odd missed ping (watchPosition/network hiccups)
+// without leaving a long-gone inspector's dot on screen.
+var INSPECTOR_LIVE_LOCATION_FRESHNESS_MS_ = 2 * 60 * 1000;
+
+// Returns every inspector currently pinging a fresh location against an Inspection at the given
+// venue (p.venueId) or event (p.eventId) -- exactly one of the two is expected; venue-level callers
+// (venueMap/placeMap, which aren't scoped to one Event) pass venueId and get every one of that
+// venue's Events' live inspectors, event-level callers (zoneMap/eventPlaceMap/eventPlacesMap) pass
+// eventId directly. REQ: "Only within venue's boundary" -- a ping that's fallen outside the venue's
+// own drawn boundary (pointInPolygon_, same containment test createPlace uses) is dropped rather than
+// shown, e.g. GPS drift right at the edge or an inspector who's stepped off-site; venues with no
+// boundary drawn yet are unrestricted, same fallback used everywhere else a venue boundary is checked.
+// Open to any authenticated user, same as listPlaces/listVenues -- which maps a user can even reach
+// already gates who sees this.
+function listActiveInspectorLocations(user, p) {
+  var cutoff = Date.now() - INSPECTOR_LIVE_LOCATION_FRESHNESS_MS_;
+  var events;
+  if (p.eventId) {
+    var singleEvent = getById('Events', p.eventId);
+    events = singleEvent ? [singleEvent] : [];
+  } else if (p.venueId) {
+    events = findWhere('Events', function (e) { return e.venueId === p.venueId; });
+  } else {
+    throw new HululError('BAD_REQUEST', 'venueId or eventId is required');
+  }
+  if (!events.length) return [];
+  var eventsById = {};
+  var venueBoundaryByVenueId = {};
+  events.forEach(function (e) {
+    eventsById[e.id] = e;
+    if (e.venueId && venueBoundaryByVenueId[e.venueId] === undefined) {
+      var venue = getById('Venues', e.venueId);
+      venueBoundaryByVenueId[e.venueId] = venue ? parseBoundary_(venue.boundary) : null;
+    }
+  });
+  var eventIds = events.map(function (e) { return e.id; });
+  var usersById = {};
+  getAll('Users').forEach(function (u) { usersById[u.id] = u; });
+
+  return getAll('Inspections').filter(function (insp) {
+    if (eventIds.indexOf(insp.eventId) === -1) return false;
+    if (!insp.lastSeenAt || insp.lastLat === '' || insp.lastLat == null || insp.lastLng === '' || insp.lastLng == null) return false;
+    if (new Date(insp.lastSeenAt).getTime() < cutoff) return false;
+    var event = eventsById[insp.eventId];
+    var boundary = event ? venueBoundaryByVenueId[event.venueId] : null;
+    if (boundary && !pointInPolygon_(Number(insp.lastLat), Number(insp.lastLng), boundary)) return false;
+    return true;
+  }).map(function (insp) {
+    var inspector = usersById[insp.inspectorId];
+    var event = eventsById[insp.eventId];
+    return {
+      inspectionId: insp.id, inspectorId: insp.inspectorId, inspectorName: inspector ? inspector.name : 'Inspector',
+      lat: insp.lastLat, lng: insp.lastLng, lastSeenAt: insp.lastSeenAt,
+      eventId: insp.eventId, eventName: event ? event.name : ''
+    };
+  });
+}
+
 // REQ-INS-07: Inspector views their assigned schedule.
 function listInspections(user, p) {
   var all = getAll('Inspections');
