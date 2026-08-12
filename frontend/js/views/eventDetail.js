@@ -19,6 +19,11 @@ var EVENT_TABS = [
   ['approval', 'tab_approval', function () { return 'Opening Approval'; }],
   ['disciplines', 'tab_disciplines', function () { return Term('discipline_plural') + ' & ' + Term('inspector_plural'); }],
   ['inspections', 'tab_inspections', function () { return Term('inspection_plural') + ' & ' + Term('checklistItem_plural'); }],
+  // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
+  // cool. Only relevant to the same roles who can create a Finding at all (FINDING_ROLE_REVIEWER_,
+  // findings.js -- loads after this file but only called here, never at top level, so the load-order
+  // rule above doesn't apply).
+  ['logPhotos', 'tab_log_photos', function () { return 'Log Photos'; }, function () { return FINDING_ROLE_REVIEWER_.indexOf(HululState.user.role) !== -1; }],
   ['findings', 'tab_findings'],
   ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
   ['participants', 'tab_participants', function () { return Term('participant_plural'); }],
@@ -47,7 +52,7 @@ function eventTabRenderers_() {
   if (!EVENT_TAB_RENDERERS_) {
     EVENT_TAB_RENDERERS_ = {
       overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
-      disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
+      disciplines: tabDisciplines, inspections: tabInspections, logPhotos: tabLogPhotos, findings: tabFindings,
       escalations: tabEscalations, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
     };
@@ -1977,13 +1982,17 @@ var EVIDENCE_MAX_UPLOAD_BYTES_ = 15 * 1024 * 1024; // 15MB -- past this, base64 
   // round-trip to Apps Script is very likely to time out or drop mid-transfer on a mobile
   // connection; fail fast with a clear reason instead of a generic "Network error."
 
-function uploadEvidenceFile_(eventId, itemId, file, pendingFiles) {
+// skipPrepare (optional): true when `file` has already been through EvidenceCapture.prepare() once --
+// REQ (Log Photos tab): photos staged there are captured/watermarked at capture time, then handed off
+// here when "Create Log" is used; running prepare() again would stamp a second set of logos/QR/GPS
+// text on top of the first. Regular camera-capture callers omit this and get the normal behavior.
+function uploadEvidenceFile_(eventId, itemId, file, pendingFiles, skipPrepare) {
   var localId = 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
   var entry = { name: file.name, status: 'preparing', pct: 0, url: '', localId: localId, eventId: eventId };
   pendingFiles[itemId].push(entry);
   renderEvidenceList_(itemId, pendingFiles);
 
-  EvidenceCapture.prepare(file, eventId).then(function (readyFile) {
+  (skipPrepare ? Promise.resolve(file) : EvidenceCapture.prepare(file, eventId)).then(function (readyFile) {
     entry.file = readyFile; // kept for the "Retry now" button below
     if (readyFile.size > EVIDENCE_MAX_UPLOAD_BYTES_) {
       var mb = (readyFile.size / (1024 * 1024)).toFixed(1);

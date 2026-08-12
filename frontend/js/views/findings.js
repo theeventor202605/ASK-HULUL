@@ -214,28 +214,85 @@ async function renderNewFinding(params) {
     e.target.value = '';
   };
 
+  /* ---- Log Photos handoff ----
+   * REQ (Log Photos tab): "'Create Log' will open the Log Finding page and add selected photos and
+   * suggest nearest participant name and all related info." logPhotos.js stages the picked photos +
+   * a suggested participant id on window.HululLogPhotoStaging just before navigating here. The photos
+   * are already fully watermarked (captured through the same EvidenceCapture.prepare() pipeline as
+   * any other evidence, see logPhotos.js) -- uploadEvidenceFile_'s skipPrepare=true (5th arg) avoids
+   * stamping them a second time. Cleared immediately so a later, unstaged visit to this page never
+   * accidentally reuses stale data.
+   */
+  var staged = (window.HululLogPhotoStaging && window.HululLogPhotoStaging.eventId === eventId) ? window.HululLogPhotoStaging : null;
+  window.HululLogPhotoStaging = null;
+  if (staged) {
+    staged.photos.forEach(function (p) {
+      uploadEvidenceFile_(eventId, 'newFinding', p.file, pendingFiles, true);
+      if (p.localId && window.EvidenceCapture) EvidenceCapture.deleteLogPhoto(p.localId);
+    });
+    if (staged.suggestedParticipantId) {
+      var suggested = participants.filter(function (pt) { return pt.id === staged.suggestedParticipantId; })[0];
+      if (suggested) pickParticipant_(suggested);
+    }
+  }
+
+  // REQ: "Log findings while photo is uploading in the background." No longer blocks/errors on
+  // still-uploading evidence -- the finding is created immediately with whatever's already done;
+  // anything still preparing/uploading is watched (attachFindingEvidenceInBackground_ below) and
+  // appended (addFindingEvidence, Findings.gs) the moment each one finishes.
   document.getElementById('createFindingBtn').onclick = async function () {
     if (!selectedParticipant) { UI.toast(Term('participant') + ' is required — search and select one', 'error'); return; }
     var disciplineId = document.getElementById('fDiscipline').value;
     if (!disciplineId) { UI.toast(Term('discipline') + ' is required', 'error'); return; }
     var files = pendingFiles.newFinding || [];
-    if (files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; })) {
-      UI.toast('Evidence is still uploading — please wait for it to finish', 'error'); return;
-    }
-    var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
+    var doneUrls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
+    var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
     try {
       var f = await Api.call('createFinding', {
         eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
         category: document.getElementById('fChecklistType').value,
         riskLevel: document.getElementById('fRisk').value, resolutionWindowHours: Number(document.getElementById('fWindow').value),
-        evidenceUrls: urls
+        evidenceUrls: doneUrls
       });
-      UI.toast(Term('finding') + ' logged', 'success');
+      if (stillUploading) {
+        UI.toast(Term('finding') + ' logged — evidence still uploading, it\'ll attach automatically', 'success');
+        attachFindingEvidenceInBackground_(f.id, files, doneUrls);
+      } else {
+        UI.toast(Term('finding') + ' logged', 'success');
+      }
       destroyFindingLocationMap_();
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;
     } catch (err) { UI.error(err); }
   };
+}
+
+// REQ: "Log findings while photo is uploading in the background." entries is the SAME pendingFiles.
+// newFinding array uploadEvidenceFile_ keeps mutating in place (status/url) as each file's
+// prepare-then-upload pipeline progresses -- polled here rather than given a completion callback so
+// this doesn't have to touch that shared function (also used by the Resolve section further down this
+// file). alreadyAttachedUrls seeds the de-dupe set with whatever createFinding was already given, so a
+// file that finished between "read pendingFiles" and "call createFinding" doesn't get attached twice.
+// Api.uploadWithProgress (api.js) doesn't carry Router's navigation-abort signal, so this keeps
+// running fine even after the user has already navigated to the finding's own page. Note: a file that
+// ends up 'saved-locally' (upload failed -- see uploadEvidenceFile_) is left for EvidenceCapture's own
+// retryPending/'online' sweep, but that sweep has no way to know it belongs to THIS finding, so a
+// failed-then-later-retried upload won't auto-attach here -- an accepted edge case, not silently
+// losing the photo (it's still safely saved to the device), just not auto-linked.
+function attachFindingEvidenceInBackground_(findingId, entries, alreadyAttachedUrls) {
+  var attached = {};
+  (alreadyAttachedUrls || []).forEach(function (u) { attached[u] = true; });
+  var timer = setInterval(function () {
+    var stillPending = false;
+    entries.forEach(function (entry) {
+      if (entry.status === 'uploading' || entry.status === 'preparing') { stillPending = true; return; }
+      if (entry.status === 'done' && entry.url && !attached[entry.url]) {
+        attached[entry.url] = true;
+        Api.call('addFindingEvidence', { findingId: findingId, evidenceUrl: entry.url }).catch(function () {});
+      }
+    });
+    if (!stillPending) clearInterval(timer);
+  }, 1500);
 }
 
 /* ---------------- Log Finding's own live-location map (this device's GPS, not other inspectors') ----

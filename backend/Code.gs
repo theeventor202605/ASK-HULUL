@@ -200,6 +200,7 @@ var ROUTES = {
   listFindings: function (u, p) { return listFindings(u, p); },
   createFinding: function (u, p) { return createFinding(u, p); },
   updateFinding: function (u, p) { return updateFinding(u, p); },
+  addFindingEvidence: function (u, p) { return addFindingEvidence(u, p); },
   viewFinding: function (u, p) { return viewFinding(u, p); },
   resolveFinding: function (u, p) { return resolveFinding(u, p); },
   reviewFindingResolution: function (u, p) { return reviewFindingResolution(u, p); },

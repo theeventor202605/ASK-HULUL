@@ -10,7 +10,8 @@
  * Depends on `fileToBase64` (defined in eventDetail.js) and the global `Api`/`QRCode` -- load this
  * script after both in index.html.
  *
- * Public surface: window.EvidenceCapture = { prepare, saveAndUpload, retryPending, pendingCount }
+ * Public surface: window.EvidenceCapture = { prepare, saveAndUpload, retryPending, pendingCount,
+ * getPosition, saveLogPhoto, listLogPhotos, deleteLogPhoto }
  */
 
 /* ---------------- Local-first durable queue (IndexedDB) ----------------
@@ -19,10 +20,18 @@
  * IndexedDB being unavailable (very old browsers, private-mode restrictions in some browsers) --
  * every function below degrades to "skip local durability, still try the network upload" rather than
  * blocking evidence capture outright.
+ *
+ * Two stores share this DB: EVIDENCE_STORE_ ("pending") is the transient upload-retry safety net
+ * above, keyed to a specific in-flight Finding/Resolution submission. LOG_PHOTOS_STORE_ ("logPhotos")
+ * is a separate, longer-lived local gallery -- REQ (Log Photos tab): "every photo taken in this tab
+ * gets stored locally with geolocation and user id" so an inspector can snap photos in the heat first
+ * and group/log them later from somewhere cool. Every db helper below takes a storeName so both
+ * stores reuse the same open/put/delete/getAll plumbing.
  */
 var EVIDENCE_DB_NAME_ = 'hulul-evidence';
-var EVIDENCE_DB_VERSION_ = 1;
+var EVIDENCE_DB_VERSION_ = 2;
 var EVIDENCE_STORE_ = 'pending';
+var LOG_PHOTOS_STORE_ = 'logPhotos';
 
 function evidenceOpenDb_() {
   return new Promise(function (resolve, reject) {
@@ -31,36 +40,37 @@ function evidenceOpenDb_() {
     req.onupgradeneeded = function () {
       var db = req.result;
       if (!db.objectStoreNames.contains(EVIDENCE_STORE_)) db.createObjectStore(EVIDENCE_STORE_, { keyPath: 'localId' });
+      if (!db.objectStoreNames.contains(LOG_PHOTOS_STORE_)) db.createObjectStore(LOG_PHOTOS_STORE_, { keyPath: 'localId' });
     };
     req.onsuccess = function () { resolve(req.result); };
     req.onerror = function () { reject(req.error || new Error('Could not open local storage')); };
   });
 }
-function evidenceDbPut_(record) {
+function evidenceDbPut_(record, storeName) {
   return evidenceOpenDb_().then(function (db) {
     return new Promise(function (resolve, reject) {
-      var tx = db.transaction(EVIDENCE_STORE_, 'readwrite');
-      tx.objectStore(EVIDENCE_STORE_).put(record);
+      var tx = db.transaction(storeName || EVIDENCE_STORE_, 'readwrite');
+      tx.objectStore(storeName || EVIDENCE_STORE_).put(record);
       tx.oncomplete = function () { resolve(); };
       tx.onerror = function () { reject(tx.error); };
     });
   });
 }
-function evidenceDbDelete_(localId) {
+function evidenceDbDelete_(localId, storeName) {
   return evidenceOpenDb_().then(function (db) {
     return new Promise(function (resolve, reject) {
-      var tx = db.transaction(EVIDENCE_STORE_, 'readwrite');
-      tx.objectStore(EVIDENCE_STORE_).delete(localId);
+      var tx = db.transaction(storeName || EVIDENCE_STORE_, 'readwrite');
+      tx.objectStore(storeName || EVIDENCE_STORE_).delete(localId);
       tx.oncomplete = function () { resolve(); };
       tx.onerror = function () { reject(tx.error); };
     });
   });
 }
-function evidenceDbAll_() {
+function evidenceDbAll_(storeName) {
   return evidenceOpenDb_().then(function (db) {
     return new Promise(function (resolve, reject) {
-      var tx = db.transaction(EVIDENCE_STORE_, 'readonly');
-      var req = tx.objectStore(EVIDENCE_STORE_).getAll();
+      var tx = db.transaction(storeName || EVIDENCE_STORE_, 'readonly');
+      var req = tx.objectStore(storeName || EVIDENCE_STORE_).getAll();
       req.onsuccess = function () { resolve(req.result || []); };
       req.onerror = function () { reject(req.error); };
     });
@@ -322,9 +332,15 @@ window.EvidenceCapture = {
   // branding logos -> composite onto a downscaled JPEG. Videos (and anything that isn't an image)
   // pass through untouched -- a watermark overlay doesn't apply to video the same way, and
   // re-encoding video client-side isn't practical.
-  prepare: function (file, eventId) {
+  // knownPos (optional): a {lat,lng} already fetched by the caller -- Log Photos capture needs the
+  // same fix both for the watermark AND for local grouping metadata, and fetching GPS twice risks two
+  // slightly different readings (device jitter) between "what's stamped on the photo" and "what's
+  // stored for grouping." Pass it through here so both use the exact same fix; omit it and prepare()
+  // fetches its own, as before.
+  prepare: function (file, eventId, knownPos) {
     if (!file.type || file.type.indexOf('image/') !== 0) return Promise.resolve(file);
-    return Promise.all([evidenceGetPosition_(8000), evidenceGetBranding_(eventId), evidenceGetVenueBoundary_(eventId)])
+    var posPromise = knownPos ? Promise.resolve(knownPos) : evidenceGetPosition_(8000);
+    return Promise.all([posPromise, evidenceGetBranding_(eventId), evidenceGetVenueBoundary_(eventId)])
       .then(function (r) {
         var pos = r[0], branding = r[1] || {}, boundary = r[2];
         // REQ: "Any photos taken outside boundaries should be marked." Only a definite "yes, outside"
@@ -386,6 +402,52 @@ window.EvidenceCapture = {
     return evidenceDbAll_().then(function (all) {
       return eventId ? all.filter(function (r) { return r.eventId === eventId; }).length : all.length;
     });
+  },
+
+  // Exposes the same GPS fetch prepare() uses internally, so a caller that needs the fix for its own
+  // purposes (Log Photos: grouping metadata) can grab it once and hand it back into prepare() via
+  // knownPos above, instead of duplicating the geolocation logic.
+  getPosition: function (timeoutMs) {
+    return evidenceGetPosition_(timeoutMs || 8000);
+  },
+
+  /* ---------------- Log Photos local gallery ----------------
+   * REQ: "In Saudi Arabia temperature is high in the morning, and inspectors would prefer taking
+   * photos of findings first then going to a cool place and adding the logs... every photo taken in
+   * this tab gets stored locally with geolocation and user id." These photos are ALREADY fully
+   * watermarked (via prepare(), same as any other evidence capture) by the time they're saved here --
+   * this store is pure local staging, never uploaded on its own. A photo leaves this store only when
+   * "Create Log" hands it to the New Finding page, which uploads it through the normal evidence
+   * pipeline (see findings.js/eventDetail.js, uploadEvidenceFile_ with skipPrepare=true so it isn't
+   * watermarked a second time) and then deletes the local record.
+   */
+  saveLogPhoto: function (file, eventId, meta) {
+    var localId = 'lp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    var record = {
+      localId: localId, eventId: eventId, userId: (meta && meta.userId) || '',
+      fileName: file.name, mimeType: file.type, blob: file,
+      lat: (meta && meta.lat != null) ? meta.lat : null, lng: (meta && meta.lng != null) ? meta.lng : null,
+      capturedAt: Date.now()
+    };
+    return evidenceDbPut_(record, LOG_PHOTOS_STORE_).then(function () { return record; });
+  },
+
+  // Scoped to eventId and (by default) the current user -- IndexedDB is already device-local, but
+  // filtering by userId too guards against a shared/handed-down device where a different inspector
+  // was previously logged in and left photos behind. Pass includeAllUsers=true to bypass that (not
+  // currently used, kept for flexibility).
+  listLogPhotos: function (eventId, userId, includeAllUsers) {
+    return evidenceDbAll_(LOG_PHOTOS_STORE_).then(function (all) {
+      return all.filter(function (r) {
+        if (eventId && r.eventId !== eventId) return false;
+        if (!includeAllUsers && userId && r.userId !== userId) return false;
+        return true;
+      });
+    });
+  },
+
+  deleteLogPhoto: function (localId) {
+    return evidenceDbDelete_(localId, LOG_PHOTOS_STORE_).catch(function () {});
   }
 };
 

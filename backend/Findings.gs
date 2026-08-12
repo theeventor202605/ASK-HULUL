@@ -118,6 +118,24 @@ function updateFinding(user, p) {
   return updated;
 }
 
+// REQ: "Log findings while photo is uploading in the background." createFinding no longer waits for
+// every evidence file to finish uploading before the frontend submits -- it's called immediately with
+// whatever's already done, and each remaining file calls this once its own upload finishes (see
+// attachFindingEvidenceInBackground_, findings.js) to append itself onto the now-already-created
+// Finding. Append-only and de-duped (a retried/duplicate call with the same URL is a harmless no-op)
+// -- never replaces the existing list, unlike updateFinding's other patchable fields.
+function addFindingEvidence(user, p) {
+  var finding = getById('Findings', p.findingId);
+  if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
+  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  if (!p.evidenceUrl) throw new HululError('BAD_REQUEST', 'evidenceUrl is required');
+  var urls = finding.evidenceUrls ? String(finding.evidenceUrls).split(',').filter(Boolean) : [];
+  if (urls.indexOf(p.evidenceUrl) === -1) urls.push(p.evidenceUrl);
+  var updated = updateRow('Findings', p.findingId, { evidenceUrls: urls.join(',') });
+  audit(user.id, 'ADD_FINDING_EVIDENCE', 'Findings', p.findingId, {});
+  return updated;
+}
+
 // Fetches one finding for its detail page, auto-advancing status on view exactly at the two points
 // the process flow calls for:
 //  - a Participant's first open of an Open finding -> Viewed
