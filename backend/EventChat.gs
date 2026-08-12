@@ -62,7 +62,11 @@ function listEventChatMessages(user, p) {
         .map(function (id) {
           var l = logsById[id];
           return l ? { id: id, action: l.action, targetType: l.targetType, timestamp: l.timestamp } : { id: id, action: 'Unknown', targetType: '', timestamp: '' };
-        })
+        }),
+      // REQ: "a screenshot will be captured and added as large thumbnail image." One message can
+      // carry more than one (# can be triggered again before Send), same comma-joined-ids convention
+      // as everything else on this row.
+      screenshotUrls: m.screenshotUrls ? m.screenshotUrls.split(',').filter(Boolean) : []
     };
   });
 }
@@ -78,11 +82,12 @@ function postEventChatMessage(user, p) {
   var mentionedUserIds = (p.mentionedUserIds || []).filter(Boolean);
   var mentionedParticipantIds = (p.mentionedParticipantIds || []).filter(Boolean);
   var logRefIds = (p.logRefIds || []).filter(Boolean);
+  var screenshotUrls = (p.screenshotUrls || []).filter(Boolean);
 
   var row = {
     id: newId('EventChatMessages'), eventId: p.eventId, authorId: user.id, message: message,
     mentionedUserIds: mentionedUserIds.join(','), mentionedParticipantIds: mentionedParticipantIds.join(','),
-    logRefIds: logRefIds.join(','), createdAt: nowIso_()
+    logRefIds: logRefIds.join(','), screenshotUrls: screenshotUrls.join(','), createdAt: nowIso_()
   };
   insertRow('EventChatMessages', row);
   audit(user.id, 'POST_EVENT_CHAT_MESSAGE', 'EventChatMessages', row.id, { eventId: p.eventId });
@@ -96,6 +101,28 @@ function postEventChatMessage(user, p) {
     notify_(notifyIds, 'EVENT_CHAT_MENTION', user.name + ' mentioned you in ' + event.name + ' chat', 'EventChatMessages', row.id, p.eventId);
   }
   return row;
+}
+
+// REQ: "# will suggest tab and when selected sections will be suggested when selected a screenshot
+// will be captured and added as large thumbnail image." Mirrors uploadTicketMedia (Support.gs) --
+// same client-side html2canvas capture -> base64 -> Drive-file pipeline, own folder/audit target so
+// it's not filed under Support tickets. getOrCreateFolder_ is a plain shared helper (Templates.gs),
+// safe to call from here regardless of file load order since it's only invoked inside a function
+// body, never at top-level script-load time.
+function uploadChatScreenshot(user, p) {
+  assertChatAccess_(user);
+  if (!p || !p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
+  var folder = getOrCreateFolder_('HULUL Event Chat');
+  var mimeType = p.mimeType || 'image/png';
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), mimeType, p.fileName || 'screenshot.png');
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  audit(user.id, 'UPLOAD_CHAT_SCREENSHOT', 'EventChatMessages', '', { fileName: p.fileName || file.getName() });
+  // Drive's own file.getUrl() is an HTML viewer page, not raw bytes -- unusable as an <img src>. The
+  // thumbnail endpoint reliably serves an embeddable image (same fix as uploadTicketMedia/
+  // uploadOrgLogo).
+  var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
+  return { url: url, fileId: file.getId() };
 }
 
 // Tag-picker source for "any user" -- deliberately unrestricted (unlike listUsers, which is

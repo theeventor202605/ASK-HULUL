@@ -291,6 +291,17 @@ table.data-table tr:hover td{ background:#fafbff; }
 .table-pager-nav{ display:flex; align-items:center; gap:8px; }
 .table-pager-indicator{ min-width:88px; text-align:center; }
 
+/* Event Chat slash-command suggestion dropdown (/u /p /e #) -- anchored under the textarea, see
+   tabEventChat in eventDetail.js. */
+.chat-suggest-box{ position:absolute; top:100%; left:0; right:0; margin-top:4px; z-index:60;
+  background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md);
+  max-height:240px; overflow-y:auto; }
+.chat-suggest-header{ padding:8px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.03em;
+  color:var(--text-400); border-bottom:1px solid var(--border); }
+.chat-suggest-item{ padding:8px 12px; font-size:12.5px; cursor:pointer; }
+.chat-suggest-item:hover{ background:#f6f7fb; }
+.chat-suggest-empty{ padding:10px 12px; font-size:12.5px; color:var(--text-400); }
+
 /* ---------- Badges ---------- */
 .badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
 .badge-dot{ width:6px; height:6px; border-radius:50%; }

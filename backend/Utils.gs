@@ -153,7 +153,10 @@ var SCHEMA = {
   // were referenced inline. Participant-account roles (Vendor/Operator/Exhibitor) are blocked from
   // this whole feature server-side -- see assertChatAccess_ -- so mentioning a Participant is purely
   // informational, never a notification to someone who could actually read the thread.
-  EventChatMessages:      ['id','eventId','authorId','message','mentionedUserIds','mentionedParticipantIds','logRefIds','createdAt']
+  // screenshotUrls appended at the end -- REQ: "a screenshot will be captured and added as large
+  // thumbnail image" (# tab/section picker, see EventChat.gs uploadChatScreenshot). Comma-joined
+  // Drive thumbnail-endpoint URLs, same convention as every other id-list column on this row.
+  EventChatMessages:      ['id','eventId','authorId','message','mentionedUserIds','mentionedParticipantIds','logRefIds','createdAt','screenshotUrls']
 };
 
 var ROLES = {

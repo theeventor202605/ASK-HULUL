@@ -32,6 +32,18 @@ var EVENT_TABS = [
   ['log', 'tab_event_log', function () { return 'Event Log'; }]
 ];
 
+// Module-level (not local to renderEventDetail) so Event Chat's "#" screenshot flow (tabEventChat)
+// can render any other tab off-screen to capture a section from it, without needing to duplicate
+// this dispatch table. Safe to build at top level despite referencing tabOverview/tabEventChat/etc.
+// defined further down this same file -- function declarations are hoisted, so every one of them
+// already exists by the time this object literal is constructed.
+var EVENT_TAB_RENDERERS_ = {
+  overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
+  disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
+  escalations: tabEscalations, participants: tabParticipants,
+  participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
+};
+
 async function renderEventDetail(params) {
   var root = document.getElementById('viewRoot');
   var eventId = params.id;
@@ -67,14 +79,8 @@ async function renderEventDetail(params) {
   });
 
   var content = document.getElementById('eventTabContent');
-  var renderers = {
-    overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
-    disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
-    escalations: tabEscalations, participants: tabParticipants,
-    participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
-  };
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
-  try { await (renderers[activeTab] || tabOverview)(content, eventId, detail, params); }
+  try { await (EVENT_TAB_RENDERERS_[activeTab] || tabOverview)(content, eventId, detail, params); }
   catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">Failed to load this tab.</div>'; }
 }
 
@@ -2188,9 +2194,17 @@ async function tabReports(content, eventId) {
 // the event. Related participant accounts have no access to the chat." Server-side enforcement lives
 // in assertChatAccess_ (EventChat.gs) -- this tab is also hidden entirely for those roles (see
 // EVENT_TABS' visibleFn above), so this function only ever runs for someone actually allowed in.
-// Tagging and log-referencing use scrollable checkbox lists (same idiom as venues.js' zone
-// checkboxes) rather than a freeform @-mention text parser -- explicit, unambiguous, and keeps every
-// tagged id/log ref a real selection instead of a guess at what the typed text meant.
+//
+// REQ (compose UX): "Typing /u will suggest users list under this event. Typing /e will suggest list
+// with all event logs. Typing /p will suggest list with all event participants. # will suggest tab
+// and when selected sections will be suggested when selected a screenshot will be captured and added
+// as large thumbnail image." Slash-command-style autocomplete replaces the earlier checkbox panels:
+// typing a trigger (/u, /e, /p, #) opens a small dropdown anchored under the textarea; picking an
+// item stages it (shown as a removable chip) and drops a short readable marker into the message text
+// at the trigger's position. # is two-level: pick a tab, then a "section" (one of that tab's own
+// .card blocks, discovered by rendering the tab off-screen -- see captureTabSections_), then a
+// screenshot of just that card is captured via html2canvas (already loaded globally for the Support
+// ticket flow, see index.html) and uploaded via uploadChatScreenshot (EventChat.gs).
 async function tabEventChat(content, eventId, detail) {
   var results = await Promise.all([
     Api.call('listEventChatMessages', { eventId: eventId }),
@@ -2199,31 +2213,27 @@ async function tabEventChat(content, eventId, detail) {
     Api.call('listEventLog', { eventId: eventId })
   ]);
   var messages = results[0], taggableUsers = results[1], taggableParticipants = results[2], logEntries = results[3];
-
-  function checklistPanel_(idPrefix, items, labelFn) {
-    if (!items.length) return '<div class="muted" style="font-size:12px;">None available.</div>';
-    return '<div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;">' +
-      items.map(function (it) {
-        return '<label style="display:block;font-size:12.5px;padding:3px 0;">' +
-          '<input type="checkbox" class="' + idPrefix + '-check" value="' + esc(it.id) + '" /> ' + labelFn(it) + '</label>';
-      }).join('') + '</div>';
-  }
+  // Screenshot targets: every tab this role can currently see, except Chat itself (capturing the
+  // compose box from within the compose box is circular/pointless).
+  var tabPickerItems = EVENT_TABS.filter(function (tb) { return tb[0] !== 'chat' && (!tb[3] || tb[3]()); })
+    .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; });
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Event Chat</div></div>' +
     '<div class="card-body" id="chatMessages" style="max-height:480px;overflow-y:auto;">' +
     (messages.length ? messages.map(chatMessageHtml_).join('') : '<div class="empty-state">No messages yet — start the conversation.</div>') +
     '</div></div>' +
-    '<div class="card"><div class="card-header"><div class="card-title">New message</div></div><div class="card-body">' +
-    UI.field('Message', '<textarea id="fChatMessage" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Write a message…"></textarea>') +
-    '<div class="form-row" style="margin-top:10px;">' +
-      UI.field('Tag users', checklistPanel_('chat-user', taggableUsers, function (u) { return '<strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.role) + '</span>'; })) +
-      UI.field('Tag ' + Term('participant_plural').toLowerCase(), checklistPanel_('chat-participant', taggableParticipants, function (p) { return '<strong>' + esc(p.name) + '</strong> <span class="muted">' + esc(p.type) + '</span>'; })) +
-    '</div>' +
-    '<div style="margin-top:10px;">' +
-      UI.field('Reference event log entries', checklistPanel_('chat-log', logEntries.slice(0, 50), function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; })) +
-    '</div>' +
-    '<button class="btn btn-primary btn-sm" id="sendChatBtn" style="margin-top:12px;">' + ICON('send') + ' Send</button>' +
+    '<div class="card"><div class="card-header"><div class="card-title">New message</div>' +
+    '<div class="muted" style="font-size:11px;">Type <code>/u</code> to tag a user, <code>/p</code> to tag a ' + esc(Term('participant').toLowerCase()) +
+      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a section.</div></div>' +
+    '<div class="card-body">' +
+      '<div class="field-label" style="margin-top:0;">Message</div>' +
+      '<div style="position:relative;">' +
+        '<textarea id="fChatMessage" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Write a message… try /u, /p, /e, or #"></textarea>' +
+        '<div id="chatSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
+      '</div>' +
+      '<div id="chatStagedChips" style="margin-top:8px;"></div>' +
+      '<button class="btn btn-primary btn-sm" id="sendChatBtn" style="margin-top:10px;">' + ICON('send') + ' Send</button>' +
     '</div></div>';
 
   // Scroll to the latest message on open, same as any chat UI.
@@ -2234,16 +2244,208 @@ async function tabEventChat(content, eventId, detail) {
     el.onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=log&focus=' + el.getAttribute('data-goto-log'); };
   });
 
+  var textarea = document.getElementById('fChatMessage');
+  var suggestBox = document.getElementById('chatSuggestBox');
+  var staged = { users: [], participants: [], logs: [], screenshots: [] };
+  var currentTrigger = null; // {kind, start, query}
+  var suggestBusy = false; // true while a tab's sections are being rendered/captured -- freezes re-triggering
+  var pendingCaptureContainer_ = null;
+  var captureToken = 0; // bumped on every dismiss/new trigger so a stale async capture can't resurrect the dropdown
+
+  function cleanupPendingCapture_() {
+    if (pendingCaptureContainer_ && pendingCaptureContainer_.parentNode) pendingCaptureContainer_.remove();
+    pendingCaptureContainer_ = null;
+  }
+  function hideSuggest_() {
+    captureToken++;
+    suggestBox.style.display = 'none';
+    suggestBox.innerHTML = '';
+    currentTrigger = null;
+    suggestBusy = false;
+    cleanupPendingCapture_();
+  }
+
+  function detectChatTrigger_(text, cursor) {
+    var start = cursor;
+    while (start > 0 && !/\s/.test(text[start - 1])) start--;
+    var token = text.slice(start, cursor);
+    if (/^\/u/i.test(token)) return { kind: 'user', start: start, query: token.slice(2).toLowerCase() };
+    if (/^\/e/i.test(token)) return { kind: 'log', start: start, query: token.slice(2).toLowerCase() };
+    if (/^\/p/i.test(token)) return { kind: 'participant', start: start, query: token.slice(2).toLowerCase() };
+    if (/^#/.test(token)) return { kind: 'tab', start: start, query: token.slice(1).toLowerCase() };
+    return null;
+  }
+
+  function filterItems_(items, query, textFn) {
+    if (!query) return items;
+    return items.filter(function (it) { return textFn(it).toLowerCase().indexOf(query) !== -1; });
+  }
+
+  function replaceTriggerText_(insertText) {
+    if (!currentTrigger) return;
+    var text = textarea.value;
+    var end = textarea.selectionStart;
+    var before = text.slice(0, currentTrigger.start);
+    var after = text.slice(end);
+    textarea.value = before + insertText + after;
+    var newPos = (before + insertText).length;
+    textarea.focus();
+    textarea.setSelectionRange(newPos, newPos);
+  }
+
+  function showSuggestList_(header, items, renderItemFn, onPick) {
+    suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(header) + '</div>' +
+      (items.length
+        ? items.slice(0, 20).map(function (it, i) { return '<div class="chat-suggest-item" data-idx="' + i + '">' + renderItemFn(it) + '</div>'; }).join('')
+        : '<div class="chat-suggest-empty">No matches</div>');
+    suggestBox.style.display = '';
+    suggestBox.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+      // mousedown (not click) + preventDefault -- keeps the textarea focused/its selection intact so
+      // replaceTriggerText_ still has the right cursor position; a plain click would blur the
+      // textarea first and lose it.
+      el.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        onPick(items[Number(el.getAttribute('data-idx'))]);
+      });
+    });
+  }
+
+  function chipHtml_(kind, idx, label) {
+    return '<span class="badge-neutral" style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;font-size:11.5px;margin:3px 6px 0 0;">' +
+      esc(label) + ' <button type="button" data-kind="' + kind + '" data-unstage="' + idx + '" style="border:none;background:none;cursor:pointer;color:var(--text-400);font-size:12px;line-height:1;padding:0;">' + ICON('close_modal') + '</button></span>';
+  }
+  function renderChips_() {
+    var chipsBox = document.getElementById('chatStagedChips');
+    var chips = [];
+    staged.users.forEach(function (u, i) { chips.push(chipHtml_('users', i, '@' + u.name)); });
+    staged.participants.forEach(function (p, i) { chips.push(chipHtml_('participants', i, '@' + p.name)); });
+    staged.logs.forEach(function (l, i) { chips.push(chipHtml_('logs', i, '# ' + l.label)); });
+    staged.screenshots.forEach(function (s, i) { chips.push(chipHtml_('screenshots', i, ICON('capture_photo') + ' ' + s.label)); });
+    chipsBox.innerHTML = chips.join('');
+    chipsBox.querySelectorAll('[data-unstage]').forEach(function (btn) {
+      btn.onclick = function () {
+        staged[btn.getAttribute('data-kind')].splice(Number(btn.getAttribute('data-unstage')), 1);
+        renderChips_();
+      };
+    });
+  }
+
+  function pickUser_(item) {
+    if (!staged.users.some(function (x) { return x.id === item.id; })) staged.users.push({ id: item.id, name: item.name });
+    replaceTriggerText_('@' + item.name + ' ');
+    renderChips_(); hideSuggest_();
+  }
+  function pickParticipant_(item) {
+    if (!staged.participants.some(function (x) { return x.id === item.id; })) staged.participants.push({ id: item.id, name: item.name });
+    replaceTriggerText_('@' + item.name + ' ');
+    renderChips_(); hideSuggest_();
+  }
+  function pickLog_(item) {
+    if (!staged.logs.some(function (x) { return x.id === item.id; })) staged.logs.push({ id: item.id, label: item.action });
+    replaceTriggerText_('#' + item.action + ' ');
+    renderChips_(); hideSuggest_();
+  }
+
+  // REQ: "# will suggest tab and when selected sections will be suggested." Renders the chosen tab
+  // off-screen (position:fixed, real dimensions so layout/maps behave normally -- NOT display:none,
+  // which would break canvas/map sizing) and lists its top-level .card blocks as "sections", reusing
+  // whatever card-title each one already has. The rendered container is kept alive (not removed)
+  // until a section is picked or the picker is cancelled, since picking captures straight from it.
+  function pickTab_(tb) {
+    var myToken = ++captureToken;
+    suggestBusy = true;
+    suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">Loading sections…</div>';
+    cleanupPendingCapture_();
+    var container = document.createElement('div');
+    container.style.cssText = 'position:fixed;top:0;left:-9999px;width:900px;background:#fff;padding:16px;';
+    document.body.appendChild(container);
+    pendingCaptureContainer_ = container;
+    var renderFn = EVENT_TAB_RENDERERS_[tb.key];
+    Promise.resolve(renderFn ? renderFn(container, eventId, detail, {}) : null)
+      .then(function () { return new Promise(function (r) { setTimeout(r, 700); }); }) // let maps/async paints settle
+      .then(function () {
+        if (myToken !== captureToken) return; // dismissed or superseded while this was in flight
+        suggestBusy = false;
+        var cards = Array.from(container.querySelectorAll('.card'));
+        var sections = cards.map(function (card, i) {
+          var titleEl = card.querySelector('.card-title');
+          return { index: i, label: titleEl ? titleEl.textContent.trim() : ('Section ' + (i + 1)) };
+        });
+        if (!sections.length) {
+          suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">No sections found on this tab</div>';
+          return;
+        }
+        showSuggestList_(tb.label + ' — choose a section', sections, function (s) { return esc(s.label); }, function (s) { pickSection_(tb, s); });
+      })
+      .catch(function () {
+        if (myToken !== captureToken) return;
+        suggestBusy = false;
+        suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">Could not load sections</div>';
+      });
+  }
+
+  // REQ: "...a screenshot will be captured and added as large thumbnail image."
+  function pickSection_(tb, section) {
+    var myToken = ++captureToken;
+    suggestBusy = true;
+    suggestBox.innerHTML = '<div class="chat-suggest-header">Capturing…</div>';
+    var container = pendingCaptureContainer_;
+    var card = container ? container.querySelectorAll('.card')[section.index] : null;
+    var capturePromise = (card && typeof html2canvas === 'function')
+      ? html2canvas(card, { useCORS: true, logging: false, backgroundColor: '#ffffff' })
+      : Promise.reject(new Error('Screenshot capture is unavailable right now.'));
+    capturePromise
+      .then(function (canvas) { return new Promise(function (res) { canvas.toBlob(res, 'image/png'); }); })
+      .then(function (blob) { return fileToBase64(blob); })
+      .then(function (b64) { return Api.call('uploadChatScreenshot', { fileBase64: b64, fileName: 'section.png', mimeType: 'image/png' }); })
+      .then(function (up) {
+        if (myToken !== captureToken) return;
+        staged.screenshots.push({ url: up.url, label: tb.label + ' — ' + section.label });
+        replaceTriggerText_('#' + tb.label + '/' + section.label + ' ');
+        renderChips_();
+        hideSuggest_();
+      })
+      .catch(function (err) {
+        console.error('[Event Chat] section screenshot failed', err);
+        if (myToken !== captureToken) return;
+        UI.toast('Could not capture a screenshot of that section.', 'error');
+        hideSuggest_();
+      })
+      .finally(function () { cleanupPendingCapture_(); });
+  }
+
+  textarea.addEventListener('input', function () {
+    if (suggestBusy) return; // a tab->section capture is in flight -- ignore further typing until it resolves
+    var trig = detectChatTrigger_(textarea.value, textarea.selectionStart);
+    if (!trig) { hideSuggest_(); return; }
+    currentTrigger = trig;
+    if (trig.kind === 'user') {
+      showSuggestList_('Tag a user', filterItems_(taggableUsers, trig.query, function (u) { return u.name + ' ' + u.role; }),
+        function (u) { return '<strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.role) + '</span>'; }, pickUser_);
+    } else if (trig.kind === 'participant') {
+      showSuggestList_('Tag a ' + Term('participant').toLowerCase(), filterItems_(taggableParticipants, trig.query, function (p) { return p.name + ' ' + p.type; }),
+        function (p) { return '<strong>' + esc(p.name) + '</strong> <span class="muted">' + esc(p.type) + '</span>'; }, pickParticipant_);
+    } else if (trig.kind === 'log') {
+      showSuggestList_('Reference a log entry', filterItems_(logEntries, trig.query, function (l) { return l.action + ' ' + l.actorName; }),
+        function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; }, pickLog_);
+    } else if (trig.kind === 'tab') {
+      showSuggestList_('Attach a screenshot — choose a tab', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
+        function (tb) { return esc(tb.label); }, pickTab_);
+    }
+  });
+  textarea.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSuggest_(); });
+  textarea.addEventListener('blur', function () { setTimeout(function () { if (!suggestBusy) hideSuggest_(); }, 150); });
+
   document.getElementById('sendChatBtn').onclick = async function () {
-    var message = document.getElementById('fChatMessage').value.trim();
+    var message = textarea.value.trim();
     if (!message) { UI.toast('Message cannot be empty', 'error'); return; }
-    var mentionedUserIds = Array.from(content.querySelectorAll('.chat-user-check:checked')).map(function (c) { return c.value; });
-    var mentionedParticipantIds = Array.from(content.querySelectorAll('.chat-participant-check:checked')).map(function (c) { return c.value; });
-    var logRefIds = Array.from(content.querySelectorAll('.chat-log-check:checked')).map(function (c) { return c.value; });
     try {
       await Api.call('postEventChatMessage', {
         eventId: eventId, message: message,
-        mentionedUserIds: mentionedUserIds, mentionedParticipantIds: mentionedParticipantIds, logRefIds: logRefIds
+        mentionedUserIds: staged.users.map(function (u) { return u.id; }),
+        mentionedParticipantIds: staged.participants.map(function (p) { return p.id; }),
+        logRefIds: staged.logs.map(function (l) { return l.id; }),
+        screenshotUrls: staged.screenshots.map(function (s) { return s.url; })
       });
       Router.resolve();
     } catch (err) { UI.error(err); }
@@ -2264,12 +2466,18 @@ function chatMessageHtml_(m) {
           ICON('forward_link') + ' ' + esc(l.action || 'Log entry') + '</span>';
       }).join('') + '</div>'
     : '';
+  // REQ: "...added as large thumbnail image."
+  var screenshotsHtml = (m.screenshotUrls && m.screenshotUrls.length)
+    ? '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' + m.screenshotUrls.map(function (url) {
+        return '<a href="' + esc(url) + '" target="_blank" rel="noopener"><img src="' + esc(url) + '" style="max-width:320px;max-height:220px;border:1px solid var(--border);border-radius:8px;display:block;" /></a>';
+      }).join('') + '</div>'
+    : '';
   return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
     '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
     '<strong style="font-size:13px;">' + esc(m.authorName) + '</strong>' +
     '<span class="muted" style="font-size:11px;white-space:nowrap;">' + esc(UI.fmtDate(m.createdAt)) + '</span></div>' +
     '<div style="font-size:13.5px;margin-top:4px;white-space:pre-wrap;">' + esc(m.message) + '</div>' +
-    mentionsHtml + logRefsHtml + '</div>';
+    mentionsHtml + logRefsHtml + screenshotsHtml + '</div>';
 }
 
 /* ---------------- Event Log ---------------- */

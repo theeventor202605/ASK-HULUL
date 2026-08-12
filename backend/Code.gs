@@ -169,6 +169,7 @@ var ROUTES = {
   listChatTaggableUsers: function (u, p) { return listChatTaggableUsers(u, p); },
   listChatTaggableParticipants: function (u, p) { return listChatTaggableParticipants(u, p); },
   listEventLog: function (u, p) { return listEventLog(u, p); },
+  uploadChatScreenshot: function (u, p) { return uploadChatScreenshot(u, p); },
 
   // Sidebar Re-assignment (see Reassignment.gs)
   setUserUnavailable: function (u, p) { return setUserUnavailable(u, p); },
