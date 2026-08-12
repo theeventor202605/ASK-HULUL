@@ -34,15 +34,26 @@ var EVENT_TABS = [
 
 // Module-level (not local to renderEventDetail) so Event Chat's "#" screenshot flow (tabEventChat)
 // can render any other tab off-screen to capture a section from it, without needing to duplicate
-// this dispatch table. Safe to build at top level despite referencing tabOverview/tabEventChat/etc.
-// defined further down this same file -- function declarations are hoisted, so every one of them
-// already exists by the time this object literal is constructed.
-var EVENT_TAB_RENDERERS_ = {
-  overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
-  disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
-  escalations: tabEscalations, participants: tabParticipants,
-  participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
-};
+// this dispatch table. tabOverview/tabEventChat/etc. declared further down this same file are safe
+// to reference here regardless of order (hoisted function declarations) -- but tabParticipants and
+// tabParticipantDisciplines live in eventPlaces.js, a DIFFERENT <script> that index.html loads AFTER
+// this file. Referencing them in a top-level object literal here would throw a ReferenceError the
+// instant this script runs (eventPlaces.js hasn't executed yet), leaving EVENT_TAB_RENDERERS_
+// permanently undefined and breaking every tab -- same load-order trap as the backend's alphabetical
+// .gs concatenation bug, just triggered by <script> tag order instead. Built lazily on first call
+// instead, by which point every view script (including eventPlaces.js) has already loaded.
+var EVENT_TAB_RENDERERS_ = null;
+function eventTabRenderers_() {
+  if (!EVENT_TAB_RENDERERS_) {
+    EVENT_TAB_RENDERERS_ = {
+      overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
+      disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
+      escalations: tabEscalations, participants: tabParticipants,
+      participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
+    };
+  }
+  return EVENT_TAB_RENDERERS_;
+}
 
 async function renderEventDetail(params) {
   var root = document.getElementById('viewRoot');
@@ -80,7 +91,7 @@ async function renderEventDetail(params) {
 
   var content = document.getElementById('eventTabContent');
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
-  try { await (EVENT_TAB_RENDERERS_[activeTab] || tabOverview)(content, eventId, detail, params); }
+  try { await (eventTabRenderers_()[activeTab] || tabOverview)(content, eventId, detail, params); }
   catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">Failed to load this tab.</div>'; }
 }
 
@@ -2363,7 +2374,7 @@ async function tabEventChat(content, eventId, detail) {
     container.style.cssText = 'position:fixed;top:0;left:-9999px;width:900px;background:#fff;padding:16px;';
     document.body.appendChild(container);
     pendingCaptureContainer_ = container;
-    var renderFn = EVENT_TAB_RENDERERS_[tb.key];
+    var renderFn = eventTabRenderers_()[tb.key];
     Promise.resolve(renderFn ? renderFn(container, eventId, detail, {}) : null)
       .then(function () { return new Promise(function (r) { setTimeout(r, 700); }); }) // let maps/async paints settle
       .then(function () {
