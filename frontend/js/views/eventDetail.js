@@ -13,7 +13,7 @@ var EVENT_TABS = [
   ['overview', 'tab_overview'],
   // REQ: "Add an event chat page after overview tab." FINDING_ROLE_PARTICIPANT_ (findings.js) is
   // the existing Vendor/Operator/Exhibitor list -- reused here rather than redeclared.
-  ['chat', 'tab_chat', function () { return 'Event Chat'; }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
+  ['chat', 'tab_chat', function () { return 'Chat'; }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
   ['venue', 'tab_venue', function () { return Term('venue') + ' & ' + Term('zone_plural'); }],
   ['templates', 'tab_templates', function () { return 'Readiness ' + Term('template_plural'); }],
   ['approval', 'tab_approval', function () { return 'Opening Approval'; }],
@@ -29,7 +29,7 @@ var EVENT_TABS = [
   // REQ: "Add an event log page showing all transaction relevant to an event keep last log first."
   // Open to every viewer (like Coverage gaps etc.) -- it's just history of what already happened,
   // no separate role restriction was asked for here (unlike Chat).
-  ['log', 'tab_event_log', function () { return 'Event Log'; }]
+  ['log', 'tab_event_log', function () { return 'Logs'; }]
 ];
 
 // Module-level (not local to renderEventDetail) so Event Chat's "#" screenshot flow (tabEventChat)
@@ -2235,18 +2235,25 @@ async function tabEventChat(content, eventId, detail) {
   ]);
   var messages = results[0], taggableUsers = results[1], taggableParticipants = results[2], logEntries = results[3];
   // Screenshot targets: every tab this role can currently see, except Chat itself (capturing the
-  // compose box from within the compose box is circular/pointless).
-  var tabPickerItems = EVENT_TABS.filter(function (tb) { return tb[0] !== 'chat' && (!tb[3] || tb[3]()); })
-    .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; });
+  // compose box from within the compose box is circular/pointless), plus a "Whole screen" pseudo-tab
+  // pinned first -- REQ: "the chat # should give option to capture whole screen as well." Unlike the
+  // other entries (which re-render the chosen tab off-screen, see pickTab_), this one captures
+  // exactly what's live on screen right now, so it's handled as a special case in the picker rather
+  // than routed through eventTabRenderers_.
+  var WHOLE_SCREEN_ITEM_ = { key: '__screen__', label: 'Whole screen (current view)' };
+  var tabPickerItems = [WHOLE_SCREEN_ITEM_].concat(
+    EVENT_TABS.filter(function (tb) { return tb[0] !== 'chat' && (!tb[3] || tb[3]()); })
+      .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; })
+  );
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Event Chat</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Chat</div></div>' +
     '<div class="card-body" id="chatMessages" style="max-height:480px;overflow-y:auto;">' +
     (messages.length ? messages.map(chatMessageHtml_).join('') : '<div class="empty-state">No messages yet — start the conversation.</div>') +
     '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">New message</div>' +
     '<div class="muted" style="font-size:11px;">Type <code>/u</code> to tag a user, <code>/p</code> to tag a ' + esc(Term('participant').toLowerCase()) +
-      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a section.</div></div>' +
+      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a section or the whole screen.</div></div>' +
     '<div class="card-body">' +
       '<div class="field-label" style="margin-top:0;">Message</div>' +
       '<div style="position:relative;">' +
@@ -2405,6 +2412,36 @@ async function tabEventChat(content, eventId, detail) {
       });
   }
 
+  // REQ: "the chat # should give option to capture whole screen as well." Same upload/staging as
+  // pickSection_ below, but captures document.body directly instead of an off-screen re-render of
+  // another tab -- identical html2canvas(document.body, ...) pattern the Support ticket screenshot
+  // flow already uses (support.js), so "whole screen" means exactly what's on screen right now.
+  function captureWholeScreen_() {
+    var myToken = ++captureToken;
+    suggestBusy = true;
+    suggestBox.innerHTML = '<div class="chat-suggest-header">Capturing…</div>';
+    var capturePromise = (typeof html2canvas === 'function')
+      ? html2canvas(document.body, { useCORS: true, logging: false, backgroundColor: '#ffffff' })
+      : Promise.reject(new Error('Screenshot capture is unavailable right now.'));
+    capturePromise
+      .then(function (canvas) { return new Promise(function (res) { canvas.toBlob(res, 'image/png'); }); })
+      .then(function (blob) { return fileToBase64(blob); })
+      .then(function (b64) { return Api.call('uploadChatScreenshot', { fileBase64: b64, fileName: 'screen.png', mimeType: 'image/png' }); })
+      .then(function (up) {
+        if (myToken !== captureToken) return;
+        staged.screenshots.push({ url: up.url, label: 'Whole screen' });
+        replaceTriggerText_('#Whole screen ');
+        renderChips_();
+        hideSuggest_();
+      })
+      .catch(function (err) {
+        console.error('[Event Chat] whole-screen screenshot failed', err);
+        if (myToken !== captureToken) return;
+        UI.toast('Could not capture the screen.', 'error');
+        hideSuggest_();
+      });
+  }
+
   // REQ: "...a screenshot will be captured and added as large thumbnail image."
   function pickSection_(tb, section) {
     var myToken = ++captureToken;
@@ -2450,8 +2487,9 @@ async function tabEventChat(content, eventId, detail) {
       showSuggestList_('Reference a log entry', filterItems_(logEntries, trig.query, function (l) { return l.action + ' ' + l.actorName; }),
         function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; }, pickLog_);
     } else if (trig.kind === 'tab') {
-      showSuggestList_('Attach a screenshot — choose a tab', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
-        function (tb) { return esc(tb.label); }, pickTab_);
+      showSuggestList_('Attach a screenshot — choose a tab or the whole screen', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
+        function (tb) { return esc(tb.label); },
+        function (tb) { return tb.key === WHOLE_SCREEN_ITEM_.key ? captureWholeScreen_() : pickTab_(tb); });
     }
   });
   textarea.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSuggest_(); });
@@ -2509,7 +2547,7 @@ function chatMessageHtml_(m) {
 async function tabEventLog(content, eventId, detail, params) {
   var logs = await Api.call('listEventLog', { eventId: eventId });
   content.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">Event Log</div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">Logs</div>' +
     '<div class="muted" style="font-size:11.5px;">Every recorded action relevant to this event, most recent first.</div></div>' +
     '<div class="card-body">' +
     (logs.length ? logs.map(eventLogRowHtml_).join('') : '<div class="empty-state">' + t('no_data') + '</div>') +
