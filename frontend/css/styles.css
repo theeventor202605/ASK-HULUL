@@ -111,10 +111,12 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 /* Click guard (app-wide, wired once in ui.js): every .btn gets disabled + this look for 10s right
    after it's clicked, so a slow request or a second tap can't fire the same action twice and hit
    the backend with a stale id / duplicate-create error. Grayscale + dimmed reads as "already
-   handled" regardless of the button's original color, and the checkmark confirms the click landed. */
+   handled" regardless of the button's original color. REQ (follow-up): "Remove this progress tick
+   from throughout the app" -- the ✓ appended via .btn-clicked::after was confusing next to icon-only
+   buttons (looked like a second, unrelated icon rather than click feedback); the pulse + dim/grayscale
+   are enough on their own to read as "handled," so the checkmark itself is removed, not the guard. */
 .btn:disabled{ cursor:not-allowed; filter:grayscale(.4) brightness(1.05); opacity:.6; }
 .btn.btn-clicked{ animation:btnClickPulse .2s ease; }
-.btn.btn-clicked::after{ content:'✓'; font-weight:700; }
 @keyframes btnClickPulse{ 0%{ transform:scale(1); } 45%{ transform:scale(.93); } 100%{ transform:scale(1); } }
 
 /* ---------------- Place map markers (Event > Venue & Zones tab) ----------------

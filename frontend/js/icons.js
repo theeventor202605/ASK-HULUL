@@ -13,9 +13,6 @@
  * A few glyphs are deliberately NOT wired into this system and stay hardcoded:
  *  - The table sort-direction arrows (▲/▼, ui.js) -- their shape IS the functional meaning
  *    (ascending vs descending); swapping them to a non-directional icon would break the affordance.
- *  - The generic post-click checkmark (css/styles.css `.btn.btn-clicked::after`) -- pure CSS
- *    feedback applied to every button app-wide, not tied to one action, and not reachable from a
- *    JS icon lookup without a parallel CSS-variable mechanism.
  */
 window.ICON_LIBRARY = [
   { section: 'General', icons: ['🏠', '⚙️', '🛠️', '🔔', '🔍', '📌', '⭐', '🏷️', '🔗', '↩', '➕', '➖', '✏️', '🗑️', '💡', '🌐'] },
