@@ -818,7 +818,8 @@ function renderAddPlaceCard_(zones, hasBoundary) {
 function wirePlaceForm_(venue, zones, places) {
   initPlaceMap_(venue, zones, places);
   wireZoneField_('fPl', 'fPlType');
-  wireLocationSuggestionField_('fPlLocation');
+  wireSuggestableField_('fPlName');
+  wireSuggestableField_('fPlLocation');
   document.getElementById('addPlaceBtn').onclick = async function () {
     try {
       var name = document.getElementById('fPlName').value.trim();
@@ -897,7 +898,8 @@ function initPlaceMap_(venue, zones, places) {
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
     setPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fPl', zones, center[0], center[1]);
-    suggestPlaceLocation_('fPlLocation', center[0], center[1], places);
+    suggestFromNearestPlace_('fPlName', center[0], center[1], places, function (n) { return n; });
+    suggestFromNearestPlace_('fPlLocation', center[0], center[1], places, function (n) { return 'Near ' + n; });
 
     // Shared by drag, click, and "Use my location" -- rejects (with the same message) any point
     // outside the venue's drawn boundary when one exists; otherwise moves the pin and re-centres the
@@ -912,7 +914,8 @@ function initPlaceMap_(venue, zones, places) {
       placeMapMarker_._hululLastValid = [lat, lng];
       setPlaceLatLng_(lat, lng);
       autoDetectZone_('fPl', zones, lat, lng);
-      suggestPlaceLocation_('fPlLocation', lat, lng, places);
+      suggestFromNearestPlace_('fPlName', lat, lng, places, function (n) { return n; });
+      suggestFromNearestPlace_('fPlLocation', lat, lng, places, function (n) { return 'Near ' + n; });
       if (recenter) placeMapInstance_.setView([lat, lng], 17);
       return true;
     }
@@ -982,23 +985,25 @@ function nearestPlaceName_(lat, lng, places) {
   return nearest ? nearest.name : null;
 }
 
-// Auto-fills a Location field with "Near <closest place>" as an editable suggestion, same REQ as
-// nearestPlaceName_ above. Stops touching the field the moment the user types in it themselves
-// (fieldEl.dataset.userEdited, set by a one-time 'input' listener each wire*Form_ below wires up) --
-// same don't-clobber-manual-input convention autoDetectZone_ uses (dataset.userOverride) for the
-// zone field right above. No-ops quietly if there's no candidate place with coordinates yet, or the
-// field isn't on the page.
-function suggestPlaceLocation_(fieldId, lat, lng, places) {
+// Auto-fills a field with a suggestion derived from the closest existing place's name, as an
+// editable starting point -- same REQ as nearestPlaceName_ above, used both for the Name field
+// itself (format = identity, e.g. "Samad Liraqi") and the Location field ("Near Samad Liraqi").
+// Stops touching the field the moment the user types in it themselves (fieldEl.dataset.userEdited,
+// set by a one-time 'input' listener wireSuggestableField_ below wires up) -- same
+// don't-clobber-manual-input convention autoDetectZone_ uses (dataset.userOverride) for the zone
+// field above. No-ops quietly if there's no candidate place with coordinates yet, or the field isn't
+// on the page.
+function suggestFromNearestPlace_(fieldId, lat, lng, places, format) {
   var el = document.getElementById(fieldId);
   if (!el || el.dataset.userEdited === '1') return;
   var name = nearestPlaceName_(lat, lng, places);
-  if (name) el.value = 'Near ' + name;
+  if (name) el.value = format(name);
 }
 
-// Wires the one-time 'input' listener suggestPlaceLocation_ needs to know a Location field's current
-// value was typed by the user, not left over from its own last auto-fill -- call once per
-// wire*Form_, right after the field exists in the DOM (before any pin placement can fire a suggestion).
-function wireLocationSuggestionField_(fieldId) {
+// Wires the one-time 'input' listener suggestFromNearestPlace_ needs to know a field's current value
+// was typed by the user, not left over from its own last auto-fill -- call once per wire*Form_,
+// right after the field exists in the DOM (before any pin placement can fire a suggestion).
+function wireSuggestableField_(fieldId) {
   var el = document.getElementById(fieldId);
   if (el) el.addEventListener('input', function () { el.dataset.userEdited = '1'; });
 }
