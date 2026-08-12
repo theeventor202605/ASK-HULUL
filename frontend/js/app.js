@@ -182,7 +182,8 @@ function wireChrome() {
   // takes a DOM screenshot of whatever page is currently open behind it (REQ: report an issue from
   // anywhere in the app) and walks the user through annotate -> voice note -> remarks -> submit.
   document.getElementById('supportBtn').onclick = function () { openSupportCapture(); };
-  document.getElementById('notifBtn').onclick = async function () {
+  document.getElementById('notifBtn').onclick = async function (e) {
+    e.stopPropagation(); // don't let this same click immediately re-trigger the outside-click closer below
     var panel = document.getElementById('notifPanel');
     if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
     try {
@@ -191,6 +192,25 @@ function wireChrome() {
       panel.classList.remove('hidden');
     } catch (err) { UI.error(err); }
   };
+
+  // REQ bug report: the notif panel only closed by clicking the bell again -- clicking anywhere
+  // else (including a sidebar nav link, which then navigates the page out from under it) left it
+  // stuck open. notifBtn's own click is excluded above (stopPropagation) since that click has its
+  // own open/close toggle logic; every other click anywhere in the document closes the panel if
+  // it's open, whether or not that same click also does something else (e.g. navigate).
+  document.addEventListener('click', function (e) {
+    var panel = document.getElementById('notifPanel');
+    if (panel.classList.contains('hidden')) return;
+    if (panel.contains(e.target)) return; // clicking inside the panel (mark read / clear / etc.) shouldn't close it
+    panel.classList.add('hidden');
+  });
+  // Covers navigation that isn't itself a click inside this document -- browser Back/Forward, or a
+  // notification's own "jump to this item" (goToNotification_ already hides it directly, but this
+  // is a harmless no-op in that case, and a real fix for every other hash change).
+  window.addEventListener('hashchange', function () {
+    var panel = document.getElementById('notifPanel');
+    if (panel) panel.classList.add('hidden');
+  });
 }
 
 // Topbar bell dropdown -- a lightweight preview of the full Notifications page. Re-rendered after
