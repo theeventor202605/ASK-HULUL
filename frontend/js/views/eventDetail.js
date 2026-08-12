@@ -1767,8 +1767,20 @@ function updateClosestParticipantLabel_(participants, myLatLng) {
 // REQ: "His position is always centred to the middle of the map as he moves" -- setView (not
 // flyTo) on every GPS tick, so the inspector's own dot stays pinned to the middle rather than the
 // map panning to follow it.
+//
+// GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Checked here,
+// client-side, against liveInspectionVenueBoundary_ (parsed in openChooseParticipantScreen_) --
+// pingInspectionLocation/listActiveInspectorLocations remain the authoritative server-side gate for
+// what every OTHER user sees; this only covers this device's own unconditional display of its own
+// raw GPS fix, which never went through that filter at all.
 function updateLiveInspectionMyPosition_(latlng) {
   if (!liveInspectionMapInstance_) return;
+  var banner = document.getElementById('liveInspectionBanner');
+  if (liveInspectionVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], liveInspectionVenueBoundary_)) {
+    if (liveInspectionMyMarker_) { liveInspectionMapInstance_.removeLayer(liveInspectionMyMarker_); liveInspectionMyMarker_ = null; }
+    if (banner) banner.innerHTML = '<div class="muted" style="font-size:12px;">' + ICON('warning_banner') + ' You\'re outside the venue boundary — your location isn\'t shown.</div>';
+    return;
+  }
   if (!liveInspectionMyMarker_) {
     var icon = HululLeaflet.divIcon({
       className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'

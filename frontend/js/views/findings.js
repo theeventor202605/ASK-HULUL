@@ -137,7 +137,7 @@ async function renderNewFinding(params) {
     '</div>';
 
   document.getElementById('backFindingBtn').onclick = function () { destroyFindingLocationMap_(); window.location.hash = '#/events/' + eventId + '?tab=findings'; };
-  initFindingLocationMap_();
+  initFindingLocationMap_(detail && detail.venue);
 
   /* ---- Participant: searchable dropdown (mandatory) ---- */
   var selectedParticipant = null;
@@ -249,6 +249,13 @@ async function renderNewFinding(params) {
 var findingLocationMapInstance_ = null;
 var findingLocationMyMarker_ = null;
 var findingLocationWatchId_ = null;
+// GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Parsed once per
+// visit (initFindingLocationMap_, from the event's own venue) via parseBoundaryClient_ (venues.js,
+// loaded app-wide) -- same client-side containment check used for eventDetail.js's liveInspectionMap.
+// Read by updateFindingMyPosition_ below to hide this device's own live dot the moment it steps
+// outside; findingLocationMap never broadcasts this position to any other user, so a client-side
+// check is sufficient here (nothing server-side needs to change).
+var findingLocationVenueBoundary_ = null;
 
 function stopFindingLocationWatch_() {
   if (findingLocationWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(findingLocationWatchId_); findingLocationWatchId_ = null; }
@@ -257,10 +264,12 @@ function destroyFindingLocationMap_() {
   stopFindingLocationWatch_();
   if (findingLocationMapInstance_) { findingLocationMapInstance_.remove(); findingLocationMapInstance_ = null; }
   findingLocationMyMarker_ = null;
+  findingLocationVenueBoundary_ = null;
 }
 
-function initFindingLocationMap_() {
+function initFindingLocationMap_(venue) {
   destroyFindingLocationMap_(); // in case a previous visit left a GPS watch/map running (same defensive pattern as tabInspections/destroyLiveInspectionMap_)
+  findingLocationVenueBoundary_ = venue ? parseBoundaryClient_(venue.boundary) : null;
   var el = document.getElementById('findingLocationMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -282,8 +291,18 @@ function initFindingLocationMap_() {
   }, 0);
 }
 
+// GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Checked first,
+// against findingLocationVenueBoundary_ -- if the device is outside the event's venue, the dot is
+// removed (not just left where it was) and a banner explains why, same treatment as
+// updateLiveInspectionMyPosition_ (eventDetail.js).
 function updateFindingMyPosition_(latlng) {
   if (!findingLocationMapInstance_) return;
+  var banner = document.getElementById('findingLocationBanner');
+  if (findingLocationVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], findingLocationVenueBoundary_)) {
+    if (findingLocationMyMarker_) { findingLocationMapInstance_.removeLayer(findingLocationMyMarker_); findingLocationMyMarker_ = null; }
+    if (banner) banner.innerHTML = '<div class="muted" style="font-size:11.5px;">' + ICON('warning_banner') + ' You\'re outside the venue boundary — your location isn\'t shown.</div>';
+    return;
+  }
   if (!findingLocationMyMarker_) {
     var icon = HululLeaflet.divIcon({
       className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'
