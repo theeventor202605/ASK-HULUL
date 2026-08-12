@@ -1515,7 +1515,7 @@ async function tabInspections(content, eventId, detail) {
 
   content.querySelectorAll('[data-record]').forEach(btn => {
     var inspection = inspections.filter(i => i.id === btn.getAttribute('data-record'))[0];
-    btn.onclick = () => openChooseParticipantScreen_(content, eventId, inspection);
+    btn.onclick = () => openChooseParticipantScreen_(content, eventId, inspection, detail && detail.venue);
   });
 
   content.querySelectorAll('[data-edit-inspection]').forEach(btn => {
@@ -1605,6 +1605,14 @@ var liveInspectionMarkers_ = {};
 var liveInspectionWatchId_ = null;
 var liveInspectionClosestId_ = null;
 var liveInspectionLastPingAt_ = 0; // throttle for pingInspectionLocation, see its own call site below
+// GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Parsed once per
+// visit (openChooseParticipantScreen_) from the event's venue, same parseBoundaryClient_ used
+// everywhere else a venue boundary is checked client-side. Read by updateLiveInspectionMyPosition_
+// below to hide this device's own live dot the moment it steps outside -- listActiveInspectorLocations
+// (Inspections.gs) already enforces this same rule server-side for every OTHER user's view of this
+// inspector, but that filter never touched this device's own unconditional-until-now display of its
+// own raw GPS fix.
+var liveInspectionVenueBoundary_ = null;
 
 function stopLiveInspectionWatch_() {
   if (liveInspectionWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(liveInspectionWatchId_); liveInspectionWatchId_ = null; }
@@ -1613,10 +1621,12 @@ function destroyLiveInspectionMap_() {
   stopLiveInspectionWatch_();
   if (liveInspectionMapInstance_) { liveInspectionMapInstance_.remove(); liveInspectionMapInstance_ = null; }
   liveInspectionMyMarker_ = null; liveInspectionMarkers_ = {}; liveInspectionClosestId_ = null; liveInspectionLastPingAt_ = 0;
+  liveInspectionVenueBoundary_ = null;
 }
 
-async function openChooseParticipantScreen_(content, eventId, inspection) {
+async function openChooseParticipantScreen_(content, eventId, inspection, venue) {
   destroyLiveInspectionMap_();
+  liveInspectionVenueBoundary_ = venue ? parseBoundaryClient_(venue.boundary) : null;
   var participants = await Api.call('listInspectionParticipants', { inspectionId: inspection.id });
 
   content.innerHTML =

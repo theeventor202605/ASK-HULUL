@@ -94,16 +94,12 @@ async function renderNewFinding(params) {
     '<div class="page-header"><div><div class="page-title">Log ' + esc(Term('finding')) + '</div>' +
     '<div class="page-subtitle">Record a new non-compliance finding for this ' + esc(Term('event').toLowerCase()) + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
-    '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">' +
-      // REQ: "Add map to the left with max zoom as default, showing Inspector live location
-      // centred." This device's own GPS position -- see initFindingLocationMap_ below.
-      '<div class="card" style="flex:1 1 320px;max-width:400px;">' +
-        '<div class="card-header"><div class="card-title">Your location</div></div>' +
-        '<div class="card-body">' +
-          '<div id="findingLocationMap" style="height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
-          '<div id="findingLocationBanner" class="muted" style="font-size:11.5px;margin-top:8px;"></div>' +
-        '</div>' +
-      '</div>' +
+    // REQ (follow-up): "move map to the right, and enlarge the canvas to cover empty space." No
+    // align-items:flex-start here (default stretch instead) so both cards match the taller column's
+    // height -- the map card/body/canvas below are all flex:1 column so the map itself grows to fill
+    // whatever that height ends up being, instead of sitting at a fixed 380px with empty space
+    // under it.
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;">' +
       '<div class="card" style="flex:2 1 400px;max-width:640px;"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
         '<div class="field-group" style="position:relative;">' +
           '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
@@ -129,6 +125,15 @@ async function renderNewFinding(params) {
         '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
         '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
       '</div></div>' +
+      // REQ: "Add map... showing Inspector live location centred." This device's own GPS position
+      // -- see initFindingLocationMap_ below.
+      '<div class="card" style="flex:1 1 320px;max-width:400px;display:flex;flex-direction:column;">' +
+        '<div class="card-header"><div class="card-title">Your location</div></div>' +
+        '<div class="card-body" style="display:flex;flex-direction:column;flex:1;">' +
+          '<div id="findingLocationMap" style="flex:1;min-height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+          '<div id="findingLocationBanner" class="muted" style="font-size:11.5px;margin-top:8px;"></div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
 
   document.getElementById('backFindingBtn').onclick = function () { destroyFindingLocationMap_(); window.location.hash = '#/events/' + eventId + '?tab=findings'; };
