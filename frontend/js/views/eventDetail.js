@@ -27,8 +27,12 @@ async function renderEventDetail(params) {
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events">' + esc(Term('event_plural')) + '</a> / ' + esc(detail.event.name) + '</div>' +
     '<div class="page-header"><div><div class="page-title">' + esc(detail.event.name) + '</div>' +
-    '<div class="page-subtitle">' + esc(detail.venue ? detail.venue.name : '') + ' · ' + esc(detail.event.city) + ' · ' +
-    UI.fmtDate(detail.event.startDateTime) + ' – ' + UI.fmtDate(detail.event.endDateTime) + '</div></div>' +
+    '<div class="page-subtitle">' + [
+      detail.project ? detail.project.name : '',
+      detail.venue ? detail.venue.name : '',
+      detail.event.city,
+      UI.fmtDate(detail.event.startDateTime) + ' – ' + UI.fmtDate(detail.event.endDateTime)
+    ].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
     UI.statusBadge(detail.event.status) + '</div>' +
     '<div class="tabbar" id="eventTabbar"></div>' +
     '<div id="eventTabContent"></div>';
