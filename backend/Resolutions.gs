@@ -311,10 +311,18 @@ function escalationRoleRecipients_(role, event) {
 // (Participant-account roles with no login-based "recipient" concept) and deliberately excludes
 // nothing else, so a newly added staff role only needs a scoping rule added above to become
 // selectable here too.
+// Deliberately plain string literals, not [ROLES.EVENT_MANAGER, ...] -- this array is built at
+// module load time, and Apps Script concatenates every .gs file's top-level code in file order
+// (alphabetical: "Resolutions.gs" loads before "Utils.gs", which is where ROLES is defined), so
+// referencing ROLES here would read it before Utils.gs has run, throwing a script-wide
+// initialization error that breaks every API call, not just this one (same trap already documented
+// on EVENT_PLACE_MANAGE_ROLES in Places.gs -- missed here when this was first added). requireRole(user,
+// [ROLES.SYSTEM_ADMIN, ...]) calls *inside* functions are fine -- those only run after every file's
+// top-level code has already finished.
 var ESCALATION_SELECTABLE_ROLES_ = [
-  ROLES.EVENT_MANAGER, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EMC_ANALYST,
-  ROLES.PROJECT_MANAGER, ROLES.INSPECTION_ADMIN, ROLES.INSPECTION_ANALYST, ROLES.INSPECTOR,
-  ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.SUPPORT_AGENT
+  'EventManager', 'EMCAdmin', 'EMCManager', 'EMCAnalyst',
+  'ProjectManager', 'InspectionAdmin', 'InspectionAnalyst', 'Inspector',
+  'SystemAdmin', 'GAAdmin', 'GAUser', 'SupportAgent'
 ];
 
 // Resolves a whole {toRoles, ccRoles} pair (as stored in escalation config) into deduped

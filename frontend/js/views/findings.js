@@ -137,7 +137,7 @@ async function renderNewFinding(params) {
     '</div>';
 
   document.getElementById('backFindingBtn').onclick = function () { destroyFindingLocationMap_(); window.location.hash = '#/events/' + eventId + '?tab=findings'; };
-  initFindingLocationMap_(detail && detail.venue);
+  initFindingLocationMap_(detail && detail.venue, detail && detail.zones, participants);
 
   /* ---- Participant: searchable dropdown (mandatory) ---- */
   var selectedParticipant = null;
@@ -240,15 +240,26 @@ async function renderNewFinding(params) {
  * a single self marker that's moved (not recreated) on every watchPosition tick, with the map
  * re-centered on it each time via setView(latlng, currentZoom, {animate:false}) -- so the inspector
  * stays centered no matter where they walk, while still being free to zoom in/out between ticks (the
- * next recenter keeps whatever zoom they left it at). Starts at the tile layer's own max zoom (19),
- * matching "max zoom as default." Module-level state + explicit destroy (called from the Back button
- * and on successful submit above) follows the same manual-cleanup convention already used everywhere
- * else in the app for a Leaflet map + geolocation watch pairing -- see destroyLiveInspectionMap_'s own
- * header comment in eventDetail.js for why there's no generic route-change hook to rely on instead.
+ * next recenter keeps whatever zoom they left it at).
+ *
+ * REQ (follow-up): "map should follow our standard maps by displaying boundaries and dots." Now draws
+ * the venue boundary + zone boundaries + participant dots on load, same composition as
+ * eventPlacesMap/participantDisciplineMap (UI.drawZoneBoundaries/UI.drawPlaceDots, ui.js -- dots get
+ * the same red+badge open-risk treatment for free). Initial view fitBounds()s to that content instead
+ * of a flat max zoom -- showing boundaries/dots and starting at "max zoom, nothing else visible" are
+ * mutually exclusive, and matching the rest of the app's maps wins; once a GPS fix arrives,
+ * updateFindingMyPosition_ recenters on the inspector at whatever zoom is then active, same as
+ * liveInspectionMap.
+ *
+ * Module-level state + explicit destroy (called from the Back button and on successful submit above)
+ * follows the same manual-cleanup convention already used everywhere else in the app for a Leaflet
+ * map + geolocation watch pairing -- see destroyLiveInspectionMap_'s own header comment in
+ * eventDetail.js for why there's no generic route-change hook to rely on instead.
  */
 var findingLocationMapInstance_ = null;
 var findingLocationMyMarker_ = null;
 var findingLocationWatchId_ = null;
+var findingLocationResizeObserver_ = null;
 // GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Parsed once per
 // visit (initFindingLocationMap_, from the event's own venue) via parseBoundaryClient_ (venues.js,
 // loaded app-wide) -- same client-side containment check used for eventDetail.js's liveInspectionMap.
@@ -262,12 +273,13 @@ function stopFindingLocationWatch_() {
 }
 function destroyFindingLocationMap_() {
   stopFindingLocationWatch_();
+  if (findingLocationResizeObserver_) { findingLocationResizeObserver_.disconnect(); findingLocationResizeObserver_ = null; }
   if (findingLocationMapInstance_) { findingLocationMapInstance_.remove(); findingLocationMapInstance_ = null; }
   findingLocationMyMarker_ = null;
   findingLocationVenueBoundary_ = null;
 }
 
-function initFindingLocationMap_(venue) {
+function initFindingLocationMap_(venue, zones, participants) {
   destroyFindingLocationMap_(); // in case a previous visit left a GPS watch/map running (same defensive pattern as tabInspections/destroyLiveInspectionMap_)
   findingLocationVenueBoundary_ = venue ? parseBoundaryClient_(venue.boundary) : null;
   var el = document.getElementById('findingLocationMap');
@@ -280,12 +292,39 @@ function initFindingLocationMap_(venue) {
   }
   setTimeout(function () {
     if (!document.getElementById('findingLocationMap')) return;
-    // 19 = the OSM tile layer's own maxZoom just below -- "max zoom as default."
-    findingLocationMapInstance_ = HululLeaflet.map('findingLocationMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 19);
+    findingLocationMapInstance_ = HululLeaflet.map('findingLocationMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 16); // see eventDetail.js overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(findingLocationMapInstance_, el);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(findingLocationMapInstance_);
+
+    // REQ: "map should follow our standard maps by displaying boundaries and dots."
+    var bounds = [];
+    if (findingLocationVenueBoundary_) {
+      var venueColor = (venue && venue.color) || VENUE_BOUNDARY_DEFAULT_COLOR_;
+      var venueLayer = HululLeaflet.polygon(findingLocationVenueBoundary_.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: venueColor, fillColor: venueColor, fillOpacity: 0.06, weight: 1.5, interactive: false
+      }).addTo(findingLocationMapInstance_);
+      bounds = bounds.concat(venueLayer.getLatLngs()[0]);
+    }
+    UI.drawZoneBoundaries(findingLocationMapInstance_, zones).forEach(function (layer) {
+      bounds = bounds.concat(layer.getLatLngs()[0]);
+    });
+    UI.drawPlaceDots(findingLocationMapInstance_, participants);
+    (participants || []).forEach(function (pt) {
+      if (pt.lat !== '' && pt.lat != null && pt.lng !== '' && pt.lng != null) bounds.push([Number(pt.lat), Number(pt.lng)]);
+    });
+    if (bounds.length) findingLocationMapInstance_.fitBounds(bounds, { padding: [24, 24], maxZoom: 18 });
+
+    // REQ (follow-up): "expand map canvas to fill empty width" -- the map card's height is stretched
+    // to match its taller sibling column (see the flex CSS above), so its final pixel size isn't known
+    // until layout settles; a plain setTimeout(invalidateSize) guess isn't reliable against that (or
+    // against fonts/content still shifting height after the fact). ResizeObserver re-syncs Leaflet's
+    // internal size to the container's real size continuously instead of guessing a delay.
+    if (window.ResizeObserver) {
+      findingLocationResizeObserver_ = new ResizeObserver(function () { if (findingLocationMapInstance_) findingLocationMapInstance_.invalidateSize(); });
+      findingLocationResizeObserver_.observe(el);
+    }
     setTimeout(function () { if (findingLocationMapInstance_) findingLocationMapInstance_.invalidateSize(); }, 150);
     startFindingLocationWatch_();
   }, 0);
