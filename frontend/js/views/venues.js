@@ -693,12 +693,16 @@ async function sharePlaceAccountCredentials_(name, account, quickUrl) {
 function zoneFieldHtml_(zones, prefix) {
   var singleOptions = '<option value="">No zone</option><option value="ALL">All Zones</option>' +
     zones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('');
-  var checkboxRows = '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;font-weight:600;">' +
+  // "All Zones" spans both columns with a divider below it (it's a distinct select-all toggle, not
+  // just another item in the list); the individual zones then flow into a compact 2-column grid
+  // instead of one tall single-file list -- keeps the box's footprint close to its actual content
+  // instead of a narrow column of checkboxes with a lot of dead space beside it.
+  var checkboxRows = '<label style="grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--border);">' +
       '<input type="checkbox" id="' + prefix + 'ZoneAll" /> All Zones</label>' +
     (zones.length ? zones.map(function (z) {
-      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
         '<input type="checkbox" class="' + prefix + 'ZoneCheck" value="' + z.id + '" /> ' + esc(z.name) + '</label>';
-    }).join('') : '<div class="muted" style="font-size:12px;padding:3px 0;">No ' + esc(Term('zone_plural').toLowerCase()) + ' set up yet.</div>');
+    }).join('') : '<div class="muted" style="grid-column:1/-1;font-size:12px;">No ' + esc(Term('zone_plural').toLowerCase()) + ' set up yet.</div>');
   return (
     '<div id="' + prefix + 'ZoneSingle">' +
       '<div id="' + prefix + 'ZoneAutoWrap" style="display:none;">' +
@@ -714,7 +718,7 @@ function zoneFieldHtml_(zones, prefix) {
     '</div>' +
     '<div id="' + prefix + 'ZoneMulti" style="display:none;">' +
       '<label class="field-label">' + esc(Term('zone_plural')) + ' (optional — Operators may cover more than one)</label>' +
-      '<div style="max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;">' + checkboxRows + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;">' + checkboxRows + '</div>' +
     '</div>'
   );
 }

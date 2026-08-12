@@ -265,8 +265,15 @@ window.UI = {
     return overdue ? ('Overdue ' + label) : (label + ' left');
   },
 
+  // Wrapped in a single div (not just the bare label+input pair) so this always behaves as ONE
+  // cohesive unit wherever it's dropped -- crucially inside a .form-row grid (display:grid, 2
+  // columns): unwrapped, the label and input become two SEPARATE grid items, so two UI.field() calls
+  // in one .form-row produce 4 auto-placed items instead of 2, silently reflowing into "label beside
+  // value, one pair per row" (or worse, a mismatched item count when paired with an already-wrapped
+  // field like the Zones checkbox box, leaving stray empty grid cells). Wrapping restores the
+  // intended "two fields side by side, each stacked label-above-input" layout every .form-row expects.
   field(label, inputHtml) {
-    return '<label class="field-label">' + esc(label) + '</label>' + inputHtml;
+    return '<div class="field-group"><label class="field-label">' + esc(label) + '</label>' + inputHtml + '</div>';
   },
 
   // Kanban-style status board: one column per status, cards grouped into whichever column
