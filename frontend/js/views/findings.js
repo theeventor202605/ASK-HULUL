@@ -56,11 +56,33 @@ function detailGrid_(fieldsHtml) {
 }
 
 /* ---------------- New Finding page (route: #/events/:id/findings/new) ---------------- */
+// REQ: "Log finding must be tied to a participant. Participant must first be selected from
+// searchable dropdown or live location side map (to be added). Discipline: should pick up as a
+// suggestion, and is a mandatory field. Checklist Type: should be picked if left blank it will
+// reflect as Other. Risk level: default to Medium. Resolution window (hours): default to 24.
+// Remove location and sub-zone. Inspector must be able to take photos or one video."
+//
+// The live-location side map is explicitly called out as "to be added" -- a future enhancement, not
+// built here; a muted placeholder note stands in for it so it isn't forgotten. Location/sub-zone
+// inputs are removed entirely -- createFinding (Findings.gs) now derives both from the selected
+// Participant's own record instead.
 async function renderNewFinding(params) {
   var eventId = params.id;
   var root = document.getElementById('viewRoot');
-  var disciplines = [];
-  try { disciplines = await Api.call('listDisciplines', {}); } catch (e) { /* fall back to no options below */ }
+  var disciplines = [], checklistItems = [], participants = [];
+  try {
+    // getEvent first, on its own -- listParticipants needs the event's venueId to scope the picker
+    // to participants actually registered at this event's venue (same { venueId, eventId } pairing
+    // eventPlaces.js's own Places tab uses); without venueId it would also pull in every OTHER
+    // venue's permanent participants.
+    var detail = await Api.call('getEvent', { eventId: eventId });
+    var results = await Promise.all([
+      Api.call('listDisciplines', {}), Api.call('listChecklistItems', {}),
+      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' })
+    ]);
+    disciplines = results[0]; checklistItems = results[1]; participants = results[2];
+  } catch (e) { /* fall back to whichever loaded -- the pickers below just end up with fewer options */ }
+  var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
@@ -68,29 +90,120 @@ async function renderNewFinding(params) {
     '<div class="page-subtitle">Record a new non-compliance finding for this ' + esc(Term('event').toLowerCase()) + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
     '<div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
+      '<div class="field-group" style="position:relative;">' +
+        '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
+        '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
+        '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ Live location side map — coming soon.</div>' +
+      '</div>' +
       UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
       UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
       UI.field('Suggested action', '<input id="fAction" class="field-input" />') +
+      UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
       '<div class="form-row">' +
         UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
         UI.field('Resolution window (hours)', '<input id="fWindow" type="number" class="field-input" value="24" />') +
       '</div>' +
-      '<div class="form-row">' +
-        UI.field('Sub-' + Term('zone').toLowerCase(), '<input id="fSubZone" class="field-input" />') +
-        UI.field('Location', '<input id="fLocation" class="field-input" />') +
-      '</div>' +
+      '<div class="field-label" style="margin-top:8px;">Photo or video evidence</div>' +
+      // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
+      // section further down this file -- opens the device camera directly, no gallery/file picker.
+      '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
+      '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
+      '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
       '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
     '</div></div>';
 
   document.getElementById('backFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=findings'; };
+
+  /* ---- Participant: searchable dropdown (mandatory) ---- */
+  var selectedParticipant = null;
+  var pSearch = document.getElementById('fParticipantSearch');
+  var pSuggest = document.getElementById('participantSuggestBox');
+  var pMatches = [];
+  function renderParticipantSuggest_(query) {
+    var q = (query || '').toLowerCase();
+    pMatches = participants.filter(function (pt) { return !q || pt.name.toLowerCase().indexOf(q) !== -1; });
+    pSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(Term('participant_plural')) + '</div>' +
+      (pMatches.length
+        ? pMatches.slice(0, 20).map(function (pt, i) {
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
+              '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
+          }).join('')
+        : '<div class="chat-suggest-empty">No matches</div>');
+    pSuggest.style.display = '';
+    pSuggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+      // mousedown+preventDefault (not click) fires before the input's own blur-hide below, same
+      // pattern as the Chat compose suggest box (tabEventChat).
+      el.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        pickParticipant_(pMatches[Number(el.getAttribute('data-idx'))]);
+      });
+    });
+  }
+  function pickParticipant_(pt) {
+    selectedParticipant = pt;
+    pSearch.value = pt.name;
+    pSuggest.style.display = 'none';
+    // REQ: "Discipline: should pick up as a suggestion" -- pre-fills from the participant's own
+    // registered discipline (Participants.disciplineIds) but the dropdown stays fully editable; this
+    // is a starting suggestion, not a lock.
+    var firstDisciplineId = (pt.disciplineIds || '').split(',').filter(Boolean)[0];
+    if (firstDisciplineId && disciplinesById[firstDisciplineId]) {
+      document.getElementById('fDiscipline').value = firstDisciplineId;
+      renderChecklistTypeOptions_();
+    }
+  }
+  pSearch.addEventListener('focus', function () { renderParticipantSuggest_(pSearch.value); });
+  pSearch.addEventListener('input', function () {
+    if (selectedParticipant && pSearch.value !== selectedParticipant.name) selectedParticipant = null; // edited past a selection -- must re-pick
+    renderParticipantSuggest_(pSearch.value);
+  });
+  pSearch.addEventListener('keydown', function (e) { if (e.key === 'Escape') pSuggest.style.display = 'none'; });
+  pSearch.addEventListener('blur', function () { setTimeout(function () { pSuggest.style.display = 'none'; }, 150); });
+
+  /* ---- Checklist Type: options filtered to the selected Discipline ----
+   * ChecklistItems.category stores the discipline NAME (see checklistItems.js header comment),
+   * checklistType is the actual type (Restaurants, Food Truck, …). Blank selection = "Other",
+   * enforced server-side (createFinding defaults category to 'Other' when not supplied). */
+  function renderChecklistTypeOptions_() {
+    var typeSelect = document.getElementById('fChecklistType');
+    var prev = typeSelect.value;
+    var disciplineId = document.getElementById('fDiscipline').value;
+    var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
+    var relevant = disciplineName ? checklistItems.filter(function (i) { return i.category === disciplineName; }) : checklistItems;
+    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).filter(Boolean))).sort();
+    typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
+      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
+    if (types.indexOf(prev) !== -1) typeSelect.value = prev;
+  }
+  document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
+  renderChecklistTypeOptions_();
+
+  /* ---- Evidence: photo or video, camera capture only ---- */
+  var pendingFiles = { newFinding: [] };
+  document.getElementById('fFindingCameraBtn').onclick = function () { document.getElementById('fFindingFile').click(); };
+  document.getElementById('fFindingFile').onchange = function (e) {
+    Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles); });
+    e.target.value = '';
+  };
+
   document.getElementById('createFindingBtn').onclick = async function () {
+    if (!selectedParticipant) { UI.toast(Term('participant') + ' is required — search and select one', 'error'); return; }
+    var disciplineId = document.getElementById('fDiscipline').value;
+    if (!disciplineId) { UI.toast(Term('discipline') + ' is required', 'error'); return; }
+    var files = pendingFiles.newFinding || [];
+    if (files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; })) {
+      UI.toast('Evidence is still uploading — please wait for it to finish', 'error'); return;
+    }
+    var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
     try {
       var f = await Api.call('createFinding', {
-        eventId: eventId, disciplineId: document.getElementById('fDiscipline').value,
+        eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
+        category: document.getElementById('fChecklistType').value,
         riskLevel: document.getElementById('fRisk').value, resolutionWindowHours: Number(document.getElementById('fWindow').value),
-        subZone: document.getElementById('fSubZone').value, location: document.getElementById('fLocation').value
+        evidenceUrls: urls
       });
       UI.toast(Term('finding') + ' logged', 'success');
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;

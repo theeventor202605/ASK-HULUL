@@ -70,18 +70,31 @@ function listFindings(user, p) {
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 
+// REQ: "Log finding must be tied to a participant. Participant must first be selected... Discipline
+// ... is a mandatory field... Remove location and sub-zone." participantId/disciplineId are now
+// required inputs (previously optional); subZone/location/lat/lng are no longer collected directly
+// from the inspector on the manual Log Finding form at all -- they're derived from the selected
+// Participant's own record instead (p.subZone/p.location/p.lat/p.lng are still honored if a future
+// caller supplies them explicitly, so this stays backward compatible). Note: the auto-created-from-
+// checklist-crossing path (recordInspectionResults, Inspections.gs) builds its own Findings row
+// directly via insertRow and does NOT go through createFinding, so it's unaffected by any of this.
 function createFinding(user, p) {
   requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
-  ['eventId', 'description', 'riskLevel'].forEach(function (f) { if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required'); });
+  ['eventId', 'description', 'riskLevel', 'participantId', 'disciplineId'].forEach(function (f) { if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required'); });
+  var participant = getById('Participants', p.participantId);
+  if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
+  var zone = participant.zoneId ? getById('Zones', participant.zoneId) : null;
   var windowHours = p.resolutionWindowHours || 24;
   var finding = {
-    id: newId('Findings'), eventId: p.eventId, inspectionId: p.inspectionId || '', disciplineId: p.disciplineId || '',
-    category: p.category || '', subCategory: p.subCategory || '', description: p.description,
+    id: newId('Findings'), eventId: p.eventId, inspectionId: p.inspectionId || '', disciplineId: p.disciplineId,
+    // REQ: "Checklist Type: should be picked if left blank it will reflect as Other."
+    category: p.category || 'Other', subCategory: p.subCategory || '', description: p.description,
     suggestedAction: p.suggestedAction || '', riskLevel: p.riskLevel,
     resolutionWindowAt: new Date(Date.now() + Number(windowHours) * 3600 * 1000).toISOString(),
-    nextInspectionAt: p.nextInspectionAt || '', participantId: p.participantId || '', subZone: p.subZone || '',
-    location: p.location || '', status: 'Open', evidenceUrls: (p.evidenceUrls || []).join(','),
-    lat: p.lat || '', lng: p.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0
+    nextInspectionAt: p.nextInspectionAt || '', participantId: p.participantId,
+    subZone: p.subZone || (zone ? zone.name : ''), location: p.location || participant.location || '',
+    status: 'Open', evidenceUrls: (p.evidenceUrls || []).join(','),
+    lat: p.lat || participant.lat || '', lng: p.lng || participant.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0
   };
   insertRow('Findings', finding);
   audit(user.id, 'CREATE_FINDING', 'Findings', finding.id, {});
