@@ -321,7 +321,7 @@ function initParticipantDisciplineMap_(venue, zones, participants) {
   setTimeout(function () {
     var mapEl = document.getElementById('participantDisciplineMap');
     if (!mapEl || mapEl._leaflet_id) return;
-    participantDisciplineMapInstance_ = HululLeaflet.map('participantDisciplineMap').setView(center, hasCoords ? 15 : 6);
+    participantDisciplineMapInstance_ = HululLeaflet.map('participantDisciplineMap', { preferCanvas: true }).setView(center, hasCoords ? 15 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment -- same html2canvas/SVG-transform fix
     UI.requireClickToActivateMap(participantDisciplineMapInstance_, mapEl);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
@@ -459,7 +459,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
   var center = hasCoords ? [Number(venue.lat), Number(venue.lng)] : EVENT_MAP_DEFAULT_CENTER_;
   setTimeout(function () {
     if (!document.getElementById('eventPlaceMap')) return;
-    eventPlaceMapInstance_ = HululLeaflet.map('eventPlaceMap').setView(center, hasCoords ? 16 : 6);
+    eventPlaceMapInstance_ = HululLeaflet.map('eventPlaceMap', { preferCanvas: true }).setView(center, hasCoords ? 16 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment
     // Note: this map places its pin on map click (eventPlaceMapInstance_.on('click', ...) below) --
     // that keeps working exactly as before, since requireClickToActivateMap only ever disables
     // dragging/scroll-zoom/etc., never the click event itself. The same first click that drops the

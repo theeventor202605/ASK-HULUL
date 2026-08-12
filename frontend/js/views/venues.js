@@ -227,7 +227,7 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, v
     if (myGen !== venueMapGen_) return; // superseded by a newer render before this tick fired
     var mapEl = document.getElementById('venueMap');
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
-    venueMapInstance_ = HululLeaflet.map('venueMap').setView(center, startCenter ? 15 : 6);
+    venueMapInstance_ = HululLeaflet.map('venueMap', { preferCanvas: true }).setView(center, startCenter ? 15 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(venueMapInstance_, mapEl);
     // Single hostname (no a/b/c subdomains) -- matches OSM's current tile usage policy; the old
     // lettered-subdomain form ({s}.tile...) is deprecated and can silently serve nothing.
@@ -952,7 +952,7 @@ function initPlaceMap_(venue, zones, places) {
     if (myGen !== placeMapGen_) return; // superseded by a newer render before this tick fired
     var mapEl = document.getElementById('placeMap');
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
-    placeMapInstance_ = HululLeaflet.map('placeMap').setView(center, hasCoords ? 16 : 6);
+    placeMapInstance_ = HululLeaflet.map('placeMap', { preferCanvas: true }).setView(center, hasCoords ? 16 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(placeMapInstance_, mapEl);
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19

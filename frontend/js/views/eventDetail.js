@@ -194,7 +194,17 @@ function initOverviewZoneMap_(venue, zones) {
       // boundary in this read-only thumbnail even with zero padding (REQ: "zoomed in to maximum so
       // boundaries touch edge of the canvas"). Fractional zoom fits tight to whichever axis is the
       // limiting one instead of stopping a whole zoom level early.
-      zoomSnap: 0, zoomDelta: 0.25
+      zoomSnap: 0, zoomDelta: 0.25,
+      // BUG (REQ report): "still not capturing correctly ... the event boundary is outside the
+      // canvas" -- when Event Chat's # feature re-renders this map off-screen and html2canvas
+      // rasterizes it, the venue/zone boundary polygons (drawn in Leaflet's SVG overlay pane, which
+      // carries its OWN CSS transform independent of the tile pane underneath) can come out shifted
+      // relative to the tiles -- a known html2canvas limitation with nested CSS-transformed SVG, not
+      // something more capture delay can fix. preferCanvas makes every vector layer on this map
+      // (the venue outline, zone outlines) paint into a plain <canvas> instead -- html2canvas copies
+      // canvas pixel data directly, so it comes out pixel-identical to what's really on screen. Looks
+      // and behaves identically for our simple stroked/filled polygons, just via a different renderer.
+      preferCanvas: true
     }).setView(center, hasVenueCoords ? 15 : 6);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
@@ -425,7 +435,7 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
     .filter(function (zb) { return !!zb.boundary; });
   setTimeout(function () {
     if (!document.getElementById('eventPlacesMap')) return;
-    eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap')
+    eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap', { preferCanvas: true }) // see overviewZoneMap's preferCanvas comment -- same html2canvas/SVG-transform fix, any tab can get # screenshotted
       .setView(center, (hasVenueCoords || placesWithCoords.length) ? 15 : 6);
     UI.requireClickToActivateMap(eventPlacesMapInstance_, el);
 
@@ -591,7 +601,7 @@ function initZoneMap_(venue, existingZone, siblingZones, places, eventId) {
     if (myGen !== zoneMapGen_) return; // superseded by a newer render before this tick fired
     var mapEl = document.getElementById('zoneMap');
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
-    zoneMapInstance_ = HululLeaflet.map('zoneMap').setView(center, hasVenueCoords ? 16 : 6);
+    zoneMapInstance_ = HululLeaflet.map('zoneMap', { preferCanvas: true }).setView(center, hasVenueCoords ? 16 : 6); // see overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(zoneMapInstance_, mapEl);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
@@ -1696,7 +1706,7 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
   }
   setTimeout(function () {
     if (!document.getElementById('liveInspectionMap')) return;
-    liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap').setView(EVENT_MAP_DEFAULT_CENTER_, 16);
+    liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 16); // see overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(liveInspectionMapInstance_, el);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
