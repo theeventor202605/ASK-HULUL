@@ -12,6 +12,12 @@ var NAV_ITEMS = [
   { path: '/meetings', icon: '🗓️', label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
   { path: '/notifications', icon: '🔔', label: 'nav_notifications', section: 'section_main' },
+  // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
+  // assigned to temporary another user." Same manager-ish roles as listUsers/Reassignment.gs's own
+  // REASSIGNMENT_MANAGER_ROLES_ -- kept in sync manually since nav gating is frontend-only (the
+  // backend enforces its own copy regardless of what this list shows).
+  { path: '/reassignment', icon: '🔁', label: 'nav_reassignment', section: 'section_main',
+    roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager'] },
   // Support/SystemAdmin see the whole shared queue here (support.js's renderSupport branches on
   // role); everyone else sees only "My Tickets" -- the ones they've personally raised via the
   // #supportBtn capture flow (wireChrome below) -- so this stays visible to every role, no

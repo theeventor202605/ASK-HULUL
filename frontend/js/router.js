@@ -98,6 +98,7 @@ window.Router = {
     this.add('/users', renderUsers);
     this.add('/organizations', renderOrganizations);
     this.add('/notifications', renderNotificationsView);
+    this.add('/reassignment', renderReassignment);
     this.add('/support', renderSupport);
     this.add('/support/:id', renderSupportDetail);
     this.add('/config', renderConfig);
