@@ -520,7 +520,16 @@ async function renderVenuePlaces(params) {
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">Places — ' + esc(venue.name) + '</div>' +
     '<div class="page-subtitle">Reusable spots at this ' + esc(Term('venue').toLowerCase()) + ' for Vendors, Operators, and Exhibitors</div></div>' +
-    '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div style="display:flex;gap:8px;">' +
+      // REQ: "Add a helper button to identify all places within the venue boundary and add them
+      // automatically." Needs a drawn boundary to search within (see openDetectPlacesModal_) --
+      // hidden rather than shown-disabled when there isn't one, same convention as the rest of this
+      // page (e.g. the Add-a-place map's own boundary-dependent hint text).
+      (canManage && hasBoundary
+        ? '<button class="btn btn-secondary" id="detectPlacesBtn">' + ICON('detect_places') + ' Detect places in boundary</button>'
+        : '') +
+      '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' Back</button>' +
+    '</div></div>' +
     (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: 'Name' },
@@ -544,6 +553,8 @@ async function renderVenuePlaces(params) {
       places, { emptyText: 'No places yet.' }) + '</div></div>';
 
   document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
+  var detectPlacesBtn = document.getElementById('detectPlacesBtn');
+  if (detectPlacesBtn) detectPlacesBtn.onclick = function () { openDetectPlacesModal_(venue, zones, places); };
 
   if (canManage) {
     wirePlaceForm_(venue, zones, places);
@@ -1038,4 +1049,160 @@ async function suggestNameFromMap_(fieldId, lat, lng) {
       addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.building || null;
     if (name) el.value = name;
   } catch (e) { /* offline/blocked -- the form still works, just without a name suggestion */ }
+}
+
+/* ---------------- Detect places in boundary (venues.js "Places" page helper button) ----------------
+ * REQ: "Add a helper button to identify all places within the venue boundary and add them
+ * automatically." Queries the Overpass API (OpenStreetMap's bulk-query service -- a different
+ * endpoint from the Nominatim search/reverse-geocode calls above, but the same
+ * call-OSM-directly-from-the-browser pattern) for every named real-world point inside the venue's
+ * drawn boundary, lets the PM review/deselect/correct-type before anything is created (each row here
+ * becomes a real Place PLUS an auto-provisioned login account -- see Places.gs -- so nothing gets
+ * created without a human looking at it first), then bulk-creates the selected ones via
+ * bulkImportPlaces (Places.gs).
+ */
+
+// Overpass' `poly` filter wants "lat lon lat lon ..." (space-separated, polygon not explicitly
+// closed). Queries both nodes and ways with a name tag -- most POIs are nodes, but some (e.g. a
+// whole named building) are mapped as ways, whose centroid `out center` provides directly. Throws on
+// a network/HTTP failure so the caller can show a real error instead of silently finding nothing.
+async function queryOsmPlacesInBoundary_(boundary) {
+  var polyStr = boundary.map(function (pt) { return pt.lat + ' ' + pt.lng; }).join(' ');
+  var query = '[out:json][timeout:25];(node["name"](poly:"' + polyStr + '");way["name"](poly:"' + polyStr + '"););out center tags;';
+  var res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(query) });
+  if (!res.ok) throw new Error('OpenStreetMap lookup failed (HTTP ' + res.status + ')');
+  var data = await res.json();
+  return (data.elements || []).map(function (el) {
+    var lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
+    var lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
+    var tags = el.tags || {};
+    if (lat == null || lng == null || !tags.name) return null;
+    return { name: tags.name, lat: lat, lng: lng, tags: tags };
+  }).filter(Boolean);
+}
+
+// Best-effort OSM-tag -> PLACE_TYPES guess -- purely a starting point shown (and editable) per row in
+// the picker modal, never authoritative; the PM corrects it there before anything is created.
+function osmCandidateType_(tags) {
+  if (tags.shop || ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court', 'ice_cream', 'bakery'].indexOf(tags.amenity) !== -1) return 'Vendor';
+  if (tags.office) return 'Operator';
+  if (['toilets', 'information', 'security', 'first_aid', 'atm', 'bank', 'pharmacy', 'parking'].indexOf(tags.amenity) !== -1) return 'Operator';
+  if (tags.tourism || tags.leisure || tags.craft) return 'Exhibitor';
+  return 'Other';
+}
+
+// REQ: "No duplicated allowed, check by name and geolocation." A candidate is flagged as already on
+// record if EITHER signal matches an existing place at this venue: same name (case-insensitive,
+// trimmed -- OSM vs. manually-typed capitalization/spacing can differ) OR within
+// OSM_DUPLICATE_RADIUS_M_ of an existing place's own coordinates (a manually-dropped pin and OSM's
+// own node for the same real-world spot are rarely bit-for-bit identical). Either signal alone is
+// enough to flag it -- e.g. a shop renamed on OSM but not yet in our own catalog (same spot,
+// different name) still gets caught by geolocation even though the name no longer matches. Mutates
+// and returns candidates with an `alreadyExists` flag rather than filtering them out, so the picker
+// can show (disabled, unchecked) *why* fewer new candidates appear than what's visible on the map.
+var OSM_DUPLICATE_RADIUS_M_ = 15;
+function markOsmDuplicates_(candidates, existingPlaces) {
+  var existingWithCoords = (existingPlaces || []).filter(function (pl) { return pl.lat !== '' && pl.lat != null && pl.lng !== '' && pl.lng != null; });
+  var existingNames = {};
+  (existingPlaces || []).forEach(function (pl) { existingNames[String(pl.name || '').trim().toLowerCase()] = true; });
+  candidates.forEach(function (c) {
+    var nameMatch = !!existingNames[String(c.name || '').trim().toLowerCase()];
+    var geoMatch = existingWithCoords.some(function (pl) {
+      return haversineKm_(c.lat, c.lng, Number(pl.lat), Number(pl.lng)) * 1000 <= OSM_DUPLICATE_RADIUS_M_;
+    });
+    c.alreadyExists = nameMatch || geoMatch;
+  });
+  return candidates;
+}
+
+// Row markup for one OSM candidate inside the picker modal -- a checkbox (pre-checked unless already
+// on record, in which case disabled+unchecked+labelled), the name, an editable Type select
+// (osmCandidateType_'s guess pre-selected), and the auto-detected zone (read-only text -- same
+// pointInPolygonClient_ test autoDetectZone_ uses for the single-place form, just run once per
+// candidate here instead of wired to a live field).
+function osmCandidateRowHtml_(c, i, zones) {
+  var zoneMatch = (zones || []).filter(function (z) {
+    var b = parseBoundaryClient_(z.boundary);
+    return b && pointInPolygonClient_(c.lat, c.lng, b);
+  })[0];
+  c._zoneId = zoneMatch ? zoneMatch.id : '';
+  return '<tr style="' + (c.alreadyExists ? 'opacity:.5;' : '') + '">' +
+    '<td style="padding:6px 8px;"><input type="checkbox" class="osm-candidate-check" data-idx="' + i + '"' +
+      (c.alreadyExists ? ' disabled' : ' checked') + ' /></td>' +
+    '<td style="padding:6px 8px;font-size:12.5px;">' + esc(c.name) + (c.alreadyExists ? ' <span class="muted">(already added)</span>' : '') + '</td>' +
+    '<td style="padding:6px 8px;">' +
+      '<select class="field-input osm-candidate-type" data-idx="' + i + '" style="font-size:12px;padding:4px 6px;" ' + (c.alreadyExists ? 'disabled' : '') + '>' +
+        PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '"' + (ty === c._type ? ' selected' : '') + '>' + ty + '</option>'; }).join('') +
+      '</select>' +
+    '</td>' +
+    '<td style="padding:6px 8px;font-size:12px;" class="muted">' + esc(zoneMatch ? zoneMatch.name : '—') + '</td>' +
+  '</tr>';
+}
+
+async function openDetectPlacesModal_(venue, zones, existingPlaces) {
+  var boundary = parseBoundaryClient_(venue.boundary);
+  if (!boundary) { UI.toast('Draw this ' + Term('venue').toLowerCase() + '\'s boundary first (Edit ' + Term('venue').toLowerCase() + ') -- there\'s nothing to search within yet.', 'error'); return; }
+
+  UI.openModal('Detect places in boundary', '<div style="font-size:13px;padding:6px 0;">Searching OpenStreetMap for named places inside this ' + esc(Term('venue').toLowerCase()) + '\'s boundary…</div>', []);
+  var candidates;
+  try {
+    candidates = await queryOsmPlacesInBoundary_(boundary);
+  } catch (err) {
+    UI.closeModal();
+    UI.error(err);
+    return;
+  }
+  candidates.forEach(function (c) { c._type = osmCandidateType_(c.tags); });
+  markOsmDuplicates_(candidates, existingPlaces);
+
+  var newCount = candidates.filter(function (c) { return !c.alreadyExists; }).length;
+  if (!candidates.length) {
+    UI.closeModal();
+    UI.toast('No named places found on OpenStreetMap inside this boundary.', 'error');
+    return;
+  }
+
+  function renderBody() {
+    return '<div style="font-size:12.5px;margin-bottom:10px;" class="muted">' +
+        (newCount ? 'Found ' + candidates.length + ' place(s), ' + newCount + ' new -- review, adjust type if needed, and uncheck any you don\'t want.'
+          : 'Found ' + candidates.length + ' place(s), all already on record at this ' + esc(Term('venue').toLowerCase()) + '.') +
+      '</div>' +
+      '<div style="max-height:360px;overflow-y:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr style="text-align:left;font-size:11px;color:var(--text-600);text-transform:uppercase;">' +
+            '<th style="padding:6px 8px;"></th><th style="padding:6px 8px;">Name</th><th style="padding:6px 8px;">Type</th><th style="padding:6px 8px;">' + esc(Term('zone')) + '</th>' +
+          '</tr></thead>' +
+          '<tbody>' + candidates.map(function (c, i) { return osmCandidateRowHtml_(c, i, zones); }).join('') + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  UI.openModal('Detect places in boundary', renderBody(), [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: 'Add selected places', className: 'btn-primary', onClick: async function () {
+        var selectedIdx = Array.from(document.querySelectorAll('.osm-candidate-check:checked')).map(function (cb) { return Number(cb.getAttribute('data-idx')); });
+        if (!selectedIdx.length) { UI.toast('Select at least one place to add', 'error'); return; }
+        document.querySelectorAll('.osm-candidate-type').forEach(function (sel) {
+          var idx = Number(sel.getAttribute('data-idx'));
+          if (candidates[idx]) candidates[idx]._type = sel.value;
+        });
+        var payload = selectedIdx.map(function (i) {
+          var c = candidates[i];
+          return { name: c.name, type: c._type, zoneId: c._zoneId || '', lat: c.lat, lng: c.lng, location: '' };
+        });
+        // A single batched request (bulkImportPlaces creates every selected row server-side in one
+        // call), not one request per row -- so a real per-item progress bar (UI.progressModal) would
+        // have nothing to actually track and just sit at 0% until the whole thing resolves. A plain
+        // loading modal says the same thing honestly.
+        UI.openModal('Adding places…', '<div style="font-size:13px;padding:6px 0;">Adding ' + payload.length + ' place(s)…</div>', []);
+        var res;
+        try {
+          res = await Api.call('bulkImportPlaces', { venueId: venue.id, places: payload });
+        } catch (err) { UI.closeModal(); UI.error(err); return; }
+        UI.closeModal();
+        var msg = res.createdCount + ' place(s) added' + (res.failed.length ? ', ' + res.failed.length + ' failed (' + res.failed.map(function (f) { return f.name; }).join(', ') + ')' : '');
+        UI.toast(msg, res.failed.length ? 'error' : 'success');
+        if (res.createdCount) Router.resolve();
+      } }
+  ]);
 }
