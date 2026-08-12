@@ -8,7 +8,7 @@ var EVENT_TABS = [
   ['overview', 'tab_overview'],
   ['venue', 'tab_venue', function () { return Term('venue') + ' & ' + Term('zone_plural'); }],
   ['templates', 'tab_templates', function () { return 'Readiness ' + Term('template_plural'); }],
-  ['approval', 'tab_approval', function () { return Term('venue') + ' Approval'; }],
+  ['approval', 'tab_approval', function () { return 'Opening Approval'; }],
   ['disciplines', 'tab_disciplines', function () { return Term('discipline_plural') + ' & ' + Term('inspector_plural'); }],
   ['inspections', 'tab_inspections', function () { return Term('inspection_plural') + ' & ' + Term('checklistItem_plural'); }],
   ['findings', 'tab_findings'],
@@ -954,7 +954,7 @@ function fileToBase64(file) {
   });
 }
 
-/* ---------------- Venue Approval ---------------- */
+/* ---------------- Opening Approval ---------------- */
 async function tabApproval(content, eventId) {
   var evals = await Api.call('listVenueEvaluations', { eventId: eventId });
   // The 'current' row is this venue's live evaluation (see currentVenueEvaluation_ in
@@ -968,8 +968,8 @@ async function tabApproval(content, eventId) {
   var recBody = hasRecommendation
     ? '<div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;">' + esc(current.recommendation) + '</div>' +
       '<div class="muted" style="font-size:11px;margin-top:8px;">Submitted ' + UI.fmtDate(current.recommendationAt) + ' — a recommendation can only be submitted once.</div>'
-    : '<div style="display:flex;flex-direction:column;gap:6px;max-width:560px;">' +
-        UI.field('Recommendation', '<textarea id="fRecommendation" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
+    : '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        UI.field('Recommendation', '<textarea id="fRecommendation" class="field-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
       '</div>' +
       '<button class="btn btn-primary btn-sm" id="submitRecBtn" style="margin-top:12px;">Submit recommendation</button>';
 
