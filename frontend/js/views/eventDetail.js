@@ -290,6 +290,9 @@ function initEventPlacesMap_(venue, placesWithCoords, zones) {
       eventPlacesBoundaryLayer_ = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
         color: venueBoundaryColor, fillColor: venueBoundaryColor, fillOpacity: 0.06, weight: 1.5, interactive: false
       }).addTo(eventPlacesMapInstance_);
+      // REQ: "Users can not scroll away from the venue boundaries" -- applyBoundaryPanLimit_ is
+      // defined in venues.js, loaded on the same page (same cross-file pattern as parseBoundaryClient_).
+      applyBoundaryPanLimit_(eventPlacesMapInstance_, eventPlacesBoundaryLayer_.getBounds());
     }
 
     eventPlacesMarkers_ = {};
@@ -430,6 +433,7 @@ function initZoneMap_(venue, existingZone) {
           color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.04, weight: 1.5, dashArray: '4,4', interactive: false
         }).addTo(zoneMapInstance_);
         zoneMapInstance_.fitBounds(zoneVenueBoundaryLayer_.getBounds(), { padding: [20, 20] });
+        applyBoundaryPanLimit_(zoneMapInstance_, zoneVenueBoundaryLayer_.getBounds());
       }
       zoneDrawnItems_ = HululLeaflet.featureGroup().addTo(zoneMapInstance_);
       // Edit mode: pre-populate the zone's own already-saved boundary (if any) so it shows up

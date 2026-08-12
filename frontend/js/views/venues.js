@@ -294,12 +294,19 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
           venueBoundaryLayer_.clearLayers();
           venueBoundaryLayer_.addLayer(e.layer);
           restyleVenueBoundaryLayer_();
+          reapplyVenueBoundaryPanLimit_();
         });
       }
       if (existingBoundary && existingBoundary.length >= 3) {
         venueBoundaryLayer_.addLayer(HululLeaflet.polygon(existingBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
       }
       restyleVenueBoundaryLayer_();
+      reapplyVenueBoundaryPanLimit_();
+      // Keep the pan limit in sync with whatever's actually drawn -- a freshly-drawn polygon, a
+      // reshape via the edit toolbar, or a delete via the trash toolbar (which should lift the
+      // restriction again, same as a venue that never had a boundary at all).
+      venueMapInstance_.on(HululLeaflet.Draw.Event.EDITED, reapplyVenueBoundaryPanLimit_);
+      venueMapInstance_.on(HululLeaflet.Draw.Event.DELETED, reapplyVenueBoundaryPanLimit_);
     } catch (e) {
       console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
     }
@@ -333,6 +340,33 @@ function restyleVenueBoundaryLayer_() {
   venueBoundaryLayer_.eachLayer(function (layer) {
     if (layer.setStyle) layer.setStyle({ color: color, fillColor: color });
   });
+}
+
+// REQ: "When panning the map or scrolling, part of the venue boundary must be visible in the map.
+// Users can not scroll away from the venue boundaries. This and colour and boundary visibility
+// applies to all maps within the app." -- shared by every map that shows a venue's boundary
+// (this file's own venueMap/placeMap, and eventDetail.js's/eventPlaces.js's zoneMap/eventPlacesMap/
+// eventPlaceMap, all loaded on the same page -- same cross-file function pattern as
+// parseBoundaryClient_). Leaflet's own maxBounds is exactly this primitive: once the given bounds'
+// edge reaches the viewport's edge, panning further that direction stops, so some part of the
+// bounds always stays on screen no matter how far/long the user tries to pan or scroll away. A
+// generous pad keeps normal panning/zooming comfortable instead of boxing the view in tight to the
+// polygon's exact edges; viscosity 1 makes the stop solid (no rubber-band drag-past-then-snap-back).
+// bounds === null/invalid (no boundary drawn/available) lifts any existing restriction -- matches
+// the established "no boundary drawn yet is unrestricted" convention everywhere in this app.
+function applyBoundaryPanLimit_(map, bounds) {
+  if (!map) return;
+  if (!bounds || !bounds.isValid || !bounds.isValid()) { map.setMaxBounds(null); return; }
+  map.options.maxBoundsViscosity = 1.0;
+  map.setMaxBounds(bounds.pad(0.5));
+}
+
+// Re-derives the pan-limit bounds from whatever's actually on venueBoundaryLayer_ right now (or
+// lifts the restriction if it's empty) -- called on initial load and after every create/edit/delete
+// of the boundary being drawn, so the restriction always tracks the current polygon, not a stale one.
+function reapplyVenueBoundaryPanLimit_() {
+  if (!venueMapInstance_) return;
+  applyBoundaryPanLimit_(venueMapInstance_, (venueBoundaryLayer_ && venueBoundaryLayer_.getLayers().length) ? venueBoundaryLayer_.getBounds() : null);
 }
 
 function setVenueLatLng_(lat, lng) {
@@ -853,6 +887,7 @@ function initPlaceMap_(venue, zones) {
         color: venueBoundaryColor, fillColor: venueBoundaryColor, fillOpacity: 0.06, weight: 1.5
       }).addTo(placeMapInstance_);
       placeMapInstance_.fitBounds(placeMapBoundaryLayer_.getBounds(), { padding: [20, 20] });
+      applyBoundaryPanLimit_(placeMapInstance_, placeMapBoundaryLayer_.getBounds());
     }
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
     setPlaceLatLng_(center[0], center[1]);

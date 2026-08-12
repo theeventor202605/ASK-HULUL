@@ -304,10 +304,15 @@ function initEventPlaceMap_(venue, zones) {
       else { eventPlaceMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
     if (boundary) {
+      var venueBoundaryColor = venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_;
       eventPlaceMapBoundaryLayer_ = HululLeaflet.polygon(boundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
-        color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.06, weight: 1.5
+        color: venueBoundaryColor, fillColor: venueBoundaryColor, fillOpacity: 0.06, weight: 1.5
       }).addTo(eventPlaceMapInstance_);
       eventPlaceMapInstance_.fitBounds(eventPlaceMapBoundaryLayer_.getBounds(), { padding: [20, 20] });
+      // REQ: "Users can not scroll away from the venue boundaries" -- applyBoundaryPanLimit_ and
+      // VENUE_BOUNDARY_DEFAULT_COLOR_ are both defined in venues.js, loaded on the same page (same
+      // cross-file pattern as parseBoundaryClient_).
+      applyBoundaryPanLimit_(eventPlaceMapInstance_, eventPlaceMapBoundaryLayer_.getBounds());
     }
     eventPlaceMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(eventPlaceMapInstance_);
     setEventPlaceLatLng_(center[0], center[1]);
