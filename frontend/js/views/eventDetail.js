@@ -2258,16 +2258,9 @@ async function tabEventChat(content, eventId, detail) {
   ]);
   var messages = results[0], taggableUsers = results[1], taggableParticipants = results[2], logEntries = results[3];
   // Screenshot targets: every tab this role can currently see, except Chat itself (capturing the
-  // compose box from within the compose box is circular/pointless), plus a "Whole screen" pseudo-tab
-  // pinned first -- REQ: "the chat # should give option to capture whole screen as well." Unlike the
-  // other entries (which re-render the chosen tab off-screen, see pickTab_), this one captures
-  // exactly what's live on screen right now, so it's handled as a special case in the picker rather
-  // than routed through eventTabRenderers_.
-  var WHOLE_SCREEN_ITEM_ = { key: '__screen__', label: 'Whole screen (current view)' };
-  var tabPickerItems = [WHOLE_SCREEN_ITEM_].concat(
-    EVENT_TABS.filter(function (tb) { return tb[0] !== 'chat' && (!tb[3] || tb[3]()); })
-      .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; })
-  );
+  // compose box from within the compose box is circular/pointless).
+  var tabPickerItems = EVENT_TABS.filter(function (tb) { return tb[0] !== 'chat' && (!tb[3] || tb[3]()); })
+    .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; });
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Chat</div></div>' +
@@ -2276,7 +2269,7 @@ async function tabEventChat(content, eventId, detail) {
     '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">New message</div>' +
     '<div class="muted" style="font-size:11px;">Type <code>/u</code> to tag a user, <code>/p</code> to tag a ' + esc(Term('participant').toLowerCase()) +
-      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a section or the whole screen.</div></div>' +
+      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a tab or one of its sections.</div></div>' +
     '<div class="card-body">' +
       '<div class="field-label" style="margin-top:0;">Message</div>' +
       '<div style="position:relative;">' +
@@ -2397,18 +2390,27 @@ async function tabEventChat(content, eventId, detail) {
     renderChips_(); hideSuggest_();
   }
 
-  // REQ: "# will suggest tab and when selected sections will be suggested." Renders the chosen tab
-  // off-screen (position:fixed, real dimensions so layout/maps behave normally -- NOT display:none,
-  // which would break canvas/map sizing) and lists its top-level .card blocks as "sections", reusing
+  // REQ: "# will suggest tab and when selected sections will be suggested, add Tab as option."
+  // Renders the chosen tab off-screen (position:fixed, NOT display:none, which would break canvas/
+  // map sizing) and lists "Whole tab" plus its top-level .card blocks as "sections", reusing
   // whatever card-title each one already has. The rendered container is kept alive (not removed)
   // until a section is picked or the picker is cancelled, since picking captures straight from it.
+  //
+  // BUG (REQ report): "I tried the # to capture overview --> zones map but the capture was not the
+  // same." The off-screen container used to render at a hardcoded width:900px regardless of how
+  // wide the tab actually is on the user's real screen -- for width-driven content like the
+  // Overview zone map (its Leaflet fitBounds zoom depends on the container's real pixel size), that
+  // mismatch changed what got captured vs. what the user was looking at. Rendering at `content`'s
+  // own live width (the real, currently-visible tab content area every tab shares) instead makes
+  // the off-screen copy match what's really on screen.
   function pickTab_(tb) {
     var myToken = ++captureToken;
     suggestBusy = true;
     suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">Loading sections…</div>';
     cleanupPendingCapture_();
+    var liveWidth = Math.round(content.getBoundingClientRect().width) || 900;
     var container = document.createElement('div');
-    container.style.cssText = 'position:fixed;top:0;left:-9999px;width:900px;background:#fff;padding:16px;';
+    container.style.cssText = 'position:fixed;top:0;left:-9999px;width:' + liveWidth + 'px;background:#fff;padding:16px;';
     document.body.appendChild(container);
     pendingCaptureContainer_ = container;
     var renderFn = eventTabRenderers_()[tb.key];
@@ -2418,14 +2420,10 @@ async function tabEventChat(content, eventId, detail) {
         if (myToken !== captureToken) return; // dismissed or superseded while this was in flight
         suggestBusy = false;
         var cards = Array.from(container.querySelectorAll('.card'));
-        var sections = cards.map(function (card, i) {
+        var sections = [{ index: -1, label: 'Whole tab' }].concat(cards.map(function (card, i) {
           var titleEl = card.querySelector('.card-title');
           return { index: i, label: titleEl ? titleEl.textContent.trim() : ('Section ' + (i + 1)) };
-        });
-        if (!sections.length) {
-          suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">No sections found on this tab</div>';
-          return;
-        }
+        }));
         showSuggestList_(tb.label + ' — choose a section', sections, function (s) { return esc(s.label); }, function (s) { pickSection_(tb, s); });
       })
       .catch(function () {
@@ -2435,45 +2433,17 @@ async function tabEventChat(content, eventId, detail) {
       });
   }
 
-  // REQ: "the chat # should give option to capture whole screen as well." Same upload/staging as
-  // pickSection_ below, but captures document.body directly instead of an off-screen re-render of
-  // another tab -- identical html2canvas(document.body, ...) pattern the Support ticket screenshot
-  // flow already uses (support.js), so "whole screen" means exactly what's on screen right now.
-  function captureWholeScreen_() {
-    var myToken = ++captureToken;
-    suggestBusy = true;
-    suggestBox.innerHTML = '<div class="chat-suggest-header">Capturing…</div>';
-    var capturePromise = (typeof html2canvas === 'function')
-      ? html2canvas(document.body, { useCORS: true, logging: false, backgroundColor: '#ffffff' })
-      : Promise.reject(new Error('Screenshot capture is unavailable right now.'));
-    capturePromise
-      .then(function (canvas) { return new Promise(function (res) { canvas.toBlob(res, 'image/png'); }); })
-      .then(function (blob) { return fileToBase64(blob); })
-      .then(function (b64) { return Api.call('uploadChatScreenshot', { fileBase64: b64, fileName: 'screen.png', mimeType: 'image/png' }); })
-      .then(function (up) {
-        if (myToken !== captureToken) return;
-        staged.screenshots.push({ url: up.url, label: 'Whole screen' });
-        replaceTriggerText_('#Whole screen ');
-        renderChips_();
-        hideSuggest_();
-      })
-      .catch(function (err) {
-        console.error('[Event Chat] whole-screen screenshot failed', err);
-        if (myToken !== captureToken) return;
-        UI.toast('Could not capture the screen.', 'error');
-        hideSuggest_();
-      });
-  }
-
-  // REQ: "...a screenshot will be captured and added as large thumbnail image."
+  // REQ: "...a screenshot will be captured and added as large thumbnail image." section.index === -1
+  // is the "Whole tab" entry pickTab_ pins first -- captures the whole off-screen container instead
+  // of a single .card within it.
   function pickSection_(tb, section) {
     var myToken = ++captureToken;
     suggestBusy = true;
     suggestBox.innerHTML = '<div class="chat-suggest-header">Capturing…</div>';
     var container = pendingCaptureContainer_;
-    var card = container ? container.querySelectorAll('.card')[section.index] : null;
-    var capturePromise = (card && typeof html2canvas === 'function')
-      ? html2canvas(card, { useCORS: true, logging: false, backgroundColor: '#ffffff' })
+    var target = section.index === -1 ? container : (container ? container.querySelectorAll('.card')[section.index] : null);
+    var capturePromise = (target && typeof html2canvas === 'function')
+      ? html2canvas(target, { useCORS: true, logging: false, backgroundColor: '#ffffff' })
       : Promise.reject(new Error('Screenshot capture is unavailable right now.'));
     capturePromise
       .then(function (canvas) { return new Promise(function (res) { canvas.toBlob(res, 'image/png'); }); })
@@ -2510,9 +2480,8 @@ async function tabEventChat(content, eventId, detail) {
       showSuggestList_('Reference a log entry', filterItems_(logEntries, trig.query, function (l) { return l.action + ' ' + l.actorName; }),
         function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; }, pickLog_);
     } else if (trig.kind === 'tab') {
-      showSuggestList_('Attach a screenshot — choose a tab or the whole screen', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
-        function (tb) { return esc(tb.label); },
-        function (tb) { return tb.key === WHOLE_SCREEN_ITEM_.key ? captureWholeScreen_() : pickTab_(tb); });
+      showSuggestList_('Attach a screenshot — choose a tab', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
+        function (tb) { return esc(tb.label); }, pickTab_);
     }
   });
   textarea.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSuggest_(); });
