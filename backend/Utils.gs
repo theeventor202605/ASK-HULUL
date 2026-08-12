@@ -23,8 +23,16 @@ var SCHEMA = {
   // coordinates on record = no restriction" fallback already used when a Venue has no lat/lng at
   // all), exactly like the 1km-circle behavior it replaces. See pointInPolygon_ below for how this
   // gets checked.
-  Venues:                 ['id','name','address','city','emcId','createdAt','lat','lng','status','boundary'],
-  Zones:                  ['id','venueId','name','createdAt','status','boundary'],
+  // color appended at the end -- hex string (e.g. '#4f46e5') the user picks for how this venue's
+  // boundary renders on every map that shows it (venues.js's own venueMap/placeMap, the Event >
+  // Venue & Zones "Places map" in eventDetail.js). Blank means "use the app's default boundary
+  // color" (every render site already falls back to the same default when this is empty).
+  Venues:                 ['id','name','address','city','emcId','createdAt','lat','lng','status','boundary','color'],
+  // color appended at the end, same idea/fallback convention as Venues.color above -- REQ: "provide
+  // the ability to choose zone colour after zone boundaries are drawn". Blank falls back to
+  // ZONE_BOUNDARY_COLORS_' auto-cycled palette (eventDetail.js) so existing zones created before
+  // this field existed still render distinguishably without needing a migration.
+  Zones:                  ['id','venueId','name','createdAt','status','boundary','color'],
   // projectId appended at the end -- links this Event into a Projects group (see Projects.gs).
   // 'project' (the older free-text field) is kept as-is for backward compatibility/CSV import, but
   // is no longer what the app's grouping UI uses; projectId is the structured version of the same

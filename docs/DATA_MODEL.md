@@ -7,8 +7,8 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 | Organizations | id, type, name, status, createdAt |
 | Users | id, name, email, orgType, orgId, role, status, passwordHash, passwordSalt, createdBy, createdAt, lastLoginAt |
 | Sessions | token, userId, createdAt, expiresAt |
-| Venues | id, name, address, city, emcId (legacy, unused — see Notes), createdAt |
-| Zones | id, venueId, name, createdAt |
+| Venues | id, name, address, city, emcId (legacy, unused — see Notes), createdAt, lat, lng, status, boundary, color |
+| Zones | id, venueId, name, createdAt, status, boundary, color |
 | Events | id, name, code, project, venueId, address, city, startDateTime, endDateTime, emcId (renting EMC for this event, required — see Notes), inspectionCoId, eventManagerId, status, createdBy, createdAt |
 | SubEvents | id, eventId, name, startDateTime, endDateTime |
 | VenueEvaluations | id, eventId, venueId, inspectionCoId, recommendation, recommendationBy, recommendationAt, decision, decisionBy, decisionAt, status |
@@ -49,4 +49,9 @@ Extends `HULUL Database.ods` with auth, session, history, and config sheets need
 - Passwords: salted SHA-256 via `Utilities.computeDigest`, unique salt per user. Never stored in plaintext.
 - `status` on Findings: `Open, InReview, Resolved, ReOpen, Rejected` (matches the reference UI's Logs Overview cards).
 - Escalation tiers and delay hours are configurable in the `Config` sheet (`escalationTier2DelayHours`, `escalationTier3DelayHours`), defaulting to values set in `Setup.gs`.
+- `Venues.color` / `Zones.color`: a hex string (e.g. `#4f46e5`) the creator/editor picks for how
+  that Venue's or Zone's drawn boundary renders on every map that shows it (New/Edit Venue's own
+  map, the Add-a-Place map, the Add/Edit zone map, and the Event > Venue & Zones "Places map").
+  Blank (existing rows predating this feature) falls back to a shared default indigo for Venues, or
+  `ZONE_BOUNDARY_COLORS_`'s auto-cycled palette per zone for Zones (both in `eventDetail.js`).
 - Support tickets (`backend/Support.gs`, `frontend/js/views/support.js`): in-app technical support, raised by any user from anywhere in the app via the topbar Support button — captures a DOM screenshot (html2canvas, no OS permission prompt) with an optional highlight box drawn on it, plus a remark and an optional short (~90s) voice note. Platform-level, not scoped to an Event or Organization. Lifecycle: `Open` (raised) → `InProgress` (auto-set the first time SupportAgent/SystemAdmin opens it, or after any back-and-forth) → `Resolved` (Support marks it fixed, remarks required, raiser notified to review) → `Completed` (raiser approves, terminal) — a raiser rejecting a `Resolved` ticket sends it back to `InProgress` with further comments/voice note (`reopenCount` tracks how many times, no hard cap, mirrors `Findings.reopenCount`'s convention). Both SupportAgent and SystemAdmin can work the shared queue; SupportAgent accounts are created the same way as any other SystemAdmin-created role (`ACCOUNT_CREATION_MATRIX`, Auth.gs). Screen+voice walkthrough recordings (`getDisplayMedia` + mic, same ~90s cap) are Support/SystemAdmin-only, enforced both in the UI and server-side (`addTicketComment` rejects `recordingUrl` from anyone else).

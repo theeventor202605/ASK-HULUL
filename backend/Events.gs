@@ -32,21 +32,25 @@ function createVenue(user, p) {
   var venue = {
     id: newId('Venues'), name: p.name, address: p.address || '', city: p.city || '',
     lat: p.lat || '', lng: p.lng || '', createdAt: nowIso_(), status: 'Active',
-    boundary: p.boundary ? stringifyBoundary_(p.boundary) : ''
+    boundary: p.boundary ? stringifyBoundary_(p.boundary) : '', color: p.color || ''
   };
   insertRow('Venues', venue);
   audit(user.id, 'CREATE_VENUE', 'Venues', venue.id, {});
   return venue;
 }
 
-// name/address/city/lat/lng/boundary are editable by any SystemAdmin/EMCAdmin/EMCManager -- a Venue
-// isn't scoped to one organization (see file header comment), so there's no owning-org check here.
+// name/address/city/lat/lng/boundary/color are editable by any SystemAdmin/EMCAdmin/EMCManager --
+// a Venue isn't scoped to one organization (see file header comment), so there's no owning-org
+// check here. color: REQ "provide the ability to choose venue colour after boundaries are drawn" --
+// a plain hex string, no validation beyond "it's provided" (the frontend's <input type="color">
+// always sends a well-formed value; a malformed one would just fail to parse as a CSS color
+// client-side, same non-issue as a free-text field anywhere else in this app).
 function updateVenue(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   var patch = {};
-  ['name', 'address', 'city', 'lat', 'lng'].forEach(function (f) { if (p[f] !== undefined) patch[f] = p[f]; });
+  ['name', 'address', 'city', 'lat', 'lng', 'color'].forEach(function (f) { if (p[f] !== undefined) patch[f] = p[f]; });
   // boundary is redrawn/cleared as a whole array (or []/null to clear it), never patched piecemeal.
   if (p.boundary !== undefined) patch.boundary = p.boundary ? stringifyBoundary_(p.boundary) : '';
   if (patch.name !== undefined && !String(patch.name).trim()) throw new HululError('BAD_REQUEST', 'name is required');
@@ -107,17 +111,38 @@ function listZones(user, p) {
   return all;
 }
 
-// REQ-EVT-06/07: a Zone belongs to a Venue and has one or more Vendors (Participants).
+// REQ-EVT-06/07: a Zone belongs to a Venue and has one or more Vendors (Participants). color: REQ
+// "provide the ability to choose zone colour after zone boundaries are drawn" -- picked in the same
+// Add Zone card the boundary is drawn in (eventDetail.js); blank falls back to the auto-cycled
+// palette client-side (ZONE_BOUNDARY_COLORS_), so this is optional, not required.
 function createZone(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
   if (!p.name || !p.venueId) throw new HululError('BAD_REQUEST', 'name and venueId are required');
   var zone = {
     id: newId('Zones'), venueId: p.venueId, name: p.name, createdAt: nowIso_(), status: 'Active',
-    boundary: p.boundary ? stringifyBoundary_(p.boundary) : ''
+    boundary: p.boundary ? stringifyBoundary_(p.boundary) : '', color: p.color || ''
   };
   insertRow('Zones', zone);
   audit(user.id, 'CREATE_ZONE', 'Zones', zone.id, {});
   return zone;
+}
+
+// Lets an already-created Zone's name/boundary/color be changed after the fact -- previously a
+// Zone could only be created or deleted, nothing in between, which meant "pick a different color"
+// (or redraw a boundary) was only ever possible during creation. Same manage-roles as createZone;
+// boundary, like updateVenue's, is redrawn/cleared as a whole array, never patched piecemeal.
+function updateZone(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
+  var zone = getById('Zones', p.zoneId);
+  if (!zone) throw new HululError('NOT_FOUND', 'Zone not found');
+  var patch = {};
+  if (p.name !== undefined) patch.name = p.name;
+  if (p.color !== undefined) patch.color = p.color;
+  if (p.boundary !== undefined) patch.boundary = p.boundary ? stringifyBoundary_(p.boundary) : '';
+  if (patch.name !== undefined && !String(patch.name).trim()) throw new HululError('BAD_REQUEST', 'name is required');
+  var updated = updateRow('Zones', p.zoneId, patch);
+  audit(user.id, 'UPDATE_ZONE', 'Zones', p.zoneId, {});
+  return updated;
 }
 
 // How much work is tied to a zone before deleting it: Inspector Assignments that cover it, and

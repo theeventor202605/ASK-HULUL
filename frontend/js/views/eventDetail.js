@@ -87,6 +87,11 @@ var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if ne
 var eventPlacesMapInstance_ = null;
 var eventPlacesMarkers_ = {}; // placeId -> Leaflet marker, so a places-list click can re-focus the right dot
 var eventPlacesBoundaryLayer_ = null; // the venue's own drawn boundary, shown for reference (read-only)
+var eventPlacesZoneLayers_ = []; // each zone's own drawn boundary (read-only) -- see initEventPlacesMap_
+// Cycled per zone (by list order) so multiple zone boundaries stay visually distinguishable from
+// each other and from the venue's own boundary (indigo, see initEventPlacesMap_) and the place-type
+// dot colors (EVENT_PLACE_TYPE_COLORS_ above).
+var ZONE_BOUNDARY_COLORS_ = ['#0d9488', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#65a30d'];
 
 async function tabVenue(content, eventId, detail) {
   var canManage = ZONE_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
@@ -141,7 +146,9 @@ async function tabVenue(content, eventId, detail) {
       { key: 'others', label: 'Others', render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) },
       { key: 'participants', label: 'Participants', render: r => participantCountByZone[r.id] || 0 },
       { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+      '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
+      '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
       detail.zones, {}) +
     '</div></div>' +
 
@@ -183,23 +190,11 @@ async function tabVenue(content, eventId, detail) {
   if (canManage) document.getElementById('newZoneBtn').onclick = function () {
     var wrap = document.getElementById('addZoneCardWrap');
     if (wrap.innerHTML) { destroyZoneMap_(); wrap.innerHTML = ''; return; } // toggle closed if already open
-    wrap.innerHTML = addZoneCardHtml_();
-    initZoneMap_(detail.venue);
-    document.getElementById('cancelZoneBtn').onclick = function () { destroyZoneMap_(); wrap.innerHTML = ''; };
-    document.getElementById('saveZoneBtn').onclick = async function () {
-      try {
-        var name = document.getElementById('fZoneName').value.trim();
-        if (!name) { UI.toast(Term('zone') + ' name is required', 'error'); return; }
-        await Api.call('createZone', { venueId: detail.venue.id, name: name, boundary: getZoneBoundaryValue_() });
-        destroyZoneMap_();
-        UI.toast(Term('zone') + ' added', 'success');
-        Router.resolve();
-      } catch (err) { UI.error(err); }
-    };
+    openZoneCard_(detail, wrap, null);
   };
 
   if (detail.venue) {
-    initEventPlacesMap_(detail.venue, placesWithCoords);
+    initEventPlacesMap_(detail.venue, placesWithCoords, detail.zones || []);
     if (places.length) {
       content.querySelectorAll('#eventPlacesListWrap tbody tr').forEach(function (tr, i) {
         var pl = places[i];
@@ -217,6 +212,16 @@ async function tabVenue(content, eventId, detail) {
   content.querySelectorAll('[data-del-zone]').forEach(function (b) {
     b.onclick = async function () { openDeleteZoneModal_(b.getAttribute('data-del-zone'), detail.zones); };
   });
+  content.querySelectorAll('[data-edit-zone]').forEach(function (b) {
+    b.onclick = function () {
+      var zone = (detail.zones || []).find(function (z) { return z.id === b.getAttribute('data-edit-zone'); });
+      if (!zone) return;
+      var wrap = document.getElementById('addZoneCardWrap');
+      destroyZoneMap_();
+      openZoneCard_(detail, wrap, zone);
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+  });
 }
 
 function venueInfoCard_(label, value) {
@@ -226,13 +231,13 @@ function venueInfoCard_(label, value) {
 
 // Same HululLeaflet-alias reasoning as venues.js's map initializers (this app's own labels.js
 // clobbers the bare global L). Centers on the venue's own coordinates if it has any, else the
-// first place that does, else a sensible fallback -- and fits every place dot AND the venue's own
-// boundary (if drawn) in view once plotted, so the whole set is visible at a sensible zoom on
-// first load. Default Leaflet interactions (drag to pan, scroll/pinch to zoom, double-click to
-// zoom) are left on, same as every other map in the app (venueMap/placeMap/zoneMap/eventPlaceMap)
-// -- REQ bug report: this map used to lock dragging/scroll-zoom out entirely, which read as "the
-// map is broken/stuck".
-function initEventPlacesMap_(venue, placesWithCoords) {
+// first place that does, else a sensible fallback -- and fits every place dot, the venue's own
+// boundary, AND every zone's own boundary (each if drawn) in view once plotted, so the whole set
+// is visible at a sensible zoom on first load. Default Leaflet interactions (drag to pan,
+// scroll/pinch to zoom, double-click to zoom) are left on, same as every other map in the app
+// (venueMap/placeMap/zoneMap/eventPlaceMap) -- REQ bug report: this map used to lock dragging/
+// scroll-zoom out entirely, which read as "the map is broken/stuck".
+function initEventPlacesMap_(venue, placesWithCoords, zones) {
   var el = document.getElementById('eventPlacesMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -250,6 +255,14 @@ function initEventPlacesMap_(venue, placesWithCoords) {
   // just below via zoneVenueBoundaryLayer_). parseBoundaryClient_ is defined in venues.js, loaded
   // on the same page.
   var venueBoundary = parseBoundaryClient_(venue.boundary);
+  // BUG (REQ report): "When adding a zone and boundaries are set and saved, they disappear in the
+  // map" -- a zone's boundary was ONLY ever drawn on the temporary "Add zone" card's own map
+  // (zoneMap/initZoneMap_ below) while it's being drawn; saving calls destroyZoneMap_() to close
+  // that card, and nothing else in this tab ever plotted a SAVED zone's boundary anywhere -- so it
+  // was never actually gone server-side (createZone stores it fine), it just had nowhere left to
+  // render. Parsed once here, upfront, same pattern as venueBoundary just above.
+  var zoneBoundaries = (zones || []).map(function (z) { return { zone: z, boundary: parseBoundaryClient_(z.boundary) }; })
+    .filter(function (zb) { return !!zb.boundary; });
   setTimeout(function () {
     if (!document.getElementById('eventPlacesMap')) return;
     eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap')
@@ -273,13 +286,32 @@ function initEventPlacesMap_(venue, placesWithCoords) {
     // visually consistent since both maps are "a venue's boundary plus its places" views. Read-only
     // here (interactive: false) -- editing the boundary itself only happens from the Venues page.
     if (venueBoundary) {
+      var venueBoundaryColor = venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_;
       eventPlacesBoundaryLayer_ = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
-        color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.06, weight: 1.5, interactive: false
+        color: venueBoundaryColor, fillColor: venueBoundaryColor, fillOpacity: 0.06, weight: 1.5, interactive: false
       }).addTo(eventPlacesMapInstance_);
     }
 
     eventPlacesMarkers_ = {};
     var bounds = venueBoundary ? venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }) : [];
+
+    // Each zone's own boundary, cycling through ZONE_BOUNDARY_COLORS_ so several zones stay
+    // distinguishable from each other -- a permanent centered label names which zone is which,
+    // same idea as place dots' tooltips just below, since hover-only wouldn't let you compare
+    // zones at a glance.
+    eventPlacesZoneLayers_ = [];
+    zoneBoundaries.forEach(function (zb, i) {
+      // A zone's own picked color (see the "Boundary color" field on the Add/Edit zone card) wins;
+      // only zones predating this feature (blank color) fall back to the auto-cycled palette.
+      var color = zb.zone.color || ZONE_BOUNDARY_COLORS_[i % ZONE_BOUNDARY_COLORS_.length];
+      var latlngs = zb.boundary.map(function (pt) { return [pt.lat, pt.lng]; });
+      var layer = HululLeaflet.polygon(latlngs, { color: color, fillColor: color, fillOpacity: 0.10, weight: 2, interactive: false })
+        .addTo(eventPlacesMapInstance_);
+      layer.bindTooltip(esc(zb.zone.name), { permanent: true, direction: 'center', className: 'place-marker-tooltip' });
+      eventPlacesZoneLayers_.push(layer);
+      bounds = bounds.concat(latlngs);
+    });
+
     placesWithCoords.forEach(function (pl) {
       var latlng = [Number(pl.lat), Number(pl.lng)];
       bounds.push(latlng);
@@ -303,6 +335,7 @@ function initEventPlacesMap_(venue, placesWithCoords) {
 function destroyEventPlacesMap_() {
   if (eventPlacesMapInstance_) { eventPlacesMapInstance_.remove(); eventPlacesMapInstance_ = null; }
   eventPlacesBoundaryLayer_ = null;
+  eventPlacesZoneLayers_ = [];
   eventPlacesMarkers_ = {};
 }
 
@@ -320,21 +353,52 @@ var zoneDrawnItems_ = null;         // the zone's own boundary being drawn
 var zoneMapGen_ = 0; // same map-container-reuse race guard as venues.js's venueMapGen_ -- see its comment
 var zoneMapFullscreenCleanup_ = null;
 
-function addZoneCardHtml_() {
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('zone').toLowerCase()) + '</div></div>' +
+function addZoneCardHtml_(existingZone) {
+  var isEdit = !!existingZone;
+  var defaultColor = (existingZone && existingZone.color) ? existingZone.color : ZONE_BOUNDARY_COLORS_[0];
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + (isEdit ? 'Edit ' : 'Add ') + esc(Term('zone').toLowerCase()) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
-      '<div style="max-width:640px;">' + UI.field(Term('zone') + ' name', '<input id="fZoneName" class="field-input" />') + '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;max-width:640px;">' +
+        '<div style="flex:1;min-width:220px;">' + UI.field(Term('zone') + ' name', '<input id="fZoneName" class="field-input" value="' + (isEdit ? esc(existingZone.name) : '') + '" />') + '</div>' +
+        '<div>' + UI.field('Boundary color', '<input id="fZoneColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc(defaultColor) + '" />') + '</div>' +
+      '</div>' +
       '<div id="zoneMap" style="height:360px;width:100%;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--border);"></div>' +
       '<div class="muted" style="font-size:11px;margin-top:6px;">Optional: use the polygon tool on the map to draw this ' + esc(Term('zone').toLowerCase()) + '\'s boundary (the ' + esc(Term('venue').toLowerCase()) + '\'s own boundary is shown dashed, for reference).</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
       '<button class="btn btn-secondary" id="cancelZoneBtn">' + t('cancel') + '</button>' +
-      '<button class="btn btn-primary" id="saveZoneBtn">' + t('create') + '</button>' +
+      '<button class="btn btn-primary" id="saveZoneBtn">' + (isEdit ? t('save') : t('create')) + '</button>' +
     '</div>' +
   '</div>';
 }
 
-function initZoneMap_(venue) {
+// Shared by both the "+ Add zone" button and each row's Edit-zone button below -- existingZone is
+// null for create, the zone row being edited otherwise. Keeps the card HTML/map-init/save-handler
+// logic in exactly one place instead of duplicating it per mode.
+function openZoneCard_(detail, wrap, existingZone) {
+  wrap.innerHTML = addZoneCardHtml_(existingZone);
+  initZoneMap_(detail.venue, existingZone);
+  document.getElementById('cancelZoneBtn').onclick = function () { destroyZoneMap_(); wrap.innerHTML = ''; };
+  document.getElementById('saveZoneBtn').onclick = async function () {
+    try {
+      var name = document.getElementById('fZoneName').value.trim();
+      if (!name) { UI.toast(Term('zone') + ' name is required', 'error'); return; }
+      var payload = { name: name, color: getZoneColorValue_(), boundary: getZoneBoundaryValue_() };
+      if (existingZone) {
+        payload.zoneId = existingZone.id;
+        await Api.call('updateZone', payload);
+      } else {
+        payload.venueId = detail.venue.id;
+        await Api.call('createZone', payload);
+      }
+      destroyZoneMap_();
+      UI.toast(Term('zone') + (existingZone ? ' updated' : ' added'), 'success');
+      Router.resolve();
+    } catch (err) { UI.error(err); }
+  };
+}
+
+function initZoneMap_(venue, existingZone) {
   var el = document.getElementById('zoneMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -344,6 +408,7 @@ function initZoneMap_(venue) {
     return;
   }
   var venueBoundary = venue ? parseBoundaryClient_(venue.boundary) : null;
+  var zoneBoundary = existingZone ? parseBoundaryClient_(existingZone.boundary) : null;
   var hasVenueCoords = !!(venue && venue.lat && venue.lng);
   var center = hasVenueCoords ? [Number(venue.lat), Number(venue.lng)] : EVENT_MAP_DEFAULT_CENTER_;
   var myGen = ++zoneMapGen_;
@@ -367,9 +432,15 @@ function initZoneMap_(venue) {
         zoneMapInstance_.fitBounds(zoneVenueBoundaryLayer_.getBounds(), { padding: [20, 20] });
       }
       zoneDrawnItems_ = HululLeaflet.featureGroup().addTo(zoneMapInstance_);
+      // Edit mode: pre-populate the zone's own already-saved boundary (if any) so it shows up
+      // drawn and editable from the start, same as venues.js's initVenueMap_ does for a venue.
+      if (zoneBoundary && zoneBoundary.length >= 3) {
+        zoneDrawnItems_.addLayer(HululLeaflet.polygon(zoneBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
+        zoneMapInstance_.fitBounds(zoneDrawnItems_.getBounds(), { padding: [20, 20] });
+      }
       if (HululLeaflet.Control && HululLeaflet.Control.Draw) {
         var drawControl = new HululLeaflet.Control.Draw({
-          draw: { polygon: { allowIntersection: false, showArea: true }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
+          draw: { polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: getZoneColorValue_() } }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
           edit: { featureGroup: zoneDrawnItems_ }
         });
         zoneMapInstance_.addControl(drawControl);
@@ -377,13 +448,33 @@ function initZoneMap_(venue) {
         zoneMapInstance_.on(HululLeaflet.Draw.Event.CREATED, function (e) {
           zoneDrawnItems_.clearLayers();
           zoneDrawnItems_.addLayer(e.layer);
+          restyleZoneDrawnItems_();
         });
       }
+      restyleZoneDrawnItems_();
+      var zoneColorInput = document.getElementById('fZoneColor');
+      if (zoneColorInput) zoneColorInput.oninput = function () { restyleZoneDrawnItems_(); };
     } catch (e) {
       console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
     }
     setTimeout(function () { if (zoneMapInstance_) zoneMapInstance_.invalidateSize(); }, 150);
   }, 0);
+}
+
+// Same pattern as venues.js's getVenueColorValue_/restyleVenueBoundaryLayer_ -- reads the zone
+// card's own color picker (falling back to the first palette color if it's somehow not on the
+// page) and live-applies it to whatever's currently drawn.
+function getZoneColorValue_() {
+  var el = document.getElementById('fZoneColor');
+  return (el && el.value) || ZONE_BOUNDARY_COLORS_[0];
+}
+
+function restyleZoneDrawnItems_() {
+  if (!zoneDrawnItems_) return;
+  var color = getZoneColorValue_();
+  zoneDrawnItems_.eachLayer(function (layer) {
+    if (layer.setStyle) layer.setStyle({ color: color, fillColor: color });
+  });
 }
 
 function destroyZoneMap_() {

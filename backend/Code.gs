@@ -110,6 +110,7 @@ var ROUTES = {
   deleteVenue: function (u, p) { return deleteVenue(u, p); },
   listZones: function (u, p) { return listZones(u, p); },
   createZone: function (u, p) { return createZone(u, p); },
+  updateZone: function (u, p) { return updateZone(u, p); },
   deleteZone: function (u, p) { return deleteZone(u, p); },
   listZoneImpact: function (u, p) { return listZoneImpact(u, p); },
   assignEventManager: function (u, p) { return assignEventManagerToVenue(u, p); },

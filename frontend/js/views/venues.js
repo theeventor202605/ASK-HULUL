@@ -20,6 +20,12 @@
  * (see listVenueImpact / deleteVenue in Events.gs). Otherwise the button explains what's attached.
  */
 var VENUE_DEFAULT_CENTER = [24.7136, 46.6753]; // Riyadh -- a sensible default until a place is picked
+// REQ: "provide the ability to choose zone colour after zone boundaries are drawn. the same should
+// apply to venue." Fallback color used everywhere a venue has no color of its own on record yet
+// (existing venues predating this feature) -- same indigo already used as the old hardcoded shade
+// on eventDetail.js's Places map and venues.js's own Add-a-Place map, so nothing already saved
+// visually changes until an owner actually picks a new color.
+var VENUE_BOUNDARY_DEFAULT_COLOR_ = '#4f46e5';
 var EMC_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager']; // who can create/edit/delete Venues and Places
 var venueMapInstance_ = null;
 var venueMapMarker_ = null;
@@ -134,11 +140,12 @@ async function renderVenueForm_(existingVenue) {
           // .leaflet-top/.leaflet-bottom) or this dropdown renders invisibly underneath the map.
           '<div id="fVSearchResults" style="position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;display:none;background:#fff;box-shadow:var(--shadow-md);z-index:2000;"></div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:flex-end;margin-top:10px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:10px;">' +
+          '<div>' + UI.field('Boundary color', '<input id="fVColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc((isEdit && existingVenue.color) ? existingVenue.color : VENUE_BOUNDARY_DEFAULT_COLOR_) + '" />') + '</div>' +
           '<button class="map-toggle-btn" type="button" id="toggleVenueSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
         '</div>' +
         '<div id="venueMap" style="height:340px;border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border);"></div>' +
-        '<div class="muted" style="font-size:11px;margin-top:6px;">Search above, or drag the pin, to fill in the location — or just type the fields below manually. Use the polygon tool on the map (optional) to draw this ' + esc(Term('venue').toLowerCase()) + '\'s boundary — Places will need to land inside it once drawn; leave undrawn to keep placement unrestricted.' +
+        '<div class="muted" style="font-size:11px;margin-top:6px;">Search above, or drag the pin, to fill in the location — or just type the fields below manually. Use the polygon tool on the map (optional) to draw this ' + esc(Term('venue').toLowerCase()) + '\'s boundary — Places will need to land inside it once drawn; leave undrawn to keep placement unrestricted. The color picker above sets how the boundary renders on this and every other map that shows it.' +
           (venuePlacesWithCoords.length ? ' Dots show this ' + esc(Term('venue').toLowerCase()) + '\'s ' + venuePlacesWithCoords.length + ' already-registered place(s).' : '') + '</div>' +
         UI.field('Address', '<input id="fVAddress" class="field-input" value="' + (isEdit ? esc(existingVenue.address) : '') + '" />') +
         UI.field('City', '<input id="fVCity" class="field-input" value="' + (isEdit ? esc(existingVenue.city) : '') + '" />') +
@@ -165,6 +172,7 @@ async function renderVenueForm_(existingVenue) {
         city: document.getElementById('fVCity').value,
         lat: document.getElementById('fVLat').value,
         lng: document.getElementById('fVLng').value,
+        color: document.getElementById('fVColor').value,
         boundary: getVenueBoundaryValue_()
       };
       if (isEdit) {
@@ -182,6 +190,8 @@ async function renderVenueForm_(existingVenue) {
   var startCenter = (isEdit && existingVenue.lat && existingVenue.lng) ? [Number(existingVenue.lat), Number(existingVenue.lng)] : null;
   var existingBoundary = isEdit ? parseBoundaryClient_(existingVenue.boundary) : null;
   initVenueMap_(startCenter, existingBoundary, venuePlacesWithCoords);
+  var venueColorInput = document.getElementById('fVColor');
+  if (venueColorInput) venueColorInput.oninput = function () { restyleVenueBoundaryLayer_(); };
   wireVenueSearch_();
 }
 
@@ -276,18 +286,20 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
       venueBoundaryLayer_ = HululLeaflet.featureGroup().addTo(venueMapInstance_);
       if (HululLeaflet.Control && HululLeaflet.Control.Draw) {
         var drawControl = new HululLeaflet.Control.Draw({
-          draw: { polygon: { allowIntersection: false, showArea: true }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
+          draw: { polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: getVenueColorValue_() } }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
           edit: { featureGroup: venueBoundaryLayer_ }
         });
         venueMapInstance_.addControl(drawControl);
         venueMapInstance_.on(HululLeaflet.Draw.Event.CREATED, function (e) {
           venueBoundaryLayer_.clearLayers();
           venueBoundaryLayer_.addLayer(e.layer);
+          restyleVenueBoundaryLayer_();
         });
       }
       if (existingBoundary && existingBoundary.length >= 3) {
         venueBoundaryLayer_.addLayer(HululLeaflet.polygon(existingBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
       }
+      restyleVenueBoundaryLayer_();
     } catch (e) {
       console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
     }
@@ -302,6 +314,25 @@ function destroyVenueMap_() {
   venueMapGen_++; // invalidate any still-pending initVenueMap_ setTimeout from an earlier render
   if (venueMapFullscreenCleanup_) { venueMapFullscreenCleanup_(); venueMapFullscreenCleanup_ = null; }
   if (venueMapInstance_) { venueMapInstance_.remove(); venueMapInstance_ = null; venueMapMarker_ = null; venueBoundaryLayer_ = null; }
+}
+
+// Reads the color picker's current value (falls back to the default if the field isn't on the
+// page for some reason) -- used both to seed the draw tool's shapeOptions and to live-restyle
+// whatever's currently drawn whenever the picker changes.
+function getVenueColorValue_() {
+  var el = document.getElementById('fVColor');
+  return (el && el.value) || VENUE_BOUNDARY_DEFAULT_COLOR_;
+}
+
+// Re-applies the currently-picked color to the boundary polygon on the map -- called after a new
+// polygon is drawn and whenever the color picker's own input fires, so picking a color always
+// reflects live on the shape already on screen instead of only taking effect after a save+reload.
+function restyleVenueBoundaryLayer_() {
+  if (!venueBoundaryLayer_) return;
+  var color = getVenueColorValue_();
+  venueBoundaryLayer_.eachLayer(function (layer) {
+    if (layer.setStyle) layer.setStyle({ color: color, fillColor: color });
+  });
 }
 
 function setVenueLatLng_(lat, lng) {
@@ -817,8 +848,9 @@ function initPlaceMap_(venue, zones) {
       else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
     if (boundary) {
+      var venueBoundaryColor = (venue && venue.color) || VENUE_BOUNDARY_DEFAULT_COLOR_;
       placeMapBoundaryLayer_ = HululLeaflet.polygon(boundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
-        color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.06, weight: 1.5
+        color: venueBoundaryColor, fillColor: venueBoundaryColor, fillOpacity: 0.06, weight: 1.5
       }).addTo(placeMapInstance_);
       placeMapInstance_.fitBounds(placeMapBoundaryLayer_.getBounds(), { padding: [20, 20] });
     }
