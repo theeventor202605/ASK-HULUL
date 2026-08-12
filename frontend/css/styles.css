@@ -363,6 +363,24 @@ table.data-table tr:hover td{ background:#fafbff; }
 .evidence-thumb:hover{ transform:translateY(-2px); box-shadow:var(--shadow-md); border-color:var(--accent); }
 .evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
 
+/* REQ (Finding detail redesign, follow-up): "Expand Photos to the max when clicked." Plain
+   position:fixed overlay (not UI.openModal's modal-box, which caps at 520px + header/footer chrome)
+   so the photo can actually fill most of the viewport. Wired from findings.js (openEvidenceLightbox_ +
+   its one delegated click listener). */
+.evidence-lightbox-overlay{ position:fixed; inset:0; background:rgba(15,23,42,.88); z-index:3000;
+  display:flex; align-items:center; justify-content:center; padding:40px; cursor:zoom-out; animation:lightboxFadeIn_ .12s ease; }
+@keyframes lightboxFadeIn_{ from{ opacity:0; } to{ opacity:1; } }
+.evidence-lightbox-overlay img{ max-width:92vw; max-height:88vh; object-fit:contain; border-radius:var(--radius-md);
+  box-shadow:0 20px 60px rgba(0,0,0,.5); cursor:default; }
+.evidence-lightbox-close{ position:absolute; top:20px; inset-inline-end:24px; width:40px; height:40px; border-radius:50%;
+  background:rgba(255,255,255,.12); border:none; color:#fff; font-size:16px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; }
+.evidence-lightbox-close:hover{ background:rgba(255,255,255,.22); }
+.evidence-lightbox-open{ position:absolute; bottom:24px; left:50%; transform:translateX(-50%); color:#fff;
+  font-size:12.5px; font-weight:600; background:rgba(255,255,255,.14); padding:8px 16px; border-radius:999px;
+  text-decoration:none; display:flex; align-items:center; gap:6px; }
+.evidence-lightbox-open:hover{ background:rgba(255,255,255,.24); }
+
 /* ---------- Forms / modal ---------- */
 /* z-index note: Leaflet's own controls/panes go up to 1000 (.leaflet-top/.leaflet-bottom is 1000),
    and any map is embedded directly in the page flow now (Event > Venue & Zones tab), not inside a

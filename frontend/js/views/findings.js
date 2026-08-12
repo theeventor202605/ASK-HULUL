@@ -23,21 +23,32 @@
 var FINDING_ROLE_PARTICIPANT_ = ['Vendor', 'Operator', 'Exhibitor'];
 var FINDING_ROLE_REVIEWER_ = ['Inspector', 'ProjectManager', 'SystemAdmin'];
 
-function driveEvidenceThumbUrl_(url) {
+// size (optional, default 400): Drive's thumbnail endpoint will scale to whatever width you ask for --
+// the small evidence grid asks for 400 (plenty for a ~120-168px CSS box on any real display), the
+// lightbox below asks for something much bigger since it fills most of the viewport.
+function driveEvidenceThumbUrl_(url, size) {
   var m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(url || '').match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : '';
+  return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w' + (size || 400) : '';
 }
 
 // size (optional, default 120): REQ (Finding detail redesign) "The photos are very small" -- the main
 // Finding evidence gallery below passes a bigger size (168); Resolution history entries keep the
 // default, still noticeably larger than the original fixed 96px everywhere.
+//
+// REQ (follow-up): "Expand Photos to the max when clicked." Each thumbnail carries the URL of a much
+// larger rendition via data-lightbox-url; a single delegated click listener (below, registered once
+// at module load -- same pattern as ui.js's app-wide button click-guard) intercepts the click and
+// opens openEvidenceLightbox_ instead of letting the <a> navigate. Left as a real <a href target=_blank>
+// underneath so ctrl/cmd/middle-click still opens the original in a new tab the normal way (those
+// don't run through our click handler's preventDefault).
 function evidenceThumbsHtml_(urls, size) {
   size = size || 120;
   if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">No evidence attached.</div>';
   return '<div style="display:flex;flex-wrap:wrap;gap:12px;">' + urls.map(function (u, i) {
     var thumb = driveEvidenceThumbUrl_(u);
-    return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="Open evidence ' + (i + 1) + '" ' +
-      'class="evidence-thumb" style="width:' + size + 'px;height:' + size + 'px;">' +
+    var full = driveEvidenceThumbUrl_(u, 1600) || u;
+    return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="Click to expand" ' +
+      'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
       (thumb
         ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" ' +
           'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'' + ICON('capture_photo') + '\',style:\'font-size:28px;\'}));" />'
@@ -45,6 +56,30 @@ function evidenceThumbsHtml_(urls, size) {
     '</a>';
   }).join('') + '</div>';
 }
+
+// Fills as much of the viewport as sensibly possible (92vw/88vh, object-fit:contain) rather than
+// reusing UI.openModal's modal-box -- that's capped at 520px with header/footer chrome, which is
+// exactly the "not very big" look this REQ is trying to get away from.
+function openEvidenceLightbox_(fullImgUrl, originalUrl) {
+  var overlay = document.createElement('div');
+  overlay.className = 'evidence-lightbox-overlay';
+  overlay.innerHTML =
+    '<button type="button" class="evidence-lightbox-close" aria-label="Close" title="Close">' + ICON('close_modal') + '</button>' +
+    '<img src="' + esc(fullImgUrl) + '" alt="Evidence" />' +
+    '<a href="' + esc(originalUrl) + '" target="_blank" rel="noopener" class="evidence-lightbox-open">' + ICON('view_open') + ' Open original</a>';
+  document.body.appendChild(overlay);
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); }); // background only -- not the image/buttons
+  overlay.querySelector('.evidence-lightbox-close').onclick = close;
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+}
+document.addEventListener('click', function (e) {
+  var el = e.target.closest ? e.target.closest('.evidence-thumb[data-lightbox-url]') : null;
+  if (!el) return;
+  e.preventDefault();
+  openEvidenceLightbox_(el.getAttribute('data-lightbox-url'), el.getAttribute('href'));
+});
 
 // REQ (Finding detail redesign): "Risk level and status are barely noticeable." Maps each risk level
 // to a color + soft background used by the hero strip at the top of the Finding card below -- same
@@ -503,15 +538,26 @@ async function renderFindingDetail(params) {
     '<div class="page-subtitle">' + esc(finding.disciplineName || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
 
-    // REQ (follow-up): "The Finding detail looks messy and shattered. The photos are very small. Risk
-    // level and status are barely noticeable. Redesign it, something cool and clear." One cohesive
-    // card (not several stacked boxes) with a colored risk/status strip up top for instant
-    // glanceability, the description surfaced as a highlighted callout (it's the actual finding --
-    // everything else is context), meta fields as flowing icon chips instead of a sparse grid that
-    // left dead whitespace, and bigger evidence thumbnails (see evidenceThumbsHtml_'s size param).
+    // REQ (follow-up): "Re-arrange in the following order: Card header: Risk Level and Status (as
+    // they are); 1. Participant 2. Zone 3. Discipline 4. Category 5. Logged 6. Resolution Window
+    // 7. Description 8. Suggested action 9. Risk Logging Evidence (expand photos to the max when
+    // clicked)." Hero strip unchanged; everything below it now follows that exact order top to
+    // bottom -- meta chips (1-6) first, then the two text sections (7-8), with the evidence gallery
+    // last (9) instead of the previous description-first layout.
     '<div class="card" style="margin-bottom:16px;overflow:hidden;">' +
       findingHeroStripHtml_(finding) +
       '<div class="card-body">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
+          findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
+          findingMetaChipHtml_('📍', 'Sub-' + Term('zone').toLowerCase(), esc(finding.subZone || '—')) +
+          findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
+          findingMetaChipHtml_('📋', 'Category', esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
+          findingMetaChipHtml_('🕓', 'Logged', UI.fmtDate(finding.createdAt)) +
+          findingMetaChipHtml_('⏱️', 'Resolution window', UI.fmtDate(finding.resolutionWindowAt)) +
+          // Not in the requested list (no Location field going forward -- see createFinding's own
+          // header comment) but still shown, tacked onto the end, for older records that have one.
+          (finding.location ? findingMetaChipHtml_('🧭', 'Location', esc(finding.location)) : '') +
+        '</div>' +
         '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
           '<div class="field-label" style="margin-top:0;">Description</div>' +
           '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(finding.description || '—') + '</div>' +
@@ -519,15 +565,6 @@ async function renderFindingDetail(params) {
         (finding.suggestedAction
           ? '<div style="margin-bottom:16px;">' + detailField_('Suggested action', esc(finding.suggestedAction)) + '</div>'
           : '') +
-        '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
-          findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
-          findingMetaChipHtml_('📋', 'Category', esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
-          findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
-          findingMetaChipHtml_('📍', 'Sub-' + Term('zone').toLowerCase(), esc(finding.subZone || '—')) +
-          (finding.location ? findingMetaChipHtml_('🧭', 'Location', esc(finding.location)) : '') +
-          findingMetaChipHtml_('⏱️', 'Resolution window', UI.fmtDate(finding.resolutionWindowAt)) +
-          findingMetaChipHtml_('🕓', 'Logged', UI.fmtDate(finding.createdAt)) +
-        '</div>' +
         '<div class="field-label" style="margin-bottom:8px;">Risk Logging evidence</div>' +
         evidenceThumbsHtml_(finding.evidenceUrls, 168) +
       '</div>' +
