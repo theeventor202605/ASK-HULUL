@@ -555,6 +555,7 @@ async function renderVenuePlaces(params) {
       { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
       { key: 'createdBy', label: 'Created By', render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
     ].concat(canManage ? [{ key: 'actions', label: 'Actions', render: r =>
+        '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-place="' + esc(r.id) + '">' + ICON('edit') + '</button> ' +
         '<button class="btn btn-secondary btn-sm btn-icon" title="Add another account" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
         '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
       places, { emptyText: 'No places yet.' }) + '</div></div>';
@@ -565,6 +566,12 @@ async function renderVenuePlaces(params) {
 
   if (canManage) {
     wirePlaceForm_(venue, zones, places);
+    document.querySelectorAll('[data-edit-place]').forEach(function (btn) {
+      btn.onclick = function () {
+        var place = places.filter(function (pl) { return pl.id === btn.getAttribute('data-edit-place'); })[0];
+        if (place) openEditPlaceModal_(place, zones);
+      };
+    });
     document.querySelectorAll('[data-delete-place]').forEach(function (btn) {
       btn.onclick = function () {
         UI.confirmModal('Remove this place? This can\'t be undone.', async function () {
@@ -865,6 +872,61 @@ function wirePlaceForm_(venue, zones, places) {
       showPlaceAccountModal_(res.place, res.account);
     } catch (err) { UI.error(err); }
   };
+}
+
+// REQ: "allow to edit a place." A modal reusing the same fields as the Add-a-place form (minus the
+// map -- lat/lng are still directly editable as numbers, same as before ever placing a pin) rather
+// than a second full add-form layout. updatePlace (Places.gs) keeps every linked account's
+// Participant row in sync with the edit, same as updateParticipant's own shared-fields propagation.
+function openEditPlaceModal_(place, zones) {
+  var prefix = 'ePl';
+  var body =
+    UI.field('Name', '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
+    '<div class="form-row">' +
+      UI.field('Type', '<select id="' + prefix + 'Type" class="field-input">' + PLACE_TYPES.map(function (ty) {
+        return '<option value="' + ty + '"' + (ty === place.type ? ' selected' : '') + '>' + ty + '</option>';
+      }).join('') + '</select>') +
+      '<div>' + zoneFieldHtml_(zones, prefix) + '</div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      UI.field('Latitude', '<input id="' + prefix + 'Lat" type="number" step="any" class="field-input" value="' + (place.lat !== '' && place.lat != null ? esc(String(place.lat)) : '') + '" />') +
+      UI.field('Longitude', '<input id="' + prefix + 'Lng" type="number" step="any" class="field-input" value="' + (place.lng !== '' && place.lng != null ? esc(String(place.lng)) : '') + '" />') +
+    '</div>' +
+    UI.field('Location (optional)', '<input id="' + prefix + 'Location" class="field-input" placeholder="e.g. Near Gate A, north entrance" value="' + esc(place.location || '') + '" />');
+
+  UI.openModal('Edit place', body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: 'Save', className: 'btn-primary', onClick: async function () {
+        try {
+          var name = document.getElementById(prefix + 'Name').value.trim();
+          if (!name) { UI.toast('Name is required', 'error'); return; }
+          var payload = {
+            placeId: place.id, name: name, type: document.getElementById(prefix + 'Type').value,
+            zoneId: getZoneFieldValue_(prefix), location: document.getElementById(prefix + 'Location').value,
+            lat: document.getElementById(prefix + 'Lat').value, lng: document.getElementById(prefix + 'Lng').value
+          };
+          await Api.call('updatePlace', payload);
+          UI.closeModal();
+          UI.toast('Place updated', 'success');
+          Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+
+  wireZoneField_(prefix, prefix + 'Type');
+  // wireZoneField_ only wires the single/multi toggle behavior -- it doesn't know this place's
+  // existing zoneId, so the starting selection has to be applied separately, same blank/'ALL'/
+  // single-id/comma-list shape createPlace/updatePlace store.
+  var zoneIdField = place.zoneId || '';
+  if (zoneIdField === 'ALL') {
+    var allCheck = document.getElementById(prefix + 'ZoneAll');
+    if (allCheck) { allCheck.checked = true; document.querySelectorAll('.' + prefix + 'ZoneCheck').forEach(function (c) { c.disabled = true; }); }
+  } else if (zoneIdField) {
+    var ids = zoneIdField.split(',').filter(Boolean);
+    var singleSel = document.getElementById(prefix + 'ZoneSelect');
+    if (singleSel && ids.length === 1) singleSel.value = ids[0];
+    document.querySelectorAll('.' + prefix + 'ZoneCheck').forEach(function (c) { if (ids.indexOf(c.value) !== -1) c.checked = true; });
+  }
 }
 
 // Same HululLeaflet-alias reasoning as initVenueMap_ above (this app's own labels.js clobbers the
