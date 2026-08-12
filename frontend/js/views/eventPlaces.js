@@ -229,7 +229,7 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
   // is the same Add-a-place form, just event-scoped.
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('participant').toLowerCase()) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
-      '<div style="flex:1 1 380px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
+      '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         UI.field('Name', '<input id="fEPName" class="field-input" />') +
         '<div class="form-row">' +
           UI.field('Type', '<select id="fEPType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +

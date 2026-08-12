@@ -306,7 +306,14 @@ table.data-table tr:hover td{ background:#fafbff; }
 .modal-title{ font-weight:700; font-size:15px; }
 .modal-body{ padding:18px 20px; display:flex; flex-direction:column; gap:4px; }
 .modal-footer{ display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid var(--border); }
-.form-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+/* minmax(0,1fr), not bare 1fr -- a bare 1fr track still respects its content's intrinsic min-width,
+   so once a .form-row's parent gets narrow (e.g. the Add-a-place fields column now sharing width
+   with the side-by-side map), a column with longer content (the Zones checkbox label/list) forces
+   its sibling (Type's <select>, or a number input) to shrink past comfortable size -- the squeezed
+   column's own content then visibly overflows into the next column instead of wrapping/containing,
+   looking like an empty box next to a disconnected floating value. minmax(0,1fr) lets both tracks
+   actually shrink to the row's real available width, so content wraps/clips in place instead. */
+.form-row{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
 
 /* ---------- Map full screen toggle (UI.wireMapFullscreen, ui.js) ----------
    Higher than Leaflet's own panes/controls (max 1000, see the z-index note above) and higher than
