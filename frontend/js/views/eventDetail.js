@@ -197,10 +197,13 @@ function initOverviewZoneMap_(venue, zones) {
     // Fit AFTER invalidateSize (not before): this thumbnail has every interaction disabled, so
     // unlike the interactive maps elsewhere, the user can't pan/zoom to correct a bad initial fit --
     // fitBounds must run against the map's real, laid-out container size or the crop drifts/clips.
+    // REQ: "zoomed in to maximum so boundaries touch edge of the canvas but never outside the
+    // canvas" -- zero padding fits bounds flush to the container edge (Leaflet's fitBounds never
+    // overshoots past the container, so boundaries can touch the edge but can't spill outside it).
     setTimeout(function () {
       if (!overviewZoneMapInstance_) return;
       overviewZoneMapInstance_.invalidateSize();
-      if (bounds.length) overviewZoneMapInstance_.fitBounds(bounds, { padding: [6, 6] });
+      if (bounds.length) overviewZoneMapInstance_.fitBounds(bounds, { padding: [0, 0] });
     }, 150);
   }, 0);
 }
