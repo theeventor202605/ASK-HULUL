@@ -1,0 +1,21 @@
+# Normalize line endings for every text file to LF inside the repository, and check them out as
+# LF regardless of OS/editor/core.autocrlf settings. Without this, files edited on Windows (CRLF)
+# vs. this repo's existing LF content show as a full-file rewrite in `git diff`/`git status` purely
+# from line-ending differences, not real changes -- exactly what's been happening repeatedly with
+# .github/workflows/pages.yml. This makes that class of noise-diff impossible going forward, for
+# every file, for every contributor, on every OS.
+* text=auto eol=lf
+
+# Binary/asset types some contributor might one day add -- explicitly marked so Git never attempts
+# line-ending normalization on them (which would corrupt the file).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.ods binary
+*.zip binary
