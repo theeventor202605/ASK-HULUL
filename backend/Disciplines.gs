@@ -161,9 +161,37 @@ function removeInspectorAssignment(user, p) {
   return { ok: true };
 }
 
+// Two events "conflict" for a given Inspector if they're assigned to both and the events' date
+// ranges overlap -- assignments are event-wide (no per-time slot the way Inspections/Meetings have
+// scheduledAt), so event-level overlap is the finest granularity there's data for. Shared by
+// listCoverageGaps and listConflictFreeQualifiedInspectors so the two can't drift apart.
+function eventsOverlap_(a, b) {
+  if (!a || !b || !a.startDateTime || !a.endDateTime || !b.startDateTime || !b.endDateTime) return false;
+  return new Date(a.startDateTime) < new Date(b.endDateTime) && new Date(b.startDateTime) < new Date(a.endDateTime);
+}
+
+// Finds the first other-event assignment for this Inspector that overlaps `event`'s dates, if any.
+// otherAssignments is pre-filtered to exclude this event's own rows by the caller (small perf win --
+// listCoverageGaps calls this once per qualified inspector per gap discipline).
+function inspectorConflict_(event, inspectorId, otherAssignments) {
+  var hit = null;
+  otherAssignments.some(function (a) {
+    if (a.inspectorId !== inspectorId) return false;
+    var other = getById('Events', a.eventId);
+    if (!eventsOverlap_(event, other)) return false;
+    hit = { eventId: other.id, eventName: other.name, startDateTime: other.startDateTime, endDateTime: other.endDateTime };
+    return true;
+  });
+  return hit;
+}
+
 // Coverage gaps for an event: which identified disciplines still have zones (or, for a
-// single/no-zone venue, the whole venue) with no inspector assigned, and which qualified
-// Inspectors haven't been assigned to that discipline yet and could fill the gap.
+// single/no-zone venue, the whole venue) with no inspector assigned, and every qualified Inspector
+// who could fill the gap -- including ones already assigned elsewhere (flagged via `assigned`) and
+// ones double-booked on another overlapping event (flagged via `conflict`), so the PM sees the full
+// picture instead of candidates silently disappearing off the list once they're taken. `conflicts`
+// is a separate, event-wide list (not scoped to gap disciplines only) -- a discipline can be fully
+// covered and still have a conflicted Inspector, and that needs surfacing too.
 function listCoverageGaps(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
@@ -171,10 +199,28 @@ function listCoverageGaps(user, p) {
   var zoneMode = venueZones.length > 1;
   var identifiedIds = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId; }).map(function (ed) { return ed.disciplineId; });
   var assignments = findWhere('InspectorAssignments', function (a) { return a.eventId === p.eventId; });
+  var otherAssignments = findWhere('InspectorAssignments', function (a) { return a.eventId !== p.eventId; });
+  var disciplinesById_ = {};
+  getAll('Disciplines').forEach(function (d) { disciplinesById_[d.id] = d; });
+
+  // REQ: "If an inspector has conflict in another event then must be added to a conflict list with
+  // details" -- checked across every current assignment for this event, not just gap disciplines.
+  var conflicts = [];
+  assignments.forEach(function (a) {
+    var hit = inspectorConflict_(event, a.inspectorId, otherAssignments);
+    if (!hit) return;
+    var discipline = disciplinesById_[a.disciplineId];
+    var inspector = getById('Users', a.inspectorId);
+    conflicts.push({
+      assignmentId: a.id, disciplineId: a.disciplineId, disciplineName: discipline ? discipline.name : a.disciplineId,
+      inspectorId: a.inspectorId, inspectorName: inspector ? inspector.name : a.inspectorId,
+      inspectorEmail: inspector ? inspector.email : '', conflict: hit
+    });
+  });
 
   var items = [];
   identifiedIds.forEach(function (did) {
-    var discipline = getById('Disciplines', did);
+    var discipline = disciplinesById_[did];
     var forDiscipline = assignments.filter(function (a) { return a.disciplineId === did; });
     var uncoveredZones = [];
 
@@ -191,19 +237,55 @@ function listCoverageGaps(user, p) {
 
     var assignedInspectorIds = forDiscipline.map(function (a) { return a.inspectorId; });
     var qualifiedUserIds = findWhere('InspectorQualifications', function (q) { return q.disciplineId === did; }).map(function (q) { return q.userId; });
-    var available = findWhere('Users', function (u) {
+    var qualified = findWhere('Users', function (u) {
       return u.role === ROLES.INSPECTOR && u.status === 'Active' && qualifiedUserIds.indexOf(u.id) !== -1 &&
-        (!event.inspectionCoId || u.orgId === event.inspectionCoId) && assignedInspectorIds.indexOf(u.id) === -1;
-    }).map(stripSecrets_);
+        (!event.inspectionCoId || u.orgId === event.inspectionCoId);
+    }).map(stripSecrets_).map(function (u) {
+      return {
+        id: u.id, name: u.name, email: u.email,
+        assigned: assignedInspectorIds.indexOf(u.id) !== -1,
+        conflict: inspectorConflict_(event, u.id, otherAssignments)
+      };
+    });
 
     items.push({
       disciplineId: did, disciplineName: discipline ? discipline.name : did,
       uncoveredZones: zoneMode ? uncoveredZones : null,
-      availableInspectors: available
+      availableInspectors: qualified
     });
   });
 
-  return { zoneMode: zoneMode, items: items };
+  return { zoneMode: zoneMode, items: items, conflicts: conflicts };
+}
+
+// REQ: "...provided the option to... change with other qualified inspector with no conflict."
+// Candidates for swapping into a conflicted (or just plain double-booked-looking) assignment: same
+// qualification/org rules as listQualifiedInspectors, narrowed to Inspectors not already assigned to
+// this discipline for this event and free of an overlapping-event conflict.
+function listConflictFreeQualifiedInspectors(user, p) {
+  if (!p || !p.disciplineId || !p.eventId) throw new HululError('BAD_REQUEST', 'disciplineId and eventId are required');
+  var event = getById('Events', p.eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  var assignedInspectorIds = findWhere('InspectorAssignments', function (a) { return a.eventId === p.eventId && a.disciplineId === p.disciplineId; }).map(function (a) { return a.inspectorId; });
+  var otherAssignments = findWhere('InspectorAssignments', function (a) { return a.eventId !== p.eventId; });
+  var candidates = listQualifiedInspectors(user, { disciplineId: p.disciplineId, eventId: p.eventId });
+  return candidates.filter(function (u) {
+    return assignedInspectorIds.indexOf(u.id) === -1 && !inspectorConflict_(event, u.id, otherAssignments);
+  });
+}
+
+// REQ: "...option to reschedule or change with other qualified inspector with no conflict." Swaps an
+// already-assigned Inspector for a different qualified, conflict-free one on the same
+// discipline+zones -- reuses removeInspectorAssignment/assignInspector's own validation (role check,
+// duplicate check, hasLogs-blocks-removal check) and audit trail rather than duplicating it, so a
+// reassign is provably equivalent to "remove then add" done by hand.
+function reassignInspector(user, p) {
+  var assignment = getById('InspectorAssignments', p.oldAssignmentId);
+  if (!assignment || assignment.eventId !== p.eventId) throw new HululError('NOT_FOUND', 'Assignment not found');
+  var zoneIds = assignment.zoneIds ? String(assignment.zoneIds).split(',').filter(Boolean) : [];
+  var disciplineId = assignment.disciplineId;
+  removeInspectorAssignment(user, { eventId: p.eventId, assignmentId: p.oldAssignmentId });
+  return assignInspector(user, { eventId: p.eventId, disciplineId: disciplineId, inspectorId: p.newInspectorId, zoneIds: zoneIds });
 }
 
 function listInspectorAssignments(user, p) {

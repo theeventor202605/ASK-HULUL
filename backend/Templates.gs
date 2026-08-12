@@ -170,6 +170,10 @@ function sendTemplates(user, p) {
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
   if (!p.libraryTemplateIds || !p.libraryTemplateIds.length) throw new HululError('BAD_REQUEST', 'Select at least one template to send');
+  // REQ: "No Template can be sent unless Deadline date time is set." -- mirrors the frontend's own
+  // disabled-Send-button guard (see templateActionsHtml_ in eventDetail.js) so this can't be bypassed
+  // by calling the API directly.
+  if (!event.templatesDeadlineAt) throw new HululError('BAD_REQUEST', 'Set the documents deadline before sending any template');
   var sent = [];
   p.libraryTemplateIds.forEach(function (libId) {
     var already = findWhere('Templates', function (t) { return t.eventId === p.eventId && t.libraryTemplateId === libId; })[0];

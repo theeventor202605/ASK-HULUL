@@ -9,7 +9,13 @@ var SCHEMA = {
   // auto-generated Place-account login emails (e.g. 'vendor001@yawad.sa'); blank on old rows,
   // in which case placeAccountDomain_ (Places.gs) falls back to slugifying the org name.
   Organizations:          ['id','type','name','status','createdAt','logoUrl','domain'],
-  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt'],
+  // unavailable/unavailableReason/unavailableSince appended at the end -- REQ: "If a user is absent
+  // then he will be added to list in this page as unavailable" (Sidebar Re-assignment, see
+  // Reassignment.gs). Deliberately separate from `status` (Active/Inactive, which gates login) --
+  // marking someone unavailable is a temporary scheduling signal, not an account suspension; an
+  // absent Inspector should still be able to log in and see their own assignments, just not be
+  // assignable to new ones while flagged.
+  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince'],
   Sessions:               ['token','userId','createdAt','expiresAt'],
   // lat/lng/status appended at the end (not inserted mid-schema) so existing Venues rows in the
   // live sheet -- whose data sits in fixed physical columns -- don't get silently reread under the
@@ -140,7 +146,14 @@ var SCHEMA = {
   // (enforced in addTicketComment, Support.gs), a first for this app (see MediaRecorder/
   // getDisplayMedia usage in support.js), capped to a short duration client-side to fit the existing
   // base64-upload pipeline (see uploadTicketMedia).
-  SupportTicketComments:  ['id','ticketId','authorId','message','voiceNoteUrl','recordingUrl','recordingMimeType','createdAt']
+  SupportTicketComments:  ['id','ticketId','authorId','message','voiceNoteUrl','recordingUrl','recordingMimeType','createdAt'],
+  // Event Chat (see EventChat.gs) -- one row per posted message. mentionedUserIds/
+  // mentionedParticipantIds/logRefIds are comma-joined id lists (same convention as
+  // InspectorAssignments.zoneIds): who/what was tagged, and which AuditLog entries (Event Log tab)
+  // were referenced inline. Participant-account roles (Vendor/Operator/Exhibitor) are blocked from
+  // this whole feature server-side -- see assertChatAccess_ -- so mentioning a Participant is purely
+  // informational, never a notification to someone who could actually read the thread.
+  EventChatMessages:      ['id','eventId','authorId','message','mentionedUserIds','mentionedParticipantIds','logRefIds','createdAt']
 };
 
 var ROLES = {
@@ -407,7 +420,7 @@ var ID_PREFIX = {
   InspectorQualifications: 'IQ', InspectorAssignments: 'IA', ChecklistItems: 'CHK', Inspections: 'INS',
   InspectionResults: 'IR', Findings: 'FND', Escalations: 'ESC', Resolutions: 'RES', Participants: 'PAR',
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
-  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC'
+  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

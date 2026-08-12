@@ -160,6 +160,22 @@ var ROUTES = {
   removeInspectorAssignment: function (u, p) { return removeInspectorAssignment(u, p); },
   listInspectorAssignments: function (u, p) { return listInspectorAssignments(u, p); },
   listCoverageGaps: function (u, p) { return listCoverageGaps(u, p); },
+  listConflictFreeQualifiedInspectors: function (u, p) { return listConflictFreeQualifiedInspectors(u, p); },
+  reassignInspector: function (u, p) { return reassignInspector(u, p); },
+
+  // Event Chat & Event Log (see EventChat.gs)
+  listEventChatMessages: function (u, p) { return listEventChatMessages(u, p); },
+  postEventChatMessage: function (u, p) { return postEventChatMessage(u, p); },
+  listChatTaggableUsers: function (u, p) { return listChatTaggableUsers(u, p); },
+  listChatTaggableParticipants: function (u, p) { return listChatTaggableParticipants(u, p); },
+  listEventLog: function (u, p) { return listEventLog(u, p); },
+
+  // Sidebar Re-assignment (see Reassignment.gs)
+  setUserUnavailable: function (u, p) { return setUserUnavailable(u, p); },
+  setUserAvailable: function (u, p) { return setUserAvailable(u, p); },
+  listUnavailableUsers: function (u, p) { return listUnavailableUsers(u); },
+  listUserAssignments: function (u, p) { return listUserAssignments(u, p); },
+  listReplacementSuggestions: function (u, p) { return listReplacementSuggestions(u, p); },
 
   // Inspections & checklists (INS)
   listChecklistItems: function (u, p) { return listChecklistItems(p); },
