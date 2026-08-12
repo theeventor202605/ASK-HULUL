@@ -86,6 +86,7 @@ var ZONE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'
 var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if neither the venue nor any of its places has coordinates
 var eventPlacesMapInstance_ = null;
 var eventPlacesMarkers_ = {}; // placeId -> Leaflet marker, so a places-list click can re-focus the right dot
+var eventPlacesBoundaryLayer_ = null; // the venue's own drawn boundary, shown for reference (read-only)
 
 async function tabVenue(content, eventId, detail) {
   var canManage = ZONE_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
@@ -225,11 +226,12 @@ function venueInfoCard_(label, value) {
 
 // Same HululLeaflet-alias reasoning as venues.js's map initializers (this app's own labels.js
 // clobbers the bare global L). Centers on the venue's own coordinates if it has any, else the
-// first place that does, else a sensible fallback -- and fits every place dot in view once
-// plotted, so the whole set is visible at a sensible zoom on first load. Default Leaflet
-// interactions (drag to pan, scroll/pinch to zoom, double-click to zoom) are left on, same as
-// every other map in the app (venueMap/placeMap/zoneMap/eventPlaceMap) -- REQ bug report: this
-// map used to lock dragging/scroll-zoom out entirely, which read as "the map is broken/stuck".
+// first place that does, else a sensible fallback -- and fits every place dot AND the venue's own
+// boundary (if drawn) in view once plotted, so the whole set is visible at a sensible zoom on
+// first load. Default Leaflet interactions (drag to pan, scroll/pinch to zoom, double-click to
+// zoom) are left on, same as every other map in the app (venueMap/placeMap/zoneMap/eventPlaceMap)
+// -- REQ bug report: this map used to lock dragging/scroll-zoom out entirely, which read as "the
+// map is broken/stuck".
 function initEventPlacesMap_(venue, placesWithCoords) {
   var el = document.getElementById('eventPlacesMap');
   if (!el) return;
@@ -242,6 +244,12 @@ function initEventPlacesMap_(venue, placesWithCoords) {
   var hasVenueCoords = !!(venue.lat && venue.lng);
   var center = hasVenueCoords ? [Number(venue.lat), Number(venue.lng)]
     : (placesWithCoords.length ? [Number(placesWithCoords[0].lat), Number(placesWithCoords[0].lng)] : EVENT_MAP_DEFAULT_CENTER_);
+  // BUG (REQ report): "Places map is not showing the boundaries of the venue" -- this map only ever
+  // plotted place dots, it never drew the venue's own boundary polygon at all, unlike every other
+  // map that shows a venue (venues.js's own venueMap/placeMap, and this same tab's "Add zone" map
+  // just below via zoneVenueBoundaryLayer_). parseBoundaryClient_ is defined in venues.js, loaded
+  // on the same page.
+  var venueBoundary = parseBoundaryClient_(venue.boundary);
   setTimeout(function () {
     if (!document.getElementById('eventPlacesMap')) return;
     eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap')
@@ -261,8 +269,17 @@ function initEventPlacesMap_(venue, placesWithCoords) {
       else { eventPlacesMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
 
+    // Same solid accent-shaded style as venues.js's placeMap (the "add/edit a place" map) -- kept
+    // visually consistent since both maps are "a venue's boundary plus its places" views. Read-only
+    // here (interactive: false) -- editing the boundary itself only happens from the Venues page.
+    if (venueBoundary) {
+      eventPlacesBoundaryLayer_ = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.06, weight: 1.5, interactive: false
+      }).addTo(eventPlacesMapInstance_);
+    }
+
     eventPlacesMarkers_ = {};
-    var bounds = [];
+    var bounds = venueBoundary ? venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }) : [];
     placesWithCoords.forEach(function (pl) {
       var latlng = [Number(pl.lat), Number(pl.lng)];
       bounds.push(latlng);
@@ -285,6 +302,7 @@ function initEventPlacesMap_(venue, placesWithCoords) {
 
 function destroyEventPlacesMap_() {
   if (eventPlacesMapInstance_) { eventPlacesMapInstance_.remove(); eventPlacesMapInstance_ = null; }
+  eventPlacesBoundaryLayer_ = null;
   eventPlacesMarkers_ = {};
 }
 
