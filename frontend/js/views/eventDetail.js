@@ -226,9 +226,10 @@ function venueInfoCard_(label, value) {
 // Same HululLeaflet-alias reasoning as venues.js's map initializers (this app's own labels.js
 // clobbers the bare global L). Centers on the venue's own coordinates if it has any, else the
 // first place that does, else a sensible fallback -- and fits every place dot in view once
-// plotted, so the whole set is visible at a sensible zoom without the user having to pan/zoom
-// themselves (dragging/scroll-zoom are disabled below -- only the zoom +/- and satellite-toggle
-// buttons are meant to change the view).
+// plotted, so the whole set is visible at a sensible zoom on first load. Default Leaflet
+// interactions (drag to pan, scroll/pinch to zoom, double-click to zoom) are left on, same as
+// every other map in the app (venueMap/placeMap/zoneMap/eventPlaceMap) -- REQ bug report: this
+// map used to lock dragging/scroll-zoom out entirely, which read as "the map is broken/stuck".
 function initEventPlacesMap_(venue, placesWithCoords) {
   var el = document.getElementById('eventPlacesMap');
   if (!el) return;
@@ -243,11 +244,8 @@ function initEventPlacesMap_(venue, placesWithCoords) {
     : (placesWithCoords.length ? [Number(placesWithCoords[0].lat), Number(placesWithCoords[0].lng)] : EVENT_MAP_DEFAULT_CENTER_);
   setTimeout(function () {
     if (!document.getElementById('eventPlacesMap')) return;
-    eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap', {
-      dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false
-      // zoomControl stays on (default) -- the +/- buttons are exactly the kind of "map button"
-      // interaction that should still work; only free dragging/scrolling is locked out.
-    }).setView(center, (hasVenueCoords || placesWithCoords.length) ? 15 : 6);
+    eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap')
+      .setView(center, (hasVenueCoords || placesWithCoords.length) ? 15 : 6);
 
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
@@ -1277,10 +1275,11 @@ function showLiveInspectionFallback_(content, eventId, inspection, participants)
   if (retryBtn) retryBtn.onclick = function () { if (mapEl) mapEl.style.display = ''; startLiveInspectionTracking_(content, eventId, inspection, participants); };
 }
 
-// Locked the same way as the Places map in the Venue & Zones tab -- only zoom buttons interact;
-// the view itself is driven entirely by the inspector's live position (updateLiveInspectionMyPosition_).
-// REQ: clicking a dot opens that participant's Record results modal directly, same as clicking their
-// row in the list below.
+// Default Leaflet interactions (drag/scroll/pinch/double-click zoom) are left on, same as every
+// other map in the app -- updateLiveInspectionMyPosition_ recenters the view as the inspector
+// moves, but the user can still freely pan/zoom in between updates rather than the view being
+// completely locked. REQ: clicking a dot opens that participant's Record results modal directly,
+// same as clicking their row in the list below.
 function initLiveInspectionMap_(participants, eventId, inspection) {
   var el = document.getElementById('liveInspectionMap');
   if (!el) return;
@@ -1292,9 +1291,7 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
   }
   setTimeout(function () {
     if (!document.getElementById('liveInspectionMap')) return;
-    liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap', {
-      dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false
-    }).setView(EVENT_MAP_DEFAULT_CENTER_, 16);
+    liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap').setView(EVENT_MAP_DEFAULT_CENTER_, 16);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(liveInspectionMapInstance_);
