@@ -148,16 +148,22 @@ function initOverviewZoneMap_(venue, zones) {
       }).addTo(overviewZoneMapInstance_);
       bounds = bounds.concat(venueLayer.getLatLngs()[0]);
     }
-    UI.drawZoneBoundaries(overviewZoneMapInstance_, zones).forEach(function (layer) {
+    UI.drawZoneBoundaries(overviewZoneMapInstance_, zones, 'zone-thumb-tooltip').forEach(function (layer) {
       bounds = bounds.concat(layer.getLatLngs()[0]);
     });
-    if (bounds.length) overviewZoneMapInstance_.fitBounds(bounds, { padding: [12, 12] });
-    setTimeout(function () { if (overviewZoneMapInstance_) overviewZoneMapInstance_.invalidateSize(); }, 150);
+    // Fit AFTER invalidateSize (not before): this thumbnail has every interaction disabled, so
+    // unlike the interactive maps elsewhere, the user can't pan/zoom to correct a bad initial fit --
+    // fitBounds must run against the map's real, laid-out container size or the crop drifts/clips.
+    setTimeout(function () {
+      if (!overviewZoneMapInstance_) return;
+      overviewZoneMapInstance_.invalidateSize();
+      if (bounds.length) overviewZoneMapInstance_.fitBounds(bounds, { padding: [6, 6] });
+    }, 150);
   }, 0);
 }
 function kpiCard(labelKey, value, icon, color) {
   return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">' + t(labelKey) + '</span>' +
-    '<span class="kpi-icon" style="background:' + color + '22;">' + icon + '</span></div><div class="kpi-value">' + value + '</div></div>';
+    '<span class="kpi-icon" style="color:' + color + ';">' + icon + '</span></div><div class="kpi-value">' + value + '</div></div>';
 }
 function infoRow(label, val) {
   return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13.5px;">' +

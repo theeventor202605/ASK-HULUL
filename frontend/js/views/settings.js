@@ -275,10 +275,16 @@ function renderIconsTabBody_(content, pending) {
   };
 }
 
-// A grid of every icon in ICON_LIBRARY (icons.js), grouped by section -- onPick receives the
-// chosen icon string, or '' to reset that key back to its built-in default.
+// A grid of every icon in ICON_LIBRARY (icons.js), grouped by section, PLUS a free-text field so a
+// SystemAdmin isn't limited to the curated palette -- any emoji/character can be typed or pasted in
+// and used directly. onPick receives the chosen icon string, or '' to reset that key back to its
+// built-in default.
 function openIconPickerModal_(onPick) {
-  var body = '<div class="muted" style="font-size:12px;margin-bottom:10px;">Choose an icon.</div>' +
+  var body = '<div class="muted" style="font-size:12px;margin-bottom:10px;">Choose an icon below, or paste/type your own.</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:16px;">' +
+      '<input class="field-input" id="customIconInput" placeholder="Paste or type any icon…" style="flex:1;" maxlength="8" />' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="customIconUseBtn">Use</button>' +
+    '</div>' +
     window.ICON_LIBRARY.map(function (group) {
       return '<div style="margin-bottom:10px;">' +
         '<div style="font-size:11px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + esc(group.section) + '</div>' +
@@ -294,13 +300,26 @@ function openIconPickerModal_(onPick) {
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal }
   ]);
 
+  function useCustomIcon() {
+    var val = document.getElementById('customIconInput').value.trim();
+    if (!val) { UI.toast('Type or paste an icon first', 'error'); return; }
+    UI.closeModal();
+    onPick(val);
+  }
+  document.getElementById('customIconUseBtn').onclick = useCustomIcon;
+  document.getElementById('customIconInput').onkeydown = function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); useCustomIcon(); }
+  };
+
   document.querySelectorAll('.icon-pick-opt').forEach(function (el) {
     el.onclick = function () {
       var icon = el.getAttribute('data-icon');
       UI.closeModal();
       onPick(icon);
     };
-    el.onmouseenter = function () { el.style.background = 'var(--accent-soft)'; el.style.borderColor = 'var(--accent)'; };
-    el.onmouseleave = function () { el.style.background = ''; el.style.borderColor = 'var(--border)'; };
+    // No background tint on hover (REQ: no background colours on any icon) -- border color is the
+    // only hover cue, matching .icon-swatch's own hover treatment.
+    el.onmouseenter = function () { el.style.borderColor = 'var(--accent)'; };
+    el.onmouseleave = function () { el.style.borderColor = 'var(--border)'; };
   });
 }

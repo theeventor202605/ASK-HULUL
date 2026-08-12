@@ -90,6 +90,21 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    text padding, and a bit larger font since an emoji glyph at 12.5px reads smaller than text does.
    Always paired with a title="" attribute for a hover tooltip, since there's no visible label. */
 .btn-icon{ padding:6px 9px; font-size:14px; line-height:1; }
+/* REQ: "I do not want background colours in any icon within the application." Icon-only action
+   buttons (edit/delete/send/upload/approve/reject/etc -- table + card actions app-wide) keep their
+   semantic variant as the glyph/text color, but lose the solid colored square behind it. Hover swaps
+   to a light neutral tint (var(--surface), not a variant color) purely so the click target still
+   reads as interactive -- resting state has zero color fill. Deliberately does NOT touch
+   .map-toggle-btn / .hulul-map-fullscreen-btn: those white pills are map-overlay controls that need
+   a background for legibility over map tiles/satellite imagery, a functional need rather than a
+   decorative accent color, so they're excluded from this pass. */
+.btn-icon.btn-primary{ background:transparent; color:var(--accent); border-color:transparent; }
+.btn-icon.btn-primary:hover{ background:var(--surface); color:var(--accent-600); }
+.btn-icon.btn-secondary{ background:transparent; color:var(--text-600); border-color:transparent; }
+.btn-icon.btn-secondary:hover{ background:var(--surface); color:var(--text-900); }
+.btn-icon.btn-danger{ background:transparent; color:var(--danger); border-color:transparent; }
+.btn-icon.btn-danger:hover{ background:var(--danger-soft); }
+.btn-icon.btn-ghost:hover{ background:var(--surface); }
 .w-full{ width:100%; }
 
 /* Click guard (app-wide, wired once in ui.js): every .btn gets disabled + this look for 10s right
@@ -113,6 +128,16 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .place-marker.is-focused .place-marker-dot{ background:var(--danger) !important; transform:scale(1.4); }
 .place-marker-tooltip{ font-size:11px; font-weight:700; color:var(--text-900); }
 .place-type-swatch{ display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
+
+/* REQ report: Overview tab's zone-map thumbnail (UI.drawZoneBoundaries's tooltipClassName override,
+   ui.js) -- the normal zone label (place-marker-tooltip above, sized for a full 360-440px map) was
+   wide/bold/opaque enough to hide the much smaller boundary underneath it at thumbnail size and zoom.
+   Leaflet's own .leaflet-tooltip base class supplies the opaque white background/padding/shadow this
+   overrides -- targeting the combined selector (not .place-marker-tooltip) keeps every other map's
+   labels exactly as they were. */
+.zone-thumb-tooltip.leaflet-tooltip{ font-size:9px; font-weight:700; color:var(--text-900);
+  background:rgba(255,255,255,.55); padding:0 3px; border:none; box-shadow:none; }
+.zone-thumb-tooltip.leaflet-tooltip::before{ display:none; } /* Leaflet's default tooltip arrow/caret -- not useful at this size */
 
 /* ---------------- Live inspection (Inspections & Checklist Items tab, choose-participant screen) ----------------
    "My location" -- a pulsing blue dot (same idea as Google Maps' own you-are-here marker) so it
@@ -173,8 +198,8 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .topbar-search input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .topbar-actions{ display:flex; align-items:center; gap:14px; margin-inline-start:auto; }
 .org-logo{ height:34px; width:auto; max-width:130px; object-fit:contain; border-radius:6px; }
-.icon-btn{ position:relative; background:#fff; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:15px; }
-.icon-btn:hover{ background:#f1f3f9; }
+.icon-btn{ position:relative; background:transparent; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:15px; }
+.icon-btn:hover{ background:var(--surface); }
 .notif-badge{ position:absolute; top:-4px; inset-inline-end:-4px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
   border-radius:999px; min-width:16px; height:16px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
 .user-chip{ display:flex; align-items:center; gap:10px; cursor:pointer; }
@@ -198,7 +223,10 @@ textarea.field-input{ resize:vertical; min-height:64px; }
   box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:10px; }
 .kpi-top{ display:flex; align-items:center; justify-content:space-between; }
 .kpi-label{ font-size:12.5px; color:var(--text-600); font-weight:600; }
-.kpi-icon{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; }
+/* REQ: "I do not want background colours in any icon within the application." -- was a solid
+   color+'22' badge behind the glyph (still set inline per-card, see kpiCard()/dashboard.js); now a
+   plain icon at a slightly larger size so it still reads clearly without the colored square. */
+.kpi-icon{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:19px; }
 .kpi-value{ font-size:26px; font-weight:800; }
 
 .card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
@@ -331,9 +359,9 @@ table.data-table tr:hover td{ background:#fafbff; }
    what keeps 45+ icon keys from turning the Icons tab into a huge scrolling list. */
 .icon-settings-group{ margin-bottom:16px; }
 .icon-settings-group-title{ font-size:11px; font-weight:700; color:var(--text-600); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
-.icon-swatch{ width:44px; height:44px; border-radius:10px; border:1px solid var(--border); background:#fff;
+.icon-swatch{ width:44px; height:44px; border-radius:10px; border:1px solid var(--border); background:transparent;
   display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer; transition:.12s; }
-.icon-swatch:hover{ border-color:var(--accent); background:var(--accent-soft); transform:translateY(-1px); }
+.icon-swatch:hover{ border-color:var(--accent); background:transparent; transform:translateY(-1px); }
 
 /* ---------- Misc ---------- */
 .muted{ color:var(--text-600); }

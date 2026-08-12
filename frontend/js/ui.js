@@ -424,9 +424,12 @@ window.UI = {
   // name label, same style eventDetail.js's "Places map" originally established. zones: raw Zone rows
   // (z.boundary is the raw JSON string field -- parseBoundaryClient_, venues.js, loaded app-wide,
   // parses it). Read-only (interactive: false) everywhere this is called from -- editing a zone's
-  // boundary only ever happens from its own Add/Edit zone map. Returns the layers added, so the caller
-  // can remove them on destroy.
-  drawZoneBoundaries(map, zones) {
+  // boundary only ever happens from its own Add/Edit zone map. tooltipClassName (optional) lets a
+  // small map override the label style -- REQ report: on the Overview tab's small zone-map thumbnail,
+  // the normal label's white background/text size hid the (much smaller, at that zoom/size) boundary
+  // underneath it; defaults to the normal style everywhere else. Returns the layers added, so the
+  // caller can remove them on destroy.
+  drawZoneBoundaries(map, zones, tooltipClassName) {
     var layers = [];
     (zones || []).forEach(function (z, i) {
       var boundary = (typeof parseBoundaryClient_ === 'function') ? parseBoundaryClient_(z.boundary) : null;
@@ -434,7 +437,7 @@ window.UI = {
       var color = z.color || ZONE_BOUNDARY_COLORS_[i % ZONE_BOUNDARY_COLORS_.length];
       var latlngs = boundary.map(function (pt) { return [pt.lat, pt.lng]; });
       var layer = HululLeaflet.polygon(latlngs, { color: color, fillColor: color, fillOpacity: 0.10, weight: 2, interactive: false }).addTo(map);
-      layer.bindTooltip(esc(z.name), { permanent: true, direction: 'center', className: 'place-marker-tooltip' });
+      layer.bindTooltip(esc(z.name), { permanent: true, direction: 'center', className: tooltipClassName || 'place-marker-tooltip' });
       layers.push(layer);
     });
     return layers;

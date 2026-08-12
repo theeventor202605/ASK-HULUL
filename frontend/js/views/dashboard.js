@@ -19,11 +19,11 @@ async function renderDashboard() {
     '<div class="page-subtitle">' + esc("Here's what's happening across your " + Term('event_plural')) + '</div></div></div>' +
     '<div class="kpi-grid">' + kpis.map(function (k) {
       return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">' + t(k[0]) + '</span>' +
-        '<span class="kpi-icon" style="background:' + k[3] + '22;">' + k[2] + '</span></div>' +
+        '<span class="kpi-icon" style="color:' + k[3] + ';">' + k[2] + '</span></div>' +
         '<div class="kpi-value">' + k[1] + '</div></div>';
     }).join('') +
     '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">' + esc('Active ' + Term('event_plural')) + '</span>' +
-      '<span class="kpi-icon" style="background:var(--accent-soft);">' + ICON('kpi_active_events') + '</span></div>' +
+      '<span class="kpi-icon" style="color:var(--accent);">' + ICON('kpi_active_events') + '</span></div>' +
       '<div class="kpi-value">' + data.activeEvents + '</div></div>' +
     '</div>' +
     '<div class="card" style="margin-bottom:20px;"><div class="card-header"><div class="card-title">Risk breakdown</div></div>' +
