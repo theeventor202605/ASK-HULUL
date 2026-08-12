@@ -126,8 +126,11 @@ async function renderNewFinding(params) {
         '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
       '</div></div>' +
       // REQ: "Add map... showing Inspector live location centred." This device's own GPS position
-      // -- see initFindingLocationMap_ below.
-      '<div class="card" style="flex:1 1 320px;max-width:400px;display:flex;flex-direction:column;">' +
+      // -- see initFindingLocationMap_ below. No max-width here (unlike the form card, capped at
+      // 640px so its text fields don't stretch absurdly wide) -- REQ (follow-up): "expand map to
+      // fill outlined empty space" -- once the form card hits its own cap, flexbox redistributes
+      // all remaining row width to this card since it's the only sibling left that can still grow.
+      '<div class="card" style="flex:1 1 320px;display:flex;flex-direction:column;">' +
         '<div class="card-header"><div class="card-title">Your location</div></div>' +
         '<div class="card-body" style="display:flex;flex-direction:column;flex:1;">' +
           '<div id="findingLocationMap" style="flex:1;min-height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
