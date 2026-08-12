@@ -230,16 +230,18 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('participant').toLowerCase()) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
       '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
+        // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
+        // then Latitude+Longitude side by side, then Location last.
         UI.field('Name', '<input id="fEPName" class="field-input" />') +
         '<div class="form-row">' +
           UI.field('Type', '<select id="fEPType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fEP') + '</div>' +
         '</div>' +
-        UI.field('Location (optional)', '<input id="fEPLocation" class="field-input" placeholder="e.g. Near Gate A, north entrance" />') +
         '<div class="form-row">' +
           UI.field('Latitude', '<input id="fEPLat" type="number" step="any" class="field-input" />') +
           UI.field('Longitude', '<input id="fEPLng" type="number" step="any" class="field-input" />') +
         '</div>' +
+        UI.field('Location (optional)', '<input id="fEPLocation" class="field-input" placeholder="e.g. Near Gate A, north entrance" />') +
       '</div>' +
       '<div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:8px;">' +
         '<div id="eventPlaceMap" style="height:380px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
