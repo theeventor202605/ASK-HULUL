@@ -28,31 +28,74 @@ function driveEvidenceThumbUrl_(url) {
   return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : '';
 }
 
-function evidenceThumbsHtml_(urls) {
+// size (optional, default 120): REQ (Finding detail redesign) "The photos are very small" -- the main
+// Finding evidence gallery below passes a bigger size (168); Resolution history entries keep the
+// default, still noticeably larger than the original fixed 96px everywhere.
+function evidenceThumbsHtml_(urls, size) {
+  size = size || 120;
   if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">No evidence attached.</div>';
-  return '<div style="display:flex;flex-wrap:wrap;gap:10px;">' + urls.map(function (u, i) {
+  return '<div style="display:flex;flex-wrap:wrap;gap:12px;">' + urls.map(function (u, i) {
     var thumb = driveEvidenceThumbUrl_(u);
     return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="Open evidence ' + (i + 1) + '" ' +
-      'style="display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:var(--surface);">' +
+      'class="evidence-thumb" style="width:' + size + 'px;height:' + size + 'px;">' +
       (thumb
-        ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" style="width:100%;height:100%;object-fit:cover;" ' +
-          'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'' + ICON('capture_photo') + '\',style:\'font-size:24px;\'}));" />'
-        : '<span style="font-size:24px;">' + ICON('capture_photo') + '</span>') +
+        ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" ' +
+          'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'' + ICON('capture_photo') + '\',style:\'font-size:28px;\'}));" />'
+        : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
     '</a>';
   }).join('') + '</div>';
 }
 
-// One self-contained label+value block per field, laid out in a responsive grid where auto-fit
-// sizes each field to its own column -- deliberately NOT built from separate UI.field() calls
-// spread across a shared .form-row (that put every label in one grid track and every value in
-// another once more than 2 fields shared a row, which is what made the old detail page's fields
-// render as two disconnected columns instead of paired label/value blocks).
+// REQ (Finding detail redesign): "Risk level and status are barely noticeable." Maps each risk level
+// to a color + soft background used by the hero strip at the top of the Finding card below -- same
+// severity colors UI.riskBadge already uses elsewhere, just surfaced here too since the strip needs
+// the raw color (not just a badge class) for its background/dot.
+function findingRiskMeta_(risk) {
+  var map = {
+    Critical: { label: 'Critical', color: 'var(--critical)', soft: 'var(--critical-soft)' },
+    High: { label: 'High', color: 'var(--danger)', soft: 'var(--danger-soft)' },
+    Medium: { label: 'Medium', color: 'var(--warning)', soft: 'var(--warning-soft)' },
+    Low: { label: 'Low', color: 'var(--success)', soft: 'var(--success-soft)' }
+  };
+  return map[risk] || { label: risk || '—', color: 'var(--text-600)', soft: '#f1f3f9' };
+}
+
+function findingHeroStripHtml_(finding) {
+  var rm = findingRiskMeta_(finding.riskLevel);
+  return '<div class="finding-hero-strip" style="background:' + rm.soft + ';border-bottom:1px solid var(--border);' +
+    'padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">' +
+    '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<span style="width:12px;height:12px;border-radius:50%;background:' + rm.color + ';box-shadow:0 0 0 4px rgba(15,23,42,.06);flex:none;"></span>' +
+      '<span style="font-size:13px;font-weight:800;letter-spacing:.03em;color:' + rm.color + ';">' + esc(rm.label.toUpperCase()) + ' RISK</span>' +
+    '</div>' +
+    UI.statusBadge(finding.status) +
+  '</div>';
+}
+
+// One compact "icon + label + value" card per meta field -- flex-wraps to fill the row instead of
+// leaving the sparse, unevenly-spaced two-column grid the old layout used (part of the "messy and
+// shattered" feedback). Purely decorative icons (not wired through ICON(), same as this file's other
+// unwired decorative emoji) since these aren't actionable/overridable controls.
+function findingMetaChipHtml_(icon, label, valueHtml) {
+  return '<div style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);' +
+    'border-radius:var(--radius-md);padding:10px 14px;flex:1 1 160px;min-width:150px;">' +
+    '<div style="font-size:18px;line-height:1;">' + icon + '</div>' +
+    '<div style="min-width:0;">' +
+      '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-400);">' + esc(label) + '</div>' +
+      '<div style="font-size:13.5px;font-weight:600;color:var(--text-900);margin-top:2px;overflow-wrap:break-word;">' + valueHtml + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// One self-contained label+value block -- deliberately NOT built from a shared .form-row (that put
+// every label in one grid track and every value in another once more than 2 fields shared a row,
+// disconnecting labels from their values). Used for the standalone fields below (Suggested action,
+// Review resolution's Remarks); the multi-field meta row uses findingMetaChipHtml_ instead (see its
+// own comment above) rather than this in a grid, which is what the "messy and shattered" feedback
+// was largely about.
 function detailField_(label, valueHtml) {
   return '<div><div class="field-label" style="margin-top:0;">' + esc(label) + '</div>' +
     '<div style="font-size:13.5px;line-height:1.4;margin-top:4px;">' + valueHtml + '</div></div>';
-}
-function detailGrid_(fieldsHtml) {
-  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px 20px;">' + fieldsHtml.join('') + '</div>';
 }
 
 /* ---------------- New Finding page (route: #/events/:id/findings/new) ---------------- */
@@ -460,29 +503,35 @@ async function renderFindingDetail(params) {
     '<div class="page-subtitle">' + esc(finding.disciplineName || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
 
-    // One "Finding" card, fields laid out top-to-bottom in process order -- everything the Inspector
-    // filled in at step 1 (Discipline/Category -> what was found -> what to do about it -> who/where
-    // -> by when -> when it was logged -> proof), rather than split across separate Overview/notes/
-    // evidence cards in no particular order. Every field is its own self-contained detailField_
-    // block (see comment above) so nothing separates a label from its value.
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Finding</div>' +
-      '<div style="display:flex;gap:8px;">' + UI.riskBadge(finding.riskLevel) + UI.statusBadge(finding.status) + '</div>' +
-    '</div><div class="card-body">' +
-      detailGrid_([
-        detailField_(Term('discipline'), esc(finding.disciplineName || '—')),
-        detailField_('Category', esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—'))
-      ]) +
-      '<div style="margin-top:16px;">' + detailField_('Description', esc(finding.description || '—')) + '</div>' +
-      '<div style="margin-top:14px;">' + detailField_('Suggested action', esc(finding.suggestedAction || '—')) + '</div>' +
-      '<div style="margin-top:16px;">' + detailGrid_([
-        detailField_(Term('participant'), esc(finding.participantName || '—')),
-        detailField_('Sub-' + Term('zone').toLowerCase(), esc(finding.subZone || '—')),
-        detailField_('Location', esc(finding.location || '—')),
-        detailField_('Resolution window', UI.fmtDate(finding.resolutionWindowAt)),
-        detailField_('Logged', UI.fmtDate(finding.createdAt))
-      ]) + '</div>' +
-      '<div style="margin-top:16px;">' + detailField_('Risk Logging evidence', evidenceThumbsHtml_(finding.evidenceUrls)) + '</div>' +
-    '</div></div>' +
+    // REQ (follow-up): "The Finding detail looks messy and shattered. The photos are very small. Risk
+    // level and status are barely noticeable. Redesign it, something cool and clear." One cohesive
+    // card (not several stacked boxes) with a colored risk/status strip up top for instant
+    // glanceability, the description surfaced as a highlighted callout (it's the actual finding --
+    // everything else is context), meta fields as flowing icon chips instead of a sparse grid that
+    // left dead whitespace, and bigger evidence thumbnails (see evidenceThumbsHtml_'s size param).
+    '<div class="card" style="margin-bottom:16px;overflow:hidden;">' +
+      findingHeroStripHtml_(finding) +
+      '<div class="card-body">' +
+        '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
+          '<div class="field-label" style="margin-top:0;">Description</div>' +
+          '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(finding.description || '—') + '</div>' +
+        '</div>' +
+        (finding.suggestedAction
+          ? '<div style="margin-bottom:16px;">' + detailField_('Suggested action', esc(finding.suggestedAction)) + '</div>'
+          : '') +
+        '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
+          findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
+          findingMetaChipHtml_('📋', 'Category', esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
+          findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
+          findingMetaChipHtml_('📍', 'Sub-' + Term('zone').toLowerCase(), esc(finding.subZone || '—')) +
+          (finding.location ? findingMetaChipHtml_('🧭', 'Location', esc(finding.location)) : '') +
+          findingMetaChipHtml_('⏱️', 'Resolution window', UI.fmtDate(finding.resolutionWindowAt)) +
+          findingMetaChipHtml_('🕓', 'Logged', UI.fmtDate(finding.createdAt)) +
+        '</div>' +
+        '<div class="field-label" style="margin-bottom:8px;">Risk Logging evidence</div>' +
+        evidenceThumbsHtml_(finding.evidenceUrls, 168) +
+      '</div>' +
+    '</div>' +
 
     (latestRejected && (finding.status === 'ReOpen' || finding.status === 'Rejected')
       ? '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--danger);"><div class="card-body">' +

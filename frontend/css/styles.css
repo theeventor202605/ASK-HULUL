@@ -8,7 +8,7 @@
   --success:#16a34a; --success-soft:#ecfdf3;
   --warning:#d97706; --warning-soft:#fffbeb;
   --danger:#dc2626; --danger-soft:#fef2f2;
-  --critical:#7f1d1d;
+  --critical:#7f1d1d; --critical-soft:#fbe4e4;
   --info:#2563eb; --info-soft:#eff6ff;
   --radius-lg:16px; --radius-md:12px; --radius-sm:8px;
   --shadow-sm:0 1px 2px rgba(15,23,42,.06);
@@ -344,6 +344,24 @@ table.data-table tr:hover td{ background:#fafbff; }
 .badge-low{ background:var(--success-soft); color:var(--success); } .badge-medium{ background:var(--warning-soft); color:var(--warning); }
 .badge-high{ background:var(--danger-soft); color:var(--danger); } .badge-neutral{ background:#f1f3f9; color:var(--text-600); }
 .badge-critical{ background:var(--critical); color:#fff; } .badge-critical .badge-dot{ background:#fff; }
+
+/* REQ (Finding detail redesign): "Risk level and status are barely noticeable." A colored strip at
+   the top of the Finding card (findings.js, findingHeroStripHtml_) scoped bigger badge styling so the
+   status pill reads clearly against it without changing the default .badge size used everywhere else
+   (tables, other cards) -- only the finding-hero-strip context gets the larger treatment. */
+.finding-hero-strip .badge{ font-size:13px; padding:6px 14px; }
+.finding-hero-strip .badge-dot{ width:7px; height:7px; }
+
+/* REQ (Finding detail redesign): "The photos are very small." Shared by every evidence thumbnail
+   (Finding evidence + Resolution history evidence, findings.js evidenceThumbsHtml_) -- a subtle lift
+   + shadow + accent border on hover signals "clickable, opens full size" instead of looking like flat
+   static images. Actual width/height are set per-call inline (varies by section), so this only carries
+   the shared look. */
+.evidence-thumb{ display:flex; align-items:center; justify-content:center; border-radius:var(--radius-md);
+  overflow:hidden; border:1px solid var(--border); background:var(--surface); box-shadow:var(--shadow-sm);
+  transition:.15s; flex:none; }
+.evidence-thumb:hover{ transform:translateY(-2px); box-shadow:var(--shadow-md); border-color:var(--accent); }
+.evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
 
 /* ---------- Forms / modal ---------- */
 /* z-index note: Leaflet's own controls/panes go up to 1000 (.leaflet-top/.leaflet-bottom is 1000),
