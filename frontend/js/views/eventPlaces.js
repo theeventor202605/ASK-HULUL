@@ -322,6 +322,7 @@ function initParticipantDisciplineMap_(venue, zones, participants) {
     var mapEl = document.getElementById('participantDisciplineMap');
     if (!mapEl || mapEl._leaflet_id) return;
     participantDisciplineMapInstance_ = HululLeaflet.map('participantDisciplineMap').setView(center, hasCoords ? 15 : 6);
+    UI.requireClickToActivateMap(participantDisciplineMapInstance_, mapEl);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(participantDisciplineMapInstance_);
@@ -459,6 +460,12 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
   setTimeout(function () {
     if (!document.getElementById('eventPlaceMap')) return;
     eventPlaceMapInstance_ = HululLeaflet.map('eventPlaceMap').setView(center, hasCoords ? 16 : 6);
+    // Note: this map places its pin on map click (eventPlaceMapInstance_.on('click', ...) below) --
+    // that keeps working exactly as before, since requireClickToActivateMap only ever disables
+    // dragging/scroll-zoom/etc., never the click event itself. The same first click that drops the
+    // pin also happens to be the click that unlocks panning/scroll-zoom for whatever the user does
+    // next on this map.
+    UI.requireClickToActivateMap(eventPlaceMapInstance_, el);
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(eventPlaceMapInstance_);

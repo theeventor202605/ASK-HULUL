@@ -359,6 +359,15 @@ table.data-table tr:hover td{ background:#fafbff; }
 .hulul-map-fullscreen-extra-controls:empty{ display:none; }
 .hulul-map-fullscreen-btn:hover{ background:var(--surface); }
 
+/* UI.requireClickToActivateMap (ui.js) -- shown until the map's first click re-enables its
+   interactions; centered so it reads clearly over the tiles regardless of map size, and ignores
+   pointer events itself so it can't intercept the very click meant to dismiss it. */
+.hulul-map-click-hint{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:999;
+  background:rgba(17,24,39,.72); color:#fff; font-size:12px; font-weight:600; padding:6px 14px;
+  border-radius:999px; pointer-events:none; white-space:nowrap;
+}
+
 /* ---------- Toasts ---------- */
 .toast-root{ position:fixed; bottom:20px; inset-inline-end:20px; display:flex; flex-direction:column; gap:8px; z-index:1700; }
 .toast{ background:var(--brand-900); color:#fff; padding:11px 16px; border-radius:10px; font-size:13px; box-shadow:var(--shadow-md); min-width:220px; }

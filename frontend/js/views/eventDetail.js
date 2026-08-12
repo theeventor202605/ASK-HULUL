@@ -427,6 +427,7 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
     if (!document.getElementById('eventPlacesMap')) return;
     eventPlacesMapInstance_ = HululLeaflet.map('eventPlacesMap')
       .setView(center, (hasVenueCoords || placesWithCoords.length) ? 15 : 6);
+    UI.requireClickToActivateMap(eventPlacesMapInstance_, el);
 
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
@@ -591,6 +592,7 @@ function initZoneMap_(venue, existingZone, siblingZones, places, eventId) {
     var mapEl = document.getElementById('zoneMap');
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     zoneMapInstance_ = HululLeaflet.map('zoneMap').setView(center, hasVenueCoords ? 16 : 6);
+    UI.requireClickToActivateMap(zoneMapInstance_, mapEl);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(zoneMapInstance_);
@@ -1675,6 +1677,7 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
   setTimeout(function () {
     if (!document.getElementById('liveInspectionMap')) return;
     liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap').setView(EVENT_MAP_DEFAULT_CENTER_, 16);
+    UI.requireClickToActivateMap(liveInspectionMapInstance_, el);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(liveInspectionMapInstance_);

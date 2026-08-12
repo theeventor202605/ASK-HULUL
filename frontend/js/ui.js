@@ -423,6 +423,35 @@ window.UI = {
     };
   },
 
+  // REQ bug report: "When scrolling down or up on a page and the mouse pointer comes on the map the
+  // map starts to zoom. No map interactions unless user clicks on the map." Every interactive map in
+  // the app (venue/place/zone/participant-discipline/live-inspection maps -- NOT the Overview tab's
+  // read-only zone thumbnail, which already has every interaction permanently off on purpose) starts
+  // fully inert: dragging, scroll-wheel zoom, double-click zoom, box zoom, keyboard panning, and
+  // touch zoom are all disabled right after creation, so a page scroll that happens to pass over the
+  // map behaves like a normal page scroll instead of hijacking it into a map zoom. The first click
+  // anywhere on the map re-enables all of them for the rest of that map instance's life; a small
+  // corner hint makes that discoverable and removes itself once activated.
+  requireClickToActivateMap(map, mapEl) {
+    if (!map || !mapEl) return;
+    var handlers = ['dragging', 'scrollWheelZoom', 'doubleClickZoom', 'boxZoom', 'keyboard', 'touchZoom', 'tap']
+      .map(function (name) { return map[name]; })
+      .filter(function (h) { return h && typeof h.disable === 'function'; });
+    handlers.forEach(function (h) { h.disable(); });
+
+    var hint = document.createElement('div');
+    hint.className = 'hulul-map-click-hint';
+    hint.textContent = 'Click to interact with the map';
+    mapEl.appendChild(hint);
+
+    function activate() {
+      handlers.forEach(function (h) { h.enable(); });
+      hint.remove();
+      mapEl.removeEventListener('click', activate);
+    }
+    mapEl.addEventListener('click', activate);
+  },
+
   // REQ: "Move the Use my location / Satellite buttons inside map canvas. This applies to all maps."
   // Creates (or reuses) a `.hulul-map-controls` wrapper permanently inside a Leaflet map container and
   // appends the given button elements to it, same appendChild-after-map-creation technique
