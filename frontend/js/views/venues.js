@@ -799,9 +799,13 @@ function zoneDisplayNames_(zoneIdField, zonesById, blankText) {
 }
 
 function renderAddPlaceCard_(zones, hasBoundary) {
+  // Fields + map sit side by side (map fills the dead space that used to sit empty beside the
+  // fields column, instead of a second full-width map stacked below everything) and the map is a
+  // compact fixed height that roughly matches the fields column instead of a large standalone block.
+  // flex-wrap lets the map drop below the fields on narrow/mobile widths instead of squeezing both.
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add a place</div></div>' +
-    '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
-      '<div style="max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
+    '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
+      '<div style="flex:1 1 380px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         UI.field('Name', '<input id="fPlName" class="field-input" />') +
         '<div class="form-row">' +
           UI.field('Type', '<select id="fPlType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
@@ -813,11 +817,13 @@ function renderAddPlaceCard_(zones, hasBoundary) {
           UI.field('Longitude', '<input id="fPlLng" type="number" step="any" class="field-input" />') +
         '</div>' +
       '</div>' +
-      '<div id="placeMap" style="height:360px;width:100%;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--border);"></div>' +
-      '<div class="muted" style="font-size:11px;margin-top:6px;">' +
-        (hasBoundary
-          ? 'Click or drag the pin to set the exact spot — must stay within the ' + esc(Term('venue').toLowerCase()) + ' boundary (shaded area).'
-          : 'This ' + esc(Term('venue').toLowerCase()) + ' has no boundary drawn yet, so location isn\'t map-restricted — click the map or type coordinates manually.') +
+      '<div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:8px;">' +
+        '<div id="placeMap" style="height:380px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+        '<div class="muted" style="font-size:11px;">' +
+          (hasBoundary
+            ? 'Click or drag the pin to set the exact spot — must stay within the ' + esc(Term('venue').toLowerCase()) + ' boundary (shaded area).'
+            : 'This ' + esc(Term('venue').toLowerCase()) + ' has no boundary drawn yet, so location isn\'t map-restricted — click the map or type coordinates manually.') +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
