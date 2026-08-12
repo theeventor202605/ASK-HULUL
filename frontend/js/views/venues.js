@@ -717,7 +717,7 @@ function zoneFieldHtml_(zones, prefix) {
       '</div>' +
     '</div>' +
     '<div id="' + prefix + 'ZoneMulti" style="display:none;">' +
-      '<label class="field-label">' + esc(Term('zone_plural')) + ' (optional — Operators may cover more than one)</label>' +
+      '<label class="field-label">' + esc(Term('zone_plural')) + '</label>' +
       '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;">' + checkboxRows + '</div>' +
     '</div>'
   );
