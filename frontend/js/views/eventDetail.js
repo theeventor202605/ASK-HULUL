@@ -30,9 +30,10 @@ async function renderEventDetail(params) {
     '<div class="page-subtitle">' + [
       detail.project ? detail.project.name : '',
       detail.venue ? detail.venue.name : '',
-      detail.event.city,
-      UI.fmtDate(detail.event.startDateTime) + ' – ' + UI.fmtDate(detail.event.endDateTime)
-    ].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
+      detail.event.city
+    ].filter(Boolean).map(esc).join(' · ') + '</div>' +
+    '<div class="page-subtitle">' + esc(UI.fmtDate(detail.event.startDateTime) + ' – ' + UI.fmtDate(detail.event.endDateTime)) + '</div>' +
+    '</div>' +
     UI.statusBadge(detail.event.status) + '</div>' +
     '<div class="tabbar" id="eventTabbar"></div>' +
     '<div id="eventTabContent"></div>';
@@ -65,6 +66,11 @@ async function tabOverview(content, eventId, detail) {
   var subEventNames = subEvents.map(function (s) { return s.name; }).join(', ');
   var zoneNames = zones.map(function (z) { return z.name; }).join(', ');
 
+  // REQ: "compact the two lists and move map to the left side [of the right column] / move Zones
+  // map here [into the empty space beside Event details]." -- Event details + Sub-Events stack in a
+  // compact left column; the zone map (previously a separate full-width card way down the tab) moves
+  // up into a right column beside them, stretched to match their combined height instead of a small
+  // fixed-height thumbnail sitting alone.
   content.innerHTML =
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', detail.kpi.totalLogs, ICON('kpi_total'), 'var(--info)') +
@@ -74,38 +80,45 @@ async function tabOverview(content, eventId, detail) {
       kpiCard('kpi_reopen', detail.kpi.reopened, ICON('kpi_reopen'), 'var(--warning)') +
       kpiCard('kpi_rejected', detail.kpi.rejected, ICON('kpi_rejected'), 'var(--danger)') +
     '</div>' +
-    '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('event') + ' details') + '</div></div><div class="card-body">' +
-      infoRow('Code', detail.event.code) +
-      // REQ report: Project/EMC/Inspection Company/Event Manager were all rendering raw ids (or blank)
-      // -- detail.project/emc/inspectionCo/eventManager are the resolved rows now attached by
-      // getEventDetail (Events.gs); event.project (free-text) is kept as a fallback only for events
-      // that predate the structured projectId link (see Utils.gs SCHEMA comment on Events.project).
-      infoRow('Project', detail.project ? detail.project.name : detail.event.project) +
-      infoRow('EMC', detail.emc ? detail.emc.name : detail.event.emcId) +
-      infoRow('Inspection Company', detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
-      infoRow('Event Manager', detail.eventManager ? detail.eventManager.name : '') +
-      // REQ report: "Sub-Events / Zones showing as number" -- a bare count wasn't useful; listing the
-      // actual names matches every other infoRow here being a real value, not a tally. The fuller
-      // Sub-Events list (with dates) and the zone map just below give the full detail this summary
-      // line doesn't have room for.
-      infoRow(Term('subEvent_plural'), subEventNames) + infoRow(Term('zone_plural'), zoneNames) +
-    '</div></div>' +
-    // REQ report: "Add Sub-Events list" -- so a PM can see this event's sub-events (with dates)
-    // without leaving the Overview tab for the separate top-level Sub-Events page.
-    '<div class="card" style="margin-top:16px;"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
-      UI.table([
-        { key: 'name', label: 'Name' },
-        { key: 'startDateTime', label: 'Start', render: r => UI.fmtDate(r.startDateTime) },
-        { key: 'endDateTime', label: 'End', render: r => UI.fmtDate(r.endDateTime) }
-      ], subEvents, { emptyText: 'No ' + esc(Term('subEvent_plural').toLowerCase()) + ' yet.' }) +
-    '</div></div>' +
-    // REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
-    // locations." initOverviewZoneMap_ below is deliberately non-interactive and only plots
-    // boundaries -- see its own comment for why.
-    (detail.venue
-      ? '<div class="card" style="margin-top:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + ' map</div></div>' +
-        '<div class="card-body"><div id="overviewZoneMap" style="height:220px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div></div></div>'
-      : '');
+    '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap;">' +
+      '<div style="flex:1 1 420px;display:flex;flex-direction:column;gap:16px;">' +
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('event') + ' details') + '</div></div><div class="card-body">' +
+          infoRow('Code', detail.event.code) +
+          // REQ report: Project/EMC/Inspection Company/Event Manager were all rendering raw ids (or blank)
+          // -- detail.project/emc/inspectionCo/eventManager are the resolved rows now attached by
+          // getEventDetail (Events.gs); event.project (free-text) is kept as a fallback only for events
+          // that predate the structured projectId link (see Utils.gs SCHEMA comment on Events.project).
+          infoRow('Project', detail.project ? detail.project.name : detail.event.project) +
+          infoRow('EMC', detail.emc ? detail.emc.name : detail.event.emcId) +
+          infoRow('Inspection Company', detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
+          infoRow('Event Manager', detail.eventManager ? detail.eventManager.name : '') +
+          // REQ report: "Sub-Events / Zones showing as number" -- a bare count wasn't useful; listing
+          // the actual names matches every other infoRow here being a real value, not a tally. The
+          // fuller Sub-Events list (with dates) and the zone map alongside give the full detail this
+          // summary line doesn't have room for.
+          infoRow(Term('subEvent_plural'), subEventNames) + infoRow(Term('zone_plural'), zoneNames) +
+        '</div></div>' +
+        // REQ report: "Add Sub-Events list" -- so a PM can see this event's sub-events (with dates)
+        // without leaving the Overview tab for the separate top-level Sub-Events page.
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
+          UI.table([
+            { key: 'name', label: 'Name' },
+            { key: 'startDateTime', label: 'Start', render: r => UI.fmtDate(r.startDateTime) },
+            { key: 'endDateTime', label: 'End', render: r => UI.fmtDate(r.endDateTime) }
+          ], subEvents, { emptyText: 'No ' + esc(Term('subEvent_plural').toLowerCase()) + ' yet.' }) +
+        '</div></div>' +
+      '</div>' +
+      // REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
+      // locations." initOverviewZoneMap_ below is deliberately non-interactive and only plots
+      // boundaries -- see its own comment for why.
+      (detail.venue
+        ? '<div class="card" style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;">' +
+          '<div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + ' map</div></div>' +
+          '<div class="card-body" style="flex:1;display:flex;">' +
+            '<div id="overviewZoneMap" style="flex:1;min-height:320px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+          '</div></div>'
+        : '') +
+    '</div>';
 
   initOverviewZoneMap_(detail.venue, zones);
 }
