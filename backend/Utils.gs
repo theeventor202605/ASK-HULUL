@@ -84,7 +84,15 @@ var SCHEMA = {
   // which correctly counts toward no one's completion rather than silently miscounting.
   InspectionResults:      ['id','inspectionId','checklistItemId','state','riskLevel','resolutionWindowHours','notes','evidenceUrls','recordedAt','participantId'],
   Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount'],
-  Escalations:            ['id','findingId','tier','triggeredAt','recipientUserId','resolvedAt'],
+  // toUserIds/ccUserIds/notedUserIds replace the old single recipientUserId -- REQ: "ability to
+  // modify the To user role and the Cc: user roles", each tier can now resolve to MULTIPLE users
+  // per role (e.g. every EMCManager in the org), and each of them needs their own independent
+  // "Noted" dismissal for the full-screen lock alert (REQ: "user must click Noted"). All three are
+  // comma-joined id lists, same convention as InspectorAssignments.zoneIds. Only toUserIds get the
+  // full-screen lock (Cc is notification/badge only, see escalationLockOverlay in app.js);
+  // notedUserIds only ever grows from toUserIds. resolvedAt unchanged: still stamped when the
+  // parent Finding's resolution is approved (see reviewFindingResolution, Findings.gs).
+  Escalations:            ['id','findingId','tier','triggeredAt','toUserIds','ccUserIds','notedUserIds','resolvedAt'],
   Resolutions:            ['id','findingId','participantId','evidenceUrls','remarks','submittedAt','reviewedBy','decision','comments','reviewedAt'],
   // lat/lng/disciplineIds appended at the end (established pattern, see Venues above). Empty zoneId
   // means "operates in every zone" for coverage purposes (see participantRelevantToInspection_ in

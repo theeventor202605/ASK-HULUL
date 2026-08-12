@@ -135,6 +135,12 @@
         <div class="topbar-actions">
           <img id="orgLogoImg" class="org-logo hidden" alt="Organization logo" width="34" height="34" onerror="this.classList.add('hidden')" />
           <button id="supportBtn" class="icon-btn" aria-label="Report a technical issue" title="Report a technical issue">🛟</button>
+          <!-- REQ: "Blinking Alert icon will be visible on the top bar with count badge." Hidden
+               whenever the count is 0 (js/app.js refreshEscalationAlert) -- most users most of the
+               time have nothing pending, so this stays out of the way until it actually matters. -->
+          <button id="escAlertBtn" class="icon-btn esc-alert-btn hidden" aria-label="Pending escalations" title="Pending escalations">
+            🚨<span id="escAlertBadge" class="notif-badge esc-alert-badge hidden">0</span>
+          </button>
           <button id="notifBtn" class="icon-btn" aria-label="Notifications">
             🔔<span id="notifBadge" class="notif-badge hidden">0</span>
           </button>
@@ -160,6 +166,14 @@
        annotate) overlay for the Support "raise a ticket" flow: capture -> draw a highlight box ->
        record a voice note -> write remarks -> submit. Built/torn down by js/views/support.js. -->
   <div id="supportCaptureOverlay" class="support-capture-overlay hidden"></div>
+  <!-- REQ: "the recipient user screen locks with red alert and outline around the screen. To
+       remove alert user must click Noted." Above every other overlay (z-index budget: modals
+       1600/1700, support capture 1750, map fullscreen 1900 -- see styles.css) since this is
+       meant to interrupt whatever else is on screen. Built/torn down by js/app.js's
+       showEscalationLock_/hideEscalationLock_. Can be turned off app-wide from Config ->
+       Escalations (lockScreenEnabled) -- when off, only the blinking #escAlertBtn/#escAlertBadge
+       above still shows. -->
+  <div id="escalationLockOverlay" class="escalation-lock-overlay hidden"></div>
 
   <script src="js/config.js"></script>
   <script src="js/i18n.js"></script>

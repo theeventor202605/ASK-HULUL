@@ -9,6 +9,8 @@ window.HululState = {
   currentEventId: null,
   notifications: [],
   notifBadgeLoadedAt: 0,
+  escalationAlertLoadedAt: 0,
+  escalationLockShownId: null, // id of the escalation currently occupying the full-screen lock (or null) -- see refreshEscalationAlert in app.js
 
   setSession(token, user) {
     this.token = token; this.user = user;
@@ -27,6 +29,7 @@ window.HululState = {
     this.orgLabelsLoaded = false; this.orgLabels = {};
     this.appIconsLoaded = false; this.appIcons = {};
     this.notifBadgeLoadedAt = 0;
+    this.escalationAlertLoadedAt = 0; this.escalationLockShownId = null;
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');
   }
 };

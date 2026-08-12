@@ -2157,43 +2157,38 @@ async function tabFindings(content, eventId) {
 }
 
 /* ---------------- Escalations ---------------- */
-async function tabEscalations(content, eventId) {
+// REQ: "ability to modify the To user role and the Cc: user roles" -- recipients are now always
+// resolved server-side from the tier's configured roles (Config -> Escalations), so the manual
+// override form below only needs Finding + Tier; there's no more per-escalation recipient picker.
+// `params.focus` (from the full-screen lock's Noted button, or the top-bar alert icon -- see
+// showEscalationLock_/escAlertBtn in app.js) scrolls to and briefly highlights that one row, same
+// "jump to this item" pattern already used by the Log tab.
+async function tabEscalations(content, eventId, detail, params) {
   var [escalations, findings] = await Promise.all([
     Api.call('listEscalations', { eventId: eventId }), Api.call('listFindings', { eventId: eventId })
   ]);
   var findingsById = {}; findings.forEach(function (f) { findingsById[f.id] = f; });
-
-  // listUsers is only open to admin-ish roles (SystemAdmin/GAAdmin/EMCAdmin/InspectionAdmin/
-  // EMCManager/ProjectManager) -- everyone who can actually createEscalation is in that set, but
-  // this tab (and its recipient names in the table below) is visible to other roles too, so a
-  // viewer without permission just falls back to a plain text field and raw ids in the table
-  // instead of the tab breaking outright.
-  var users = [];
-  var usersById = {};
-  try { users = await Api.call('listUsers', {}); users.forEach(function (u) { usersById[u.id] = u; }); } catch (e) { /* fall back below */ }
-
   var findingOptions = findings.map(function (f) { return '<option value="' + f.id + '">' + esc(f.description || f.id) + '</option>'; }).join('');
-  var recipientFieldHtml = users.length
-    ? UI.field('Recipient', '<select id="fEscRecipient" class="field-input"><option value="">—</option>' +
-        users.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + ' (' + esc(u.role) + ')</option>'; }).join('') + '</select>')
-    : UI.field('Recipient User ID', '<input id="fEscRecipient" class="field-input" placeholder="USR-0002" />');
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">' +
-    '<div class="muted" style="font-size:13px;">' + esc(Term('escalation_plural')) + ' run automatically every 30 minutes. You can also trigger a check manually.</div>' +
+    '<div class="muted" style="font-size:13px;">' + esc(Term('escalation_plural')) + ' run automatically every 30 minutes, using the To/Cc roles and timers set in Config &rarr; Escalations. You can also trigger a check manually.</div>' +
     '<button class="btn btn-secondary btn-sm" id="runEscBtn">Run check now</button></div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Manual ' + esc(Term('escalation').toLowerCase()) + ' (admin override)</div></div>' +
     '<div class="card-body form-row">' +
       UI.field(Term('finding'), '<select id="fEscFinding" class="field-input">' + (findingOptions || '<option value="">No ' + esc(Term('finding_plural').toLowerCase()) + ' logged yet</option>') + '</select>') +
       UI.field('Tier', '<select id="fEscTier" class="field-input"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>') +
     '</div><div class="card-body" style="padding-top:0;">' +
-      recipientFieldHtml +
-      '<button class="btn btn-primary btn-sm" id="newEscBtn" style="margin-top:10px;">Create ' + esc(Term('escalation').toLowerCase()) + '</button></div></div>' +
+      '<div class="muted" style="font-size:11.5px;margin-bottom:8px;">Recipients are resolved automatically from the Tier\'s configured To/Cc roles.</div>' +
+      '<button class="btn btn-primary btn-sm" id="newEscBtn">Create ' + esc(Term('escalation').toLowerCase()) + '</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('escalation_plural')) + '</div></div><div class="card-body">' +
     UI.table([
-      { key: 'findingId', label: Term('finding'), render: r => esc(findingsById[r.findingId] ? (findingsById[r.findingId].description || r.findingId) : r.findingId) },
+      { key: 'findingId', label: Term('finding'), render: r => '<span data-esc-id="' + esc(r.id) + '">' + esc(findingsById[r.findingId] ? (findingsById[r.findingId].description || r.findingId) : r.findingId) + '</span>' },
+      { key: 'riskLevel', label: 'Risk', sortValue: r => findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '', render: r => UI.riskBadge(findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '') },
       { key: 'tier', label: 'Tier', render: r => 'Tier ' + r.tier },
-      { key: 'recipientUserId', label: 'Recipient', render: r => r.recipientUserId ? esc(usersById[r.recipientUserId] ? usersById[r.recipientUserId].name : r.recipientUserId) : '—' },
+      { key: 'to', label: 'To', sortable: false, render: r => escalationPeopleHtml_(r.to) },
+      { key: 'cc', label: 'Cc', sortable: false, render: r => escalationPeopleHtml_(r.cc) },
+      { key: 'notedUserIds', label: 'Noted', sortValue: r => (r.notedUserIds || []).length, render: r => (r.notedUserIds || []).length + ' of ' + r.to.length },
       { key: 'triggeredAt', label: 'Triggered', render: r => UI.fmtDate(r.triggeredAt) },
       { key: 'resolvedAt', label: 'Resolved', render: r => r.resolvedAt ? UI.fmtDate(r.resolvedAt) : '—' }
     ], escalations, {}) + '</div></div>';
@@ -2204,13 +2199,26 @@ async function tabEscalations(content, eventId) {
   };
   document.getElementById('newEscBtn').onclick = async function () {
     try {
-      await Api.call('createEscalation', {
-        findingId: document.getElementById('fEscFinding').value, tier: document.getElementById('fEscTier').value,
-        recipientUserId: document.getElementById('fEscRecipient').value
-      });
+      await Api.call('createEscalation', { findingId: document.getElementById('fEscFinding').value, tier: document.getElementById('fEscTier').value });
       UI.toast(Term('escalation') + ' created', 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
+
+  var focusId = params && params.focus;
+  if (focusId) {
+    var marker = content.querySelector('[data-esc-id="' + focusId + '"]');
+    var row = marker && marker.closest('tr');
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.transition = 'background 0.4s';
+      row.style.background = '#fff7d6';
+      setTimeout(function () { row.style.background = ''; }, 2500);
+    }
+  }
+}
+
+function escalationPeopleHtml_(people) {
+  return (people && people.length) ? esc(people.map(function (p) { return p.name; }).join(', ')) : '—';
 }
 
 /* ---------------- Participants ----------------

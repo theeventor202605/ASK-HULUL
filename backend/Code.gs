@@ -210,6 +210,10 @@ var ROUTES = {
   listEscalations: function (u, p) { return listEscalations(u, p); },
   createEscalation: function (u, p) { return createEscalation(u, p); },
   runEscalationCheck: function (u) { return runEscalationCheck(u); },
+  getEscalationConfig: function (u) { return getEscalationConfig(u); },
+  setEscalationConfig: function (u, p) { return setEscalationConfig(u, p); },
+  listMyPendingEscalations: function (u) { return listMyPendingEscalations(u); },
+  acknowledgeEscalation: function (u, p) { return acknowledgeEscalation(u, p); },
 
   // Participants (PAR)
   listParticipants: function (u, p) { return listParticipants(u, p); },

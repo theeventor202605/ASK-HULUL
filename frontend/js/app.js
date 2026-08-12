@@ -54,6 +54,7 @@ async function showApp() {
   renderSidebar();
   renderUserChip();
   refreshNotifBadge();
+  refreshEscalationAlert();
   loadOrgLogo();
 }
 
@@ -158,6 +159,82 @@ async function refreshNotifBadge(force) {
   } catch (e) { /* not fatal */ }
 }
 
+// REQ: "Blinking Alert icon will be visible on the top bar with count badge." Mirrors
+// refreshNotifBadge's own throttle/force pattern above. listMyPendingEscalations now returns
+// { lockScreenEnabled, items } (items = every un-resolved escalation where I'm a To recipient and
+// haven't clicked Noted yet, newest first -- Cc recipients never appear here, see "To only").
+//
+// REQ: "Latest only + badge" -- of any un-Noted escalations, only the single newest one ever
+// triggers the full-screen lock; older ones stay reflected in the badge count only.
+// escalationLockShownId tracks which one (if any) is currently locking the screen so a repeat poll
+// doesn't re-show/reset a lock the user is already looking at, and so a fresh, newer escalation
+// correctly replaces an older one still on screen.
+async function refreshEscalationAlert(force) {
+  if (!force && Date.now() - HululState.escalationAlertLoadedAt < NOTIF_BADGE_MIN_INTERVAL_MS_) return;
+  HululState.escalationAlertLoadedAt = Date.now();
+  try {
+    var res = await Api.call('listMyPendingEscalations', {});
+    var items = res.items || [];
+    var btn = document.getElementById('escAlertBtn');
+    var badge = document.getElementById('escAlertBadge');
+    if (btn && badge) {
+      if (items.length > 0) { badge.textContent = items.length; btn.classList.remove('hidden'); }
+      else btn.classList.add('hidden');
+    }
+
+    var latest = items[0];
+    if (res.lockScreenEnabled && latest) {
+      if (HululState.escalationLockShownId !== latest.id) {
+        HululState.escalationLockShownId = latest.id;
+        showEscalationLock_(latest);
+      }
+    } else {
+      HululState.escalationLockShownId = null;
+      hideEscalationLock_();
+    }
+  } catch (e) { /* not fatal */ }
+}
+
+// REQ: "the recipient user screen locks with red alert and outline around the screen. To remove
+// alert user must clicks Noted. This takes user to the Escalation screen with the risk selected and
+// details displayed." item is one entry from listMyPendingEscalations (finding/event context
+// already joined server-side).
+function showEscalationLock_(item) {
+  var overlay = document.getElementById('escalationLockOverlay');
+  if (!overlay) return;
+  overlay.innerHTML =
+    '<div class="escalation-lock-box">' +
+      '<div class="escalation-lock-icon">⚠️</div>' +
+      '<div class="escalation-lock-tier">Tier ' + esc(item.tier) + ' Escalation</div>' +
+      '<div class="escalation-lock-title">' + esc(item.eventName || '') + '</div>' +
+      '<div class="escalation-lock-meta">' + UI.riskBadge(item.riskLevel) + ' ' +
+        esc(item.findingCategory || '') +
+        (item.subZone ? ' · ' + esc(item.subZone) : '') + (item.location ? ' · ' + esc(item.location) : '') +
+      '</div>' +
+      '<div class="escalation-lock-desc">' + esc(item.findingDescription || '') + '</div>' +
+      '<button class="btn btn-primary" id="escalationLockNotedBtn">Noted</button>' +
+    '</div>';
+  overlay.classList.remove('hidden');
+  document.getElementById('escalationLockNotedBtn').onclick = async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      await Api.call('acknowledgeEscalation', { escalationId: item.id });
+      HululState.escalationLockShownId = null;
+      hideEscalationLock_();
+      // REQ: "takes user to the Escalation screen with the risk selected and details displayed" --
+      // same ?tab=<x>&focus=<id> pattern already used by the chat log's own "jump to this item" link.
+      window.location.hash = '#/events/' + item.eventId + '?tab=escalations&focus=' + item.id;
+      refreshEscalationAlert(true);
+    } catch (err) { btn.disabled = false; UI.error(err); }
+  };
+}
+
+function hideEscalationLock_() {
+  var overlay = document.getElementById('escalationLockOverlay');
+  if (overlay) { overlay.classList.add('hidden'); overlay.innerHTML = ''; }
+}
+
 function wireChrome() {
   document.getElementById('loginForm').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -188,6 +265,18 @@ function wireChrome() {
   // takes a DOM screenshot of whatever page is currently open behind it (REQ: report an issue from
   // anywhere in the app) and walks the user through annotate -> voice note -> remarks -> submit.
   document.getElementById('supportBtn').onclick = function () { openSupportCapture(); };
+  // Clicking the blinking alert icon jumps straight to the newest pending escalation, same
+  // destination the lock overlay's own Noted button navigates to -- it does NOT clear/Noted it
+  // (that's a deliberate act only the overlay's button performs); this is just a shortcut in case
+  // the lock is disabled in Settings (lockScreenEnabled:false) or the user dismissed it earlier.
+  var escBtn = document.getElementById('escAlertBtn');
+  if (escBtn) escBtn.onclick = async function () {
+    try {
+      var res = await Api.call('listMyPendingEscalations', {});
+      var latest = (res.items || [])[0];
+      if (latest) window.location.hash = '#/events/' + latest.eventId + '?tab=escalations&focus=' + latest.id;
+    } catch (err) { UI.error(err); }
+  };
   document.getElementById('notifBtn').onclick = async function (e) {
     e.stopPropagation(); // don't let this same click immediately re-trigger the outside-click closer below
     var panel = document.getElementById('notifPanel');
@@ -297,6 +386,9 @@ async function boot() {
   // instead -- keeps it from going stale during a long stretch on one page, without adding a
   // network call to every single click.
   setInterval(function () { if (HululState.token) refreshNotifBadge(true); }, NOTIF_BADGE_MIN_INTERVAL_MS_ * 2);
+  // REQ: full-screen lock must appear even if the affected user is sitting idle on one page --
+  // reuses the same 60s cadence as the notif badge poll above rather than adding a third timer.
+  setInterval(function () { if (HululState.token) refreshEscalationAlert(true); }, NOTIF_BADGE_MIN_INTERVAL_MS_ * 2);
 }
 
 document.addEventListener('DOMContentLoaded', boot);
