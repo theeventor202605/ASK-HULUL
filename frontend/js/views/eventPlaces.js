@@ -249,6 +249,7 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
 function wireEventPlaceForm_(eventId, venue, zones, places) {
   initEventPlaceMap_(venue, zones, places, eventId);
   wireZoneField_('fEP', 'fEPType');
+  wireLocationSuggestionField_('fEPLocation');
   document.getElementById('addEventPlaceBtn').onclick = async function () {
     try {
       var name = document.getElementById('fEPName').value.trim();
@@ -325,6 +326,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     eventPlaceMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(eventPlaceMapInstance_);
     setEventPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fEP', zones, center[0], center[1]);
+    suggestPlaceLocation_('fEPLocation', center[0], center[1], places);
 
     function tryEventPlacePin_(lat, lng, recenter) {
       if (boundary && !pointInPolygonClient_(lat, lng, boundary)) {
@@ -335,6 +337,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
       eventPlaceMapMarker_._hululLastValid = [lat, lng];
       setEventPlaceLatLng_(lat, lng);
       autoDetectZone_('fEP', zones, lat, lng);
+      suggestPlaceLocation_('fEPLocation', lat, lng, places);
       if (recenter) eventPlaceMapInstance_.setView([lat, lng], 17);
       return true;
     }

@@ -818,6 +818,7 @@ function renderAddPlaceCard_(zones, hasBoundary) {
 function wirePlaceForm_(venue, zones, places) {
   initPlaceMap_(venue, zones, places);
   wireZoneField_('fPl', 'fPlType');
+  wireLocationSuggestionField_('fPlLocation');
   document.getElementById('addPlaceBtn').onclick = async function () {
     try {
       var name = document.getElementById('fPlName').value.trim();
@@ -896,6 +897,7 @@ function initPlaceMap_(venue, zones, places) {
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
     setPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fPl', zones, center[0], center[1]);
+    suggestPlaceLocation_('fPlLocation', center[0], center[1], places);
 
     // Shared by drag, click, and "Use my location" -- rejects (with the same message) any point
     // outside the venue's drawn boundary when one exists; otherwise moves the pin and re-centres the
@@ -910,6 +912,7 @@ function initPlaceMap_(venue, zones, places) {
       placeMapMarker_._hululLastValid = [lat, lng];
       setPlaceLatLng_(lat, lng);
       autoDetectZone_('fPl', zones, lat, lng);
+      suggestPlaceLocation_('fPlLocation', lat, lng, places);
       if (recenter) placeMapInstance_.setView([lat, lng], 17);
       return true;
     }
@@ -961,4 +964,41 @@ function haversineKm_(lat1, lng1, lat2, lng2) {
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
   var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+// REQ: "When adding a participant location on the map, when placing the pin, automatically fill in
+// the name of the closest place name on the map as a suggestion." Shared by venues.js's own
+// Add-a-place map (tryPlacePin_) and eventPlaces.js's Add-participant map (tryEventPlacePin_) --
+// haversineKm_ just above is the same great-circle distance already used by the live-inspection
+// nearest-participant screen (eventDetail.js). Returns null when no candidate has coordinates, so
+// callers know to leave the Location field untouched rather than write "Near null".
+function nearestPlaceName_(lat, lng, places) {
+  var nearest = null, nearestDist = Infinity;
+  (places || []).forEach(function (pl) {
+    if (pl.lat === '' || pl.lat == null || pl.lng === '' || pl.lng == null) return;
+    var d = haversineKm_(lat, lng, Number(pl.lat), Number(pl.lng));
+    if (d < nearestDist) { nearestDist = d; nearest = pl; }
+  });
+  return nearest ? nearest.name : null;
+}
+
+// Auto-fills a Location field with "Near <closest place>" as an editable suggestion, same REQ as
+// nearestPlaceName_ above. Stops touching the field the moment the user types in it themselves
+// (fieldEl.dataset.userEdited, set by a one-time 'input' listener each wire*Form_ below wires up) --
+// same don't-clobber-manual-input convention autoDetectZone_ uses (dataset.userOverride) for the
+// zone field right above. No-ops quietly if there's no candidate place with coordinates yet, or the
+// field isn't on the page.
+function suggestPlaceLocation_(fieldId, lat, lng, places) {
+  var el = document.getElementById(fieldId);
+  if (!el || el.dataset.userEdited === '1') return;
+  var name = nearestPlaceName_(lat, lng, places);
+  if (name) el.value = 'Near ' + name;
+}
+
+// Wires the one-time 'input' listener suggestPlaceLocation_ needs to know a Location field's current
+// value was typed by the user, not left over from its own last auto-fill -- call once per
+// wire*Form_, right after the field exists in the DOM (before any pin placement can fire a suggestion).
+function wireLocationSuggestionField_(fieldId) {
+  var el = document.getElementById(fieldId);
+  if (el) el.addEventListener('input', function () { el.dataset.userEdited = '1'; });
 }
