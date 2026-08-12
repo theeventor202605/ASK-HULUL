@@ -696,15 +696,28 @@ function placeTypeFilterHtml_() {
 
 // Hides/shows both the matching table rows and their map dots together, so the list and the map
 // stay in sync -- checking/unchecking a type here is the only thing that changes what's plotted.
+//
+// BUG (REQ report): "When Filtered by type and user clicks on next page, next page loads with
+// filter not considered." This used to set tr.style.display directly. UI.table's own pager
+// (hululApplyPagination_, ui.js) re-derives style.display for EVERY row on every page change from
+// its own data-hulul-filtered-out marker (set by the table's built-in search box) -- it has no idea
+// this type checklist exists, so clicking Next/Prev blindly overwrote whatever this function had
+// just hidden, and the "new page" showed every type again. Marking the same data-hulul-filtered-out
+// attribute the pager already respects, then re-running its pagination pass (hululTableRows_ /
+// hululApplyPagination_, both plain globals in ui.js, loaded well before this file), keeps the two
+// filters in sync instead of one clobbering the other -- exactly what ui.js's own filter-input
+// handler does when its text box changes.
 function applyPlaceTypeFilter_(places) {
   var enabled = {};
   document.querySelectorAll('.place-type-filter:checked').forEach(function (cb) { enabled[cb.value] = true; });
-  var rows = document.querySelectorAll('#eventPlacesListWrap tbody tr');
+  var wrap = document.querySelector('#eventPlacesListWrap .table-wrap');
+  var tbody = wrap ? wrap.querySelector('tbody') : null;
+  var rows = tbody ? hululTableRows_(tbody) : [];
   rows.forEach(function (tr, i) {
     var pl = places[i];
     if (!pl) return; // the table's own empty-state row when there are no places at all
     var show = !!enabled[pl.type];
-    tr.style.display = show ? '' : 'none';
+    tr.dataset.hululFilteredOut = show ? '' : '1';
     var marker = eventPlacesMarkers_[pl.id];
     if (marker && eventPlacesMapInstance_) {
       var hasCoords = pl.lat !== '' && pl.lat != null && pl.lng !== '' && pl.lng != null;
@@ -712,6 +725,13 @@ function applyPlaceTypeFilter_(places) {
       else if (eventPlacesMapInstance_.hasLayer(marker)) { eventPlacesMapInstance_.removeLayer(marker); }
     }
   });
+  if (!wrap) return;
+  if (wrap.querySelector('.table-pager')) {
+    wrap.dataset.hululPage = '1'; // the matching set changed -- back to page 1, same as the search box
+    hululApplyPagination_(wrap);
+  } else {
+    rows.forEach(function (r) { r.style.display = r.dataset.hululFilteredOut === '1' ? 'none' : ''; });
+  }
 }
 
 // Called from a places-list row click (and from clicking a dot itself) -- pans/zooms the map onto
