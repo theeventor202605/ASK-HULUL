@@ -187,7 +187,14 @@ function initOverviewZoneMap_(venue, zones) {
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     overviewZoneMapInstance_ = HululLeaflet.map('overviewZoneMap', {
       dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
-      keyboard: false, tap: false, zoomControl: false
+      keyboard: false, tap: false, zoomControl: false,
+      // zoomSnap:0 lets the map settle on a fractional zoom level instead of only whole integers.
+      // Leaflet's default (zoomSnap:1) rounds fitBounds DOWN to the nearest whole zoom to guarantee
+      // the bounds never clip -- but that rounding is exactly what left a big margin around the
+      // boundary in this read-only thumbnail even with zero padding (REQ: "zoomed in to maximum so
+      // boundaries touch edge of the canvas"). Fractional zoom fits tight to whichever axis is the
+      // limiting one instead of stopping a whole zoom level early.
+      zoomSnap: 0, zoomDelta: 0.25
     }).setView(center, hasVenueCoords ? 15 : 6);
     HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
