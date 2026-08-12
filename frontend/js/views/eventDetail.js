@@ -14,6 +14,9 @@ var EVENT_TABS = [
   ['findings', 'tab_findings'],
   ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
   ['participants', 'tab_participants', function () { return Term('participant_plural'); }],
+  // REQ: "Move Disciplines list to a new tab name it Participant's Discipline." -- split out of the
+  // Participants tab (was a second section below the participants table) into its own tab.
+  ['participantDisciplines', 'tab_participant_disciplines', function () { return Term('participant') + '\'s ' + Term('discipline'); }],
   ['reports', 'tab_reports', function () { return Term('report_plural'); }]
 ];
 
@@ -51,7 +54,8 @@ async function renderEventDetail(params) {
   var renderers = {
     overview: tabOverview, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
     disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
-    escalations: tabEscalations, participants: tabParticipants, reports: tabReports
+    escalations: tabEscalations, participants: tabParticipants,
+    participantDisciplines: tabParticipantDisciplines, reports: tabReports
   };
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   try { await (renderers[activeTab] || tabOverview)(content, eventId, detail); }

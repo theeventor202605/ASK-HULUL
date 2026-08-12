@@ -17,10 +17,10 @@
  * and state vars so it doesn't collide with the Venues > Places page's map.
  *
  * The PM "assign disciplines to a participant" feature (bulkAssignParticipantDisciplines) isn't a
- * Places-catalog concept (venues.js's Places page has no such thing) -- it's kept as a second,
- * smaller section below the Places-style table, driven by listParticipants (which merges permanent
- * venue-wide participants with this Event's own temporary ones -- see the eventId filter added to
- * Participants.gs's listParticipants).
+ * Places-catalog concept (venues.js's Places page has no such thing) -- it lives in its own tab,
+ * tabParticipantDisciplines below (EVENT_TABS' "Participant's Discipline" tab, eventDetail.js),
+ * driven by listParticipants (which merges permanent venue-wide participants with this Event's own
+ * temporary ones -- see the eventId filter added to Participants.gs's listParticipants).
  */
 var EVENT_PLACE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
 // Matches dedupeParticipants' own backend requireRole.
@@ -40,7 +40,6 @@ async function tabParticipants(content, eventId, detail) {
   // relationship here, matching assertCanManagePlace_ in Places.gs.
   var canManage = !!venue && EVENT_PLACE_MANAGE_ROLES.indexOf(role) !== -1 &&
     (role === 'SystemAdmin' || (event && event.emcId === HululState.user.orgId) || (event && event.eventManagerId === HululState.user.id));
-  var canManageDisciplines = DISCIPLINE_MANAGER_ROLES.indexOf(role) !== -1;
   var canDedupe = PARTICIPANT_DEDUPE_ROLES.indexOf(role) !== -1;
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
 
@@ -55,14 +54,13 @@ async function tabParticipants(content, eventId, detail) {
   var results = await Promise.all([
     Api.call('listPlaces', { eventId: eventId }),
     Api.call('listParticipants', { venueId: venue.id, eventId: eventId }),
-    Api.call('listDisciplines', {}),
     // includeDeleted: true -- a participant can still reference a since-deleted zone (soft-delete,
     // see activeZonesForVenue_/listZones in Events.gs); without deleted zones in zonesById below,
     // zoneDisplayNames_ has no name to resolve and falls back to printing the raw zone id in the
     // table instead. detail.zones (active-only, above) stays what's actually offered as a choice.
     Api.call('listZones', { venueId: venue.id, includeDeleted: true })
   ]);
-  var places = results[0], participants = results[1], disciplines = results[2], zonesAll = results[3];
+  var places = results[0], participants = results[1], zonesAll = results[2];
   var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
 
   var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
@@ -70,19 +68,6 @@ async function tabParticipants(content, eventId, detail) {
   if (creatorIds.length) {
     try { (await Api.call('listUsers', { orgId: event && event.emcId })).forEach(function (u) { usersById[u.id] = u; }); }
     catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
-  }
-
-  // NOTE: disciplines applied to a participant here are the full catalogue, not limited to whichever
-  // subset the PM has "identified" for this event (Disciplines & Inspectors tab) -- that identify step
-  // only gates which disciplines an Inspector can be assigned to, it's a separate concern from tagging
-  // a vendor/operator/exhibitor with the disciplines it must be inspected against. Restricting this
-  // list to the identified subset previously made the popup silently show 0-2 options with no
-  // indication why, which looked like selections weren't being saved.
-  var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
-  function disciplineNamesFor_(participant) {
-    var ids = participant.disciplineIds ? String(participant.disciplineIds).split(',').filter(Boolean) : [];
-    if (!ids.length) return '—';
-    return ids.map(function (id) { return disciplinesById[id] ? esc(disciplinesById[id].name) : id; }).join(', ');
   }
 
   content.innerHTML =
@@ -113,23 +98,7 @@ async function tabParticipants(content, eventId, detail) {
     ].concat(canManage ? [{ key: 'actions', label: 'Actions', render: r =>
         '<button class="btn btn-secondary btn-sm btn-icon" title="Add another account" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
         '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
-      places, { emptyText: 'No ' + esc(Term('participant_plural').toLowerCase()) + ' registered for this ' + esc(Term('event').toLowerCase()) + ' yet.' }) + '</div></div>' +
-
-    (canManageDisciplines
-      ? '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
-          '<span class="muted" style="font-size:12.5px;" id="participantSelCount">Select one or more ' + esc(Term('participant_plural').toLowerCase()) + ' below to apply ' + esc(Term('discipline_plural').toLowerCase()) + '.</span>' +
-          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>Apply ' + esc(Term('discipline_plural').toLowerCase()) + '…</button>' +
-        '</div></div>'
-      : '') +
-
-    '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('discipline_plural')) + '</div>' +
-    '<div class="muted" style="font-size:11.5px;">Which ' + esc(Term('discipline_plural').toLowerCase()) + ' each ' + esc(Term('participant').toLowerCase()) + ' must be inspected against — includes both this event\'s own ' + esc(Term('participant_plural').toLowerCase()) + ' and any permanent ones at this ' + esc(Term('venue').toLowerCase()) + '.</div></div><div class="card-body">' +
-    UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
-      { key: 'type', label: 'Type' }, { key: 'name', label: 'Name' },
-      { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, 'All zones') },
-      { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
-    ]), participants, {}) +
-    '</div></div>';
+      places, { emptyText: 'No ' + esc(Term('participant_plural').toLowerCase()) + ' registered for this ' + esc(Term('event').toLowerCase()) + ' yet.' }) + '</div></div>';
 
   if (canManage) {
     wireEventPlaceForm_(eventId, venue, zones, places);
@@ -181,18 +150,85 @@ async function tabParticipants(content, eventId, detail) {
       { title: 'Remove duplicates', confirmLabel: 'Remove duplicates' }
     );
   };
+}
+
+// REQ: "Move Disciplines list to a new tab name it Participant's Discipline. Arrange columns in the
+// following order: Name, Type, Zone, Discipline. Add map to its left. When selecting a participant(s)
+// show location on map. Then user can apply discipline." -- was a second section stacked below the
+// Participants table on that same tab; now its own tab, with a read-only locate-on-map view next to
+// the table instead of no map at all.
+var participantDisciplineMapInstance_ = null;
+var participantDisciplineMarkers_ = {}; // participantId -> Leaflet marker
+
+async function tabParticipantDisciplines(content, eventId, detail) {
+  destroyParticipantDisciplineMap_(); // in case a previous visit to this tab left one behind
+  var venue = detail && detail.venue;
+  var role = HululState.user.role;
+  var canManageDisciplines = DISCIPLINE_MANAGER_ROLES.indexOf(role) !== -1;
+
+  if (!venue) {
+    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">Assign a ' + esc(Term('venue').toLowerCase()) + ' to this ' + esc(Term('event').toLowerCase()) + ' first (Venue &amp; Zones tab) -- ' + esc(Term('participant_plural').toLowerCase()) + ' are registered per event once a venue is set.</div></div></div>';
+    return;
+  }
+
+  var zones = detail.zones || [];
+  var results = await Promise.all([
+    Api.call('listParticipants', { venueId: venue.id, eventId: eventId }),
+    Api.call('listDisciplines', {}),
+    Api.call('listZones', { venueId: venue.id, includeDeleted: true })
+  ]);
+  var participants = results[0], disciplines = results[1], zonesAll = results[2];
+  var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
+
+  // NOTE: disciplines applied to a participant here are the full catalogue, not limited to whichever
+  // subset the PM has "identified" for this event (Disciplines & Inspectors tab) -- that identify step
+  // only gates which disciplines an Inspector can be assigned to, it's a separate concern from tagging
+  // a vendor/operator/exhibitor with the disciplines it must be inspected against. Restricting this
+  // list to the identified subset previously made the popup silently show 0-2 options with no
+  // indication why, which looked like selections weren't being saved.
+  var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
+  function disciplineNamesFor_(participant) {
+    var ids = participant.disciplineIds ? String(participant.disciplineIds).split(',').filter(Boolean) : [];
+    if (!ids.length) return '—';
+    return ids.map(function (id) { return disciplinesById[id] ? esc(disciplinesById[id].name) : id; }).join(', ');
+  }
+
+  content.innerHTML =
+    '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">Which ' + esc(Term('discipline_plural').toLowerCase()) + ' each ' + esc(Term('participant').toLowerCase()) +
+      ' must be inspected against — includes both this event\'s own ' + esc(Term('participant_plural').toLowerCase()) + ' and any permanent ones at this ' + esc(Term('venue').toLowerCase()) + '.</div>' +
+    (canManageDisciplines
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+          '<span class="muted" style="font-size:12.5px;" id="participantSelCount">Select one or more ' + esc(Term('participant_plural').toLowerCase()) + ' below to see them on the map and apply ' + esc(Term('discipline_plural').toLowerCase()) + '.</span>' +
+          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>Apply ' + esc(Term('discipline_plural').toLowerCase()) + '…</button>' +
+        '</div></div>'
+      : '') +
+    '<div class="card"><div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
+      '<div style="flex:1 1 320px;min-width:280px;">' +
+        '<div id="participantDisciplineMap" style="height:460px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+      '</div>' +
+      '<div style="flex:2 1 480px;min-width:320px;">' + UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
+        { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
+        { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, 'All zones') },
+        { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
+      ]), participants, {}) + '</div>' +
+    '</div></div>';
+
+  initParticipantDisciplineMap_(venue, zones, participants);
 
   if (!canManageDisciplines) return;
   var selCountEl = document.getElementById('participantSelCount');
   var applyBtn = document.getElementById('applyDisciplinesBtn');
-  function refreshSelCount() {
-    var n = content.querySelectorAll('.participant-select:checked').length;
-    applyBtn.disabled = n === 0;
-    selCountEl.textContent = n ? (n + ' selected') : ('Select one or more ' + Term('participant_plural').toLowerCase() + ' below to apply ' + Term('discipline_plural').toLowerCase() + '.');
+  function selectedIds_() { return Array.from(content.querySelectorAll('.participant-select:checked')).map(function (cb) { return cb.value; }); }
+  function refreshSelection() {
+    var ids = selectedIds_();
+    applyBtn.disabled = ids.length === 0;
+    selCountEl.textContent = ids.length ? (ids.length + ' selected') : ('Select one or more ' + Term('participant_plural').toLowerCase() + ' below to see them on the map and apply ' + Term('discipline_plural').toLowerCase() + '.');
+    // REQ: "When selecting a participant(s) show location on map."
+    highlightParticipantsOnMap_(ids);
   }
-  content.querySelectorAll('.participant-select').forEach(function (cb) { cb.onchange = refreshSelCount; });
+  content.querySelectorAll('.participant-select').forEach(function (cb) { cb.onchange = refreshSelection; });
   applyBtn.onclick = function () {
-    var participantIds = Array.from(content.querySelectorAll('.participant-select:checked')).map(function (cb) { return cb.value; });
+    var participantIds = selectedIds_();
     if (!participantIds.length) return;
     if (!disciplines.length) { UI.toast('No ' + Term('discipline_plural').toLowerCase() + ' exist yet — add some in the ' + Term('discipline_plural') + ' catalogue first.', 'error'); return; }
     // Overwrites each selected participant's full discipline list with whatever's checked here (see
@@ -222,6 +258,85 @@ async function tabParticipants(content, eventId, detail) {
         } }
     ]);
   };
+}
+
+// Read-only locate view (pan/zoom only, no pin placement) -- same "venue boundary + zone boundaries +
+// dots" composition as eventDetail.js's own Places map (initEventPlacesMap_), just plotting
+// Participants instead of Places and keyed by participantDisciplineMarkers_ instead of that map's own
+// eventPlacesMarkers_ so the two never collide.
+function initParticipantDisciplineMap_(venue, zones, participants) {
+  var el = document.getElementById('participantDisciplineMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    return;
+  }
+  var hasCoords = !!(venue.lat && venue.lng);
+  var center = hasCoords ? [Number(venue.lat), Number(venue.lng)] : EVENT_MAP_DEFAULT_CENTER_;
+  setTimeout(function () {
+    var mapEl = document.getElementById('participantDisciplineMap');
+    if (!mapEl || mapEl._leaflet_id) return;
+    participantDisciplineMapInstance_ = HululLeaflet.map('participantDisciplineMap').setView(center, hasCoords ? 15 : 6);
+    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(participantDisciplineMapInstance_);
+
+    var bounds = [];
+    var venueBoundary = parseBoundaryClient_(venue.boundary);
+    if (venueBoundary) {
+      var venueColor = venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_;
+      var venueLayer = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: venueColor, fillColor: venueColor, fillOpacity: 0.06, weight: 1.5, interactive: false
+      }).addTo(participantDisciplineMapInstance_);
+      bounds = bounds.concat(venueLayer.getLatLngs()[0]);
+    }
+    UI.drawZoneBoundaries(participantDisciplineMapInstance_, zones).forEach(function (layer) {
+      bounds = bounds.concat(layer.getLatLngs()[0]);
+    });
+
+    participantDisciplineMarkers_ = {};
+    participants.forEach(function (pt) {
+      if (pt.lat === '' || pt.lat == null || pt.lng === '' || pt.lng == null) return;
+      var latlng = [Number(pt.lat), Number(pt.lng)];
+      bounds.push(latlng);
+      var color = EVENT_PLACE_TYPE_COLORS_[pt.type] || EVENT_PLACE_TYPE_COLORS_.Other;
+      var icon = HululLeaflet.divIcon({
+        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
+        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
+      });
+      var marker = HululLeaflet.marker(latlng, { icon: icon }).addTo(participantDisciplineMapInstance_);
+      marker.bindTooltip(esc(pt.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+      participantDisciplineMarkers_[pt.id] = marker;
+    });
+    if (bounds.length) participantDisciplineMapInstance_.fitBounds(bounds, { padding: [24, 24], maxZoom: 17 });
+    setTimeout(function () { if (participantDisciplineMapInstance_) participantDisciplineMapInstance_.invalidateSize(); }, 150);
+  }, 0);
+}
+
+// REQ: "When selecting a participant(s) show location on map." -- highlights every checked
+// participant's dot (same is-focused red/scaled treatment as eventDetail.js's focusEventPlace_) and
+// flies the map to frame all of them together; clearing every checkbox un-highlights everything and
+// leaves the map where it was rather than snapping back to the full venue view.
+function highlightParticipantsOnMap_(selectedIds) {
+  if (!participantDisciplineMapInstance_) return;
+  var selBounds = [];
+  Object.keys(participantDisciplineMarkers_).forEach(function (id) {
+    var marker = participantDisciplineMarkers_[id];
+    var isSelected = selectedIds.indexOf(id) !== -1;
+    var markerEl = marker.getElement();
+    if (markerEl) markerEl.classList.toggle('is-focused', isSelected);
+    if (isSelected) selBounds.push(marker.getLatLng());
+  });
+  if (!selBounds.length) return;
+  if (selBounds.length === 1) participantDisciplineMapInstance_.flyTo(selBounds[0], 17, { duration: 0.5 });
+  else participantDisciplineMapInstance_.flyToBounds(selBounds, { padding: [50, 50], maxZoom: 17, duration: 0.5 });
+}
+
+function destroyParticipantDisciplineMap_() {
+  if (participantDisciplineMapInstance_) { participantDisciplineMapInstance_.remove(); participantDisciplineMapInstance_ = null; }
+  participantDisciplineMarkers_ = {};
 }
 
 function renderAddEventPlaceCard_(zones, hasBoundary) {
