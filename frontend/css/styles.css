@@ -273,7 +273,24 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 /* ---------- Tables ---------- */
 .table-wrap{ overflow-x:auto; }
 .table-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+/* Wraps the search input so its /c column-value suggestion dropdown (.table-filter-suggest, reuses
+   .chat-suggest-box's look) has a positioned ancestor to anchor under -- see
+   hululShowFilterSuggest_/UI.table (ui.js). position:relative moved here (off the bare <input>)
+   for exactly that reason; flex/max-width preserve the toolbar's original layout. */
+.table-filter-wrap{ position:relative; flex:1; max-width:260px; }
 .table-filter-input{ max-width:260px; padding:7px 10px !important; font-size:13px !important; }
+/* REQ: "select multi-values from the suggestions" -- one pill per picked column/value pair, shown
+   under the toolbar; empty and collapsed when no facet is active. */
+.table-filter-chips{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:-2px 0 12px; }
+.table-filter-chips:empty{ display:none; margin:0; }
+.table-filter-chip{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
+  font-size:11.5px; background:var(--accent-soft); color:var(--accent-600); font-weight:600; }
+.table-filter-chip strong{ font-weight:700; }
+.table-filter-chip button{ border:none; background:none; cursor:pointer; color:inherit; font-size:12px; line-height:1; padding:0; opacity:.65; }
+.table-filter-chip button:hover{ opacity:1; }
+.table-filter-clear-btn{ border:none; background:none; cursor:pointer; color:var(--text-400); font-size:11.5px;
+  font-weight:600; text-decoration:underline; padding:3px 4px; }
+.table-filter-clear-btn:hover{ color:var(--text-600); }
 table.data-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
 table.data-table th{ text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-400);
   font-weight:700; padding:10px 14px; border-bottom:1px solid var(--border); white-space:nowrap; }

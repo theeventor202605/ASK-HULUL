@@ -204,10 +204,19 @@ window.UI = {
       columns.forEach(function (c, i) { if (isExportable_(c)) exportCols.push(i); });
       var exportHeaders = exportCols.map(function (i) { return columns[i].label; });
       wrapAttrs = ' data-export-cols="' + exportCols.join(',') + '" data-export-headers="' + esc(JSON.stringify(exportHeaders)) + '" data-export-name="' + esc(opts.exportName || 'export.csv') + '"';
+      // REQ: "in any list search box typing /c lists all columns ... selecting a column will
+      // suggest values user can select multi-values from the suggestions or continue typing to
+      // narrow down." .table-filter-suggest/.table-filter-chips are wired generically for every
+      // table by the shared document-level listeners below (hululShowFilterSuggest_ etc.) -- no
+      // per-view code needed, same "every table gets this for free" approach as sort/export/paging.
       toolbarHtml = '<div class="table-toolbar">' +
-        '<input type="search" class="table-filter-input field-input" placeholder="' + esc(t('filter')) + '…" />' +
+        '<div class="table-filter-wrap">' +
+          '<input type="search" class="table-filter-input field-input" placeholder="' + esc(t('filter')) + '… /c for columns" />' +
+          '<div class="table-filter-suggest chat-suggest-box" style="display:none;"></div>' +
+        '</div>' +
         (exportCols.length ? '<button type="button" class="btn btn-secondary btn-sm table-export-btn">' + ICON('export_csv') + ' ' + esc(t('export_csv')) + '</button>' : '') +
-      '</div>';
+      '</div>' +
+      '<div class="table-filter-chips"></div>';
     }
 
     // REQ: "lists may become very long apply the x/page dropdown ... automatically appear to lists
@@ -675,33 +684,217 @@ var hululPagerObserver_ = new MutationObserver(function (mutations) {
 });
 hululPagerObserver_.observe(document.body, { childList: true, subtree: true });
 
-// Filter box: substring match (case-insensitive) against each row's precomputed data-search
-// attribute (built from every exportable column's plain-text value at render time).
+// REQ: "in any list search box typing /c lists all columns typing or selecting a column will
+// suggest values user can select multi-values from the suggestions or continue typing to narrow
+// down." -- a column-value faceted filter layered on top of the plain free-text search below,
+// wired generically for every UI.table() on every page (same delegated-listener approach as
+// sort/export/paging above, so no per-view code is needed anywhere in the app).
+//
+// wrap._hululFacets: [{ colIdx, colLabel, values: [str,...] }] -- values within one facet are
+// OR'd (row matches if it equals ANY of them), different facets are AND'd. Stored as a plain JS
+// property directly on the .table-wrap element, same convention already used for
+// wrap._hululFilterTimer just below.
+// wrap._hululActiveColumn: {idx,label} while the value-suggestion dropdown for that column is
+// open (i.e. between typing /c<column> and picking a column, and while narrowing/picking its
+// values) -- while set, further keystrokes in the box narrow THIS column's own value list instead
+// of running the plain substring search.
+
+// Every column a row actually carries a data-tx-i for -- exactly the exportable-column set
+// table() computed at render time (isExportable_), read back off the live DOM since table() only
+// ever returns an HTML string, not the original columns array.
+function hululFilterableColumns_(wrap) {
+  var table = wrap.querySelector('table');
+  var sampleRow = wrap.querySelector('tbody tr:not(.table-empty-row):not(.table-filter-empty-row)');
+  if (!table || !sampleRow) return [];
+  return Array.prototype.slice.call(table.querySelectorAll('thead th'))
+    .map(function (th, i) { return { idx: i, label: th.textContent.replace(/[▲▼]/g, '').trim() }; })
+    .filter(function (c) { return sampleRow.hasAttribute('data-tx-' + c.idx); });
+}
+
+// Every distinct value currently on record for one column, across ALL rows (not just the
+// currently-visible/matching ones -- picking a value for a second facet should still be able to
+// find values that only exist on rows the first facet just hid).
+function hululFilterableValues_(wrap, colIdx) {
+  var tbody = wrap.querySelector('tbody');
+  if (!tbody) return [];
+  var seen = {}, values = [];
+  hululTableRows_(tbody).forEach(function (r) {
+    var v = r.getAttribute('data-tx-' + colIdx);
+    if (v === null || v === '' || seen[v.toLowerCase()]) return;
+    seen[v.toLowerCase()] = true;
+    values.push(v);
+  });
+  values.sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }); });
+  return values;
+}
+
+function hululShowFilterSuggest_(wrap, header, items, renderItemFn, onPick) {
+  var box = wrap.querySelector('.table-filter-suggest');
+  if (!box) return;
+  box.innerHTML = '<div class="chat-suggest-header">' + esc(header) + '</div>' +
+    (items.length
+      ? items.slice(0, 30).map(function (it, i) { return '<div class="chat-suggest-item" data-idx="' + i + '">' + renderItemFn(it) + '</div>'; }).join('')
+      : '<div class="chat-suggest-empty">No matches</div>');
+  box.style.display = '';
+  box.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+    // mousedown (not click) + preventDefault -- keeps the input focused so multiple values can be
+    // picked in a row without the dropdown closing between each one (same reasoning as Event
+    // Chat's own suggestion dropdown, eventDetail.js).
+    el.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      onPick(items[Number(el.getAttribute('data-idx'))]);
+    });
+  });
+}
+function hululHideFilterSuggest_(wrap) {
+  var box = wrap.querySelector('.table-filter-suggest');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+function hululShowColumnValues_(wrap, input, col, query) {
+  var already = {};
+  (wrap._hululFacets || []).forEach(function (f) {
+    if (f.colIdx === col.idx) f.values.forEach(function (v) { already[v.toLowerCase()] = true; });
+  });
+  var values = hululFilterableValues_(wrap, col.idx).filter(function (v) {
+    return (!query || v.toLowerCase().indexOf(query) !== -1) && !already[v.toLowerCase()];
+  });
+  hululShowFilterSuggest_(wrap, col.label + ' — choose a value (multi-select)', values, function (v) { return esc(v); }, function (v) {
+    wrap._hululFacets = wrap._hululFacets || [];
+    var facet = wrap._hululFacets.filter(function (f) { return f.colIdx === col.idx; })[0];
+    if (!facet) { facet = { colIdx: col.idx, colLabel: col.label, values: [] }; wrap._hululFacets.push(facet); }
+    if (facet.values.indexOf(v) === -1) facet.values.push(v);
+    hululRenderFilterChips_(wrap);
+    hululRecomputeTableFilter_(wrap);
+    input.value = '';
+    input.focus();
+    hululShowColumnValues_(wrap, input, col, ''); // stay in value-picking mode -- REQ: multi-select
+  });
+}
+
+function hululRenderFilterChips_(wrap) {
+  var chipsBox = wrap.querySelector('.table-filter-chips');
+  if (!chipsBox) return;
+  var facets = wrap._hululFacets || [];
+  var html = [];
+  facets.forEach(function (f, fi) {
+    f.values.forEach(function (v, vi) {
+      html.push('<span class="table-filter-chip"><strong>' + esc(f.colLabel) + ':</strong> ' + esc(v) +
+        ' <button type="button" data-facet-idx="' + fi + '" data-value-idx="' + vi + '" title="Remove">' + ICON('close_modal') + '</button></span>');
+    });
+  });
+  if (html.length) html.push('<button type="button" class="table-filter-clear-btn">Clear filters</button>');
+  chipsBox.innerHTML = html.join('');
+  chipsBox.querySelectorAll('[data-facet-idx]').forEach(function (btn) {
+    btn.onclick = function () {
+      var facet = facets[Number(btn.getAttribute('data-facet-idx'))];
+      if (!facet) return;
+      facet.values.splice(Number(btn.getAttribute('data-value-idx')), 1);
+      wrap._hululFacets = facets.filter(function (f) { return f.values.length; });
+      hululRenderFilterChips_(wrap);
+      hululRecomputeTableFilter_(wrap);
+    };
+  });
+  var clearBtn = chipsBox.querySelector('.table-filter-clear-btn');
+  if (clearBtn) clearBtn.onclick = function () {
+    wrap._hululFacets = [];
+    hululRenderFilterChips_(wrap);
+    hululRecomputeTableFilter_(wrap);
+  };
+}
+
+// The actual row-matching pass: free-text substring search (data-search) AND every active column
+// facet, then the same "reset to page 1 / reapply pagination" tail every other filter change here
+// already uses. wrap._hululActiveColumn is deliberately excluded from the free-text query -- while
+// it's set, whatever's typed in the box is an in-progress value-narrowing query, not a committed
+// search term (nothing is filtered by it until a suggestion is actually clicked into a chip).
+function hululRecomputeTableFilter_(wrap) {
+  var tbody = wrap.querySelector('tbody');
+  if (!tbody) return;
+  var input = wrap.querySelector('.table-filter-input');
+  var q = (input && !wrap._hululActiveColumn) ? input.value.trim().toLowerCase() : '';
+  var facets = wrap._hululFacets || [];
+  var rows = hululTableRows_(tbody);
+  var visible = 0;
+  rows.forEach(function (r) {
+    var textMatch = !q || (r.getAttribute('data-search') || '').indexOf(q) !== -1;
+    var facetMatch = facets.every(function (f) {
+      var val = (r.getAttribute('data-tx-' + f.colIdx) || '').toLowerCase();
+      return f.values.some(function (v) { return v.toLowerCase() === val; });
+    });
+    var match = textMatch && facetMatch;
+    r.dataset.hululFilteredOut = match ? '' : '1';
+    if (match) visible++;
+  });
+  var filterEmptyRow = tbody.querySelector('.table-filter-empty-row');
+  if (filterEmptyRow) filterEmptyRow.style.display = ((q || facets.length) && visible === 0 && rows.length > 0) ? '' : 'none';
+  if (wrap.querySelector('.table-pager')) {
+    wrap.dataset.hululPage = '1'; // the filtered result set changed -- back to page 1
+    hululApplyPagination_(wrap);
+  } else {
+    rows.forEach(function (r) { r.style.display = r.dataset.hululFilteredOut === '1' ? 'none' : ''; });
+  }
+}
+
 document.addEventListener('input', function (e) {
   var input = e.target.closest ? e.target.closest('.table-filter-input') : null;
   if (!input) return;
   var wrap = input.closest('.table-wrap');
   if (!wrap) return;
-  clearTimeout(wrap._hululFilterTimer);
-  wrap._hululFilterTimer = setTimeout(function () {
-    var q = input.value.trim().toLowerCase();
-    var tbody = wrap.querySelector('tbody');
-    if (!tbody) return;
-    var rows = hululTableRows_(tbody);
-    var visible = 0;
-    rows.forEach(function (r) {
-      var match = !q || (r.getAttribute('data-search') || '').indexOf(q) !== -1;
-      r.dataset.hululFilteredOut = match ? '' : '1';
-      if (match) visible++;
+
+  // Caret-relative /c detection -- same convention as Event Chat's /u //p /e /# triggers
+  // (eventDetail.js's tabEventChat): the token starting at the last whitespace boundary before the
+  // cursor, so /c can appear anywhere the user happens to be typing, not just at position 0.
+  var cursor = input.selectionStart == null ? input.value.length : input.selectionStart;
+  var text = input.value;
+  var tokenStart = cursor;
+  while (tokenStart > 0 && !/\s/.test(text[tokenStart - 1])) tokenStart--;
+  var token = text.slice(tokenStart, cursor);
+  var columnQuery = /^\/c/i.test(token) ? token.slice(2).toLowerCase() : null;
+
+  if (columnQuery !== null) {
+    wrap._hululActiveColumn = null; // picking the column itself, not narrowing a chosen one's values yet
+    var cols = hululFilterableColumns_(wrap).filter(function (c) { return !columnQuery || c.label.toLowerCase().indexOf(columnQuery) !== -1; });
+    hululShowFilterSuggest_(wrap, 'Filter by column', cols, function (c) { return esc(c.label); }, function (c) {
+      wrap._hululActiveColumn = c;
+      input.value = '';
+      input.focus();
+      hululShowColumnValues_(wrap, input, c, '');
     });
-    var filterEmptyRow = tbody.querySelector('.table-filter-empty-row');
-    if (filterEmptyRow) filterEmptyRow.style.display = (q && visible === 0 && rows.length > 0) ? '' : 'none';
-    if (wrap.querySelector('.table-pager')) {
-      wrap.dataset.hululPage = '1'; // the filtered result set changed -- back to page 1
-      hululApplyPagination_(wrap);
-    } else {
-      rows.forEach(function (r) { r.style.display = r.dataset.hululFilteredOut === '1' ? 'none' : ''; });
-    }
+    return;
+  }
+
+  if (wrap._hululActiveColumn) {
+    hululShowColumnValues_(wrap, input, wrap._hululActiveColumn, text.toLowerCase());
+    return;
+  }
+
+  hululHideFilterSuggest_(wrap);
+  clearTimeout(wrap._hululFilterTimer);
+  wrap._hululFilterTimer = setTimeout(function () { hululRecomputeTableFilter_(wrap); }, 150);
+}, true);
+
+// Escape / clicking away -- closes the dropdown, and if a value-picking session for some column
+// was left mid-way, clears whatever partial query text is still sitting in the box (it was never a
+// real search term) and re-applies filtering from just the facet chips actually picked so far.
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  var input = e.target.closest ? e.target.closest('.table-filter-input') : null;
+  if (!input) return;
+  var wrap = input.closest('.table-wrap');
+  if (!wrap) return;
+  hululHideFilterSuggest_(wrap);
+  if (wrap._hululActiveColumn) { wrap._hululActiveColumn = null; input.value = ''; hululRecomputeTableFilter_(wrap); }
+}, true);
+document.addEventListener('focusout', function (e) {
+  var input = e.target.closest ? e.target.closest('.table-filter-input') : null;
+  if (!input) return;
+  var wrap = input.closest('.table-wrap');
+  if (!wrap) return;
+  setTimeout(function () {
+    if (document.activeElement === input) return; // a suggestion pick's mousedown/preventDefault kept focus
+    hululHideFilterSuggest_(wrap);
+    if (wrap._hululActiveColumn) { wrap._hululActiveColumn = null; input.value = ''; hululRecomputeTableFilter_(wrap); }
   }, 150);
 }, true);
 
