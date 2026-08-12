@@ -85,6 +85,7 @@ function infoRow(label, val) {
 var ZONE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
 var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if neither the venue nor any of its places has coordinates
 var eventPlacesMapInstance_ = null;
+var eventPlacesMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initEventPlacesMap_
 var eventPlacesMarkers_ = {}; // placeId -> Leaflet marker, so a places-list click can re-focus the right dot
 var eventPlacesBoundaryLayer_ = null; // the venue's own drawn boundary, shown for reference (read-only)
 var eventPlacesZoneLayers_ = []; // each zone's own drawn boundary (read-only) -- see initEventPlacesMap_
@@ -159,8 +160,7 @@ async function tabVenue(content, eventId, detail) {
     // Large map of every place recorded under this venue -- a dot per place, name labelled above it.
     // Locked to buttons only (zoom controls + the satellite toggle) -- no drag-pan or scroll-zoom.
     (detail.venue ?
-      '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Places map</div>' +
-      '<button class="map-toggle-btn" type="button" id="toggleSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button></div>' +
+      '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Places map</div></div>' +
       '<div class="card-body">' +
         '<div id="eventPlacesMap" style="height:440px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
         (places.length && !placesWithCoords.length
@@ -190,11 +190,11 @@ async function tabVenue(content, eventId, detail) {
   if (canManage) document.getElementById('newZoneBtn').onclick = function () {
     var wrap = document.getElementById('addZoneCardWrap');
     if (wrap.innerHTML) { destroyZoneMap_(); wrap.innerHTML = ''; return; } // toggle closed if already open
-    openZoneCard_(detail, wrap, null);
+    openZoneCard_(detail, wrap, null, places, eventId);
   };
 
   if (detail.venue) {
-    initEventPlacesMap_(detail.venue, placesWithCoords, detail.zones || []);
+    initEventPlacesMap_(detail.venue, placesWithCoords, detail.zones || [], eventId);
     if (places.length) {
       content.querySelectorAll('#eventPlacesListWrap tbody tr').forEach(function (tr, i) {
         var pl = places[i];
@@ -218,7 +218,7 @@ async function tabVenue(content, eventId, detail) {
       if (!zone) return;
       var wrap = document.getElementById('addZoneCardWrap');
       destroyZoneMap_();
-      openZoneCard_(detail, wrap, zone);
+      openZoneCard_(detail, wrap, zone, places, eventId);
       wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
   });
@@ -237,7 +237,7 @@ function venueInfoCard_(label, value) {
 // scroll/pinch to zoom, double-click to zoom) are left on, same as every other map in the app
 // (venueMap/placeMap/zoneMap/eventPlaceMap) -- REQ bug report: this map used to lock dragging/
 // scroll-zoom out entirely, which read as "the map is broken/stuck".
-function initEventPlacesMap_(venue, placesWithCoords, zones) {
+function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
   var el = document.getElementById('eventPlacesMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -275,12 +275,17 @@ function initEventPlacesMap_(venue, placesWithCoords, zones) {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
     var showingSatellite = false;
-    var toggleBtn = document.getElementById('toggleSatelliteBtn');
-    if (toggleBtn) toggleBtn.onclick = function () {
+    // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
+    // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
+    var toggleBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', 'Satellite');
+    UI.mapControls(el, [toggleBtn]);
+    toggleBtn.onclick = function () {
       showingSatellite = !showingSatellite;
       if (showingSatellite) { eventPlacesMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('map_toggle') + ' Map'; }
       else { eventPlacesMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    if (eventId) eventPlacesMapInspectorPollStop_ = UI.startInspectorLocationPolling(eventPlacesMapInstance_, { eventId: eventId }, 20000);
 
     // Same solid accent-shaded style as venues.js's placeMap (the "add/edit a place" map) -- kept
     // visually consistent since both maps are "a venue's boundary plus its places" views. Read-only
@@ -336,6 +341,7 @@ function initEventPlacesMap_(venue, placesWithCoords, zones) {
 }
 
 function destroyEventPlacesMap_() {
+  if (eventPlacesMapInspectorPollStop_) { eventPlacesMapInspectorPollStop_(); eventPlacesMapInspectorPollStop_ = null; }
   if (eventPlacesMapInstance_) { eventPlacesMapInstance_.remove(); eventPlacesMapInstance_ = null; }
   eventPlacesBoundaryLayer_ = null;
   eventPlacesZoneLayers_ = [];
@@ -355,6 +361,7 @@ var zoneVenueBoundaryLayer_ = null; // the venue's boundary, shown for reference
 var zoneDrawnItems_ = null;         // the zone's own boundary being drawn
 var zoneMapGen_ = 0; // same map-container-reuse race guard as venues.js's venueMapGen_ -- see its comment
 var zoneMapFullscreenCleanup_ = null;
+var zoneMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initZoneMap_
 
 function addZoneCardHtml_(existingZone) {
   var isEdit = !!existingZone;
@@ -378,9 +385,13 @@ function addZoneCardHtml_(existingZone) {
 // Shared by both the "+ Add zone" button and each row's Edit-zone button below -- existingZone is
 // null for create, the zone row being edited otherwise. Keeps the card HTML/map-init/save-handler
 // logic in exactly one place instead of duplicating it per mode.
-function openZoneCard_(detail, wrap, existingZone) {
+function openZoneCard_(detail, wrap, existingZone, places, eventId) {
   wrap.innerHTML = addZoneCardHtml_(existingZone);
-  initZoneMap_(detail.venue, existingZone);
+  // REQ: "Zone boundaries to be visible" -- every OTHER zone at this venue, for reference, so a new
+  // one can be drawn without overlapping. Excludes the zone being edited itself: its own boundary is
+  // already shown as the editable zoneDrawnItems_ layer below, so repeating it here would be redundant.
+  var siblingZones = (detail.zones || []).filter(function (z) { return !existingZone || z.id !== existingZone.id; });
+  initZoneMap_(detail.venue, existingZone, siblingZones, places, eventId);
   document.getElementById('cancelZoneBtn').onclick = function () { destroyZoneMap_(); wrap.innerHTML = ''; };
   document.getElementById('saveZoneBtn').onclick = async function () {
     try {
@@ -401,7 +412,7 @@ function openZoneCard_(detail, wrap, existingZone) {
   };
 }
 
-function initZoneMap_(venue, existingZone) {
+function initZoneMap_(venue, existingZone, siblingZones, places, eventId) {
   var el = document.getElementById('zoneMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -461,6 +472,12 @@ function initZoneMap_(venue, existingZone) {
     } catch (e) {
       console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
     }
+    // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
+    // maps." (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
+    UI.drawZoneBoundaries(zoneMapInstance_, siblingZones);
+    UI.drawPlaceDots(zoneMapInstance_, places);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    if (eventId) zoneMapInspectorPollStop_ = UI.startInspectorLocationPolling(zoneMapInstance_, { eventId: eventId }, 20000);
     setTimeout(function () { if (zoneMapInstance_) zoneMapInstance_.invalidateSize(); }, 150);
   }, 0);
 }
@@ -484,6 +501,7 @@ function restyleZoneDrawnItems_() {
 function destroyZoneMap_() {
   zoneMapGen_++; // invalidate any still-pending initZoneMap_ setTimeout from an earlier render
   if (zoneMapFullscreenCleanup_) { zoneMapFullscreenCleanup_(); zoneMapFullscreenCleanup_ = null; }
+  if (zoneMapInspectorPollStop_) { zoneMapInspectorPollStop_(); zoneMapInspectorPollStop_ = null; }
   if (zoneMapInstance_) { zoneMapInstance_.remove(); zoneMapInstance_ = null; zoneVenueBoundaryLayer_ = null; zoneDrawnItems_ = null; }
 }
 
@@ -1315,6 +1333,7 @@ var liveInspectionMyMarker_ = null;
 var liveInspectionMarkers_ = {};
 var liveInspectionWatchId_ = null;
 var liveInspectionClosestId_ = null;
+var liveInspectionLastPingAt_ = 0; // throttle for pingInspectionLocation, see its own call site below
 
 function stopLiveInspectionWatch_() {
   if (liveInspectionWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(liveInspectionWatchId_); liveInspectionWatchId_ = null; }
@@ -1322,7 +1341,7 @@ function stopLiveInspectionWatch_() {
 function destroyLiveInspectionMap_() {
   stopLiveInspectionWatch_();
   if (liveInspectionMapInstance_) { liveInspectionMapInstance_.remove(); liveInspectionMapInstance_ = null; }
-  liveInspectionMyMarker_ = null; liveInspectionMarkers_ = {}; liveInspectionClosestId_ = null;
+  liveInspectionMyMarker_ = null; liveInspectionMarkers_ = {}; liveInspectionClosestId_ = null; liveInspectionLastPingAt_ = 0;
 }
 
 async function openChooseParticipantScreen_(content, eventId, inspection) {
@@ -1367,6 +1386,17 @@ function startLiveInspectionTracking_(content, eventId, inspection, participants
     updateLiveInspectionMyPosition_(myLatLng);
     updateClosestParticipantLabel_(participants, myLatLng);
     renderNearestList_(eventId, inspection, participants, myLatLng);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps." --
+    // broadcasts this inspector's position to pingInspectionLocation (Inspections.gs) so every other
+    // map in the app (UI.startInspectorLocationPolling) can show a live dot for them, not just this
+    // device's own use of GPS to find the nearest participant. Throttled to once per 20s -- watchPosition
+    // can fire far more often than that, and there's no need to write to the Sheets-backed store on
+    // every single tick. Fire-and-forget: a failed ping just means this tick doesn't update other
+    // users' maps, never something worth interrupting the inspector's own flow over.
+    if (Date.now() - liveInspectionLastPingAt_ >= 20000) {
+      liveInspectionLastPingAt_ = Date.now();
+      Api.call('pingInspectionLocation', { inspectionId: inspection.id, lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(function () {});
+    }
   }, function () {
     showLiveInspectionFallback_(content, eventId, inspection, participants);
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });

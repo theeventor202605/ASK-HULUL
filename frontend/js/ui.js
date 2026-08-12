@@ -389,6 +389,130 @@ window.UI = {
       document.body.classList.remove('hulul-map-fullscreen-lock');
       if (active) parkExtraControls(false);
     };
+  },
+
+  // REQ: "Move the Use my location / Satellite buttons inside map canvas. This applies to all maps."
+  // Creates (or reuses) a `.hulul-map-controls` wrapper permanently inside a Leaflet map container and
+  // appends the given button elements to it, same appendChild-after-map-creation technique
+  // wireMapFullscreen already uses for its own expand button. Living inside mapEl from the start means
+  // these buttons no longer need wireMapFullscreen's extraControls reparenting trick to survive going
+  // full screen -- they're already inside the div that goes full screen.
+  mapControls(mapEl, buttons) {
+    if (!mapEl) return null;
+    var wrap = mapEl.querySelector('.hulul-map-controls');
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'hulul-map-controls'; mapEl.appendChild(wrap); }
+    (buttons || []).forEach(function (b) { if (b) wrap.appendChild(b); });
+    return wrap;
+  },
+
+  // Builds one `.map-toggle-btn` (same look as the existing Satellite/"Use my location" buttons) as a
+  // detached DOM element, for callers to place via UI.mapControls above. id is set so call sites can
+  // still `document.getElementById` it afterward to wire onclick, same as every existing call site did
+  // when these were plain HTML strings.
+  mapToggleButton(id, iconKey, label) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'map-toggle-btn';
+    btn.id = id;
+    btn.innerHTML = ICON(iconKey) + ' ' + label;
+    return btn;
+  },
+
+  // REQ: "Zone boundaries to be visible. This applies to all maps." Draws every zone's own boundary
+  // polygon (its own picked color, falling back to the auto-cycled ZONE_BOUNDARY_COLORS_ palette --
+  // eventDetail.js, loaded app-wide -- for zones predating the color field) with a permanent centered
+  // name label, same style eventDetail.js's "Places map" originally established. zones: raw Zone rows
+  // (z.boundary is the raw JSON string field -- parseBoundaryClient_, venues.js, loaded app-wide,
+  // parses it). Read-only (interactive: false) everywhere this is called from -- editing a zone's
+  // boundary only ever happens from its own Add/Edit zone map. Returns the layers added, so the caller
+  // can remove them on destroy.
+  drawZoneBoundaries(map, zones) {
+    var layers = [];
+    (zones || []).forEach(function (z, i) {
+      var boundary = (typeof parseBoundaryClient_ === 'function') ? parseBoundaryClient_(z.boundary) : null;
+      if (!boundary || boundary.length < 3) return;
+      var color = z.color || ZONE_BOUNDARY_COLORS_[i % ZONE_BOUNDARY_COLORS_.length];
+      var latlngs = boundary.map(function (pt) { return [pt.lat, pt.lng]; });
+      var layer = HululLeaflet.polygon(latlngs, { color: color, fillColor: color, fillOpacity: 0.10, weight: 2, interactive: false }).addTo(map);
+      layer.bindTooltip(esc(z.name), { permanent: true, direction: 'center', className: 'place-marker-tooltip' });
+      layers.push(layer);
+    });
+    return layers;
+  },
+
+  // REQ: "Participant dots to be visible. This applies to all maps." Plots every place/participant
+  // that has coordinates as a colored dot (EVENT_PLACE_TYPE_COLORS_, eventDetail.js, loaded app-wide --
+  // Places and Participants share the same underlying record and type palette, see createPlace in
+  // Places.gs) with a hover name tooltip, same place-marker-icon style used everywhere else in the app.
+  // onClick (optional) fires with the raw place/participant row. Returns {id: marker}, same shape as
+  // eventDetail.js's own eventPlacesMarkers_, so a caller that needs to track/remove them individually
+  // can.
+  drawPlaceDots(map, places, onClick) {
+    var markers = {};
+    (places || []).forEach(function (pl) {
+      if (pl.lat === '' || pl.lat == null || pl.lng === '' || pl.lng == null) return;
+      var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
+      var icon = HululLeaflet.divIcon({
+        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
+        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
+      });
+      var marker = HululLeaflet.marker([Number(pl.lat), Number(pl.lng)], { icon: icon }).addTo(map);
+      marker.bindTooltip(esc(pl.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+      if (onClick) marker.on('click', function () { onClick(pl); });
+      markers[pl.id] = marker;
+    });
+    return markers;
+  },
+
+  // REQ: "Inspectors live location as they start inspections. This applies to all maps." Polls
+  // listActiveInspectorLocations (Inspections.gs) every intervalMs and keeps a set of inspector-dot
+  // markers on `map` in sync with the response -- shared by every map in the app instead of each
+  // duplicating its own setInterval/marker-diffing logic. fetchParams is either {venueId} or {eventId}
+  // (exactly one, see listActiveInspectorLocations). Markers are keyed by inspectorId and diffed each
+  // tick: moved if still present, added if new, removed if no longer in the (already freshness-
+  // filtered server-side) response -- so an inspector who closes their live-tracking page or goes
+  // stale simply stops appearing within one poll interval, no explicit "stop" signal needed.
+  // Silently no-ops on a fetch error (transient network hiccup) rather than ever breaking the map --
+  // the next tick retries. Returns a stop() function the caller's destroy*Map_() MUST call, same
+  // convention as wireMapFullscreen's cleanup: clears the interval and removes every marker it added.
+  startInspectorLocationPolling(map, fetchParams, intervalMs) {
+    var markers = {};
+    var stopped = false;
+    function tick() {
+      if (stopped || !map) return;
+      Api.call('listActiveInspectorLocations', fetchParams).then(function (live) {
+        if (stopped || !map) return;
+        var seenIds = {};
+        (live || []).forEach(function (insp) {
+          if (insp.lat === '' || insp.lat == null || insp.lng === '' || insp.lng == null) return;
+          seenIds[insp.inspectorId] = true;
+          var latlng = [Number(insp.lat), Number(insp.lng)];
+          var marker = markers[insp.inspectorId];
+          if (marker) {
+            marker.setLatLng(latlng);
+          } else {
+            var icon = HululLeaflet.divIcon({
+              className: 'inspector-marker-icon', iconSize: [16, 16], iconAnchor: [8, 8], html: '<div class="inspector-marker-dot"></div>'
+            });
+            marker = HululLeaflet.marker(latlng, { icon: icon, zIndexOffset: 900 }).addTo(map);
+            markers[insp.inspectorId] = marker;
+          }
+          marker.unbindTooltip();
+          marker.bindTooltip(esc(insp.inspectorName) + ' — inspecting', { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+        });
+        Object.keys(markers).forEach(function (id) {
+          if (!seenIds[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+        });
+      }).catch(function () { /* transient -- next tick retries */ });
+    }
+    tick();
+    var timer = setInterval(tick, intervalMs || 20000);
+    return function stop() {
+      stopped = true;
+      clearInterval(timer);
+      Object.keys(markers).forEach(function (id) { if (map) map.removeLayer(markers[id]); });
+      markers = {};
+    };
   }
 };
 

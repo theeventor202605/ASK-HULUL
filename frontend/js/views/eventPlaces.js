@@ -28,6 +28,7 @@ var PARTICIPANT_DEDUPE_ROLES = ['SystemAdmin', 'EventManager'];
 var eventPlaceMapInstance_ = null;
 var eventPlaceMapMarker_ = null;
 var eventPlaceMapBoundaryLayer_ = null;
+var eventPlaceMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initEventPlaceMap_
 
 async function tabParticipants(content, eventId, detail) {
   destroyEventPlaceMap_(); // in case a previous visit to this tab left one behind
@@ -125,7 +126,7 @@ async function tabParticipants(content, eventId, detail) {
     '</div></div>';
 
   if (canManage) {
-    wireEventPlaceForm_(eventId, venue, zones);
+    wireEventPlaceForm_(eventId, venue, zones, places);
     content.querySelectorAll('[data-add-account]').forEach(function (btn) {
       btn.onclick = async function () {
         var placeId = btn.getAttribute('data-add-account');
@@ -218,11 +219,7 @@ async function tabParticipants(content, eventId, detail) {
 }
 
 function renderAddEventPlaceCard_(zones, hasBoundary) {
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('participant').toLowerCase()) + '</div>' +
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="map-toggle-btn" type="button" id="useMyLocationEPBtn">' + ICON('location_pin') + ' Use my location</button>' +
-        '<button class="map-toggle-btn" type="button" id="toggleSatelliteEPBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
-      '</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('participant').toLowerCase()) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
       '<div style="max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         UI.field('Name', '<input id="fEPName" class="field-input" />') +
@@ -249,8 +246,8 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
   '</div>';
 }
 
-function wireEventPlaceForm_(eventId, venue, zones) {
-  initEventPlaceMap_(venue, zones);
+function wireEventPlaceForm_(eventId, venue, zones, places) {
+  initEventPlaceMap_(venue, zones, places, eventId);
   wireZoneField_('fEP', 'fEPType');
   document.getElementById('addEventPlaceBtn').onclick = async function () {
     try {
@@ -275,7 +272,7 @@ function wireEventPlaceForm_(eventId, venue, zones) {
 // "use my location", click/drag-to-place, all rejected client-side outside the venue's boundary for
 // instant feedback and re-checked authoritatively by createPlace server-side either way). A venue
 // with no boundary drawn yet is unrestricted.
-function initEventPlaceMap_(venue, zones) {
+function initEventPlaceMap_(venue, zones, places, eventId) {
   var el = document.getElementById('eventPlaceMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -293,12 +290,16 @@ function initEventPlaceMap_(venue, zones) {
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(eventPlaceMapInstance_);
+    // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
+    // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
+    var locBtn = UI.mapToggleButton('useMyLocationEPBtn', 'location_pin', 'Use my location');
+    var satBtn = UI.mapToggleButton('toggleSatelliteEPBtn', 'satellite_toggle', 'Satellite');
+    UI.mapControls(el, [locBtn, satBtn]);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
     var showingSatellite = false;
-    var satBtn = document.getElementById('toggleSatelliteEPBtn');
-    if (satBtn) satBtn.onclick = function () {
+    satBtn.onclick = function () {
       showingSatellite = !showingSatellite;
       if (showingSatellite) { eventPlaceMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' Map'; }
       else { eventPlaceMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
@@ -314,6 +315,13 @@ function initEventPlaceMap_(venue, zones) {
       // cross-file pattern as parseBoundaryClient_).
       applyBoundaryPanLimit_(eventPlaceMapInstance_, eventPlaceMapBoundaryLayer_.getBounds());
     }
+    // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
+    // maps." (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
+    UI.drawZoneBoundaries(eventPlaceMapInstance_, zones);
+    UI.drawPlaceDots(eventPlaceMapInstance_, places);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps." -- scoped
+    // to this one event (not the whole venue) since that's what this tab is about.
+    if (eventId) eventPlaceMapInspectorPollStop_ = UI.startInspectorLocationPolling(eventPlaceMapInstance_, { eventId: eventId }, 20000);
     eventPlaceMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(eventPlaceMapInstance_);
     setEventPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fEP', zones, center[0], center[1]);
@@ -338,8 +346,7 @@ function initEventPlaceMap_(venue, zones) {
     eventPlaceMapMarker_._hululLastValid = center;
     eventPlaceMapInstance_.on('click', function (e) { tryEventPlacePin_(e.latlng.lat, e.latlng.lng, false); });
 
-    var locBtn = document.getElementById('useMyLocationEPBtn');
-    if (locBtn) locBtn.onclick = function () {
+    locBtn.onclick = function () {
       if (!navigator.geolocation) { UI.toast('Geolocation isn\'t available in this browser', 'error'); return; }
       locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' Locating…';
       navigator.geolocation.getCurrentPosition(function (pos) {
@@ -356,6 +363,7 @@ function initEventPlaceMap_(venue, zones) {
 }
 
 function destroyEventPlaceMap_() {
+  if (eventPlaceMapInspectorPollStop_) { eventPlaceMapInspectorPollStop_(); eventPlaceMapInspectorPollStop_ = null; }
   if (eventPlaceMapInstance_) { eventPlaceMapInstance_.remove(); eventPlaceMapInstance_ = null; eventPlaceMapMarker_ = null; eventPlaceMapBoundaryLayer_ = null; }
 }
 

@@ -30,6 +30,7 @@ var EMC_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager']; // who can cre
 var venueMapInstance_ = null;
 var venueMapMarker_ = null;
 var venueMapFullscreenCleanup_ = null;
+var venueMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initVenueMap_
 var venueSearchTimer_ = null;
 var venueBoundaryLayer_ = null; // FeatureGroup holding the single drawn boundary polygon, if any
 // Bumped by every destroyVenueMap_()/initVenueMap_() call. initVenueMap_ defers actual map
@@ -118,11 +119,15 @@ async function renderVenueForm_(existingVenue) {
   // already-registered places (vendors/operators/exhibitors) as dots on the map for context while
   // drawing/adjusting the boundary, same colored-dot style as the Event > Venue & Zones "Places map".
   var venuePlacesWithCoords = [];
+  var venueZonesForMap_ = [];
   if (isEdit) {
     try {
       var vPlaces = await Api.call('listPlaces', { venueId: existingVenue.id });
       venuePlacesWithCoords = vPlaces.filter(function (p) { return p.lat !== '' && p.lat != null && p.lng !== '' && p.lng != null; });
     } catch (e) { /* map still works without them */ }
+    // REQ: "Zone boundaries to be visible. This applies to all maps." -- shown for context while
+    // editing this venue, same reasoning/fallback as venuePlacesWithCoords just above.
+    try { venueZonesForMap_ = await Api.call('listZones', { venueId: existingVenue.id }); } catch (e) { /* map still works without them */ }
   }
 
   root.innerHTML =
@@ -140,10 +145,7 @@ async function renderVenueForm_(existingVenue) {
           // .leaflet-top/.leaflet-bottom) or this dropdown renders invisibly underneath the map.
           '<div id="fVSearchResults" style="position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;display:none;background:#fff;box-shadow:var(--shadow-md);z-index:2000;"></div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:10px;">' +
-          '<div>' + UI.field('Boundary color', '<input id="fVColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc((isEdit && existingVenue.color) ? existingVenue.color : VENUE_BOUNDARY_DEFAULT_COLOR_) + '" />') + '</div>' +
-          '<button class="map-toggle-btn" type="button" id="toggleVenueSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
-        '</div>' +
+        '<div style="margin-top:10px;">' + UI.field('Boundary color', '<input id="fVColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc((isEdit && existingVenue.color) ? existingVenue.color : VENUE_BOUNDARY_DEFAULT_COLOR_) + '" />') + '</div>' +
         '<div id="venueMap" style="height:340px;border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border);"></div>' +
         '<div class="muted" style="font-size:11px;margin-top:6px;">Search above, or drag the pin, to fill in the location — or just type the fields below manually. Use the polygon tool on the map (optional) to draw this ' + esc(Term('venue').toLowerCase()) + '\'s boundary — Places will need to land inside it once drawn; leave undrawn to keep placement unrestricted. The color picker above sets how the boundary renders on this and every other map that shows it.' +
           (venuePlacesWithCoords.length ? ' Dots show this ' + esc(Term('venue').toLowerCase()) + '\'s ' + venuePlacesWithCoords.length + ' already-registered place(s).' : '') + '</div>' +
@@ -189,7 +191,7 @@ async function renderVenueForm_(existingVenue) {
 
   var startCenter = (isEdit && existingVenue.lat && existingVenue.lng) ? [Number(existingVenue.lat), Number(existingVenue.lng)] : null;
   var existingBoundary = isEdit ? parseBoundaryClient_(existingVenue.boundary) : null;
-  initVenueMap_(startCenter, existingBoundary, venuePlacesWithCoords);
+  initVenueMap_(startCenter, existingBoundary, venuePlacesWithCoords, venueZonesForMap_, isEdit ? existingVenue.id : null);
   var venueColorInput = document.getElementById('fVColor');
   if (venueColorInput) venueColorInput.oninput = function () { restyleVenueBoundaryLayer_(); };
   wireVenueSearch_();
@@ -210,7 +212,7 @@ function goBackToVenues_() {
 // global `L` -- this app's own labels.js declares a global function Term(key) (the terminology
 // lookup used everywhere as Term('venue') etc.) which loads afterward and clobbers Leaflet's
 // identically-named global. Referencing L here would silently pick up the wrong thing.
-function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
+function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, venueId) {
   var el = document.getElementById('venueMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -237,32 +239,29 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
     var showingSatellite = false;
-    var venueSatBtn = document.getElementById('toggleVenueSatelliteBtn');
-    if (venueSatBtn) venueSatBtn.onclick = function () {
+    // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
+    // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
+    var venueSatBtn = UI.mapToggleButton('toggleVenueSatelliteBtn', 'satellite_toggle', 'Satellite');
+    UI.mapControls(mapEl, [venueSatBtn]);
+    venueSatBtn.onclick = function () {
       showingSatellite = !showingSatellite;
       if (showingSatellite) { venueMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('map_toggle') + ' Map'; }
       else { venueMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
     // REQ: "Drawing boundaries on small map is hard, need to be able to extend map to full screen" --
-    // see UI.wireMapFullscreen (ui.js) for why this isn't the browser Fullscreen API. The satellite
-    // toggle lives above the map (not inside it), so it's passed as an extraControl -- same fix as
-    // the earlier "satellite toggle disappeared in full screen" bug on the Add-a-Place map.
-    venueMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, venueMapInstance_, [venueSatBtn]);
+    // see UI.wireMapFullscreen (ui.js) for why this isn't the browser Fullscreen API. No extraControls
+    // needed anymore -- the satellite toggle already lives inside mapEl (see UI.mapControls above), so
+    // it's already part of what goes full screen, unlike before when it had to be specially reparented.
+    venueMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, venueMapInstance_);
 
     // REQ: "no vendors showing on the [venue] map" -- plot this venue's already-registered places
-    // (vendors/operators/exhibitors) for context, same colored-dot style as eventDetail.js's own
-    // "Places map" (EVENT_PLACE_TYPE_COLORS_/place-marker-icon, defined there -- that file loads
-    // before this one, see index.html).
-    (placesWithCoords || []).forEach(function (pl) {
-      var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
-      var icon = HululLeaflet.divIcon({
-        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
-        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
-      });
-      HululLeaflet.marker([Number(pl.lat), Number(pl.lng)], { icon: icon })
-        .addTo(venueMapInstance_)
-        .bindTooltip(esc(pl.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
-    });
+    // (vendors/operators/exhibitors) for context (UI.drawPlaceDots, ui.js).
+    UI.drawPlaceDots(venueMapInstance_, placesWithCoords);
+    // REQ: "Zone boundaries to be visible. This applies to all maps."
+    UI.drawZoneBoundaries(venueMapInstance_, zones);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps." -- only
+    // once this venue actually has an id (Edit Venue; a brand new venue has nothing to poll for yet).
+    if (venueId) venueMapInspectorPollStop_ = UI.startInspectorLocationPolling(venueMapInstance_, { venueId: venueId }, 20000);
 
     venueMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(venueMapInstance_);
     venueMapMarker_.on('dragend', function () {
@@ -320,6 +319,7 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords) {
 function destroyVenueMap_() {
   venueMapGen_++; // invalidate any still-pending initVenueMap_ setTimeout from an earlier render
   if (venueMapFullscreenCleanup_) { venueMapFullscreenCleanup_(); venueMapFullscreenCleanup_ = null; }
+  if (venueMapInspectorPollStop_) { venueMapInspectorPollStop_(); venueMapInspectorPollStop_ = null; }
   if (venueMapInstance_) { venueMapInstance_.remove(); venueMapInstance_ = null; venueMapMarker_ = null; venueBoundaryLayer_ = null; }
 }
 
@@ -484,6 +484,7 @@ var placeMapInstance_ = null;
 var placeMapMarker_ = null;
 var placeMapBoundaryLayer_ = null;
 var placeMapFullscreenCleanup_ = null;
+var placeMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initPlaceMap_
 var placeMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_ above -- see its comment
 
 async function renderVenuePlaces(params) {
@@ -545,7 +546,7 @@ async function renderVenuePlaces(params) {
   document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
 
   if (canManage) {
-    wirePlaceForm_(venue, zones);
+    wirePlaceForm_(venue, zones, places);
     document.querySelectorAll('[data-delete-place]').forEach(function (btn) {
       btn.onclick = function () {
         UI.confirmModal('Remove this place? This can\'t be undone.', async function () {
@@ -787,11 +788,7 @@ function zoneDisplayNames_(zoneIdField, zonesById, blankText) {
 }
 
 function renderAddPlaceCard_(zones, hasBoundary) {
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add a place</div>' +
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="map-toggle-btn" type="button" id="useMyLocationBtn">' + ICON('location_pin') + ' Use my location</button>' +
-        '<button class="map-toggle-btn" type="button" id="toggleSatelliteBtn">' + ICON('satellite_toggle') + ' Satellite</button>' +
-      '</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add a place</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
       '<div style="max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         UI.field('Name', '<input id="fPlName" class="field-input" />') +
@@ -818,8 +815,8 @@ function renderAddPlaceCard_(zones, hasBoundary) {
   '</div>';
 }
 
-function wirePlaceForm_(venue, zones) {
-  initPlaceMap_(venue, zones);
+function wirePlaceForm_(venue, zones, places) {
+  initPlaceMap_(venue, zones, places);
   wireZoneField_('fPl', 'fPlType');
   document.getElementById('addPlaceBtn').onclick = async function () {
     try {
@@ -843,7 +840,7 @@ function wirePlaceForm_(venue, zones) {
 // record (see initVenueMap_/Leaflet.draw), shows it shaded -- clicks/drags outside it are rejected
 // client-side for instant feedback, and rejected again (authoritatively) server-side in createPlace.
 // A venue with no boundary drawn yet is unrestricted, same fallback as no venue coords at all.
-function initPlaceMap_(venue, zones) {
+function initPlaceMap_(venue, zones, places) {
   var el = document.getElementById('placeMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -864,19 +861,19 @@ function initPlaceMap_(venue, zones) {
     var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(placeMapInstance_);
-    // BUG (REQ report): "The satellite layer toggle disappeared" -- it and "Use my location" render
-    // in the card header above the map, not inside it, so going full screen (map covers the whole
-    // viewport) was leaving them behind, invisible underneath. Passed here so wireMapFullscreen
-    // brings them along into the map while active and puts them back on exit.
-    placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_, [
-      document.getElementById('useMyLocationBtn'), document.getElementById('toggleSatelliteBtn')
-    ]);
+    // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
+    // directly into mapEl (UI.mapControls) instead of living in the card header above the map. This
+    // also means wireMapFullscreen no longer needs to reparent them (see the old BUG comment this
+    // replaced): they're already inside the div that goes full screen.
+    var locBtn = UI.mapToggleButton('useMyLocationBtn', 'location_pin', 'Use my location');
+    var satBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', 'Satellite');
+    UI.mapControls(mapEl, [locBtn, satBtn]);
+    placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
     var showingSatellite = false;
-    var satBtn = document.getElementById('toggleSatelliteBtn');
-    if (satBtn) satBtn.onclick = function () {
+    satBtn.onclick = function () {
       showingSatellite = !showingSatellite;
       if (showingSatellite) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' Map'; }
       else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
@@ -889,6 +886,13 @@ function initPlaceMap_(venue, zones) {
       placeMapInstance_.fitBounds(placeMapBoundaryLayer_.getBounds(), { padding: [20, 20] });
       applyBoundaryPanLimit_(placeMapInstance_, placeMapBoundaryLayer_.getBounds());
     }
+    // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
+    // maps." -- context for where the new place will land, same as the Event > Venue & Zones "Places
+    // map" already showed (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
+    UI.drawZoneBoundaries(placeMapInstance_, zones);
+    UI.drawPlaceDots(placeMapInstance_, places);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    placeMapInspectorPollStop_ = UI.startInspectorLocationPolling(placeMapInstance_, { venueId: venue.id }, 20000);
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
     setPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fPl', zones, center[0], center[1]);
@@ -917,8 +921,7 @@ function initPlaceMap_(venue, zones) {
     placeMapMarker_._hululLastValid = center;
     placeMapInstance_.on('click', function (e) { tryPlacePin_(e.latlng.lat, e.latlng.lng, false); });
 
-    var locBtn = document.getElementById('useMyLocationBtn');
-    if (locBtn) locBtn.onclick = function () {
+    locBtn.onclick = function () {
       if (!navigator.geolocation) { UI.toast('Geolocation isn\'t available in this browser', 'error'); return; }
       locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' Locating…';
       navigator.geolocation.getCurrentPosition(function (pos) {
@@ -937,6 +940,7 @@ function initPlaceMap_(venue, zones) {
 function destroyPlaceMap_() {
   placeMapGen_++; // invalidate any still-pending initPlaceMap_ setTimeout from an earlier render
   if (placeMapFullscreenCleanup_) { placeMapFullscreenCleanup_(); placeMapFullscreenCleanup_ = null; }
+  if (placeMapInspectorPollStop_) { placeMapInspectorPollStop_(); placeMapInspectorPollStop_ = null; }
   if (placeMapInstance_) { placeMapInstance_.remove(); placeMapInstance_ = null; placeMapMarker_ = null; placeMapBoundaryLayer_ = null; }
 }
 
