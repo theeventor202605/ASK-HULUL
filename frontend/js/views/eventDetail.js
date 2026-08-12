@@ -55,6 +55,12 @@ async function renderEventDetail(params) {
 
 /* ---------------- Overview ---------------- */
 async function tabOverview(content, eventId, detail) {
+  destroyOverviewZoneMap_(); // in case a previous visit to this tab left one behind
+  var subEvents = detail.subEvents || [];
+  var zones = detail.zones || [];
+  var subEventNames = subEvents.map(function (s) { return s.name; }).join(', ');
+  var zoneNames = zones.map(function (z) { return z.name; }).join(', ');
+
   content.innerHTML =
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', detail.kpi.totalLogs, ICON('kpi_total'), 'var(--info)') +
@@ -65,11 +71,89 @@ async function tabOverview(content, eventId, detail) {
       kpiCard('kpi_rejected', detail.kpi.rejected, ICON('kpi_rejected'), 'var(--danger)') +
     '</div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('event') + ' details') + '</div></div><div class="card-body">' +
-      infoRow('Code', detail.event.code) + infoRow('Project', detail.event.project) +
-      infoRow('EMC', detail.event.emcId) + infoRow('Inspection Company', detail.event.inspectionCoId) +
-      infoRow('Event Manager', detail.event.eventManagerId) +
-      infoRow(Term('subEvent_plural'), detail.subEvents.length) + infoRow(Term('zone_plural'), detail.zones.length) +
-    '</div></div>';
+      infoRow('Code', detail.event.code) +
+      // REQ report: Project/EMC/Inspection Company/Event Manager were all rendering raw ids (or blank)
+      // -- detail.project/emc/inspectionCo/eventManager are the resolved rows now attached by
+      // getEventDetail (Events.gs); event.project (free-text) is kept as a fallback only for events
+      // that predate the structured projectId link (see Utils.gs SCHEMA comment on Events.project).
+      infoRow('Project', detail.project ? detail.project.name : detail.event.project) +
+      infoRow('EMC', detail.emc ? detail.emc.name : detail.event.emcId) +
+      infoRow('Inspection Company', detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
+      infoRow('Event Manager', detail.eventManager ? detail.eventManager.name : '') +
+      // REQ report: "Sub-Events / Zones showing as number" -- a bare count wasn't useful; listing the
+      // actual names matches every other infoRow here being a real value, not a tally. The fuller
+      // Sub-Events list (with dates) and the zone map just below give the full detail this summary
+      // line doesn't have room for.
+      infoRow(Term('subEvent_plural'), subEventNames) + infoRow(Term('zone_plural'), zoneNames) +
+    '</div></div>' +
+    // REQ report: "Add Sub-Events list" -- so a PM can see this event's sub-events (with dates)
+    // without leaving the Overview tab for the separate top-level Sub-Events page.
+    '<div class="card" style="margin-top:16px;"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
+      UI.table([
+        { key: 'name', label: 'Name' },
+        { key: 'startDateTime', label: 'Start', render: r => UI.fmtDate(r.startDateTime) },
+        { key: 'endDateTime', label: 'End', render: r => UI.fmtDate(r.endDateTime) }
+      ], subEvents, { emptyText: 'No ' + esc(Term('subEvent_plural').toLowerCase()) + ' yet.' }) +
+    '</div></div>' +
+    // REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
+    // locations." initOverviewZoneMap_ below is deliberately non-interactive and only plots
+    // boundaries -- see its own comment for why.
+    (detail.venue
+      ? '<div class="card" style="margin-top:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + ' map</div></div>' +
+        '<div class="card-body"><div id="overviewZoneMap" style="height:220px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div></div></div>'
+      : '');
+
+  initOverviewZoneMap_(detail.venue, zones);
+}
+
+var overviewZoneMapInstance_ = null;
+function destroyOverviewZoneMap_() {
+  if (overviewZoneMapInstance_) { overviewZoneMapInstance_.remove(); overviewZoneMapInstance_ = null; }
+}
+
+// REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
+// locations." A small, read-only preview -- every interaction (drag/scroll-zoom/double-click-zoom/
+// keyboard/zoom control) is switched off since this is meant as a glanceable thumbnail, not another
+// working map (the fully interactive version, with place dots and all, already lives on the Venue &
+// Zones tab). Deliberately does NOT call UI.drawPlaceDots -- REQ explicitly excludes participant/
+// place locations here, this is spatial context for the zone names listed above, nothing more.
+function initOverviewZoneMap_(venue, zones) {
+  var el = document.getElementById('overviewZoneMap');
+  if (!el || !venue) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    return;
+  }
+  var hasVenueCoords = !!(venue.lat && venue.lng);
+  var center = hasVenueCoords ? [Number(venue.lat), Number(venue.lng)] : EVENT_MAP_DEFAULT_CENTER_;
+  setTimeout(function () {
+    var mapEl = document.getElementById('overviewZoneMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    overviewZoneMapInstance_ = HululLeaflet.map('overviewZoneMap', {
+      dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
+      keyboard: false, tap: false, zoomControl: false
+    }).setView(center, hasVenueCoords ? 15 : 6);
+    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(overviewZoneMapInstance_);
+
+    var bounds = [];
+    var venueBoundary = parseBoundaryClient_(venue.boundary);
+    if (venueBoundary) {
+      var venueColor = venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_;
+      var venueLayer = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: venueColor, fillColor: venueColor, fillOpacity: 0.06, weight: 1.5, interactive: false
+      }).addTo(overviewZoneMapInstance_);
+      bounds = bounds.concat(venueLayer.getLatLngs()[0]);
+    }
+    UI.drawZoneBoundaries(overviewZoneMapInstance_, zones).forEach(function (layer) {
+      bounds = bounds.concat(layer.getLatLngs()[0]);
+    });
+    if (bounds.length) overviewZoneMapInstance_.fitBounds(bounds, { padding: [12, 12] });
+    setTimeout(function () { if (overviewZoneMapInstance_) overviewZoneMapInstance_.invalidateSize(); }, 150);
+  }, 0);
 }
 function kpiCard(labelKey, value, icon, color) {
   return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">' + t(labelKey) + '</span>' +
