@@ -8,7 +8,7 @@
 var NOTIF_TAB_BY_RELATED_ = {
   VenueEvaluations: 'approval', Templates: 'templates', Inspections: 'inspections',
   InspectorAssignments: 'disciplines', Findings: 'findings', Resolutions: 'resolutions',
-  Reports: 'reports', Events: 'overview'
+  Reports: 'reports', Events: 'overview', EventChatMessages: 'chat'
 };
 
 function notifTargetHash_(n) {

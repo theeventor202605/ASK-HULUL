@@ -3,9 +3,17 @@
  * for a single event. Mirrors the reference UI's tab layout, modernized.
  */
 // Each tab's display text: a fixed i18n key, or an entityLabelFn composing one from custom
-// terminology (see labels.js) for tabs whose name is built from an object name.
+// terminology (see labels.js) for tabs whose name is built from an object name. Optional 4th
+// element: a visibleFn -- when present and it returns false, the tab is hidden from the tab bar
+// entirely (not just its content restricted). Only Event Chat uses this so far -- REQ: "Related
+// participant accounts have no access to the chat" -- postEventChatMessage/listEventChatMessages
+// both reject those roles server-side too (see assertChatAccess_, EventChat.gs), so hiding the tab
+// is a UX nicety on top of a real enforcement, not a substitute for it.
 var EVENT_TABS = [
   ['overview', 'tab_overview'],
+  // REQ: "Add an event chat page after overview tab." FINDING_ROLE_PARTICIPANT_ (findings.js) is
+  // the existing Vendor/Operator/Exhibitor list -- reused here rather than redeclared.
+  ['chat', 'tab_chat', function () { return 'Event Chat'; }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
   ['venue', 'tab_venue', function () { return Term('venue') + ' & ' + Term('zone_plural'); }],
   ['templates', 'tab_templates', function () { return 'Readiness ' + Term('template_plural'); }],
   ['approval', 'tab_approval', function () { return 'Opening Approval'; }],
@@ -17,7 +25,11 @@ var EVENT_TABS = [
   // REQ: "Move Disciplines list to a new tab name it Participant's Discipline." -- split out of the
   // Participants tab (was a second section below the participants table) into its own tab.
   ['participantDisciplines', 'tab_participant_disciplines', function () { return Term('participant') + '\'s ' + Term('discipline'); }],
-  ['reports', 'tab_reports', function () { return Term('report_plural'); }]
+  ['reports', 'tab_reports', function () { return Term('report_plural'); }],
+  // REQ: "Add an event log page showing all transaction relevant to an event keep last log first."
+  // Open to every viewer (like Coverage gaps etc.) -- it's just history of what already happened,
+  // no separate role restriction was asked for here (unlike Chat).
+  ['log', 'tab_event_log', function () { return 'Event Log'; }]
 ];
 
 async function renderEventDetail(params) {
@@ -25,7 +37,11 @@ async function renderEventDetail(params) {
   var eventId = params.id;
   var detail = await Api.call('getEvent', { eventId: eventId });
   HululState.currentEventId = eventId;
+  var visibleTabs = EVENT_TABS.filter(function (tb) { return !tb[3] || tb[3](); });
   var activeTab = params.tab || 'overview';
+  // A direct link/bookmark to a tab this role can no longer see (e.g. a participant account and
+  // Event Chat) shouldn't silently render nothing -- fall back to Overview like an unset tab would.
+  if (!visibleTabs.some(function (tb) { return tb[0] === activeTab; })) activeTab = 'overview';
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events">' + esc(Term('event_plural')) + '</a> / ' + esc(detail.event.name) + '</div>' +
@@ -42,7 +58,7 @@ async function renderEventDetail(params) {
     '<div id="eventTabContent"></div>';
 
   var tabbar = document.getElementById('eventTabbar');
-  tabbar.innerHTML = EVENT_TABS.map(function (tb) {
+  tabbar.innerHTML = visibleTabs.map(function (tb) {
     var label = tb[2] ? tb[2]() : t(tb[1]);
     return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-tab="' + tb[0] + '">' + esc(label) + '</div>';
   }).join('');
@@ -52,13 +68,13 @@ async function renderEventDetail(params) {
 
   var content = document.getElementById('eventTabContent');
   var renderers = {
-    overview: tabOverview, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
+    overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
     disciplines: tabDisciplines, inspections: tabInspections, findings: tabFindings,
     escalations: tabEscalations, participants: tabParticipants,
-    participantDisciplines: tabParticipantDisciplines, reports: tabReports
+    participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
   };
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
-  try { await (renderers[activeTab] || tabOverview)(content, eventId, detail); }
+  try { await (renderers[activeTab] || tabOverview)(content, eventId, detail, params); }
   catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">Failed to load this tab.</div>'; }
 }
 
@@ -751,14 +767,19 @@ var TEMPLATE_DEADLINE_MANAGE_ROLES = ['ProjectManager', 'SystemAdmin'];
 // uploaderRoles/reviewerRoles come from getTemplateProcessRoles (see tabTemplates below) --
 // configurable per REQ: "role assignments... Inspection Analyst and Event Manager, where I can
 // change them and allow one or multiple role assignment" (Configuration > Process).
-function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles) {
+function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
   var role = HululState.user.role;
   var isPM = role === 'ProjectManager' || role === 'SystemAdmin';
   var isEM = role === 'SystemAdmin' || uploaderRoles.indexOf(role) !== -1;
   var isAnalyst = role === 'SystemAdmin' || reviewerRoles.indexOf(role) !== -1;
   var parts = [];
   if (tpl.status === 'Not Sent' && isPM) {
-    parts.push('<button class="btn btn-primary btn-sm btn-icon" title="Send" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>');
+    // REQ: "No Template can be sent unless Deadline date time is set." -- disabled (not hidden) so
+    // the PM can still see the Send action exists and understands why it's blocked; sendTemplates
+    // enforces the same rule server-side (see Templates.gs) so this can't be bypassed.
+    parts.push(hasDeadline
+      ? '<button class="btn btn-primary btn-sm btn-icon" title="Send" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>'
+      : '<button class="btn btn-primary btn-sm btn-icon" title="Set the documents deadline first" disabled>' + ICON('send') + '</button>');
   }
   if (isEM && ['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) !== -1) {
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="Upload" data-upload-template="' + tpl.id + '">' + ICON('upload') + '</button>');
@@ -800,7 +821,7 @@ async function tabTemplates(content, eventId, detail) {
       { key: 'fileName', label: 'File', render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || 'view') + '</a>' : '—' },
       { key: 'updatedAt', label: 'Updated', render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
       { key: 'reviewReason', label: 'Review notes', render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
-      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles) }
+      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt) }
     ], templates, { emptyText: 'No templates in the library for this Inspection Company yet.' }) + '</div></div>';
 
   UI.wireBoard(content, function (id) {
@@ -1041,6 +1062,7 @@ async function tabDisciplines(content, eventId, detail) {
         (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + ICON('locked_indicator') + ' An ' + esc(Term('inspector').toLowerCase()) + ' is already assigned — remove the assignment below to unselect.</div>' : '')
       : '<div class="muted" style="font-size:11.5px;margin-top:10px;">Read-only — only a Project Manager or System Admin can change this.</div>') +
     '</div></div>' +
+    renderConflictsCard_(gaps.conflicts, canManage) +
     renderCoverageGapsCard_(gaps, canManage) +
     (canManage
       ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign ' + esc(Term('inspector').toLowerCase()) + '</div></div>' +
@@ -1124,12 +1146,59 @@ async function tabDisciplines(content, eventId, detail) {
       document.getElementById('assignBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
   });
+
+  // REQ: "...option to reschedule or change with other qualified inspector with no conflict."
+  // "Reschedule" hands off to Inspections & Checklist Items -- that's where an individual
+  // inspection's actual scheduledAt time lives (assignments themselves are event-wide, not
+  // time-specific), so adjusting the conflicting time slot happens there.
+  content.querySelectorAll('[data-conflict-reschedule]').forEach(function (btn) {
+    btn.onclick = function () {
+      UI.toast('Adjust this ' + Term('inspector').toLowerCase() + '\'s scheduled time in ' + Term('inspection_plural') + ' & Checklist Items to resolve the conflict.', 'info');
+      window.location.hash = '#/events/' + eventId + '?tab=inspections';
+    };
+  });
+  content.querySelectorAll('[data-conflict-change]').forEach(function (btn) {
+    btn.onclick = async function () {
+      var oldAssignmentId = btn.getAttribute('data-conflict-change');
+      var disciplineId = btn.getAttribute('data-conflict-disc');
+      var disciplineName = btn.getAttribute('data-conflict-discname');
+      var candidates;
+      try {
+        candidates = await Api.call('listConflictFreeQualifiedInspectors', { eventId: eventId, disciplineId: disciplineId });
+      } catch (err) { UI.error(err); return; }
+      if (!candidates.length) {
+        UI.toast('No other qualified, conflict-free ' + Term('inspector').toLowerCase() + ' is available for ' + disciplineName, 'error');
+        return;
+      }
+      var body = '<div style="font-size:13px;margin-bottom:10px;">Replace with a qualified ' + Term('inspector').toLowerCase() + ' who has no scheduling conflict:</div>' +
+        UI.field(Term('inspector'), '<select id="fConflictNewInsp" class="field-input">' +
+          candidates.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + ' (' + esc(c.email) + ')</option>'; }).join('') +
+        '</select>');
+      UI.openModal('Change ' + Term('inspector').toLowerCase(), body, [
+        { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+        { label: 'Change', className: 'btn-primary', onClick: async function () {
+            var newInspectorId = document.getElementById('fConflictNewInsp').value;
+            try {
+              await Api.call('reassignInspector', { eventId: eventId, oldAssignmentId: oldAssignmentId, newInspectorId: newInspectorId });
+              UI.closeModal(); UI.toast(Term('inspector') + ' changed', 'success'); Router.resolve();
+            } catch (err) { UI.error(err); }
+          } }
+      ]);
+    };
+  });
 }
 
 // Summarizes listCoverageGaps() into a card: which identified disciplines still have zones (or,
-// for a single/no-zone venue, the whole venue) without an assigned inspector, and which
-// qualified-but-unassigned Inspectors could fill each gap. Shown to every viewer (it's just
-// information), but the "Quick assign" shortcut only appears for roles that can act on it.
+// for a single/no-zone venue, the whole venue) without an assigned inspector, and every qualified
+// Inspector who could fill each gap. Shown to every viewer (it's just information), but the "Quick
+// assign" shortcut only appears for roles that can act on it.
+// REQ: "change: 'No qualified, unassigned inspectors...' to: 'No qualified inspector' (red)" -- now
+// that availableInspectors lists every qualified inspector (not just unassigned ones, see below),
+// an empty list genuinely means no one at all is qualified, so the message and its red color both
+// follow directly from that.
+// REQ: "If more than one inspector is qualified... if one has already been assigned (silver)" --
+// already-assigned candidates stay in the list instead of being filtered out, just rendered in
+// silver with no Quick assign button (there's nothing to assign, they're already on it).
 function renderCoverageGapsCard_(gaps, canManage) {
   var body;
   if (!gaps || !gaps.items || !gaps.items.length) {
@@ -1142,18 +1211,45 @@ function renderCoverageGapsCard_(gaps, canManage) {
       var zoneIdsAttr = gaps.zoneMode ? item.uncoveredZones.map(function (z) { return z.id; }).join(',') : '';
       var inspectorsHtml = item.availableInspectors.length
         ? item.availableInspectors.map(function (i) {
+            var nameStyle = i.assigned ? 'color:silver;' : '';
+            var conflictNote = i.conflict
+              ? '<div style="font-size:11px;color:var(--danger);margin-top:2px;">Conflict: also assigned to ' + esc(i.conflict.eventName) + ' (' + esc(UI.fmtDate(i.conflict.startDateTime)) + ' – ' + esc(UI.fmtDate(i.conflict.endDateTime)) + ')</div>'
+              : '';
             return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:12.5px;">' +
-              '<span><strong>' + esc(i.name) + '</strong> <span class="muted">' + esc(i.email) + '</span></span>' +
-              (canManage ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">Quick assign</button>' : '') +
+              '<span><strong style="' + nameStyle + '">' + esc(i.name) + '</strong> <span class="muted">' + esc(i.email) + '</span>' +
+              (i.assigned ? ' <span class="muted" style="font-size:11px;">(already assigned)</span>' : '') + conflictNote + '</span>' +
+              (canManage && !i.assigned ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">Quick assign</button>' : '') +
               '</div>';
           }).join('')
-        : '<div class="muted" style="font-size:12px;margin-top:6px;">No qualified, unassigned inspectors available for this discipline.</div>';
+        : '<div style="font-size:12px;margin-top:6px;color:var(--danger);">No qualified inspector</div>';
       return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
         '<div style="font-weight:600;font-size:13.5px;">' + esc(item.disciplineName) + '</div>' +
         '<div style="font-size:12.5px;margin-top:2px;">' + whereText + '</div>' + inspectorsHtml + '</div>';
     }).join('');
   }
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Coverage gaps</div></div><div class="card-body">' + body + '</div></div>';
+}
+
+// REQ: "If an inspector has conflict in another event then must be added to a conflict list with
+// details and provided the option to reschedule or change with other qualified inspector with no
+// conflict." Separate from the coverage-gaps card since a conflict can exist on a discipline that's
+// otherwise fully covered (see listCoverageGaps' own `conflicts` -- computed across every current
+// assignment for this event, not just gap disciplines). Only rendered when there's at least one.
+function renderConflictsCard_(conflicts, canManage) {
+  if (!conflicts || !conflicts.length) return '';
+  var rows = conflicts.map(function (c) {
+    return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;font-size:12.5px;">' +
+      '<div><strong>' + esc(c.inspectorName) + '</strong> <span class="muted">' + esc(c.inspectorEmail) + '</span> — ' + esc(c.disciplineName) + '</div>' +
+      '<div style="color:var(--danger);margin-top:2px;">Also assigned to <strong>' + esc(c.conflict.eventName) + '</strong> (' + esc(UI.fmtDate(c.conflict.startDateTime)) + ' – ' + esc(UI.fmtDate(c.conflict.endDateTime)) + ')</div>' +
+      (canManage
+        ? '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="btn btn-secondary btn-sm" data-conflict-change="' + esc(c.assignmentId) + '" data-conflict-disc="' + esc(c.disciplineId) + '" data-conflict-discname="' + esc(c.disciplineName) + '">Change inspector</button>' +
+            '<button class="btn btn-secondary btn-sm" data-conflict-reschedule="' + esc(c.assignmentId) + '">Reschedule</button>' +
+          '</div>'
+        : '') +
+      '</div>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + ICON('warning_banner') + ' Scheduling conflicts</div></div><div class="card-body">' + rows + '</div></div>';
 }
 
 /* ---------------- Inspections & Checklists ---------------- */
@@ -2085,4 +2181,131 @@ async function tabReports(content, eventId) {
     try { await Api.call('generateReport', { eventId: eventId, type: type }); UI.toast(Term('report') + ' generated', 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
   }
+}
+
+/* ---------------- Event Chat ---------------- */
+// REQ: "Add an event chat page after overview tab, allow to tag any user, and participants within
+// the event. Related participant accounts have no access to the chat." Server-side enforcement lives
+// in assertChatAccess_ (EventChat.gs) -- this tab is also hidden entirely for those roles (see
+// EVENT_TABS' visibleFn above), so this function only ever runs for someone actually allowed in.
+// Tagging and log-referencing use scrollable checkbox lists (same idiom as venues.js' zone
+// checkboxes) rather than a freeform @-mention text parser -- explicit, unambiguous, and keeps every
+// tagged id/log ref a real selection instead of a guess at what the typed text meant.
+async function tabEventChat(content, eventId, detail) {
+  var results = await Promise.all([
+    Api.call('listEventChatMessages', { eventId: eventId }),
+    Api.call('listChatTaggableUsers', { eventId: eventId }),
+    Api.call('listChatTaggableParticipants', { eventId: eventId }),
+    Api.call('listEventLog', { eventId: eventId })
+  ]);
+  var messages = results[0], taggableUsers = results[1], taggableParticipants = results[2], logEntries = results[3];
+
+  function checklistPanel_(idPrefix, items, labelFn) {
+    if (!items.length) return '<div class="muted" style="font-size:12px;">None available.</div>';
+    return '<div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;">' +
+      items.map(function (it) {
+        return '<label style="display:block;font-size:12.5px;padding:3px 0;">' +
+          '<input type="checkbox" class="' + idPrefix + '-check" value="' + esc(it.id) + '" /> ' + labelFn(it) + '</label>';
+      }).join('') + '</div>';
+  }
+
+  content.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Event Chat</div></div>' +
+    '<div class="card-body" id="chatMessages" style="max-height:480px;overflow-y:auto;">' +
+    (messages.length ? messages.map(chatMessageHtml_).join('') : '<div class="empty-state">No messages yet — start the conversation.</div>') +
+    '</div></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">New message</div></div><div class="card-body">' +
+    UI.field('Message', '<textarea id="fChatMessage" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Write a message…"></textarea>') +
+    '<div class="form-row" style="margin-top:10px;">' +
+      UI.field('Tag users', checklistPanel_('chat-user', taggableUsers, function (u) { return '<strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.role) + '</span>'; })) +
+      UI.field('Tag ' + Term('participant_plural').toLowerCase(), checklistPanel_('chat-participant', taggableParticipants, function (p) { return '<strong>' + esc(p.name) + '</strong> <span class="muted">' + esc(p.type) + '</span>'; })) +
+    '</div>' +
+    '<div style="margin-top:10px;">' +
+      UI.field('Reference event log entries', checklistPanel_('chat-log', logEntries.slice(0, 50), function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; })) +
+    '</div>' +
+    '<button class="btn btn-primary btn-sm" id="sendChatBtn" style="margin-top:12px;">' + ICON('send') + ' Send</button>' +
+    '</div></div>';
+
+  // Scroll to the latest message on open, same as any chat UI.
+  var msgBox = document.getElementById('chatMessages');
+  msgBox.scrollTop = msgBox.scrollHeight;
+
+  content.querySelectorAll('[data-goto-log]').forEach(function (el) {
+    el.onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=log&focus=' + el.getAttribute('data-goto-log'); };
+  });
+
+  document.getElementById('sendChatBtn').onclick = async function () {
+    var message = document.getElementById('fChatMessage').value.trim();
+    if (!message) { UI.toast('Message cannot be empty', 'error'); return; }
+    var mentionedUserIds = Array.from(content.querySelectorAll('.chat-user-check:checked')).map(function (c) { return c.value; });
+    var mentionedParticipantIds = Array.from(content.querySelectorAll('.chat-participant-check:checked')).map(function (c) { return c.value; });
+    var logRefIds = Array.from(content.querySelectorAll('.chat-log-check:checked')).map(function (c) { return c.value; });
+    try {
+      await Api.call('postEventChatMessage', {
+        eventId: eventId, message: message,
+        mentionedUserIds: mentionedUserIds, mentionedParticipantIds: mentionedParticipantIds, logRefIds: logRefIds
+      });
+      Router.resolve();
+    } catch (err) { UI.error(err); }
+  };
+}
+
+function chatMessageHtml_(m) {
+  var mentionsHtml = m.mentionedUsers.concat(m.mentionedParticipants).length
+    ? '<div style="margin-top:6px;">' + m.mentionedUsers.map(function (u) {
+        return '<span class="badge-neutral" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin:2px 4px 0 0;">@' + esc(u.name) + '</span>';
+      }).join('') + m.mentionedParticipants.map(function (p) {
+        return '<span class="badge-neutral" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin:2px 4px 0 0;">@' + esc(p.name) + '</span>';
+      }).join('') + '</div>'
+    : '';
+  var logRefsHtml = m.logRefs.length
+    ? '<div style="margin-top:6px;">' + m.logRefs.map(function (l) {
+        return '<span data-goto-log="' + esc(l.id) + '" style="display:inline-block;cursor:pointer;color:var(--accent);text-decoration:underline;font-size:11.5px;margin:2px 8px 0 0;">' +
+          ICON('forward_link') + ' ' + esc(l.action || 'Log entry') + '</span>';
+      }).join('') + '</div>'
+    : '';
+  return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
+    '<strong style="font-size:13px;">' + esc(m.authorName) + '</strong>' +
+    '<span class="muted" style="font-size:11px;white-space:nowrap;">' + esc(UI.fmtDate(m.createdAt)) + '</span></div>' +
+    '<div style="font-size:13.5px;margin-top:4px;white-space:pre-wrap;">' + esc(m.message) + '</div>' +
+    mentionsHtml + logRefsHtml + '</div>';
+}
+
+/* ---------------- Event Log ---------------- */
+// REQ: "Add an event log page showing all transaction relevant to an event keep last log first.
+// Logs can be referenced in event chats." listEventLog (EventChat.gs) already returns newest-first.
+// `focus` (from a chat log-reference click, or a bookmarked link) scrolls to and briefly highlights
+// that one entry so it's easy to find in a potentially long list.
+async function tabEventLog(content, eventId, detail, params) {
+  var logs = await Api.call('listEventLog', { eventId: eventId });
+  content.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">Event Log</div>' +
+    '<div class="muted" style="font-size:11.5px;">Every recorded action relevant to this event, most recent first.</div></div>' +
+    '<div class="card-body">' +
+    (logs.length ? logs.map(eventLogRowHtml_).join('') : '<div class="empty-state">' + t('no_data') + '</div>') +
+    '</div></div>';
+
+  var focusId = params && params.focus;
+  if (focusId) {
+    var row = content.querySelector('[data-log-id="' + focusId + '"]');
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.background = '#fff7d6';
+      setTimeout(function () { row.style.background = ''; }, 2500);
+    }
+  }
+}
+
+function eventLogRowHtml_(l) {
+  var detailsText = '';
+  if (l.details) {
+    try { var d = JSON.parse(l.details); detailsText = Object.keys(d).length ? JSON.stringify(d) : ''; } catch (e) { detailsText = l.details; }
+  }
+  return '<div data-log-id="' + esc(l.id) + '" style="padding:9px 0;border-bottom:1px solid #f0f1f6;font-size:12.5px;transition:background 0.4s;">' +
+    '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+    '<span><strong>' + esc(l.action) + '</strong> <span class="muted">by ' + esc(l.actorName) + '</span></span>' +
+    '<span class="muted" style="white-space:nowrap;">' + esc(UI.fmtDate(l.timestamp)) + '</span></div>' +
+    (l.targetType ? '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(l.targetType) + (detailsText ? ' — ' + esc(detailsText) : '') + '</div>' : '') +
+    '</div>';
 }
