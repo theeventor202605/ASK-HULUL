@@ -54,11 +54,25 @@ function listPlaces(user, p) {
   // venue/event with many places doesn't re-read the whole Users sheet per row.
   var usersById = {};
   getAll('Users').forEach(function (u) { usersById[u.id] = u; });
+  // REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+  // dot." A Place doesn't store a participantId directly -- each of its accountIds (Users rows) has
+  // a matching Participant linked via Participant.userId (see provisionPlaceAccount_) -- so resolve
+  // accountIds -> Participants -> findingsOpenCountByParticipant_ and take the max across every
+  // account this Place has (they all share the same count anyway, being the same physical spot, but
+  // max is a harmless, cheap way to combine without assuming exactly one Participant per account).
+  var participantsByUserId = {};
+  getAll('Participants').forEach(function (pt) { if (pt.userId) participantsByUserId[pt.userId] = pt; });
+  var countByParticipantId = findingsOpenCountByParticipant_();
   return places.map(function (pl) {
     var accountIds = pl.accountIds ? String(pl.accountIds).split(',').filter(Boolean) : [];
     var accounts = accountIds.map(function (id) { return usersById[id]; }).filter(Boolean)
       .map(function (u) { return { id: u.id, name: u.name, email: u.email, role: u.role, status: u.status }; });
-    return Object.assign({}, pl, { accounts: accounts });
+    var openFindingsCount = accountIds.reduce(function (max, uid) {
+      var pt = participantsByUserId[uid];
+      var count = pt ? (countByParticipantId[pt.id] || 0) : 0;
+      return Math.max(max, count);
+    }, 0);
+    return Object.assign({}, pl, { accounts: accounts, openFindingsCount: openFindingsCount });
   });
 }
 

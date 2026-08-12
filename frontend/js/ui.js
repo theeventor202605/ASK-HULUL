@@ -513,6 +513,25 @@ window.UI = {
     return layers;
   },
 
+  // REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+  // dot showing unresolved logs. Only when a log is closed then the dot returns to default colour."
+  // Single shared builder for the small place/participant divIcon used by every map in the app --
+  // centralized here so the red-override + numbered-badge treatment only has to be written once.
+  // `color` is the caller's normal (non-risk) color for this dot (type palette, relevance/completion
+  // color, etc.); it's completely ignored in favor of var(--danger) whenever openFindingsCount > 0,
+  // since an open risk log outranks whatever else that color was communicating. openFindingsCount is
+  // clamped to a "9+" display past 9 so the badge never has to grow past its fixed small size.
+  placeMarkerIcon(color, openFindingsCount) {
+    var hasRisk = (openFindingsCount || 0) > 0;
+    var dotColor = hasRisk ? 'var(--danger)' : color;
+    return HululLeaflet.divIcon({
+      className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
+      html: '<div class="place-marker">' +
+        (hasRisk ? '<div class="place-marker-badge">' + (openFindingsCount > 9 ? '9+' : openFindingsCount) + '</div>' : '') +
+        '<div class="place-marker-dot' + (hasRisk ? ' place-marker-dot-risk' : '') + '" style="background:' + dotColor + ';"></div></div>'
+    });
+  },
+
   // REQ: "Participant dots to be visible. This applies to all maps." Plots every place/participant
   // that has coordinates as a colored dot (EVENT_PLACE_TYPE_COLORS_, eventDetail.js, loaded app-wide --
   // Places and Participants share the same underlying record and type palette, see createPlace in
@@ -525,10 +544,7 @@ window.UI = {
     (places || []).forEach(function (pl) {
       if (pl.lat === '' || pl.lat == null || pl.lng === '' || pl.lng == null) return;
       var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
-      var icon = HululLeaflet.divIcon({
-        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
-        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
-      });
+      var icon = UI.placeMarkerIcon(color, pl.openFindingsCount);
       var marker = HululLeaflet.marker([Number(pl.lat), Number(pl.lng)], { icon: icon }).addTo(map);
       marker.bindTooltip(esc(pl.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
       if (onClick) marker.on('click', function () { onClick(pl); });

@@ -123,11 +123,23 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    tooltip (shown on hover, and forced open on the one that's is-focused) rather than a permanently
    visible label -- with several dots close together, permanently-shown labels overlapped and
    became unreadable; a tooltip only ever shows one name at a time per interaction. */
-.place-marker{ width:14px; height:14px; }
+.place-marker{ width:14px; height:14px; position:relative; }
 .place-marker-dot{ width:14px; height:14px; border-radius:50%; border:2px solid #fff;
   box-shadow:0 1px 4px rgba(15,23,42,.35); transition:transform .2s, background .2s; }
 .place-marker.is-focused .place-marker-dot{ background:var(--danger) !important; transform:scale(1.4); }
 .place-marker-tooltip{ font-size:11px; font-weight:700; color:var(--text-900); }
+
+/* REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+   dot showing unresolved logs. Only when a log is closed then the dot returns to default colour."
+   See UI.placeMarkerIcon (ui.js), the single shared builder every map's dots go through. The pulsing
+   halo makes "this needs attention" readable at a glance even before the eye reaches the badge
+   number; the badge itself floats just above-right of the dot. */
+.place-marker-dot-risk{ animation:placeMarkerRiskPulse 1.6s ease-in-out infinite; }
+@keyframes placeMarkerRiskPulse{ 0%,100%{ box-shadow:0 0 0 3px rgba(220,38,38,.35), 0 1px 4px rgba(15,23,42,.35); }
+  50%{ box-shadow:0 0 0 7px rgba(220,38,38,.12), 0 1px 4px rgba(15,23,42,.35); } }
+.place-marker-badge{ position:absolute; top:-9px; right:-7px; min-width:14px; height:14px; padding:0 3px;
+  border-radius:999px; background:var(--danger); color:#fff; font-size:9px; font-weight:800; line-height:14px;
+  text-align:center; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(15,23,42,.4); z-index:1; }
 .place-type-swatch{ display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
 
 /* REQ report: Overview tab's zone-map thumbnail (UI.drawZoneBoundaries's tooltipClassName override,

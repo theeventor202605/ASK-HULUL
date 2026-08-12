@@ -20,7 +20,11 @@ function listParticipants(user, p) {
   // Participants even at the same venue. Omit eventId to see everything (e.g. the Venues > Places
   // page's own venue-wide participant views, unaffected by this).
   if (p && p.eventId) all = all.filter(function (pt) { return !pt.eventId || pt.eventId === p.eventId; });
-  return mergeParticipantsByLocation_(all);
+  var merged = mergeParticipantsByLocation_(all);
+  // REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+  // dot." Every map that plots participants sources its dots from this call.
+  var countById = findingsOpenCountByParticipant_();
+  return merged.map(function (pt) { return Object.assign({}, pt, { openFindingsCount: countById[pt.id] || 0 }); });
 }
 
 function createParticipant(actingUser, p) {
@@ -132,6 +136,34 @@ function bulkAssignParticipantDisciplines(user, p) {
 // every shift account at one spot see the same Findings -- see participantSiblingIds_.
 function participantLocationKey_(p) {
   return String(p.venueId || '') + '|' + String(p.name || '').trim().toLowerCase() + '|' + String(p.type || '') + '|' + String(p.zoneId || '');
+}
+
+// REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+// dot showing unresolved logs. Only when a log is closed then the dot returns to default colour."
+// Returns { [participantId]: count } for EVERY Participant row (not just merged primaries) --
+// counts every still-open Finding (FINDING_OPEN_STATUSES, Findings.gs) recorded against ANY account
+// sharing that participant's physical spot (participantLocationKey_ above), same "shared across
+// every shift" semantics listFindings already uses for Vendor/Operator/Exhibitor visibility, so
+// every account/shift at one spot shows the identical badge count. Keyed by every individual
+// Participant id (not just the merged primary) so callers working from either a merged list
+// (listParticipants) or a raw per-account lookup (listPlaces, via accountIds) can look themselves up
+// directly without re-merging. FINDING_OPEN_STATUSES lives in Findings.gs -- referenced only inside
+// this function body (not at top level), so file load order doesn't matter.
+function findingsOpenCountByParticipant_() {
+  var openFindings = findWhere('Findings', function (f) { return FINDING_OPEN_STATUSES.indexOf(f.status) !== -1; });
+  var allParticipants = getAll('Participants');
+  var participantsById = {};
+  allParticipants.forEach(function (pt) { participantsById[pt.id] = pt; });
+  var countByKey = {};
+  openFindings.forEach(function (f) {
+    var pt = participantsById[f.participantId];
+    if (!pt) return;
+    var key = participantLocationKey_(pt);
+    countByKey[key] = (countByKey[key] || 0) + 1;
+  });
+  var countById = {};
+  allParticipants.forEach(function (pt) { countById[pt.id] = countByKey[participantLocationKey_(pt)] || 0; });
+  return countById;
 }
 
 // REQ bug report: a Critical finding logged against the morning-shift account of a two-account

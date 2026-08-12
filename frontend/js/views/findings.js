@@ -61,11 +61,16 @@ function detailGrid_(fieldsHtml) {
 // suggestion, and is a mandatory field. Checklist Type: should be picked if left blank it will
 // reflect as Other. Risk level: default to Medium. Resolution window (hours): default to 24.
 // Remove location and sub-zone. Inspector must be able to take photos or one video."
+// Follow-up REQ: "Move Checklist Type to be after Discipline. Add map to the left with max zoom as
+// default, showing Inspector live location centred. When an inspector moves the map moves but his
+// location remains centred."
 //
-// The live-location side map is explicitly called out as "to be added" -- a future enhancement, not
-// built here; a muted placeholder note stands in for it so it isn't forgotten. Location/sub-zone
-// inputs are removed entirely -- createFinding (Findings.gs) now derives both from the selected
-// Participant's own record instead.
+// Location/sub-zone inputs are removed entirely -- createFinding (Findings.gs) now derives both
+// from the selected Participant's own record instead. The map on the left is this device's OWN live
+// GPS position (findingLocationMap* below, mirroring eventDetail.js's liveInspectionMap "my
+// position" pattern) -- not a participant picker; the searchable dropdown participant selection
+// requested earlier is still the only way to choose one (a map-based picker was explicitly deferred
+// as "to be added" and is a separate, still-unbuilt enhancement).
 async function renderNewFinding(params) {
   var eventId = params.id;
   var root = document.getElementById('viewRoot');
@@ -89,32 +94,45 @@ async function renderNewFinding(params) {
     '<div class="page-header"><div><div class="page-title">Log ' + esc(Term('finding')) + '</div>' +
     '<div class="page-subtitle">Record a new non-compliance finding for this ' + esc(Term('event').toLowerCase()) + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
-    '<div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
-      '<div class="field-group" style="position:relative;">' +
-        '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
-        '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
-        '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ Live location side map — coming soon.</div>' +
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">' +
+      // REQ: "Add map to the left with max zoom as default, showing Inspector live location
+      // centred." This device's own GPS position -- see initFindingLocationMap_ below.
+      '<div class="card" style="flex:1 1 320px;max-width:400px;">' +
+        '<div class="card-header"><div class="card-title">Your location</div></div>' +
+        '<div class="card-body">' +
+          '<div id="findingLocationMap" style="height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+          '<div id="findingLocationBanner" class="muted" style="font-size:11.5px;margin-top:8px;"></div>' +
+        '</div>' +
       '</div>' +
-      UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
-        disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
-      UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
-      UI.field('Suggested action', '<input id="fAction" class="field-input" />') +
-      UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
-      '<div class="form-row">' +
-        UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
-        UI.field('Resolution window (hours)', '<input id="fWindow" type="number" class="field-input" value="24" />') +
-      '</div>' +
-      '<div class="field-label" style="margin-top:8px;">Photo or video evidence</div>' +
-      // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
-      // section further down this file -- opens the device camera directly, no gallery/file picker.
-      '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-      '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
-      '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
-      '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
-    '</div></div>';
+      '<div class="card" style="flex:2 1 400px;max-width:640px;"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
+        '<div class="field-group" style="position:relative;">' +
+          '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
+          '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
+          '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
+          '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ Live location side map — coming soon.</div>' +
+        '</div>' +
+        UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
+          disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
+        // REQ (follow-up): "Move Checklist Type to be after Discipline."
+        UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
+        UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
+        UI.field('Suggested action', '<input id="fAction" class="field-input" />') +
+        '<div class="form-row">' +
+          UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
+          UI.field('Resolution window (hours)', '<input id="fWindow" type="number" class="field-input" value="24" />') +
+        '</div>' +
+        '<div class="field-label" style="margin-top:8px;">Photo or video evidence</div>' +
+        // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
+        // section further down this file -- opens the device camera directly, no gallery/file picker.
+        '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
+        '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
+        '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
+        '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
+      '</div></div>' +
+    '</div>';
 
-  document.getElementById('backFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=findings'; };
+  document.getElementById('backFindingBtn').onclick = function () { destroyFindingLocationMap_(); window.location.hash = '#/events/' + eventId + '?tab=findings'; };
+  initFindingLocationMap_();
 
   /* ---- Participant: searchable dropdown (mandatory) ---- */
   var selectedParticipant = null;
@@ -206,9 +224,89 @@ async function renderNewFinding(params) {
         evidenceUrls: urls
       });
       UI.toast(Term('finding') + ' logged', 'success');
+      destroyFindingLocationMap_();
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;
     } catch (err) { UI.error(err); }
   };
+}
+
+/* ---------------- Log Finding's own live-location map (this device's GPS, not other inspectors') ----
+ * Mirrors eventDetail.js's liveInspectionMap "my position" pattern (updateLiveInspectionMyPosition_):
+ * a single self marker that's moved (not recreated) on every watchPosition tick, with the map
+ * re-centered on it each time via setView(latlng, currentZoom, {animate:false}) -- so the inspector
+ * stays centered no matter where they walk, while still being free to zoom in/out between ticks (the
+ * next recenter keeps whatever zoom they left it at). Starts at the tile layer's own max zoom (19),
+ * matching "max zoom as default." Module-level state + explicit destroy (called from the Back button
+ * and on successful submit above) follows the same manual-cleanup convention already used everywhere
+ * else in the app for a Leaflet map + geolocation watch pairing -- see destroyLiveInspectionMap_'s own
+ * header comment in eventDetail.js for why there's no generic route-change hook to rely on instead.
+ */
+var findingLocationMapInstance_ = null;
+var findingLocationMyMarker_ = null;
+var findingLocationWatchId_ = null;
+
+function stopFindingLocationWatch_() {
+  if (findingLocationWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(findingLocationWatchId_); findingLocationWatchId_ = null; }
+}
+function destroyFindingLocationMap_() {
+  stopFindingLocationWatch_();
+  if (findingLocationMapInstance_) { findingLocationMapInstance_.remove(); findingLocationMapInstance_ = null; }
+  findingLocationMyMarker_ = null;
+}
+
+function initFindingLocationMap_() {
+  destroyFindingLocationMap_(); // in case a previous visit left a GPS watch/map running (same defensive pattern as tabInspections/destroyLiveInspectionMap_)
+  var el = document.getElementById('findingLocationMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    return;
+  }
+  setTimeout(function () {
+    if (!document.getElementById('findingLocationMap')) return;
+    // 19 = the OSM tile layer's own maxZoom just below -- "max zoom as default."
+    findingLocationMapInstance_ = HululLeaflet.map('findingLocationMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 19);
+    UI.requireClickToActivateMap(findingLocationMapInstance_, el);
+    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(findingLocationMapInstance_);
+    setTimeout(function () { if (findingLocationMapInstance_) findingLocationMapInstance_.invalidateSize(); }, 150);
+    startFindingLocationWatch_();
+  }, 0);
+}
+
+function updateFindingMyPosition_(latlng) {
+  if (!findingLocationMapInstance_) return;
+  if (!findingLocationMyMarker_) {
+    var icon = HululLeaflet.divIcon({
+      className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'
+    });
+    findingLocationMyMarker_ = HululLeaflet.marker(latlng, { icon: icon, zIndexOffset: 1000 }).addTo(findingLocationMapInstance_);
+  } else {
+    findingLocationMyMarker_.setLatLng(latlng);
+  }
+  // REQ: "When an inspector moves the map moves but his location remains centred."
+  findingLocationMapInstance_.setView(latlng, findingLocationMapInstance_.getZoom(), { animate: false });
+}
+
+function startFindingLocationWatch_() {
+  var banner = document.getElementById('findingLocationBanner');
+  if (!navigator.geolocation) {
+    if (banner) banner.textContent = 'Location isn\'t available in this browser.';
+    return;
+  }
+  if (banner) banner.innerHTML = ICON('gps_locating') + ' Getting your location…';
+  stopFindingLocationWatch_();
+  findingLocationWatchId_ = navigator.geolocation.watchPosition(function (pos) {
+    var freshBanner = document.getElementById('findingLocationBanner');
+    if (freshBanner) freshBanner.innerHTML = '';
+    updateFindingMyPosition_([pos.coords.latitude, pos.coords.longitude]);
+  }, function () {
+    var freshBanner = document.getElementById('findingLocationBanner');
+    if (freshBanner) freshBanner.textContent = 'Couldn\'t get your location — check GPS/location permission.';
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
 }
 
 /* ---------------- Finding detail / workflow page (route: #/events/:id/findings/:findingId) ---------------- */
@@ -216,6 +314,7 @@ async function renderFindingDetail(params) {
   var eventId = params.id;
   var findingId = params.findingId;
   var root = document.getElementById('viewRoot');
+  destroyFindingLocationMap_(); // in case a New Finding visit left the GPS watch/map running (same defensive pattern as tabInspections)
   root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
 
   var data;

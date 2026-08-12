@@ -333,12 +333,16 @@ function listInspectionParticipants(user, p) {
   // Merged so a vendor with two shift accounts (see addPlaceAccount in Places.gs) shows up once in
   // the live inspection's choose-participant list/map, not once per account -- see
   // mergeParticipantsByLocation_ in Participants.gs.
+  // REQ: "Across all maps any participant with a logged risk turns red dot with a number above the
+  // dot." findingsOpenCountByParticipant_ lives in Participants.gs.
+  var countById = findingsOpenCountByParticipant_();
   return mergeParticipantsByLocation_(venueParticipants).map(function (pt) {
     var isRelevant = participantRelevantToInspection_(pt, inspection, inspectorZoneIds);
     var c = isRelevant ? inspectionParticipantCoverage_(inspection, pt.id) : { total: 0, done: 0, openItems: [] };
     return Object.assign({}, pt, {
       isRelevant: isRelevant, checklistTotal: c.total, checklistDone: c.done,
-      checklistCompleted: isRelevant && c.total > 0 && c.openItems.length === 0
+      checklistCompleted: isRelevant && c.total > 0 && c.openItems.length === 0,
+      openFindingsCount: countById[pt.id] || 0
     });
   });
 }

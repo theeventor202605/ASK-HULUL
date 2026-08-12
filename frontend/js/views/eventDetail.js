@@ -495,10 +495,9 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
       var latlng = [Number(pl.lat), Number(pl.lng)];
       bounds.push(latlng);
       var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
-      var icon = HululLeaflet.divIcon({
-        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
-        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
-      });
+      // REQ: "Across all maps any participant with a logged risk turns red dot with a number above
+      // the dot..." -- UI.placeMarkerIcon (ui.js) is the shared builder every map's dots go through.
+      var icon = UI.placeMarkerIcon(color, pl.openFindingsCount);
       var marker = HululLeaflet.marker(latlng, { icon: icon }).addTo(eventPlacesMapInstance_);
       // A permanently-visible label per dot is what was overlapping when places sit close together --
       // a tooltip only ever shows one name at a time (on hover, or forced open on the focused place).
@@ -1716,12 +1715,12 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
     participants.forEach(function (p) {
       if (p.lat === '' || p.lat == null || p.lng === '' || p.lng == null) return;
       // yellow = relevant (this discipline + inspector's zone) and still pending; green = relevant
-      // and done; grey = not relevant to this particular inspection.
+      // and done; grey = not relevant to this particular inspection. REQ: "Across all maps any
+      // participant with a logged risk turns red dot..." -- UI.placeMarkerIcon overrides all of the
+      // above with red + a badge whenever this participant has an open Finding, since that outranks
+      // relevance/completion status.
       var color = p.isRelevant ? (p.checklistCompleted ? '#16a34a' : '#eab308') : '#94a3b8';
-      var icon = HululLeaflet.divIcon({
-        className: 'place-marker-icon', iconSize: [14, 14], iconAnchor: [7, 7],
-        html: '<div class="place-marker"><div class="place-marker-dot" style="background:' + color + ';"></div></div>'
-      });
+      var icon = UI.placeMarkerIcon(color, p.openFindingsCount);
       var marker = HululLeaflet.marker([Number(p.lat), Number(p.lng)], { icon: icon }).addTo(liveInspectionMapInstance_);
       marker.bindTooltip(esc(p.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
       marker.on('click', function () { openRecordResultsModal(eventId, inspection, p); });
