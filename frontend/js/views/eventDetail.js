@@ -199,11 +199,17 @@ async function tabVenue(content, eventId, detail) {
   // every Event held at this venue.
   var results = await Promise.all([
     detail.venue ? Api.call('listPlaces', { venueId: detail.venue.id }) : Promise.resolve([]),
-    detail.venue ? Api.call('listParticipants', { venueId: detail.venue.id }) : Promise.resolve([])
+    detail.venue ? Api.call('listParticipants', { venueId: detail.venue.id }) : Promise.resolve([]),
+    // includeDeleted: true -- a place/participant can still reference a since-deleted zone
+    // (soft-delete, see activeZonesForVenue_/listZones in Events.gs); without deleted zones in
+    // zonesById below, zoneDisplayNames_ has no name to resolve and falls back to printing the raw
+    // zone id in the Places table instead. detail.zones (active-only, used for the zones table/map
+    // above) is untouched.
+    detail.venue ? Api.call('listZones', { venueId: detail.venue.id, includeDeleted: true }) : Promise.resolve([])
   ]);
-  var places = results[0], participants = results[1];
+  var places = results[0], participants = results[1], zonesAllForDisplay = results[2];
   var placesWithCoords = places.filter(function (p) { return p.lat !== '' && p.lat != null && p.lng !== '' && p.lng != null; });
-  var zonesById = {}; (detail.zones || []).forEach(function (z) { zonesById[z.id] = z; });
+  var zonesById = {}; zonesAllForDisplay.forEach(function (z) { zonesById[z.id] = z; });
 
   // Per-zone counts for the zones table's calculated columns -- place type counts (Places' reusable
   // catalog: Operator/Vendor/Exhibitor/Other) plus a total Participants count (event-scoped

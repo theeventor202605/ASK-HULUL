@@ -49,15 +49,21 @@ async function tabParticipants(content, eventId, detail) {
     return;
   }
 
+  // Active-only, for the Add-a-participant zone picker and boundary map's auto-detect.
   var zones = detail.zones || [];
-  var zonesById = {}; zones.forEach(function (z) { zonesById[z.id] = z; });
 
   var results = await Promise.all([
     Api.call('listPlaces', { eventId: eventId }),
     Api.call('listParticipants', { venueId: venue.id, eventId: eventId }),
-    Api.call('listDisciplines', {})
+    Api.call('listDisciplines', {}),
+    // includeDeleted: true -- a participant can still reference a since-deleted zone (soft-delete,
+    // see activeZonesForVenue_/listZones in Events.gs); without deleted zones in zonesById below,
+    // zoneDisplayNames_ has no name to resolve and falls back to printing the raw zone id in the
+    // table instead. detail.zones (active-only, above) stays what's actually offered as a choice.
+    Api.call('listZones', { venueId: venue.id, includeDeleted: true })
   ]);
-  var places = results[0], participants = results[1], disciplines = results[2];
+  var places = results[0], participants = results[1], disciplines = results[2], zonesAll = results[3];
+  var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
 
   var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
   var usersById = {};

@@ -501,10 +501,17 @@ async function renderVenuePlaces(params) {
   var canManage = EMC_MANAGE_ROLES.indexOf(role) !== -1;
   var hasBoundary = !!parseBoundaryClient_(venue.boundary);
 
-  var [zones, places] = await Promise.all([
-    Api.call('listZones', { venueId: venueId }), Api.call('listPlaces', { venueId: venueId })
+  var [zonesAll, places] = await Promise.all([
+    // includeDeleted: true -- a Place can still reference a since-deleted Zone (soft-delete, see
+    // activeZonesForVenue_/listZones in Events.gs), and without the deleted ones in zonesById below,
+    // zoneDisplayNames_ has no name to resolve and falls back to printing the raw zone id instead.
+    // `zones` (active-only) is what actually gets offered as choices -- the Add-a-place zone picker
+    // and the boundary map's auto-detect both stay deleted-zone-free, only the table's name lookup
+    // needs the full history.
+    Api.call('listZones', { venueId: venueId, includeDeleted: true }), Api.call('listPlaces', { venueId: venueId })
   ]);
-  var zonesById = {}; zones.forEach(function (z) { zonesById[z.id] = z; });
+  var zones = zonesAll.filter(function (z) { return z.status !== 'Deleted'; });
+  var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
 
   var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
   var usersById = {};
