@@ -2169,8 +2169,16 @@ async function tabFindings(content, eventId) {
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_findings') + '</div>' +
     (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">+ Log ' + esc(Term('finding').toLowerCase()) + '</button>' : '') + '</div>' +
+    // REQ (follow-up): "Change Sub Category to Checklist Type and fill automatically." Findings.category
+    // is where the New Finding form's own "Checklist Type" dropdown value actually gets saved
+    // (findings.js renderNewFinding -- category: fChecklistType.value, defaulted to 'Other' server-side
+    // when left blank, see createFinding/Findings.gs) -- "Category" was always a mislabel for that same
+    // data. subCategory, meanwhile, has no UI that ever sets it -- it's a dead column, always blank.
+    // Rather than relabel Sub category to Checklist Type and have it show nothing, the one real column
+    // (already auto-filled from the finding's own Checklist Type at creation time) is relabeled instead,
+    // and the always-empty one is dropped so there's no confusing duplicate/blank column.
     '<div class="card-body">' + UI.table([
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: 'Category' }, { key: 'subCategory', label: 'Sub category' },
+      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: 'Checklist Type' },
       { key: 'riskLevel', label: 'Severity', render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'description', label: 'Description' }, { key: 'participantName', label: Term('participant') },
