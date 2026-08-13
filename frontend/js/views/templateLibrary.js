@@ -23,31 +23,31 @@ async function renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage) {
   var root = document.getElementById('viewRoot');
 
   if (isSystemAdmin && !orgId) {
-    root.innerHTML = '<div class="page-header"><div><div class="page-title">' + esc(Term('template_plural')) + ' Library</div></div></div>' +
-      '<div class="empty-state">No Inspection Company organizations found yet.</div>';
+    root.innerHTML = '<div class="page-header"><div><div class="page-title">' + esc(t('template_library_title', { term: Term('template_plural') })) + '</div></div></div>' +
+      '<div class="empty-state">' + esc(t('empty_no_inspection_orgs')) + '</div>';
     return;
   }
 
   var library = orgId ? await Api.call('listTemplateLibrary', { orgId: orgId }) : [];
 
   var orgPicker = isSystemAdmin
-    ? '<div class="card" style="margin-bottom:16px;"><div class="card-body">' + UI.field('Inspection Company',
+    ? '<div class="card" style="margin-bottom:16px;"><div class="card-body">' + UI.field(t('field_inspection_company'),
         '<select id="fLibOrg" class="field-input">' +
           orgs.map(function (o) { return '<option value="' + o.id + '"' + (o.id === orgId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') +
         '</select>') + '</div></div>'
     : '';
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + esc(Term('template_plural')) + ' Library</div>' +
-    '<div class="page-subtitle">Master documents your Project Managers can send to events</div></div>' +
-    (canManage ? '<button class="btn btn-primary" id="newLibTplBtn">+ New template</button>' : '') + '</div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(t('template_library_title', { term: Term('template_plural') })) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('library_subtitle')) + '</div></div>' +
+    (canManage ? '<button class="btn btn-primary" id="newLibTplBtn">' + esc(t('new_template_btn')) + '</button>' : '') + '</div>' +
     orgPicker +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'name', label: 'Name' },
-      { key: 'fileName', label: 'Current file', render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || 'view') + '</a>' : '—' },
-      { key: 'updatedAt', label: 'Updated', render: r => r.uploadedBy ? UI.fmtDate(r.updatedAt) : '—' }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="Upload new version" data-upload-version="' + r.id + '">' + ICON('reupload_version') + '</button>' }] : []),
-      library, { emptyText: 'No templates yet.' }) + '</div></div>';
+      { key: 'name', label: t('col_name') },
+      { key: 'fileName', label: t('col_current_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
+      { key: 'updatedAt', label: t('col_updated'), render: r => r.uploadedBy ? UI.fmtDate(r.updatedAt) : '—' }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('upload_new_version_title')) + '" data-upload-version="' + r.id + '">' + ICON('reupload_version') + '</button>' }] : []),
+      library, { emptyText: esc(t('empty_no_templates')) }) + '</div></div>';
 
   if (isSystemAdmin) {
     document.getElementById('fLibOrg').onchange = function () { renderLibraryFor_(this.value, orgs, true, canManage); };
@@ -61,13 +61,13 @@ async function renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage) {
 }
 
 function openNewLibraryTemplateModal_(orgId, orgs, isSystemAdmin, canManage) {
-  var body = UI.field('Name', '<input id="fLibName" class="field-input" placeholder="e.g. ZSMP" />') +
-    UI.field('Initial file (optional)', '<input type="file" id="fLibFile" class="field-input" />');
-  UI.openModal('New template', body, [
+  var body = UI.field(t('col_name'), '<input id="fLibName" class="field-input" placeholder="e.g. ZSMP" />') +
+    UI.field(t('field_initial_file_optional'), '<input type="file" id="fLibFile" class="field-input" />');
+  UI.openModal(t('new_template_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         var name = document.getElementById('fLibName').value.trim();
-        if (!name) { UI.toast('Name is required', 'error'); return; }
+        if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
         try {
           var payload = { orgId: orgId, name: name };
           var fileInput = document.getElementById('fLibFile');
@@ -77,25 +77,25 @@ function openNewLibraryTemplateModal_(orgId, orgs, isSystemAdmin, canManage) {
             payload.mimeType = fileInput.files[0].type;
           }
           await Api.call('createLibraryTemplate', payload);
-          UI.closeModal(); UI.toast('Template created', 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);
+          UI.closeModal(); UI.toast(t('toast_template_created'), 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);
         } catch (err) { UI.error(err); }
       } }
   ]);
 }
 
 function openUploadLibraryVersionModal_(templateLibraryId, orgId, orgs, isSystemAdmin, canManage) {
-  var body = UI.field('New file', '<input type="file" id="fLibVerFile" class="field-input" />');
-  UI.openModal('Upload new version', body, [
+  var body = UI.field(t('field_new_file'), '<input type="file" id="fLibVerFile" class="field-input" />');
+  UI.openModal(t('upload_new_version_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         var fileInput = document.getElementById('fLibVerFile');
-        if (!fileInput.files[0]) { UI.toast('Choose a file first', 'error'); return; }
+        if (!fileInput.files[0]) { UI.toast(t('toast_choose_file_first'), 'error'); return; }
         try {
           await Api.call('uploadLibraryTemplateVersion', {
             templateLibraryId: templateLibraryId, fileBase64: await fileToBase64(fileInput.files[0]),
             fileName: fileInput.files[0].name, mimeType: fileInput.files[0].type
           });
-          UI.closeModal(); UI.toast('New version uploaded', 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);
+          UI.closeModal(); UI.toast(t('toast_new_version_uploaded'), 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);
         } catch (err) { UI.error(err); }
       } }
   ]);

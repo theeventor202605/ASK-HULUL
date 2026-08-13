@@ -10,11 +10,13 @@
  *    Config sheet as a JSON-array value (see templateUploaderRoles_/templateReviewerRoles_ in
  *    Templates.gs) but edited here as a proper multi-select instead of raw JSON text on General.
  */
-var CONFIG_TABS = [
-  ['general', 'General'],
-  ['process', 'Process'],
-  ['escalations', 'Escalations']
-];
+function CONFIG_TABS_() {
+  return [
+    ['general', t('tab_general')],
+    ['process', t('tab_process')],
+    ['escalations', t('tab_escalations')]
+  ];
+}
 
 async function renderConfig(params) {
   var root = document.getElementById('viewRoot');
@@ -22,12 +24,12 @@ async function renderConfig(params) {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_config') + '</div>' +
-    '<div class="page-subtitle">System settings</div></div></div>' +
+    '<div class="page-subtitle">' + esc(t('config_subtitle')) + '</div></div></div>' +
     '<div class="tabbar" id="configTabbar"></div>' +
     '<div id="configTabContent"></div>';
 
   var tabbar = document.getElementById('configTabbar');
-  tabbar.innerHTML = CONFIG_TABS.map(function (tb) {
+  tabbar.innerHTML = CONFIG_TABS_().map(function (tb) {
     return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-tab="' + tb[0] + '">' + esc(tb[1]) + '</div>';
   }).join('');
   tabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
@@ -38,18 +40,18 @@ async function renderConfig(params) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   var renderers = { general: renderConfigGeneral_, process: renderConfigProcess_, escalations: renderConfigEscalations_ };
   try { await (renderers[activeTab] || renderConfigGeneral_)(content); }
-  catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">Failed to load this tab.</div>'; }
+  catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; }
 }
 
 /* ---------------- General (raw key/value settings) ---------------- */
 async function renderConfigGeneral_(content) {
   var rows = await Api.call('listConfig', {});
   content.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">Settings</div>' +
-    '<button class="btn btn-primary btn-sm" id="newCfgBtn">+ New / update setting</button></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('settings_card_title')) + '</div>' +
+    '<button class="btn btn-primary btn-sm" id="newCfgBtn">' + esc(t('new_update_setting_btn')) + '</button></div>' +
     '<div class="card-body">' + UI.table([
-      { key: 'key', label: 'Key' }, { key: 'value', label: 'Value' },
-      { key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit="' + esc(r.key) + '" data-value="' + esc(r.value) + '">' + ICON('edit') + '</button>' }
+      { key: 'key', label: t('col_key') }, { key: 'value', label: t('col_value') },
+      { key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit="' + esc(r.key) + '" data-value="' + esc(r.value) + '">' + ICON('edit') + '</button>' }
     ], rows, {}) + '</div></div>';
 
   document.getElementById('newCfgBtn').onclick = () => openCfgModal_('', '');
@@ -59,14 +61,14 @@ async function renderConfigGeneral_(content) {
 }
 
 function openCfgModal_(key, value) {
-  var body = UI.field('Key', '<input id="fCfgKey" class="field-input" value="' + esc(key) + '" ' + (key ? 'readonly' : '') + ' />') +
-    UI.field('Value', '<input id="fCfgValue" class="field-input" value="' + esc(value) + '" />');
-  UI.openModal(key ? 'Update setting' : 'New setting', body, [
+  var body = UI.field(t('field_key'), '<input id="fCfgKey" class="field-input" value="' + esc(key) + '" ' + (key ? 'readonly' : '') + ' />') +
+    UI.field(t('field_value'), '<input id="fCfgValue" class="field-input" value="' + esc(value) + '" />');
+  UI.openModal(key ? t('update_setting_title') : t('new_setting_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         try {
           await Api.call('setConfig', { key: document.getElementById('fCfgKey').value, value: document.getElementById('fCfgValue').value });
-          UI.closeModal(); UI.toast('Setting saved', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_setting_saved'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -80,11 +82,11 @@ function openCfgModal_(key, value) {
 async function renderConfigProcess_(content) {
   var cfg = await Api.call('getTemplateProcessConfig', {});
   content.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">Readiness ' + esc(Term('template_plural')) + ' process</div>' +
-    '<div class="muted" style="font-size:11.5px;">Who fills each step — pick one or more roles for each. SystemAdmin can always act, regardless of what\'s picked here.</div></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('readiness_process_title', { term: Term('template_plural') })) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('readiness_process_subtitle')) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
-      processRoleFieldHtml_('Upload &amp; submit documents', 'Event Manager step — uploads the completed document and clicks Submit.', cfg.allRoles, cfg.uploaderRoles, 'cfgUploader') +
-      processRoleFieldHtml_('Review &amp; evaluate documents', 'Inspection Analyst step — marks a submitted document Evaluated or Missed.', cfg.allRoles, cfg.reviewerRoles, 'cfgReviewer') +
+      processRoleFieldHtml_(t('upload_submit_docs_title'), t('upload_submit_docs_subtitle'), cfg.allRoles, cfg.uploaderRoles, 'cfgUploader') +
+      processRoleFieldHtml_(t('review_evaluate_docs_title'), t('review_evaluate_docs_subtitle'), cfg.allRoles, cfg.reviewerRoles, 'cfgReviewer') +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
       '<button class="btn btn-primary" id="saveProcessBtn">' + t('save') + '</button>' +
@@ -94,10 +96,10 @@ async function renderConfigProcess_(content) {
     try {
       var uploaderRoles = readCheckedRoles_('cfgUploader');
       var reviewerRoles = readCheckedRoles_('cfgReviewer');
-      if (!uploaderRoles.length) { UI.toast('Pick at least one role for uploading & submitting', 'error'); return; }
-      if (!reviewerRoles.length) { UI.toast('Pick at least one role for reviewing', 'error'); return; }
+      if (!uploaderRoles.length) { UI.toast(t('toast_pick_uploader_role'), 'error'); return; }
+      if (!reviewerRoles.length) { UI.toast(t('toast_pick_reviewer_role'), 'error'); return; }
       await Api.call('setTemplateProcessConfig', { uploaderRoles: uploaderRoles, reviewerRoles: reviewerRoles });
-      UI.toast('Process settings saved', 'success');
+      UI.toast(t('toast_process_settings_saved'), 'success');
       Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -136,22 +138,22 @@ function readCheckedRoles_(prefix) {
 async function renderConfigEscalations_(content) {
   var cfg = await Api.call('getEscalationConfig', {});
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Escalation alerts</div>' +
-    '<div class="muted" style="font-size:11.5px;">When an escalation triggers, the recipient\'s screen locks with a red alert and outline until they click Noted, which opens the Escalations tab with that finding selected.</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('escalation_alerts_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('escalation_alerts_subtitle')) + '</div></div>' +
     '<div class="card-body">' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;">' +
-        '<input type="checkbox" id="cfgLockScreenEnabled"' + (cfg.lockScreenEnabled ? ' checked' : '') + ' /> Lock the recipient\'s screen until they click Noted' +
+        '<input type="checkbox" id="cfgLockScreenEnabled"' + (cfg.lockScreenEnabled ? ' checked' : '') + ' /> ' + esc(t('lock_screen_label')) +
       '</label>' +
-      '<div class="muted" style="font-size:11px;margin-top:6px;">Turning this off still shows the blinking alert icon and badge count in the top bar — it just won\'t take over the screen.</div>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('lock_screen_hint')) + '</div>' +
     '</div></div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Tier 1</div>' +
-    '<div class="muted" style="font-size:11.5px;">Fires once a Finding\'s own resolution deadline (set per checklist item) passes. That timing isn\'t changed here — only who it notifies.</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tier1_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('tier1_subtitle')) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
-      processRoleFieldHtml_('To', 'Gets the full-screen alert (if enabled above).', cfg.allRoles, cfg.tier1.toRoles, 'cfgTier1To') +
-      processRoleFieldHtml_('Cc', 'Notified and counted on the bell badge — no screen lock.', cfg.allRoles, cfg.tier1.ccRoles, 'cfgTier1Cc') +
+      processRoleFieldHtml_(esc(t('field_to')), t('field_to_hint'), cfg.allRoles, cfg.tier1.toRoles, 'cfgTier1To') +
+      processRoleFieldHtml_(esc(t('field_cc')), t('field_cc_hint'), cfg.allRoles, cfg.tier1.ccRoles, 'cfgTier1Cc') +
     '</div></div>' +
-    escalationTierCardHtml_('Tier 2', 'Fires this long after Tier 1, if the finding is still unresolved.', 2, cfg) +
-    escalationTierCardHtml_('Tier 3', 'Fires this long after Tier 2, if the finding is still unresolved.', 3, cfg) +
+    escalationTierCardHtml_(t('tier2_title'), t('tier2_subtitle'), 2, cfg) +
+    escalationTierCardHtml_(t('tier3_title'), t('tier3_subtitle'), 3, cfg) +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;">' +
       '<button class="btn btn-primary" id="saveEscalationCfgBtn">' + t('save') + '</button>' +
     '</div>';
@@ -162,7 +164,7 @@ async function renderConfigEscalations_(content) {
       var tier2ToRoles = readCheckedRoles_('cfgTier2To');
       var tier3ToRoles = readCheckedRoles_('cfgTier3To');
       if (!tier1ToRoles.length || !tier2ToRoles.length || !tier3ToRoles.length) {
-        UI.toast('Each tier needs at least one To role', 'error');
+        UI.toast(t('toast_each_tier_needs_to_role'), 'error');
         return;
       }
       await Api.call('setEscalationConfig', {
@@ -171,7 +173,7 @@ async function renderConfigEscalations_(content) {
         tier3: { toRoles: tier3ToRoles, ccRoles: readCheckedRoles_('cfgTier3Cc'), delayMinutesByRisk: escalationReadDelayMinutesByRisk_('cfgTier3', cfg.riskLevels) },
         lockScreenEnabled: document.getElementById('cfgLockScreenEnabled').checked
       });
-      UI.toast('Escalation settings saved', 'success');
+      UI.toast(t('toast_escalation_settings_saved'), 'success');
       Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -183,16 +185,16 @@ function escalationTierCardHtml_(title, subtitle, tierNum, cfg) {
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(title) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(subtitle) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
-      processRoleFieldHtml_('To', 'Gets the full-screen alert (if enabled above).', cfg.allRoles, tierCfg.toRoles, prefix + 'To') +
-      processRoleFieldHtml_('Cc', 'Notified and counted on the bell badge — no screen lock.', cfg.allRoles, tierCfg.ccRoles, prefix + 'Cc') +
-      '<div><div class="field-label" style="margin-top:0;">Delay by risk level</div>' +
+      processRoleFieldHtml_(esc(t('field_to')), t('field_to_hint'), cfg.allRoles, tierCfg.toRoles, prefix + 'To') +
+      processRoleFieldHtml_(esc(t('field_cc')), t('field_cc_hint'), cfg.allRoles, tierCfg.ccRoles, prefix + 'Cc') +
+      '<div><div class="field-label" style="margin-top:0;">' + esc(t('delay_by_risk_level')) + '</div>' +
         escalationDelayRowsHtml_(prefix, tierCfg.delayMinutesByRisk, cfg.riskLevels) +
       '</div>' +
     '</div></div>';
 }
 
 function escalationDelayRowsHtml_(prefix, delayMinutesByRisk, riskLevels) {
-  return '<table class="data-table" style="margin-top:8px;"><thead><tr><th>Risk level</th><th>Hours</th><th>Minutes</th></tr></thead><tbody>' +
+  return '<table class="data-table" style="margin-top:8px;"><thead><tr><th>' + esc(t('col_risk_level')) + '</th><th>' + esc(t('col_hours')) + '</th><th>' + esc(t('col_minutes')) + '</th></tr></thead><tbody>' +
     riskLevels.map(function (level) {
       var total = Number(delayMinutesByRisk[level]) || 0;
       var hours = Math.floor(total / 60), minutes = total % 60;

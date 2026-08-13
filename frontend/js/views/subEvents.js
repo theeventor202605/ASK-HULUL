@@ -23,7 +23,7 @@ async function renderSubEvents(params) {
   if (!events.length) {
     root.innerHTML =
       '<div class="page-header"><div><div class="page-title">' + esc(Term('subEvent_plural')) + '</div>' +
-      '<div class="page-subtitle">' + esc(Term('subEvent_plural') + ' nested inside a parent ' + Term('event')) + '</div></div></div>' +
+      '<div class="page-subtitle">' + esc(t('subevents_nested_subtitle', { term: Term('subEvent_plural'), eventTerm: Term('event') })) + '</div></div></div>' +
       '<div class="empty-state">' + t('no_data') + '</div>';
     return;
   }
@@ -37,7 +37,7 @@ async function renderSubEvents(params) {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('subEvent_plural')) + '</div>' +
-    '<div class="page-subtitle">' + esc(Term('subEvent_plural') + ' nested inside a parent ' + Term('event')) + '</div></div></div>' +
+    '<div class="page-subtitle">' + esc(t('subevents_nested_subtitle', { term: Term('subEvent_plural'), eventTerm: Term('event') })) + '</div></div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       '<div class="card" style="width:250px;flex-shrink:0;">' +
         '<div class="card-header"><div class="card-title">' + esc(Term('project_plural')) + '</div></div>' +
@@ -86,7 +86,7 @@ async function renderSubEvents(params) {
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.projectId && !rows.some(function (r) { return r.id === view.projectId; })) view.projectId = '';
     var panel = document.getElementById('sevProjectPanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('project_plural'), rows, view.projectId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('project_plural') }), rows, view.projectId);
     panel.querySelectorAll('.sev-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.projectId = row.getAttribute('data-id');
@@ -103,7 +103,7 @@ async function renderSubEvents(params) {
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.venueId && !rows.some(function (r) { return r.id === view.venueId; })) view.venueId = '';
     var panel = document.getElementById('sevVenuePanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('venue_plural'), rows, view.venueId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('venue_plural') }), rows, view.venueId);
     panel.querySelectorAll('.sev-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.venueId = row.getAttribute('data-id');
@@ -121,7 +121,7 @@ async function renderSubEvents(params) {
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.eventId && !rows.some(function (r) { return r.id === view.eventId; })) view.eventId = '';
     var panel = document.getElementById('sevEventPanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('event_plural'), rows, view.eventId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('event_plural') }), rows, view.eventId);
     panel.querySelectorAll('.sev-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.eventId = row.getAttribute('data-id');
@@ -140,13 +140,13 @@ async function renderSubEvents(params) {
       var rows = subEventsByEvent[event.id] || [];
       body.innerHTML =
         '<div class="card"><div class="card-header"><div>' +
-          '<div class="card-title">' + esc(Term('subEvent_plural') + ' of ') + esc(event.name) +
+          '<div class="card-title">' + esc(t('subevents_of_prefix', { term: Term('subEvent_plural') })) + esc(event.name) +
           (venue ? ' <span class="muted" style="font-weight:400;font-size:12.5px;">(' + esc(venue.name) + ')</span>' : '') + '</div>' +
           '<div class="muted" style="font-size:12px;margin-top:4px;">' + esc(fmtDMY_(event.startDateTime)) + ' - ' + esc(fmtDMY_(event.endDateTime)) + '</div>' +
         '</div>' +
-        '<button class="btn btn-primary btn-sm" id="newSevBtn">+ New ' + esc(Term('subEvent').toLowerCase()) + '</button></div>' +
+        '<button class="btn btn-primary btn-sm" id="newSevBtn">' + esc(t('new_x', { term: Term('subEvent').toLowerCase() })) + '</button></div>' +
         '<div class="card-body">' + UI.table([
-          { key: 'name', label: 'Name', render: r =>
+          { key: 'name', label: t('col_name'), render: r =>
               '<div style="font-weight:600;">' + esc(r.name) + '</div>' +
               '<div style="font-size:11px;color:var(--text-600);margin-top:2px;">' + UI.fmtDate(r.startDateTime) + ' – ' + UI.fmtDate(r.endDateTime) + '</div>' }
         ], rows, {}) + '</div></div>';
@@ -159,14 +159,14 @@ async function renderSubEvents(params) {
       var combined = [];
       scoped.forEach(function (e) { (subEventsByEvent[e.id] || []).forEach(function (s) { combined.push(s); }); });
       body.innerHTML =
-        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural') + ' of All ' + Term('event_plural')) + '</div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('subevents_of_all_events', { term: Term('subEvent_plural'), eventTerm: Term('event_plural') })) + '</div></div>' +
         '<div class="card-body">' + UI.table([
-          { key: 'name', label: 'Name', render: r =>
+          { key: 'name', label: t('col_name'), render: r =>
               '<div style="font-weight:600;">' + esc(r.name) + '</div>' +
               '<div style="font-size:11px;color:var(--text-600);margin-top:2px;">' + UI.fmtDate(r.startDateTime) + ' – ' + UI.fmtDate(r.endDateTime) + '</div>' },
           { key: 'eventId', label: Term('event'), render: r => esc(eventNameById[r.eventId] || r.eventId) }
-        ], combined, { emptyText: 'No ' + esc(Term('subEvent_plural').toLowerCase()) + ' under the current filters.' }) +
-        '<div class="muted" style="font-size:11.5px;margin-top:10px;">Pick a specific ' + esc(Term('event').toLowerCase()) + ' on the left to add a new ' + esc(Term('subEvent').toLowerCase()) + '.</div>' +
+        ], combined, { emptyText: esc(t('empty_no_subevents_filtered', { term: Term('subEvent_plural').toLowerCase() })) }) +
+        '<div class="muted" style="font-size:11.5px;margin-top:10px;">' + esc(t('pick_event_hint', { eventTerm: Term('event').toLowerCase(), subEventTerm: Term('subEvent').toLowerCase() })) + '</div>' +
         '</div></div>';
     }
   }
@@ -200,17 +200,16 @@ function openNewSubEventModal_(event, eventId) {
   function dtFieldHtml_(id) {
     return '<div style="display:flex;gap:6px;">' +
       '<input id="' + id + '" type="datetime-local" class="field-input" min="' + esc(min) + '" max="' + esc(max) + '" />' +
-      '<button type="button" class="btn btn-secondary btn-icon" id="' + id + 'Cal" title="Open calendar">' + ICON('open_calendar') + '</button>' +
+      '<button type="button" class="btn btn-secondary btn-icon" id="' + id + 'Cal" title="' + esc(t('open_calendar_title')) + '">' + ICON('open_calendar') + '</button>' +
     '</div>';
   }
-  var m = UI.field('Name', '<input id="fSevName" class="field-input" />') +
+  var m = UI.field(t('col_name'), '<input id="fSevName" class="field-input" />') +
     '<div class="form-row">' +
-      UI.field('Start', dtFieldHtml_('fSevStart')) +
-      UI.field('End', dtFieldHtml_('fSevEnd')) +
+      UI.field(t('col_start'), dtFieldHtml_('fSevStart')) +
+      UI.field(t('col_end'), dtFieldHtml_('fSevEnd')) +
     '</div>' +
-    '<div class="muted" style="font-size:11px;margin-top:-6px;">Must fall within the ' + esc(Term('event').toLowerCase()) + '\'s own window: ' +
-      UI.fmtDate(event.startDateTime) + ' – ' + UI.fmtDate(event.endDateTime) + '.</div>';
-  UI.openModal('New ' + Term('subEvent'), m, [
+    '<div class="muted" style="font-size:11px;margin-top:-6px;">' + esc(t('must_fall_within_window', { term: Term('event').toLowerCase(), start: UI.fmtDate(event.startDateTime), end: UI.fmtDate(event.endDateTime) })) + '</div>';
+  UI.openModal(t('new_x_title', { term: Term('subEvent') }), m, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         try {
@@ -218,7 +217,7 @@ function openNewSubEventModal_(event, eventId) {
             eventId: eventId, name: document.getElementById('fSevName').value,
             startDateTime: document.getElementById('fSevStart').value, endDateTime: document.getElementById('fSevEnd').value
           });
-          UI.closeModal(); UI.toast(Term('subEvent') + ' created', 'success');
+          UI.closeModal(); UI.toast(t('x_created', { term: Term('subEvent') }), 'success');
           window.location.hash = '#/sub-events?eventId=' + eventId; Router.resolve();
         } catch (err) { UI.error(err); }
       } }

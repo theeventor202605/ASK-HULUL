@@ -41,7 +41,7 @@ async function renderMeetings(params) {
   if (!events.length) {
     root.innerHTML =
       '<div class="page-header"><div><div class="page-title">' + esc(Term('meeting_plural')) + '</div>' +
-      '<div class="page-subtitle">' + esc(Term('meeting_plural') + ' scheduled per ' + Term('event')) + '</div></div></div>' +
+      '<div class="page-subtitle">' + esc(t('meetings_subtitle', { term: Term('meeting_plural'), eventTerm: Term('event') })) + '</div></div></div>' +
       '<div class="empty-state">' + t('no_data') + '</div>';
     return;
   }
@@ -57,14 +57,14 @@ async function renderMeetings(params) {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('meeting_plural')) + '</div>' +
-    '<div class="page-subtitle">' + esc(Term('meeting_plural') + ' scheduled per ' + Term('event')) + '</div></div>' +
+    '<div class="page-subtitle">' + esc(t('meetings_subtitle', { term: Term('meeting_plural'), eventTerm: Term('event') })) + '</div></div>' +
     // Always-visible entry point, independent of the left-rail filter selection below -- the
     // per-card "+ Schedule" button (meetingsCardHtml_) only renders once a specific Event/Sub-Event
     // is picked on the left, which left "All Events" (the page's own default landing state, and
     // the state after e.g. picking a Project with no Event yet chosen) with no way to schedule a
     // meeting at all. This one opens the same modal but with its own Event picker, so it works from
     // any filter state.
-    '<button class="btn btn-primary" id="newMtgHeaderBtn">+ Schedule ' + esc(Term('meeting').toLowerCase()) + '</button>' +
+    '<button class="btn btn-primary" id="newMtgHeaderBtn">' + esc(t('schedule_x_btn', { term: Term('meeting').toLowerCase() })) + '</button>' +
     '</div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       '<div class="card" style="width:250px;flex-shrink:0;">' +
@@ -126,10 +126,10 @@ async function renderMeetings(params) {
     var rows = projects.filter(function (pr) { return counts[pr.id]; })
       .map(function (pr) { return { id: pr.id, name: pr.name, count: counts[pr.id] }; })
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
-    if (noProject) rows.push({ id: '__none__', name: 'No ' + Term('project').toLowerCase(), count: noProject });
+    if (noProject) rows.push({ id: '__none__', name: t('label_no_project', { term: Term('project').toLowerCase() }), count: noProject });
     if (view.projectId && !rows.some(function (r) { return r.id === view.projectId; })) view.projectId = '';
     var panel = document.getElementById('mtgProjectPanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('project_plural'), rows, view.projectId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('project_plural') }), rows, view.projectId);
     panel.querySelectorAll('.mtg-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.projectId = row.getAttribute('data-id');
@@ -151,7 +151,7 @@ async function renderMeetings(params) {
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.venueId && !rows.some(function (r) { return r.id === view.venueId; })) view.venueId = '';
     var panel = document.getElementById('mtgVenuePanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('venue_plural'), rows, view.venueId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('venue_plural') }), rows, view.venueId);
     panel.querySelectorAll('.mtg-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.venueId = row.getAttribute('data-id');
@@ -171,7 +171,7 @@ async function renderMeetings(params) {
     }).sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.eventId && !rows.some(function (r) { return r.id === view.eventId; })) view.eventId = '';
     var panel = document.getElementById('mtgEventPanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('event_plural'), rows, view.eventId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('event_plural') }), rows, view.eventId);
     panel.querySelectorAll('.mtg-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.eventId = row.getAttribute('data-id');
@@ -193,7 +193,7 @@ async function renderMeetings(params) {
     }).sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.subEventId && !rows.some(function (r) { return r.id === view.subEventId; })) view.subEventId = '';
     var panel = document.getElementById('mtgSubEventPanel');
-    panel.innerHTML = panelRowsHtml_('All ' + Term('subEvent_plural'), rows, view.subEventId);
+    panel.innerHTML = panelRowsHtml_(t('all_x', { term: Term('subEvent_plural') }), rows, view.subEventId);
     panel.querySelectorAll('.mtg-filter-row').forEach(function (row) {
       row.onclick = function () {
         view.subEventId = row.getAttribute('data-id');
@@ -205,18 +205,18 @@ async function renderMeetings(params) {
 
   function meetingColumns_(withEventCol) {
     var cols = [
-      { key: 'type', label: 'Type' },
-      { key: 'scheduledAt', label: 'When', render: r => UI.fmtDate(r.scheduledAt) }
+      { key: 'type', label: t('col_type') },
+      { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) }
     ];
     if (withEventCol) cols.push({ key: 'eventId', label: Term('event'), render: r => esc(eventById[r.eventId] ? eventById[r.eventId].name : r.eventId) });
     cols.push({ key: 'subEventId', label: Term('subEvent'), render: r => r.subEventId && subEventById[r.subEventId] ? esc(subEventById[r.subEventId].name) : '<span class="muted">—</span>' });
-    cols.push({ key: 'notes', label: 'Notes' });
+    cols.push({ key: 'notes', label: t('col_notes') });
     return cols;
   }
 
   function meetingsCardHtml_(titleHtml, rows, withCreateBtn) {
     return '<div class="card"><div class="card-header"><div class="card-title">' + titleHtml + '</div>' +
-      (withCreateBtn ? '<button class="btn btn-primary btn-sm" id="newMtgBtn">+ Schedule</button>' : '') + '</div>' +
+      (withCreateBtn ? '<button class="btn btn-primary btn-sm" id="newMtgBtn">' + esc(t('schedule_btn')) + '</button>' : '') + '</div>' +
       '<div class="card-body">' + UI.table(meetingColumns_(false), rows, {}) + '</div></div>';
   }
 
@@ -226,21 +226,21 @@ async function renderMeetings(params) {
   // (header button, no Event selected yet). Both go through the same modal so there's one place
   // that knows how to actually call scheduleKickoff.
   function openScheduleMeetingModal_(defaultEventId, defaultSubEventId) {
-    var eventOptions = '<option value="">— Choose ' + esc(Term('event').toLowerCase()) + ' —</option>' +
+    var eventOptions = '<option value="">' + esc(t('choose_event_option', { term: Term('event').toLowerCase() })) + '</option>' +
       events.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
         .map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.id === defaultEventId ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
     var typeOptions = MEETING_TYPES.map(function (mt) { return '<option value="' + esc(mt) + '">' + esc(mt) + '</option>'; }).join('');
     var body =
       UI.field(Term('event'), '<select id="fMtgEvent" class="field-input">' + eventOptions + '</select>') +
-      UI.field(Term('subEvent') + ' (optional)', '<select id="fMtgSubEvent" class="field-input"><option value="">— None —</option></select>') +
-      UI.field('Meeting type', '<select id="fMtgType" class="field-input">' + typeOptions + '</select>') +
-      UI.field('Scheduled at', '<input id="fMtgWhen" type="datetime-local" class="field-input" />') +
-      UI.field('Notes', '<textarea id="fMtgNotes" class="field-input" rows="2"></textarea>');
-    UI.openModal('Schedule ' + Term('meeting').toLowerCase(), body, [
+      UI.field(t('field_project_optional', { term: Term('subEvent') }), '<select id="fMtgSubEvent" class="field-input"><option value="">' + esc(t('none_option')) + '</option></select>') +
+      UI.field(t('field_meeting_type'), '<select id="fMtgType" class="field-input">' + typeOptions + '</select>') +
+      UI.field(t('field_scheduled_at'), '<input id="fMtgWhen" type="datetime-local" class="field-input" />') +
+      UI.field(t('col_notes'), '<textarea id="fMtgNotes" class="field-input" rows="2"></textarea>');
+    UI.openModal(t('schedule_x_title', { term: Term('meeting').toLowerCase() }), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
       { label: t('create'), className: 'btn-primary', onClick: async function () {
           var eventId = document.getElementById('fMtgEvent').value;
-          if (!eventId) { UI.toast('Choose ' + Term('event').toLowerCase() + ' first', 'error'); return; }
+          if (!eventId) { UI.toast(t('toast_choose_event_first', { term: Term('event').toLowerCase() }), 'error'); return; }
           var subEventId = document.getElementById('fMtgSubEvent').value;
           try {
             await Api.call('scheduleKickoff', {
@@ -249,7 +249,7 @@ async function renderMeetings(params) {
               scheduledAt: document.getElementById('fMtgWhen').value,
               notes: document.getElementById('fMtgNotes').value
             });
-            UI.closeModal(); UI.toast(Term('meeting') + ' scheduled', 'success');
+            UI.closeModal(); UI.toast(t('toast_x_scheduled', { term: Term('meeting') }), 'success');
             window.location.hash = '#/meetings?eventId=' + eventId + (subEventId ? '&subEventId=' + subEventId : '');
             Router.resolve();
           } catch (err) { UI.error(err); }
@@ -261,7 +261,7 @@ async function renderMeetings(params) {
     function syncSubEventOptions(eventId) {
       var subSel = document.getElementById('fMtgSubEvent');
       var opts = subEvents.filter(function (s) { return s.eventId === eventId; });
-      subSel.innerHTML = '<option value="">— None —</option>' + opts.map(function (s) {
+      subSel.innerHTML = '<option value="">' + esc(t('none_option')) + '</option>' + opts.map(function (s) {
         return '<option value="' + esc(s.id) + '"' + (s.id === defaultSubEventId ? ' selected' : '') + '>' + esc(s.name) + '</option>';
       }).join('');
     }
@@ -285,7 +285,7 @@ async function renderMeetings(params) {
       var subVenue = subEvent2 ? venueById[subEvent2.venueId] : null;
       var rows = meetings.filter(function (m) { return m.subEventId === view.subEventId; });
       body.innerHTML = meetingsCardHtml_(
-        esc(Term('meeting_plural') + ' of ') + esc(sub.name) +
+        esc(t('meetings_of_prefix', { term: Term('meeting_plural') })) + esc(sub.name) +
           (subEvent2 ? ' <span class="muted" style="font-weight:400;font-size:12.5px;">(' + esc(subEvent2.name) + (subVenue ? ' · ' + esc(subVenue.name) : '') + ')</span>' : ''),
         rows, true
       );
@@ -296,7 +296,7 @@ async function renderMeetings(params) {
       var venue = venueById[event.venueId];
       var rows2 = meetings.filter(function (m) { return m.eventId === view.eventId; });
       body.innerHTML = meetingsCardHtml_(
-        esc(Term('meeting_plural') + ' of ') + esc(event.name) +
+        esc(t('meetings_of_prefix', { term: Term('meeting_plural') })) + esc(event.name) +
           (venue ? ' <span class="muted" style="font-weight:400;font-size:12.5px;">(' + esc(venue.name) + ')</span>' : ''),
         rows2, true
       );
@@ -308,9 +308,9 @@ async function renderMeetings(params) {
       var scopedIds = {}; scoped.forEach(function (e) { scopedIds[e.id] = true; });
       var combined = meetings.filter(function (m) { return scopedIds[m.eventId]; });
       body.innerHTML =
-        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('meeting_plural') + ' of All ' + Term('event_plural')) + '</div></div>' +
-        '<div class="card-body">' + UI.table(meetingColumns_(true), combined, { emptyText: 'No ' + esc(Term('meeting_plural').toLowerCase()) + ' under the current filters.' }) +
-        '<div class="muted" style="font-size:11.5px;margin-top:10px;">Pick a specific ' + esc(Term('event').toLowerCase()) + ' on the left, or use "+ Schedule ' + esc(Term('meeting').toLowerCase()) + '" above, to schedule one.</div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('meetings_of_all_events', { term: Term('meeting_plural'), eventTerm: Term('event_plural') })) + '</div></div>' +
+        '<div class="card-body">' + UI.table(meetingColumns_(true), combined, { emptyText: esc(t('empty_no_meetings_filtered', { term: Term('meeting_plural').toLowerCase() })) }) +
+        '<div class="muted" style="font-size:11.5px;margin-top:10px;">' + esc(t('pick_event_or_schedule_hint', { eventTerm: Term('event').toLowerCase(), term: Term('meeting').toLowerCase() })) + '</div>' +
         '</div></div>';
     }
   }

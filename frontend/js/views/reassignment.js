@@ -38,29 +38,29 @@ async function renderReassignment() {
   }));
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">Re-assignment</div>' +
-    '<div class="page-subtitle">Cover an absent team member\'s assignments with someone else</div></div></div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Mark someone unavailable</div></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(t('reassignment_title')) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('reassignment_subtitle')) + '</div></div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('mark_unavailable_card_title')) + '</div></div>' +
     '<div class="card-body form-row">' +
-      UI.field('User', '<select id="fMarkUser" class="field-input">' +
+      UI.field(t('field_user'), '<select id="fMarkUser" class="field-input">' +
         (availableCandidates.length
           ? availableCandidates.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + ' (' + esc(u.role) + ')</option>'; }).join('')
-          : '<option value="">No available users</option>') +
+          : '<option value="">' + esc(t('no_available_users')) + '</option>') +
         '</select>') +
-      UI.field('Reason (optional)', '<input type="text" id="fMarkReason" class="field-input" placeholder="e.g. sick leave, annual leave" />') +
+      UI.field(t('field_reason_optional'), '<input type="text" id="fMarkReason" class="field-input" placeholder="' + esc(t('reason_placeholder')) + '" />') +
     '</div>' +
-    '<div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="markUnavailBtn"' + (availableCandidates.length ? '' : ' disabled') + '>Mark unavailable</button></div></div>' +
+    '<div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="markUnavailBtn"' + (availableCandidates.length ? '' : ' disabled') + '>' + esc(t('mark_unavailable_btn')) + '</button></div></div>' +
     (unavailableUsers.length
       ? unavailableUsers.map(function (u) { return unavailableUserCardHtml_(u, assignmentsByUser[u.id], suggestionsByAssignment, eventManagerCandidates); }).join('')
-      : '<div class="card"><div class="card-body"><div class="empty-state">No one is currently marked unavailable.</div></div></div>');
+      : '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('empty_no_one_unavailable')) + '</div></div></div>');
 
   document.getElementById('markUnavailBtn').onclick = async function () {
     var userId = document.getElementById('fMarkUser').value;
-    if (!userId) { UI.toast('Select a user', 'error'); return; }
+    if (!userId) { UI.toast(t('toast_select_user'), 'error'); return; }
     var reason = document.getElementById('fMarkReason').value.trim();
     try {
       await Api.call('setUserUnavailable', { userId: userId, reason: reason });
-      UI.toast('Marked unavailable', 'success'); Router.resolve();
+      UI.toast(t('toast_marked_unavailable'), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
 
@@ -68,7 +68,7 @@ async function renderReassignment() {
     btn.onclick = async function () {
       try {
         await Api.call('setUserAvailable', { userId: btn.getAttribute('data-mark-available') });
-        UI.toast('Marked available', 'success'); Router.resolve();
+        UI.toast(t('toast_marked_available'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
@@ -78,9 +78,8 @@ async function renderReassignment() {
     if (!note) return;
     var opt = select.options[select.selectedIndex];
     if (opt && opt.getAttribute('data-conflict-event')) {
-      note.innerHTML = '<span style="color:var(--danger);">Also assigned to <strong>' + esc(opt.getAttribute('data-conflict-name')) + '</strong> (' +
-        esc(opt.getAttribute('data-conflict-start')) + ' – ' + esc(opt.getAttribute('data-conflict-end')) + ')</span> ' +
-        '<button type="button" class="btn btn-secondary btn-sm" data-reschedule-btn data-candidate="' + esc(opt.value) + '" data-conflict-event="' + esc(opt.getAttribute('data-conflict-event')) + '">Reschedule</button>';
+      note.innerHTML = '<span style="color:var(--danger);">' + t('also_assigned_to', { name: '<strong>' + esc(opt.getAttribute('data-conflict-name')) + '</strong>', start: esc(opt.getAttribute('data-conflict-start')), end: esc(opt.getAttribute('data-conflict-end')) }) + '</span> ' +
+        '<button type="button" class="btn btn-secondary btn-sm" data-reschedule-btn data-candidate="' + esc(opt.value) + '" data-conflict-event="' + esc(opt.getAttribute('data-conflict-event')) + '">' + esc(t('reschedule_btn')) + '</button>';
       note.style.display = '';
       wireRescheduleButtons_(note);
     } else {
@@ -96,10 +95,10 @@ async function renderReassignment() {
     btn.onclick = async function () {
       var assignmentId = btn.getAttribute('data-reassign-btn');
       var select = root.querySelector('.reassign-select[data-assignment="' + assignmentId + '"]');
-      if (!select.value) { UI.toast('Choose a replacement ' + Term('inspector').toLowerCase(), 'error'); return; }
+      if (!select.value) { UI.toast(t('toast_choose_replacement_x', { term: Term('inspector').toLowerCase() }), 'error'); return; }
       try {
         await Api.call('reassignInspector', { eventId: select.getAttribute('data-event'), oldAssignmentId: assignmentId, newInspectorId: select.value });
-        UI.toast(Term('inspector') + ' reassigned', 'success'); Router.resolve();
+        UI.toast(t('toast_x_reassigned', { term: Term('inspector') }), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
@@ -108,10 +107,10 @@ async function renderReassignment() {
     btn.onclick = async function () {
       var eventId = btn.getAttribute('data-reassign-em-btn');
       var select = root.querySelector('.reassign-em-select[data-event="' + eventId + '"]');
-      if (!select || !select.value) { UI.toast('Choose a replacement Event Manager', 'error'); return; }
+      if (!select || !select.value) { UI.toast(t('toast_choose_replacement_em'), 'error'); return; }
       try {
         await Api.call('assignEventManager', { eventId: eventId, eventManagerId: select.value });
-        UI.toast('Event Manager reassigned', 'success'); Router.resolve();
+        UI.toast(t('toast_em_reassigned'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
@@ -134,26 +133,26 @@ function wireRescheduleButtons_(scope) {
       try { inspections = await Api.call('listInspections', { eventId: conflictEventId }); } catch (err) { UI.error(err); return; }
       inspections = inspections.filter(function (i) { return i.inspectorId === candidateId && i.status === 'Scheduled'; });
       if (!inspections.length) {
-        UI.toast('This ' + Term('inspector').toLowerCase() + ' has no scheduled visit times on that ' + Term('event').toLowerCase() + ' yet to move.', 'error');
+        UI.toast(t('toast_no_scheduled_visits', { term: Term('inspector').toLowerCase(), eventTerm: Term('event').toLowerCase() }), 'error');
         return;
       }
-      var body = '<div style="font-size:13px;margin-bottom:10px;">Move one or more of this ' + Term('inspector').toLowerCase() + '\'s scheduled visit times on the conflicting ' + Term('event').toLowerCase() + ':</div>' +
+      var body = '<div style="font-size:13px;margin-bottom:10px;">' + esc(t('reschedule_intro', { term: Term('inspector').toLowerCase(), eventTerm: Term('event').toLowerCase() })) + '</div>' +
         inspections.map(function (i) {
           return '<div style="display:flex;align-items:center;gap:8px;margin:8px 0;">' +
             '<span style="font-size:12.5px;flex:1;">' + esc(i.disciplineName) + ' · ' + esc(i.phase) + '</span>' +
             '<input type="datetime-local" class="field-input reschedule-input" data-inspection="' + esc(i.id) + '" value="' + toDatetimeLocalValue_(i.scheduledAt) + '" style="width:auto;" />' +
           '</div>';
         }).join('');
-      UI.openModal('Reschedule', body, [
+      UI.openModal(t('reschedule_modal_title'), body, [
         { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-        { label: 'Save', className: 'btn-primary', onClick: async function () {
+        { label: t('save'), className: 'btn-primary', onClick: async function () {
             var inputs = Array.from(document.querySelectorAll('.reschedule-input'));
             try {
               for (var i = 0; i < inputs.length; i++) {
                 if (!inputs[i].value) continue;
                 await Api.call('updateInspection', { eventId: conflictEventId, inspectionId: inputs[i].getAttribute('data-inspection'), scheduledAt: new Date(inputs[i].value).toISOString() });
               }
-              UI.closeModal(); UI.toast('Rescheduled', 'success'); Router.resolve();
+              UI.closeModal(); UI.toast(t('toast_rescheduled'), 'success'); Router.resolve();
             } catch (err) { UI.error(err); }
           } }
       ]);
@@ -177,38 +176,38 @@ function unavailableUserCardHtml_(u, assignments, suggestionsByAssignment, event
                 var conflictAttrs = s.conflict
                   ? ' data-conflict-event="' + esc(s.conflict.eventId) + '" data-conflict-name="' + esc(s.conflict.eventName) + '" data-conflict-start="' + esc(UI.fmtDate(s.conflict.startDateTime)) + '" data-conflict-end="' + esc(UI.fmtDate(s.conflict.endDateTime)) + '"'
                   : '';
-                return '<option value="' + esc(s.id) + '"' + (i === 0 ? ' selected' : '') + conflictAttrs + '>' + esc(s.name) + (s.conflict ? ' (conflict)' : ' — suggested') + '</option>';
+                return '<option value="' + esc(s.id) + '"' + (i === 0 ? ' selected' : '') + conflictAttrs + '>' + esc(s.name) + (s.conflict ? esc(t('label_conflict_suffix')) : esc(t('label_suggested_suffix'))) + '</option>';
               }).join('') +
             '</select>' +
-            '<button class="btn btn-primary btn-sm" data-reassign-btn="' + esc(a.id) + '">Reassign</button>' +
+            '<button class="btn btn-primary btn-sm" data-reassign-btn="' + esc(a.id) + '">' + esc(t('reassign_btn')) + '</button>' +
           '</div>' +
           '<div class="reassign-conflict-note" data-for="' + esc(a.id) + '" style="font-size:11.5px;margin-top:6px;display:none;"></div>'
-        : '<div class="muted" style="font-size:12px;margin-top:6px;color:var(--danger);">No qualified, available replacement found for this discipline.</div>') +
+        : '<div class="muted" style="font-size:12px;margin-top:6px;color:var(--danger);">' + esc(t('no_qualified_replacement')) + '</div>') +
       '</div>';
   }).join('');
 
   var emRows = managedEvents.map(function (e) {
     return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
-      '<div style="font-size:13px;"><strong>Event Manager</strong> — ' + esc(e.name) +
+      '<div style="font-size:13px;"><strong>' + esc(t('label_event_manager')) + '</strong> — ' + esc(e.name) +
         '<span class="muted"> (' + esc(UI.fmtDate(e.startDateTime)) + ' – ' + esc(UI.fmtDate(e.endDateTime)) + ')</span></div>' +
       (eventManagerCandidates.length
         ? '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
             '<select class="reassign-em-select field-input" data-event="' + esc(e.id) + '" style="width:auto;">' +
               eventManagerCandidates.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('') +
             '</select>' +
-            '<button class="btn btn-primary btn-sm" data-reassign-em-btn="' + esc(e.id) + '">Reassign</button>' +
+            '<button class="btn btn-primary btn-sm" data-reassign-em-btn="' + esc(e.id) + '">' + esc(t('reassign_btn')) + '</button>' +
           '</div>'
-        : '<div class="muted" style="font-size:12px;margin-top:6px;">No other active Event Manager available.</div>') +
+        : '<div class="muted" style="font-size:12px;margin-top:6px;">' + esc(t('no_other_em_available')) + '</div>') +
       '</div>';
   }).join('');
 
-  var body = (rows + emRows) || '<div class="empty-state">No current assignments found.</div>';
+  var body = (rows + emRows) || '<div class="empty-state">' + esc(t('no_current_assignments')) + '</div>';
 
   return '<div class="card" style="margin-bottom:16px;">' +
     '<div class="card-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
     '<div><div class="card-title">' + esc(u.name) + ' <span class="muted" style="font-weight:400;font-size:12px;">(' + esc(u.role) + ')</span></div>' +
-    '<div class="muted" style="font-size:11.5px;margin-top:2px;">Unavailable since ' + esc(UI.fmtDate(u.unavailableSince)) + (u.unavailableReason ? ' — ' + esc(u.unavailableReason) : '') + '</div></div>' +
-    '<button class="btn btn-secondary btn-sm" data-mark-available="' + esc(u.id) + '">Mark available</button>' +
+    '<div class="muted" style="font-size:11.5px;margin-top:2px;">' + esc(t('unavailable_since_prefix', { date: UI.fmtDate(u.unavailableSince) })) + (u.unavailableReason ? ' — ' + esc(u.unavailableReason) : '') + '</div></div>' +
+    '<button class="btn btn-secondary btn-sm" data-mark-available="' + esc(u.id) + '">' + esc(t('mark_available_btn')) + '</button>' +
     '</div>' +
     '<div class="card-body">' + body + '</div></div>';
 }

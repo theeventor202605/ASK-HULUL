@@ -23,34 +23,34 @@ async function renderUsers() {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_users') + '</div>' +
-    '<div class="page-subtitle">Account hierarchy &amp; access control</div></div>' +
-    (creatable.length ? '<button class="btn btn-primary" id="newUserBtn">+ New account</button>' : '') + '</div>' +
+    '<div class="page-subtitle">' + esc(t('users_subtitle')) + '</div></div>' +
+    (creatable.length ? '<button class="btn btn-primary" id="newUserBtn">' + esc(t('new_account_btn')) + '</button>' : '') + '</div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Role' },
-      { key: 'orgId', label: 'Org', render: r => r.orgId ? esc(orgsById[r.orgId] ? orgsById[r.orgId].name : r.orgId) : '—' },
+      { key: 'name', label: t('col_name') }, { key: 'email', label: t('col_email') }, { key: 'role', label: t('col_role') },
+      { key: 'orgId', label: t('col_org'), render: r => r.orgId ? esc(orgsById[r.orgId] ? orgsById[r.orgId].name : r.orgId) : '—' },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status === 'Active' ? 'Resolved' : 'Rejected') },
       { key: 'actions', label: t('actions'), render: r => (r.status === 'Active'
-          ? '<button class="btn btn-secondary btn-sm btn-icon" title="Deactivate" data-deact="' + r.id + '">' + ICON('deactivate') + '</button>'
-          : '<button class="btn btn-secondary btn-sm btn-icon" title="Activate" data-act="' + r.id + '">' + ICON('activate') + '</button>') }
+          ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('deactivate_title')) + '" data-deact="' + r.id + '">' + ICON('deactivate') + '</button>'
+          : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('activate_title')) + '" data-act="' + r.id + '">' + ICON('activate') + '</button>') }
     ], users, {}) + '</div></div>';
 
   if (creatable.length) document.getElementById('newUserBtn').onclick = () => openNewUserModal(creatable, orgs);
   root.querySelectorAll('[data-deact]').forEach(b => b.onclick = () => toggle(b.getAttribute('data-deact'), 'deactivateUser'));
   root.querySelectorAll('[data-act]').forEach(b => b.onclick = () => toggle(b.getAttribute('data-act'), 'activateUser'));
   async function toggle(userId, action) {
-    try { await Api.call(action, { userId: userId }); UI.toast('Updated', 'success'); Router.resolve(); } catch (err) { UI.error(err); }
+    try { await Api.call(action, { userId: userId }); UI.toast(t('toast_updated'), 'success'); Router.resolve(); } catch (err) { UI.error(err); }
   }
 }
 
 function openNewUserModal(creatableRoles, orgs) {
   var isSystemAdmin = HululState.user.role === 'SystemAdmin';
   var body =
-    UI.field('Full name', '<input id="fName" class="field-input" />') +
-    UI.field('Email', '<input id="fUEmail" type="email" class="field-input" />') +
-    UI.field('Temporary password', '<input id="fUPass" type="text" class="field-input" value="ChangeMe123!" />') +
-    UI.field('Role', '<select id="fURole" class="field-input">' + creatableRoles.map(r => '<option>' + r + '</option>').join('') + '</select>') +
-    (isSystemAdmin ? UI.field('Organization', '<select id="fUOrg" class="field-input"></select>') : '');
-  UI.openModal('New account', body, [
+    UI.field(t('field_full_name'), '<input id="fName" class="field-input" />') +
+    UI.field(t('email'), '<input id="fUEmail" type="email" class="field-input" />') +
+    UI.field(t('field_temp_password'), '<input id="fUPass" type="text" class="field-input" value="ChangeMe123!" />') +
+    UI.field(t('field_role'), '<select id="fURole" class="field-input">' + creatableRoles.map(r => '<option>' + r + '</option>').join('') + '</select>') +
+    (isSystemAdmin ? UI.field(t('field_organization'), '<select id="fUOrg" class="field-input"></select>') : '');
+  UI.openModal(t('new_account_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         try {
@@ -63,7 +63,7 @@ function openNewUserModal(creatableRoles, orgs) {
             payload.orgType = org ? org.type : '';
           }
           await Api.call('createUser', payload);
-          UI.closeModal(); UI.toast('Account created', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_account_created'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -73,12 +73,12 @@ function openNewUserModal(creatableRoles, orgs) {
     var orgSelect = document.getElementById('fUOrg');
     var syncOrgOptions = function () {
       var wantedType = ROLE_ORG_TYPE[roleSelect.value] || '';
-      if (!wantedType) { orgSelect.innerHTML = '<option value="">No organization required</option>'; orgSelect.disabled = true; return; }
+      if (!wantedType) { orgSelect.innerHTML = '<option value="">' + esc(t('no_org_required_option')) + '</option>'; orgSelect.disabled = true; return; }
       var matching = orgs.filter(function (o) { return o.type === wantedType; });
       orgSelect.disabled = false;
       orgSelect.innerHTML = matching.length
         ? matching.map(o => '<option value="' + o.id + '">' + esc(o.name) + '</option>').join('')
-        : '<option value="">No ' + wantedType + ' organizations found — create one first</option>';
+        : '<option value="">' + esc(t('no_orgs_of_type_found', { type: wantedType })) + '</option>';
     };
     roleSelect.onchange = syncOrgOptions;
     syncOrgOptions();

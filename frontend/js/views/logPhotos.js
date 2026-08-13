@@ -96,15 +96,15 @@ async function tabLogPhotos(content, eventId, detail) {
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">' +
-      '<div class="muted" style="font-size:13px;max-width:520px;">Take photos here before you\'re ready to log them -- they\'re saved on this device only, grouped by location & time, until you select a group (or individual photos) and tap Create Log.</div>' +
+      '<div class="muted" style="font-size:13px;max-width:520px;">' + esc(t('log_photos_intro')) + '</div>' +
       '<div>' +
         '<input type="file" id="logPhotoFile" accept="image/*" capture="environment" style="display:none;" multiple />' +
-        '<button type="button" class="btn btn-primary btn-icon" id="logPhotoCameraBtn" title="Take photo">' + ICON('capture_photo') + ' Take Photo</button>' +
+        '<button type="button" class="btn btn-primary btn-icon" id="logPhotoCameraBtn" title="' + esc(t('take_photo_btn')) + '">' + ICON('capture_photo') + ' ' + esc(t('take_photo_btn')) + '</button>' +
       '</div>' +
     '</div></div>' +
     '<div id="logPhotoGroups"></div>' +
     '<div id="logPhotoActionBar" style="position:sticky;bottom:12px;display:flex;justify-content:flex-end;margin-top:12px;">' +
-      '<button class="btn btn-primary" id="createLogBtn" disabled>Create Log</button>' +
+      '<button class="btn btn-primary" id="createLogBtn" disabled>' + esc(t('create_log_btn')) + '</button>' +
     '</div>' +
     // REQ: "Photos deleted go to trash and can be restored... Trash has an empty now button." Rendered
     // empty (no card at all) when there's nothing trashed -- see renderLogPhotoTrash_.
@@ -176,7 +176,7 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
   Object.keys(selected).forEach(function (id) { if (!stillThere[id]) delete selected[id]; });
 
   if (!photos.length) {
-    holder.innerHTML = '<div class="empty-state">No photos yet. Tap "Take Photo" to get started.</div>';
+    holder.innerHTML = '<div class="empty-state">' + esc(t('empty_no_log_photos')) + '</div>';
     updateCreateLogButton_(selected);
     return;
   }
@@ -185,11 +185,11 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
   holder.innerHTML = groups.map(function (g, gi) {
     var anchor = logPhotoAverageLatLng_(g.photos);
     var nearest = logPhotoNearestParticipant_(anchor, participants);
-    var label = nearest ? ('Near ' + esc(nearest.name)) : 'Location unknown';
+    var label = nearest ? (esc(t('near_prefix')) + esc(nearest.name)) : esc(t('location_unknown'));
     return '<div class="card" style="margin-bottom:14px;">' +
       '<div class="card-header" style="display:flex;align-items:center;gap:10px;">' +
-        '<input type="checkbox" class="log-group-check" data-group-idx="' + gi + '" title="Select group" />' +
-        '<div class="card-title" style="flex:1;">' + label + ' · ' + g.photos.length + ' photo' + (g.photos.length > 1 ? 's' : '') + '</div>' +
+        '<input type="checkbox" class="log-group-check" data-group-idx="' + gi + '" title="' + esc(t('select_group_title')) + '" />' +
+        '<div class="card-title" style="flex:1;">' + label + ' · ' + g.photos.length + ' ' + esc(g.photos.length > 1 ? t('word_photo_plural') : t('word_photo')) + '</div>' +
         '<div class="muted" style="font-size:11.5px;">' + esc(logPhotoTimeRangeLabel_(g.photos)) + '</div>' +
       '</div>' +
       '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px;">' +
@@ -199,7 +199,7 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
           return '<div style="position:relative;width:110px;">' +
             '<img src="' + url + '" style="width:110px;height:110px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;" />' +
             '<input type="checkbox" class="log-photo-check" data-local-id="' + esc(p.localId) + '" style="position:absolute;top:6px;left:6px;width:18px;height:18px;" ' + (selected[p.localId] ? 'checked' : '') + ' />' +
-            '<button type="button" class="btn btn-secondary btn-sm btn-icon log-photo-remove" data-local-id="' + esc(p.localId) + '" title="Move to trash" style="position:absolute;top:4px;right:4px;padding:2px 5px;">' + ICON('delete') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon log-photo-remove" data-local-id="' + esc(p.localId) + '" title="' + esc(t('move_to_trash_title')) + '" style="position:absolute;top:4px;right:4px;padding:2px 5px;">' + ICON('delete') + '</button>' +
           '</div>';
         }).join('') +
       '</div>' +
@@ -231,7 +231,7 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
       var id = btn.getAttribute('data-local-id');
       await EvidenceCapture.trashLogPhoto(id);
       delete selected[id];
-      UI.toast('Photo moved to trash', 'success');
+      UI.toast(t('toast_photo_moved_to_trash'), 'success');
       await renderLogPhotoGroups_(eventId, participants, selected);
       await renderLogPhotoTrash_(eventId, participants, selected);
     });
@@ -252,11 +252,11 @@ async function renderLogPhotoTrash_(eventId, participants, selected) {
   holder.innerHTML =
     '<div class="card" style="margin-top:4px;">' +
       '<div class="card-header" style="display:flex;align-items:center;gap:10px;">' +
-        '<div class="card-title" style="flex:1;">Trash · ' + trashed.length + ' photo' + (trashed.length > 1 ? 's' : '') + '</div>' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="emptyLogPhotoTrashBtn">Empty now</button>' +
+        '<div class="card-title" style="flex:1;">' + esc(t('trash_label')) + ' · ' + trashed.length + ' ' + esc(trashed.length > 1 ? t('word_photo_plural') : t('word_photo')) + '</div>' +
+        '<button type="button" class="btn btn-secondary btn-sm" id="emptyLogPhotoTrashBtn">' + esc(t('empty_now_btn')) + '</button>' +
       '</div>' +
       '<div class="card-body">' +
-        '<div class="muted" style="font-size:11.5px;margin-bottom:10px;">Deleted photos stay here for 30 days, then are permanently removed.</div>' +
+        '<div class="muted" style="font-size:11.5px;margin-bottom:10px;">' + esc(t('trash_retention_hint')) + '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:14px;">' +
           trashed.map(function (p) {
             var url = URL.createObjectURL(p.blob);
@@ -266,8 +266,8 @@ async function renderLogPhotoTrash_(eventId, participants, selected) {
               '<div style="position:relative;width:100px;height:100px;">' +
                 '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;opacity:.6;" />' +
               '</div>' +
-              '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + ' left</div>' +
-              '<button type="button" class="btn btn-secondary btn-sm log-photo-restore" data-local-id="' + esc(p.localId) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">Restore</button>' +
+              '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + esc(t(daysLeft === 1 ? 'word_day_left' : 'word_days_left', { n: daysLeft })) + '</div>' +
+              '<button type="button" class="btn btn-secondary btn-sm log-photo-restore" data-local-id="' + esc(p.localId) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">' + esc(t('restore_btn')) + '</button>' +
             '</div>';
           }).join('') +
         '</div>' +
@@ -276,20 +276,20 @@ async function renderLogPhotoTrash_(eventId, participants, selected) {
 
   document.getElementById('emptyLogPhotoTrashBtn').onclick = function () {
     UI.confirmModal(
-      'Permanently delete ' + trashed.length + ' photo' + (trashed.length > 1 ? 's' : '') + ' from trash? This can\'t be undone.',
+      t('confirm_empty_trash', { count: trashed.length, unit: trashed.length > 1 ? t('word_photo_plural') : t('word_photo') }),
       async function () {
         await EvidenceCapture.emptyLogPhotoTrash(eventId, HululState.user.id);
-        UI.toast('Trash emptied', 'success');
+        UI.toast(t('toast_trash_emptied'), 'success');
         await renderLogPhotoTrash_(eventId, participants, selected);
       },
-      { title: 'Empty trash', confirmLabel: 'Empty now', confirmClass: 'btn-danger' }
+      { title: t('empty_trash_title'), confirmLabel: t('empty_now_btn'), confirmClass: 'btn-danger' }
     );
   };
   holder.querySelectorAll('.log-photo-restore').forEach(function (btn) {
     btn.addEventListener('click', async function () {
       var id = btn.getAttribute('data-local-id');
       await EvidenceCapture.restoreLogPhoto(id);
-      UI.toast('Photo restored', 'success');
+      UI.toast(t('toast_photo_restored'), 'success');
       await renderLogPhotoGroups_(eventId, participants, selected);
       await renderLogPhotoTrash_(eventId, participants, selected);
     });
@@ -311,5 +311,5 @@ function updateCreateLogButton_(selected) {
   if (!btn) return;
   var count = Object.keys(selected).length;
   btn.disabled = count === 0;
-  btn.textContent = count ? ('Create Log (' + count + ' selected)') : 'Create Log';
+  btn.textContent = count ? t('create_log_with_count', { count: count }) : t('create_log_btn');
 }

@@ -14,7 +14,7 @@ var PROJECTS_END_DOTS_KEY_ = 'hulul_projects_show_end_dots';
 function projectsShowEndDots_() { return localStorage.getItem(PROJECTS_END_DOTS_KEY_) === '1'; }
 function projectsEndDotsToggleHtml_(showEndDots) {
   return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-600);cursor:pointer;white-space:nowrap;">' +
-    '<input type="checkbox" id="toggleEndDotsChk" ' + (showEndDots ? 'checked' : '') + ' style="cursor:pointer;" /> Show end-date dots' +
+    '<input type="checkbox" id="toggleEndDotsChk" ' + (showEndDots ? 'checked' : '') + ' style="cursor:pointer;" /> ' + esc(t('show_end_dots_label')) +
   '</label>';
 }
 function wireEndDotsToggle_() {
@@ -49,7 +49,7 @@ function tlDuration_(startMs, endMs) {
 // have started very differently. A rotated date label sits under every plotted dot.
 function projectTimelineHtml_(evs, showEndDots, subEventCount) {
   var statsHtml = projectStatsHtml_(evs, subEventCount);
-  if (!evs.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">No ' + esc(Term('event_plural').toLowerCase()) + ' yet -- nothing to plot.</div>' + statsHtml;
+  if (!evs.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_yet_nothing_to_plot', { term: Term('event_plural').toLowerCase() })) + '</div>' + statsHtml;
 
   function dateOnlyMs(ms) { var d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
   function dayKey(ms) { var d = new Date(ms); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
@@ -57,7 +57,7 @@ function projectTimelineHtml_(evs, showEndDots, subEventCount) {
 
   var rawStarts = evs.map(function (e) { return new Date(e.startDateTime).getTime(); }).filter(function (n) { return !isNaN(n); });
   var rawEnds = evs.map(function (e) { return new Date(e.endDateTime).getTime(); }).filter(function (n) { return !isNaN(n); });
-  if (!rawStarts.length || !rawEnds.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(Term('event_plural')) + ' have no dates on record yet.</div>' + statsHtml;
+  if (!rawStarts.length || !rawEnds.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_have_dates', { term: Term('event_plural') })) + '</div>' + statsHtml;
 
   var lo = Math.min.apply(null, rawStarts.map(dateOnlyMs)), hi = Math.max.apply(null, rawEnds.map(dateOnlyMs));
   // The plotted line itself starts three weeks before the earliest Event, giving a lead-in stretch
@@ -97,12 +97,12 @@ function projectTimelineHtml_(evs, showEndDots, subEventCount) {
     // Big anchor dots sit exactly on top of the small dot for the same day, so their tooltip must
     // fold in that day's event names itself (a plain "Project start/end" title would otherwise
     // mask the event list underneath since the big dot renders above it).
-    '<div class="tl-dot tl-dot-big tl-dot-green" style="left:' + pct(lo).toFixed(2) + '%;" title="' + esc(Term('project') + ' start: ' + UI.fmtDate(lo) + (startGroups[loKey] ? '\n' + startGroups[loKey].lines.join('\n') : '')) + '"></div>' +
-    '<div class="tl-dot tl-dot-big tl-dot-red" style="left:' + pct(hi).toFixed(2) + '%;" title="' + esc(Term('project') + ' end: ' + UI.fmtDate(hi) + (endGroups[hiKey] ? '\n' + endGroups[hiKey].lines.join('\n') : '')) + '"></div>' +
+    '<div class="tl-dot tl-dot-big tl-dot-green" style="left:' + pct(lo).toFixed(2) + '%;" title="' + esc(t('project_start_label', { term: Term('project') }) + UI.fmtDate(lo) + (startGroups[loKey] ? '\n' + startGroups[loKey].lines.join('\n') : '')) + '"></div>' +
+    '<div class="tl-dot tl-dot-big tl-dot-red" style="left:' + pct(hi).toFixed(2) + '%;" title="' + esc(t('project_end_label', { term: Term('project') }) + UI.fmtDate(hi) + (endGroups[hiKey] ? '\n' + endGroups[hiKey].lines.join('\n') : '')) + '"></div>' +
     // Blinking "now" marker -- only plotted when the current moment actually falls within this
     // project's own start/end window, since clamping it to an edge when today is outside that
     // window would misleadingly suggest today IS the start or end.
-    (nowInRange ? '<div class="tl-dot tl-dot-now" style="left:' + pct(now).toFixed(2) + '%;" title="Now: ' + esc(UI.fmtDate(now)) + '"></div>' : '');
+    (nowInRange ? '<div class="tl-dot tl-dot-now" style="left:' + pct(now).toFixed(2) + '%;" title="' + esc(t('now_prefix') + UI.fmtDate(now)) + '"></div>' : '');
 
   // Whichever plotted start-day or end-day is chronologically closest to right now gets its
   // event name(s) written out permanently above its dot (not just on hover) -- a quick "what's
@@ -151,9 +151,9 @@ function projectTimelineHtml_(evs, showEndDots, subEventCount) {
 
   return '<div class="project-timeline">' + '<div class="project-timeline-track"></div>' + dotsHtml + labelsHtml + nearestHtml + '</div>' +
     '<div style="display:flex;gap:14px;font-size:10.5px;color:var(--text-600);margin-top:30px;flex-wrap:wrap;align-items:center;">' +
-      '<span><span class="tl-legend-dot tl-dot-green"></span>Event start</span>' +
-      (showEndDots ? '<span><span class="tl-legend-dot tl-dot-red"></span>Event end</span>' : '') +
-      (nowInRange ? '<span><span class="tl-legend-dot tl-dot-now"></span>Now</span>' : '') +
+      '<span><span class="tl-legend-dot tl-dot-green"></span>' + esc(t('legend_event_start')) + '</span>' +
+      (showEndDots ? '<span><span class="tl-legend-dot tl-dot-red"></span>' + esc(t('legend_event_end')) + '</span>' : '') +
+      (nowInRange ? '<span><span class="tl-legend-dot tl-dot-now"></span>' + esc(t('legend_now')) + '</span>' : '') +
       '<span class="tl-legend-sep"></span>' +
       projectStatsChipsHtml_(evs, subEventCount) +
     '</div>';
@@ -181,9 +181,9 @@ function projectStatsChipsHtml_(evs, subEventCount) {
   return chip(evs.length, Term(evs.length === 1 ? 'event' : 'event_plural')) +
     chip(subEventCount || 0, Term((subEventCount || 0) === 1 ? 'subEvent' : 'subEvent_plural')) +
     chip(venueCount, Term(venueCount === 1 ? 'venue' : 'venue_plural')) +
-    chip(notStarted, 'Scheduled') +
-    chip(ongoing, 'Ongoing') +
-    chip(ended, 'Ended');
+    chip(notStarted, t('chip_scheduled')) +
+    chip(ongoing, t('chip_ongoing')) +
+    chip(ended, t('chip_ended'));
 }
 
 function projectStatsHtml_(evs, subEventCount) {
@@ -202,10 +202,10 @@ async function renderProjects() {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('project_plural')) + '</div>' +
-    '<div class="page-subtitle">Group several ' + esc(Term('event_plural').toLowerCase()) + ' together, e.g. a multi-venue program</div></div>' +
+    '<div class="page-subtitle">' + esc(t('projects_subtitle', { term: Term('event_plural').toLowerCase() })) + '</div></div>' +
     '<div style="display:flex;align-items:center;gap:16px;">' +
       projectsEndDotsToggleHtml_(showEndDots) +
-      (canManage ? '<button class="btn btn-primary" id="newProjectBtn">+ New ' + esc(Term('project').toLowerCase()) + '</button>' : '') +
+      (canManage ? '<button class="btn btn-primary" id="newProjectBtn">' + esc(t('new_x', { term: Term('project').toLowerCase() })) + '</button>' : '') +
     '</div>' +
     '</div>' +
     (projects.length
@@ -219,28 +219,28 @@ async function renderProjects() {
                 '<a href="#/projects/' + pr.id + '" style="font-weight:700;font-size:14.5px;color:var(--text-900);text-decoration:none;">' + esc(pr.name) + '</a>' +
                 (pr.description ? '<div class="muted" style="font-size:12px;margin-top:4px;">' + esc(pr.description) + '</div>' : '') +
               '</div>' +
-              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-project="' + pr.id + '">' + ICON('delete') + '</button>' : '') +
+              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete')) + '" data-del-project="' + pr.id + '">' + ICON('delete') + '</button>' : '') +
             '</div>' +
             projectTimelineHtml_(evs, showEndDots, subCount) +
           '</div>';
         }).join('') + '</div>'
-      : '<div class="card"><div class="card-body"><div class="empty-state">No ' + esc(Term('project_plural').toLowerCase()) + ' yet.' +
-          (canManage ? ' Create one, then add ' + esc(Term('event_plural').toLowerCase()) + ' under it.' : '') + '</div></div></div>');
+      : '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('empty_no_projects_yet', { term: Term('project_plural').toLowerCase() })) +
+          (canManage ? esc(t('create_one_then_add_hint', { term: Term('event_plural').toLowerCase() })) : '') + '</div></div></div>');
 
   wireEndDotsToggle_();
   if (!canManage) return;
 
   document.getElementById('newProjectBtn').onclick = function () {
-    var body = UI.field(Term('project') + ' name', '<input id="fProjName" class="field-input" />') +
-      UI.field('Description (optional)', '<textarea id="fProjDesc" class="field-input" rows="2"></textarea>');
-    UI.openModal('New ' + Term('project'), body, [
+    var body = UI.field(t('field_project_name', { term: Term('project') }), '<input id="fProjName" class="field-input" />') +
+      UI.field(t('field_description_optional'), '<textarea id="fProjDesc" class="field-input" rows="2"></textarea>');
+    UI.openModal(t('new_x_title', { term: Term('project') }), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
       { label: t('create'), className: 'btn-primary', onClick: async function () {
           try {
             var created = await Api.call('createProject', {
               name: document.getElementById('fProjName').value, description: document.getElementById('fProjDesc').value
             });
-            UI.closeModal(); UI.toast(Term('project') + ' created', 'success');
+            UI.closeModal(); UI.toast(t('x_created', { term: Term('project') }), 'success');
             window.location.hash = '#/projects/' + created.id;
           } catch (err) { UI.error(err); }
         } }
@@ -248,10 +248,10 @@ async function renderProjects() {
   };
   root.querySelectorAll('[data-del-project]').forEach(function (btn) {
     btn.onclick = function () {
-      UI.confirmModal('Delete this ' + Term('project').toLowerCase() + '? Its ' + Term('event_plural').toLowerCase() + ' are kept, just unlinked from it.', async function () {
-        try { await Api.call('deleteProject', { projectId: btn.getAttribute('data-del-project') }); UI.toast(Term('project') + ' deleted', 'success'); Router.resolve(); }
+      UI.confirmModal(t('delete_confirm_project', { term: Term('project').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() }), async function () {
+        try { await Api.call('deleteProject', { projectId: btn.getAttribute('data-del-project') }); UI.toast(t('x_deleted', { term: Term('project') }), 'success'); Router.resolve(); }
         catch (err) { UI.error(err); }
-      }, { title: 'Delete ' + Term('project').toLowerCase(), confirmLabel: 'Delete' });
+      }, { title: t('delete_modal_title', { term: Term('project').toLowerCase() }), confirmLabel: t('delete') });
     };
   });
 }
@@ -265,7 +265,7 @@ async function renderProjectDetail(params) {
     canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]), Api.call('listSubEvents', {})
   ]);
   var project = projects.filter(function (pr) { return pr.id === projectId; })[0];
-  if (!project) { root.innerHTML = '<div class="empty-state">' + esc(Term('project')) + ' not found.</div>'; return; }
+  if (!project) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('project') })) + '</div>'; return; }
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
   var emcOrgs = orgs.filter(function (o) { return o.type === 'EMC'; });
   var venueById = {}; venues.forEach(function (v) { venueById[v.id] = v; });
@@ -284,9 +284,9 @@ async function renderProjectDetail(params) {
       projectsEndDotsToggleHtml_(showEndDots) +
       (canManage
         ? '<div style="display:flex;gap:8px;">' +
-            '<button class="btn btn-secondary btn-icon" title="Edit" id="editProjectBtn">' + ICON('edit') + '</button>' +
-            '<button class="btn btn-secondary" id="addExistingEventsBtn">+ Add existing ' + esc(Term('event_plural').toLowerCase()) + '</button>' +
-            '<button class="btn btn-primary" id="newProjectEventBtn">+ New ' + esc(Term('event').toLowerCase()) + '</button>' +
+            '<button class="btn btn-secondary btn-icon" title="' + esc(t('action_edit')) + '" id="editProjectBtn">' + ICON('edit') + '</button>' +
+            '<button class="btn btn-secondary" id="addExistingEventsBtn">' + esc(t('add_existing_x_btn', { term: Term('event_plural').toLowerCase() })) + '</button>' +
+            '<button class="btn btn-primary" id="newProjectEventBtn">' + esc(t('new_x', { term: Term('event').toLowerCase() })) + '</button>' +
           '</div>'
         : '') +
     '</div>' +
@@ -295,13 +295,13 @@ async function renderProjectDetail(params) {
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: Term('event'), render: r => '<a href="#/events/' + r.id + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.name) + '</a>' },
       { key: 'venueId', label: Term('venue'), render: r => esc(venueById[r.venueId] ? venueById[r.venueId].name : r.venueId) },
-      { key: 'city', label: 'City' },
-      { key: 'startDateTime', label: 'Start', render: r => UI.fmtDate(r.startDateTime) },
-      { key: 'endDateTime', label: 'End', render: r => UI.fmtDate(r.endDateTime) },
+      { key: 'city', label: t('col_city') },
+      { key: 'startDateTime', label: t('col_start'), render: r => UI.fmtDate(r.startDateTime) },
+      { key: 'endDateTime', label: t('col_end'), render: r => UI.fmtDate(r.endDateTime) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Remove from ' + esc(Term('project').toLowerCase()) + '" data-remove-event="' + r.id + '">' + ICON('remove_from_project') + '</button>' }] : []),
-      linked, { emptyText: 'No ' + esc(Term('event_plural').toLowerCase()) + ' in this ' + esc(Term('project').toLowerCase()) + ' yet.' }) + '</div></div>';
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_from_x_title', { term: Term('project').toLowerCase() })) + '" data-remove-event="' + r.id + '">' + ICON('remove_from_project') + '</button>' }] : []),
+      linked, { emptyText: esc(t('empty_no_events_in_project', { eventTerm: Term('event_plural').toLowerCase(), term: Term('project').toLowerCase() })) }) + '</div></div>';
 
   wireEndDotsToggle_();
   if (!canManage) return;
@@ -313,23 +313,23 @@ async function renderProjectDetail(params) {
     btn.onclick = async function () {
       try {
         await Api.call('updateEvent', { eventId: btn.getAttribute('data-remove-event'), projectId: '' });
-        UI.toast('Removed from ' + Term('project').toLowerCase(), 'success'); Router.resolve();
+        UI.toast(t('toast_removed_from_x', { term: Term('project').toLowerCase() }), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
 }
 
 function openEditProjectModal_(project) {
-  var body = UI.field(Term('project') + ' name', '<input id="fEditProjName" class="field-input" value="' + esc(project.name) + '" />') +
-    UI.field('Description (optional)', '<textarea id="fEditProjDesc" class="field-input" rows="2">' + esc(project.description || '') + '</textarea>');
-  UI.openModal('Edit ' + Term('project'), body, [
+  var body = UI.field(t('field_project_name', { term: Term('project') }), '<input id="fEditProjName" class="field-input" value="' + esc(project.name) + '" />') +
+    UI.field(t('field_description_optional'), '<textarea id="fEditProjDesc" class="field-input" rows="2">' + esc(project.description || '') + '</textarea>');
+  UI.openModal(t('edit_x', { term: Term('project') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         try {
           await Api.call('updateProject', {
             projectId: project.id, name: document.getElementById('fEditProjName').value, description: document.getElementById('fEditProjDesc').value
           });
-          UI.closeModal(); UI.toast(Term('project') + ' updated', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('x_updated', { term: Term('project') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -340,7 +340,7 @@ function openEditProjectModal_(project) {
 // recreating them.
 function openAddExistingEventsModal_(project, candidateEvents, venueById) {
   var body = candidateEvents.length
-    ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">Select ' + esc(Term('event_plural').toLowerCase()) + ' to add to <strong>' + esc(project.name) + '</strong>.</div>' +
+    ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('select_x_to_add_prefix', { term: Term('event_plural').toLowerCase() })) + '<strong>' + esc(project.name) + '</strong>.</div>' +
       '<div style="max-height:320px;overflow-y:auto;">' +
       candidateEvents.map(function (e) {
         return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 2px;border-bottom:1px solid #f0f1f6;">' +
@@ -348,15 +348,15 @@ function openAddExistingEventsModal_(project, candidateEvents, venueById) {
           '<span style="flex:1;">' + esc(e.name) + '</span><span class="muted">' + esc(venueById[e.venueId] ? venueById[e.venueId].name : '') + '</span>' +
         '</label>';
       }).join('') + '</div>'
-    : '<div class="empty-state">No other ' + esc(Term('event_plural').toLowerCase()) + ' available to add.</div>';
-  UI.openModal('Add existing ' + Term('event_plural').toLowerCase(), body, [
+    : '<div class="empty-state">' + esc(t('empty_no_other_x_available', { term: Term('event_plural').toLowerCase() })) + '</div>';
+  UI.openModal(t('add_existing_x_title', { term: Term('event_plural').toLowerCase() }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Add', className: 'btn-primary', onClick: async function () {
+    { label: t('add_btn'), className: 'btn-primary', onClick: async function () {
         var ids = Array.from(document.querySelectorAll('.add-event-check:checked')).map(function (cb) { return cb.value; });
-        if (!ids.length) { UI.toast('Select at least one ' + Term('event').toLowerCase(), 'error'); return; }
+        if (!ids.length) { UI.toast(t('toast_select_at_least_one_x', { term: Term('event').toLowerCase() }), 'error'); return; }
         try {
           for (var i = 0; i < ids.length; i++) { await Api.call('updateEvent', { eventId: ids[i], projectId: project.id }); }
-          UI.closeModal(); UI.toast('Added to ' + Term('project').toLowerCase(), 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_added_to_x', { term: Term('project').toLowerCase() }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);

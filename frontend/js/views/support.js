@@ -25,13 +25,13 @@ function isSupportManager_() {
 // so the shot reflects the actual problem, dialogs and all, not the capture UI itself.
 async function openSupportCapture() {
   var overlay = document.getElementById('supportCaptureOverlay');
-  if (!overlay || typeof html2canvas !== 'function') { UI.toast('Screenshot capture is unavailable right now.', 'error'); return; }
+  if (!overlay || typeof html2canvas !== 'function') { UI.toast(t('screenshot_capture_unavailable'), 'error'); return; }
   var canvas = null;
   try {
     canvas = await html2canvas(document.body, { useCORS: true, logging: false, backgroundColor: '#ffffff' });
   } catch (e) {
     console.error('[Support] screenshot capture failed', e);
-    UI.toast('Could not capture a screenshot — you can still describe the issue below.', 'error');
+    UI.toast(t('toast_screenshot_capture_failed'), 'error');
   }
   renderSupportCaptureModal_(overlay, canvas);
 }
@@ -52,28 +52,28 @@ function renderSupportCaptureModal_(overlay, canvas) {
 
   overlay.innerHTML =
     '<div class="support-capture-box">' +
-      '<div class="support-capture-header"><div class="support-capture-title">Report a technical issue</div>' +
+      '<div class="support-capture-header"><div class="support-capture-title">' + esc(t('report_issue_title')) + '</div>' +
         '<button type="button" class="btn btn-ghost btn-sm" id="scCloseBtn">' + ICON('close_modal') + '</button></div>' +
       '<div class="support-capture-body">' +
         (canvas
           ? '<div>' +
-              '<div class="support-shot-wrap" id="scShotWrap"><img id="scShotImg" src="' + dataUrl + '" alt="Screenshot" />' +
+              '<div class="support-shot-wrap" id="scShotWrap"><img id="scShotImg" src="' + dataUrl + '" alt="' + esc(t('screenshot_alt')) + '" />' +
                 '<canvas id="scAnnotateCanvas"></canvas></div>' +
-              '<div class="support-shot-hint">Optional: click and drag on the screenshot to highlight the problem area.</div>' +
+              '<div class="support-shot-hint">' + esc(t('annotate_hint')) + '</div>' +
             '</div>'
-          : '<div class="empty-state">No screenshot captured.</div>') +
-        UI.field('What went wrong?', '<textarea id="scRemarks" class="field-input" rows="4" placeholder="Describe the issue you ran into…"></textarea>') +
+          : '<div class="empty-state">' + esc(t('no_screenshot_captured')) + '</div>') +
+        UI.field(t('field_what_went_wrong'), '<textarea id="scRemarks" class="field-input" rows="4" placeholder="' + esc(t('describe_issue_placeholder')) + '"></textarea>') +
         '<div>' +
-          '<label class="field-label">Voice note (optional, up to 90 seconds)</label>' +
+          '<label class="field-label">' + esc(t('voice_note_label')) + '</label>' +
           '<div class="support-voice-row" id="scVoiceRow">' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="scVoiceBtn">' + ICON('mic_record') + ' Record</button>' +
-            '<span id="scVoiceStatus" class="muted" style="font-size:12px;">No recording yet</span>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="scVoiceBtn">' + ICON('mic_record') + ' ' + esc(t('record_btn')) + '</button>' +
+            '<span id="scVoiceStatus" class="muted" style="font-size:12px;">' + esc(t('no_recording_yet')) + '</span>' +
           '</div>' +
         '</div>' +
       '</div>' +
       '<div class="support-capture-footer">' +
         '<button type="button" class="btn btn-secondary" id="scCancelBtn">' + t('cancel') + '</button>' +
-        '<button type="button" class="btn btn-primary" id="scSubmitBtn">Submit ticket</button>' +
+        '<button type="button" class="btn btn-primary" id="scSubmitBtn">' + esc(t('submit_ticket_btn')) + '</button>' +
       '</div>' +
     '</div>';
   overlay.classList.remove('hidden');
@@ -87,7 +87,7 @@ function renderSupportCaptureModal_(overlay, canvas) {
 
   document.getElementById('scSubmitBtn').onclick = async function () {
     var remarks = document.getElementById('scRemarks').value.trim();
-    if (!remarks) { UI.toast('Describe what went wrong first', 'error'); return; }
+    if (!remarks) { UI.toast(t('toast_describe_first'), 'error'); return; }
     if (voiceCtl.isRecording()) voiceCtl.stop();
     try {
       var screenshotUrl = '';
@@ -106,7 +106,7 @@ function renderSupportCaptureModal_(overlay, canvas) {
       }
       await Api.call('createTicket', { remarks: remarks, pageContext: window.location.hash, screenshotUrl: screenshotUrl, voiceNoteUrl: voiceNoteUrl });
       closeSupportCapture_();
-      UI.toast('Ticket submitted — Support will follow up.', 'success');
+      UI.toast(t('toast_ticket_submitted'), 'success');
       if (window.location.hash.indexOf('#/support') === 0) Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -183,13 +183,13 @@ function wireSupportVoiceRecorder_(btnId, statusId, onDone) {
         clearInterval(timer);
         var blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         var url = URL.createObjectURL(blob);
-        btn.innerHTML = ICON('mic_record') + ' Re-record';
+        btn.innerHTML = ICON('mic_record') + ' ' + esc(t('re_record_btn'));
         status.innerHTML = '<audio controls src="' + url + '"></audio>';
         onDone(blob, url);
       };
       recorder.start();
       startedAt = Date.now();
-      btn.innerHTML = ICON('mic_stop') + ' Stop';
+      btn.innerHTML = ICON('mic_stop') + ' ' + esc(t('stop_btn'));
       status.innerHTML = '<span class="support-rec-dot"></span> <span class="support-rec-time" id="' + statusId + 'Time">0:00</span>';
       timer = setInterval(function () {
         var secs = Math.floor((Date.now() - startedAt) / 1000);
@@ -198,7 +198,7 @@ function wireSupportVoiceRecorder_(btnId, statusId, onDone) {
         if (secs * 1000 >= SUPPORT_MAX_RECORDING_MS) recorder.stop();
       }, 500);
     } catch (e) {
-      UI.toast('Microphone access denied or unavailable.', 'error');
+      UI.toast(t('toast_mic_denied'), 'error');
     }
   }
 
@@ -266,17 +266,17 @@ async function renderSupport() {
   var tickets = await Api.call('listTickets', {});
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_support') + '</div>' +
-    '<div class="page-subtitle">' + (manager ? 'Shared support queue — every ticket raised across HULUL' : "Technical issues you've reported") + '</div></div>' +
-    '<button class="btn btn-primary" id="newTicketBtn">+ Report an issue</button></div>' +
+    '<div class="page-subtitle">' + esc(manager ? t('support_subtitle_manager') : t('support_subtitle_raiser')) + '</div></div>' +
+    '<button class="btn btn-primary" id="newTicketBtn">' + esc(t('report_issue_btn')) + '</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'subject', label: 'Subject' },
-      { key: 'createdByName', label: 'Raised by', render: r => esc(r.createdByName || r.createdBy) },
+      { key: 'subject', label: t('col_subject') },
+      { key: 'createdByName', label: t('col_raised_by'), render: r => esc(r.createdByName || r.createdBy) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'createdAt', label: 'Raised', render: r => UI.fmtDate(r.createdAt) },
-      { key: 'updatedAt', label: 'Updated', render: r => UI.fmtDate(r.updatedAt) },
+      { key: 'createdAt', label: t('col_raised'), render: r => UI.fmtDate(r.createdAt) },
+      { key: 'updatedAt', label: t('col_updated'), render: r => UI.fmtDate(r.updatedAt) },
       { key: 'actions', label: t('actions'), render: r =>
-          '<button class="btn btn-secondary btn-sm btn-icon" title="Open" data-open="' + r.id + '">' + ICON('view_open') + '</button>' }
-    ], tickets, { exportName: 'support-tickets.csv', emptyText: manager ? 'No support tickets yet.' : "You haven't reported any issues." }) + '</div></div>';
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" data-open="' + r.id + '">' + ICON('view_open') + '</button>' }
+    ], tickets, { exportName: 'support-tickets.csv', emptyText: manager ? t('empty_tickets_manager') : t('empty_tickets_raiser') }) + '</div></div>';
 
   document.getElementById('newTicketBtn').onclick = function () { openSupportCapture(); };
   root.querySelectorAll('[data-open]').forEach(function (b) {
@@ -297,20 +297,20 @@ async function renderSupportDetail(params) {
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/support">' + t('nav_support') + '</a> / ' + esc(ticket.subject) + '</div>' +
     '<div class="page-header"><div><div class="page-title">' + esc(ticket.subject) + '</div>' +
-    '<div class="page-subtitle">Raised by ' + esc(ticket.createdByName || ticket.createdBy) + ' on ' + UI.fmtDate(ticket.createdAt) + '</div></div>' +
+    '<div class="page-subtitle">' + esc(t('raised_by_on', { name: ticket.createdByName || ticket.createdBy, date: UI.fmtDate(ticket.createdAt) })) + '</div></div>' +
     UI.statusBadge(ticket.status) + '</div>' +
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;flex-direction:column;gap:12px;">' +
-      '<div><div class="field-label">Description</div><div style="font-size:13.5px;white-space:pre-wrap;">' + esc(ticket.remarks) + '</div></div>' +
-      (ticket.pageContext ? '<div class="muted" style="font-size:12px;">Reported from: ' + esc(ticket.pageContext) + '</div>' : '') +
-      (ticket.screenshotUrl ? '<div><div class="field-label">Screenshot</div><a href="' + esc(ticket.screenshotUrl) + '" target="_blank" rel="noopener"><img src="' + esc(ticket.screenshotUrl) + '" style="max-width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);" /></a></div>' : '') +
-      (ticket.voiceNoteUrl ? '<div><div class="field-label">Voice note</div><audio controls src="' + esc(ticket.voiceNoteUrl) + '"></audio></div>' : '') +
+      '<div><div class="field-label">' + esc(t('field_description')) + '</div><div style="font-size:13.5px;white-space:pre-wrap;">' + esc(ticket.remarks) + '</div></div>' +
+      (ticket.pageContext ? '<div class="muted" style="font-size:12px;">' + esc(t('reported_from', { context: ticket.pageContext })) + '</div>' : '') +
+      (ticket.screenshotUrl ? '<div><div class="field-label">' + esc(t('field_screenshot')) + '</div><a href="' + esc(ticket.screenshotUrl) + '" target="_blank" rel="noopener"><img src="' + esc(ticket.screenshotUrl) + '" style="max-width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);" /></a></div>' : '') +
+      (ticket.voiceNoteUrl ? '<div><div class="field-label">' + esc(t('field_voice_note')) + '</div><audio controls src="' + esc(ticket.voiceNoteUrl) + '"></audio></div>' : '') +
     '</div></div>' +
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
-      '<div class="field-label" style="margin-bottom:10px;">Thread</div>' +
+      '<div class="field-label" style="margin-bottom:10px;">' + esc(t('field_thread')) + '</div>' +
       '<div id="ticketThread" style="display:flex;flex-direction:column;gap:12px;">' +
-        (comments.length ? comments.map(supportCommentHtml_).join('') : '<div class="muted" style="font-size:12.5px;">No replies yet.</div>') +
+        (comments.length ? comments.map(supportCommentHtml_).join('') : '<div class="muted" style="font-size:12.5px;">' + esc(t('no_replies_yet')) + '</div>') +
       '</div>' +
     '</div></div>' +
 
@@ -339,13 +339,13 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
   if (!closed) {
     html +=
       '<div>' +
-        '<label class="field-label">Add a reply</label>' +
-        '<textarea id="tcMessage" class="field-input" rows="3" placeholder="Add a comment…"></textarea>' +
+        '<label class="field-label">' + esc(t('field_add_reply')) + '</label>' +
+        '<textarea id="tcMessage" class="field-input" rows="3" placeholder="' + esc(t('comment_placeholder')) + '"></textarea>' +
         '<div class="support-voice-row" style="margin-top:8px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="tcVoiceBtn">' + ICON('mic_record') + ' Voice note</button>' +
-          '<span id="tcVoiceStatus" class="muted" style="font-size:12px;">No recording yet</span>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="tcVoiceBtn">' + ICON('mic_record') + ' ' + esc(t('voice_note_btn')) + '</button>' +
+          '<span id="tcVoiceStatus" class="muted" style="font-size:12px;">' + esc(t('no_recording_yet')) + '</span>' +
         '</div>' +
-        (manager ? '<div style="margin-top:8px;"><button type="button" class="btn btn-secondary btn-sm" id="tcScreenBtn">' + ICON('screen_record') + ' Record screen + voice</button> ' +
+        (manager ? '<div style="margin-top:8px;"><button type="button" class="btn btn-secondary btn-sm" id="tcScreenBtn">' + ICON('screen_record') + ' ' + esc(t('record_screen_voice_btn')) + '</button> ' +
           '<span id="tcScreenStatus" class="muted" style="font-size:12px;"></span></div>' : '') +
         '<div style="margin-top:10px;"><button type="button" class="btn btn-primary btn-sm" id="tcSendBtn">' + t('submit') + '</button></div>' +
       '</div>';
@@ -353,14 +353,14 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
 
   if (manager && ['Open', 'InProgress'].indexOf(ticket.status) !== -1) {
     html += '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
-      '<button type="button" class="btn btn-primary" id="tcResolveBtn">' + ICON('resolve_ticket') + ' Mark resolved</button></div>';
+      '<button type="button" class="btn btn-primary" id="tcResolveBtn">' + ICON('resolve_ticket') + ' ' + esc(t('mark_resolved_btn')) + '</button></div>';
   }
   if (isRaiser && ticket.status === 'Resolved') {
     html += '<div style="border-top:1px solid var(--border);padding-top:14px;display:flex;gap:8px;">' +
-      '<button type="button" class="btn btn-primary" id="tcApproveBtn">' + ICON('approve_ticket') + ' Approve — mark completed</button>' +
-      '<button type="button" class="btn btn-secondary" id="tcRejectBtn">' + ICON('reject_ticket') + ' Not fixed — send back</button></div>';
+      '<button type="button" class="btn btn-primary" id="tcApproveBtn">' + ICON('approve_ticket') + ' ' + esc(t('approve_mark_completed_btn')) + '</button>' +
+      '<button type="button" class="btn btn-secondary" id="tcRejectBtn">' + ICON('reject_ticket') + ' ' + esc(t('not_fixed_send_back_btn')) + '</button></div>';
   }
-  if (closed) html += '<div class="empty-state">This ticket is closed.</div>';
+  if (closed) html += '<div class="empty-state">' + esc(t('ticket_closed')) + '</div>';
 
   body.innerHTML = html;
   if (closed) return;
@@ -373,10 +373,10 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
     screenBtn.onclick = async function () {
       var status = document.getElementById('tcScreenStatus');
       screenBtn.disabled = true;
-      status.textContent = 'Choose a screen/window to share…';
+      status.textContent = t('choose_screen_share_hint');
       var blob = await recordSupportScreenAndVoice_(function (secs) {
-        status.innerHTML = '<span class="support-rec-dot"></span> Recording ' + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0') +
-          ' — <a href="javascript:void(0)" id="tcScreenStopLink">stop</a>';
+        status.innerHTML = '<span class="support-rec-dot"></span> ' + esc(t('recording_prefix')) + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0') +
+          ' — <a href="javascript:void(0)" id="tcScreenStopLink">' + esc(t('stop_link_label')) + '</a>';
         var stopLink = document.getElementById('tcScreenStopLink');
         if (stopLink) stopLink.onclick = function () { if (window._hululActiveScreenRecorder) window._hululActiveScreenRecorder.__hululStop(); };
       });
@@ -386,7 +386,7 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
         var b64 = await fileToBase64(blob);
         var up = await Api.call('uploadTicketMedia', { fileBase64: b64, fileName: 'screen-recording.webm', mimeType: blob.type || 'video/webm' });
         pendingRecordingUrl = up.url; pendingRecordingMime = blob.type || 'video/webm';
-        status.innerHTML = 'Recording attached — will be sent with your reply. <video controls src="' + up.url + '" style="max-width:220px;display:block;margin-top:6px;border-radius:var(--radius-sm);"></video>';
+        status.innerHTML = esc(t('recording_attached_note')) + '<video controls src="' + up.url + '" style="max-width:220px;display:block;margin-top:6px;border-radius:var(--radius-sm);"></video>';
       } catch (err) { UI.error(err); status.textContent = ''; }
     };
   }
@@ -394,7 +394,7 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
   document.getElementById('tcSendBtn').onclick = async function () {
     if (voiceCtl.isRecording()) voiceCtl.stop();
     var message = document.getElementById('tcMessage').value.trim();
-    if (!message && !pendingRecordingUrl) { UI.toast('Write a comment, or attach a recording, first', 'error'); return; }
+    if (!message && !pendingRecordingUrl) { UI.toast(t('toast_write_comment_or_attach'), 'error'); return; }
     try {
       var voiceNoteUrl = '';
       var audioEl = document.querySelector('#tcVoiceStatus audio');
@@ -408,7 +408,7 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
         ticketId: ticket.id, message: message, voiceNoteUrl: voiceNoteUrl,
         recordingUrl: pendingRecordingUrl, recordingMimeType: pendingRecordingMime
       });
-      UI.toast('Reply sent', 'success');
+      UI.toast(t('toast_reply_sent'), 'success');
       Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -417,40 +417,40 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
   if (resolveBtn) resolveBtn.onclick = function () { openResolveTicketModal_(ticket); };
   var approveBtn = document.getElementById('tcApproveBtn');
   if (approveBtn) approveBtn.onclick = function () {
-    UI.confirmModal('Approve this resolution and close the ticket?', async function () {
-      try { await Api.call('approveTicketResolution', { ticketId: ticket.id }); UI.toast('Ticket completed', 'success'); Router.resolve(); }
+    UI.confirmModal(t('confirm_approve_ticket'), async function () {
+      try { await Api.call('approveTicketResolution', { ticketId: ticket.id }); UI.toast(t('toast_ticket_completed'), 'success'); Router.resolve(); }
       catch (err) { UI.error(err); }
-    }, { confirmLabel: 'Approve', confirmClass: 'btn-primary' });
+    }, { confirmLabel: t('approve_btn'), confirmClass: 'btn-primary' });
   };
   var rejectBtn = document.getElementById('tcRejectBtn');
   if (rejectBtn) rejectBtn.onclick = function () { openRejectTicketModal_(ticket); };
 }
 
 function openResolveTicketModal_(ticket) {
-  var body = UI.field('Resolution remarks', '<textarea id="rtMessage" class="field-input" rows="4" placeholder="What was done to fix this?"></textarea>');
-  UI.openModal('Mark ticket resolved', body, [
+  var body = UI.field(t('field_resolution_remarks'), '<textarea id="rtMessage" class="field-input" rows="4" placeholder="' + esc(t('resolution_remarks_placeholder')) + '"></textarea>');
+  UI.openModal(t('mark_ticket_resolved_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Mark resolved', className: 'btn-primary', onClick: async function () {
+    { label: t('mark_resolved_btn'), className: 'btn-primary', onClick: async function () {
         var message = document.getElementById('rtMessage').value.trim();
-        if (!message) { UI.toast('Resolution remarks are required', 'error'); return; }
+        if (!message) { UI.toast(t('toast_resolution_remarks_required'), 'error'); return; }
         try {
           await Api.call('resolveTicket', { ticketId: ticket.id, message: message });
-          UI.closeModal(); UI.toast('Ticket marked resolved — awaiting the raiser\'s review', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_ticket_marked_resolved'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
 }
 
 function openRejectTicketModal_(ticket) {
-  var body = UI.field('What still needs work?', '<textarea id="rjMessage" class="field-input" rows="4" placeholder="Explain what\'s still wrong…"></textarea>');
-  UI.openModal('Send back for more work', body, [
+  var body = UI.field(t('field_what_needs_work'), '<textarea id="rjMessage" class="field-input" rows="4" placeholder="' + esc(t('needs_work_placeholder')) + '"></textarea>');
+  UI.openModal(t('send_back_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Send back', className: 'btn-danger', onClick: async function () {
+    { label: t('send_back_btn'), className: 'btn-danger', onClick: async function () {
         var message = document.getElementById('rjMessage').value.trim();
-        if (!message) { UI.toast('Let Support know what still needs work', 'error'); return; }
+        if (!message) { UI.toast(t('toast_let_support_know'), 'error'); return; }
         try {
           await Api.call('rejectTicketResolution', { ticketId: ticket.id, message: message });
-          UI.closeModal(); UI.toast('Sent back to Support with your comments', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_sent_back'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
