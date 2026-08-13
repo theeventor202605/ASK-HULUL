@@ -38,6 +38,12 @@ async function tabParticipants(content, eventId, detail) {
   // relationship here, matching assertCanManagePlace_ in Places.gs.
   var canManage = !!venue && EVENT_PLACE_MANAGE_ROLES.indexOf(role) !== -1 &&
     (role === 'SystemAdmin' || (event && event.emcId === HululState.user.orgId) || (event && event.eventManagerId === HululState.user.id));
+  // RBAC pilot (backend/Permissions.gs): matches assertCanCreatePlace_'s own requirePermission
+  // fallback in Places.gs -- lets a non-manager role (e.g. Inspector) see the map and add a new
+  // temporary participant without granting them canManage's broader edit/delete/view-credentials
+  // rights over every OTHER participant too. defaults to EventManager/Inspector/SystemAdmin.
+  var canCreateParticipant = !!venue && hasPermission('participant.create');
+  var canAddParticipant = canManage || canCreateParticipant;
   // RBAC pilot (backend/Permissions.gs): matches dedupeParticipants' own requirePermission.
   var canDedupe = hasPermission('participant.dedupe');
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
@@ -71,7 +77,7 @@ async function tabParticipants(content, eventId, detail) {
 
   content.innerHTML =
     '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(t('participants_registered_note', { participantTerm: Term('participant_plural'), eventTerm: Term('event').toLowerCase(), venueTerm: Term('venue').toLowerCase() })) + '</div>' +
-    (canManage ? renderAddEventPlaceCard_(zones, hasBoundary) : '') +
+    (canAddParticipant ? renderAddEventPlaceCard_(zones, hasBoundary) : '') +
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('participant_plural')) + '</div>' +
     (canDedupe ? '<button class="btn btn-secondary btn-sm" id="dedupeParticipantsBtn">' + esc(t('remove_duplicates_btn')) + '</button>' : '') +
@@ -96,8 +102,10 @@ async function tabParticipants(content, eventId, detail) {
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
       places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div>';
 
-  if (canManage) {
+  if (canAddParticipant) {
     wireEventPlaceForm_(eventId, venue, zones, places);
+  }
+  if (canManage) {
     content.querySelectorAll('[data-add-account]').forEach(function (btn) {
       btn.onclick = async function () {
         var placeId = btn.getAttribute('data-add-account');

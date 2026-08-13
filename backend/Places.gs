@@ -93,6 +93,24 @@ function assertCanManagePlace_(user, venue, event) {
   }
 }
 
+// Narrower than assertCanManagePlace_ -- just "who may add a new Event Place" (the Event >
+// Participants tab's add-a-temporary-participant form). A Venue Place (no event) is unchanged: still
+// manager-only via assertCanManagePlace_, since that's the permanent catalog, not a per-event concern.
+// For an Event Place, a Place manager role keeps the exact same org-scoped check as before; anyone
+// else falls through to the admin-configurable participant.create permission (Settings > Permissions >
+// Participants), which already defaults to EventManager/Inspector/SystemAdmin -- see
+// PERMISSION_REGISTRY_ (Permissions.gs), same pattern createFinding (Findings.gs) already uses for
+// Inspector's finding.create. REQ: "Inspector ... ability to add a temporary participant" -- deliberately
+// scoped to create only; addPlaceAccount/updatePlace/deletePlace/getPlaceAccountCredentials still gate
+// on assertCanManagePlace_ alone, so an Inspector can't edit/delete/view-credentials for participants
+// they didn't add.
+function assertCanCreatePlace_(user, venue, event) {
+  if (!event || EVENT_PLACE_MANAGE_ROLES.indexOf(user.role) !== -1) {
+    return assertCanManagePlace_(user, venue, event);
+  }
+  requirePermission(user, 'participant.create');
+}
+
 function createPlace(user, p) {
   var event = p.eventId ? getById('Events', p.eventId) : null;
   if (p.eventId && !event) throw new HululError('NOT_FOUND', 'Event not found');
@@ -101,7 +119,7 @@ function createPlace(user, p) {
   if (PLACE_TYPES.indexOf(p.type) === -1) throw new HululError('BAD_REQUEST', 'Invalid place type');
   var venue = getById('Venues', venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
-  assertCanManagePlace_(user, venue, event);
+  assertCanCreatePlace_(user, venue, event);
   // REQ: zoneId can be blank, 'ALL' (explicit "every zone"), one zone, or -- Operators only -- a
   // comma-joined list of several (see Utils.gs's zoneField helpers for how this gets read back).
   if (p.zoneId && p.zoneId !== 'ALL') {
