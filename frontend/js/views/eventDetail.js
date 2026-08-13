@@ -141,14 +141,18 @@ async function tabOverview(content, eventId, detail) {
           infoRow(Term('subEvent_plural'), subEventNames) + infoRow(Term('zone_plural'), zoneNames) +
         '</div></div>' +
         // REQ report: "Add Sub-Events list" -- so a PM can see this event's sub-events (with dates)
-        // without leaving the Overview tab for the separate top-level Sub-Events page.
-        '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
-          UI.table([
-            { key: 'name', label: t('col_name') },
-            { key: 'startDateTime', label: t('col_start'), render: r => UI.fmtDate(r.startDateTime) },
-            { key: 'endDateTime', label: t('col_end'), render: r => UI.fmtDate(r.endDateTime) }
-          ], subEvents, { emptyText: t('empty_no_x_yet', { term: Term('subEvent_plural').toLowerCase() }) }) +
-        '</div></div>' +
+        // without leaving the Overview tab for the separate top-level Sub-Events page. REQ
+        // (follow-up): "Hide Sub-Events section if empty" -- an event with none is the common case
+        // for e.g. single-day events, and an empty table here was just dead weight above the map.
+        (subEvents.length
+          ? '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
+            UI.table([
+              { key: 'name', label: t('col_name') },
+              { key: 'startDateTime', label: t('col_start'), render: r => UI.fmtDate(r.startDateTime) },
+              { key: 'endDateTime', label: t('col_end'), render: r => UI.fmtDate(r.endDateTime) }
+            ], subEvents, {}) +
+          '</div></div>'
+          : '') +
       '</div>' +
       // REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
       // locations." initOverviewZoneMap_ below is deliberately non-interactive and only plots
