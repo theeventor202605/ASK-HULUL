@@ -4,42 +4,42 @@
 // entityLabel (when present) overrides the i18n `label` key with a live custom-terminology lookup
 // (Term()), so a rename like Events -> Projects shows up in the nav without touching i18n.js.
 var NAV_ITEMS = [
-  { path: '/dashboard', icon: '🏠', label: 'nav_dashboard', section: 'section_main' },
-  { path: '/projects', icon: '📁', label: 'nav_projects', entityLabel: 'project_plural', section: 'section_main' },
-  { path: '/events', icon: '📅', label: 'nav_events', entityLabel: 'event_plural', section: 'section_main' },
-  { path: '/sub-events', icon: '🧩', label: 'nav_subevents', entityLabel: 'subEvent_plural', section: 'section_main',
+  { path: '/dashboard', icon: LUCIDE_ICONS['layout-dashboard'], label: 'nav_dashboard', section: 'section_main' },
+  { path: '/projects', icon: LUCIDE_ICONS['folder'], label: 'nav_projects', entityLabel: 'project_plural', section: 'section_main' },
+  { path: '/events', icon: LUCIDE_ICONS['calendar-days'], label: 'nav_events', entityLabel: 'event_plural', section: 'section_main' },
+  { path: '/sub-events', icon: LUCIDE_ICONS['puzzle'], label: 'nav_subevents', entityLabel: 'subEvent_plural', section: 'section_main',
     roles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager'] },
-  { path: '/meetings', icon: '🗓️', label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
+  { path: '/meetings', icon: LUCIDE_ICONS['calendar-clock'], label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
-  { path: '/notifications', icon: '🔔', label: 'nav_notifications', section: 'section_main' },
+  { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as listUsers/Reassignment.gs's own
   // REASSIGNMENT_MANAGER_ROLES_ -- kept in sync manually since nav gating is frontend-only (the
   // backend enforces its own copy regardless of what this list shows).
-  { path: '/reassignment', icon: '🔁', label: 'nav_reassignment', section: 'section_main',
+  { path: '/reassignment', icon: LUCIDE_ICONS['repeat'], label: 'nav_reassignment', section: 'section_main',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager'] },
   // Support/SystemAdmin see the whole shared queue here (support.js's renderSupport branches on
   // role); everyone else sees only "My Tickets" -- the ones they've personally raised via the
   // #supportBtn capture flow (wireChrome below) -- so this stays visible to every role, no
   // `roles` restriction, unlike the admin-only items further down.
-  { path: '/support', icon: '🛟', label: 'nav_support', section: 'section_main' },
-  { path: '/users', icon: '👥', label: 'nav_users', section: 'section_admin',
+  { path: '/support', icon: LUCIDE_ICONS['life-buoy'], label: 'nav_support', section: 'section_main' },
+  { path: '/users', icon: LUCIDE_ICONS['users'], label: 'nav_users', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
-  { path: '/organizations', icon: '🏢', label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
-  { path: '/venues', icon: '📍', label: 'nav_venues', entityLabel: 'venue_plural', section: 'section_admin',
+  { path: '/organizations', icon: LUCIDE_ICONS['building-2'], label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
+  { path: '/venues', icon: LUCIDE_ICONS['map-pin'], label: 'nav_venues', entityLabel: 'venue_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'EMCAdmin', 'EMCManager'] },
-  { path: '/disciplines', icon: '🛡️', label: 'nav_disciplines', entityLabel: 'discipline_plural', section: 'section_admin',
+  { path: '/disciplines', icon: LUCIDE_ICONS['shield-check'], label: 'nav_disciplines', entityLabel: 'discipline_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin'] },
-  { path: '/checklist-items', icon: '✅', label: 'nav_checklist', entityLabel: 'checklistItem_plural', section: 'section_admin',
+  { path: '/checklist-items', icon: LUCIDE_ICONS['list-checks'], label: 'nav_checklist', entityLabel: 'checklistItem_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
-  { path: '/inspector-qualifications', icon: '🎓', label: 'nav_qualifications', section: 'section_admin',
+  { path: '/inspector-qualifications', icon: LUCIDE_ICONS['graduation-cap'], label: 'nav_qualifications', section: 'section_admin',
     entityLabelFn: function () { return t('qualifications_page_title', { term: Term('inspector_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
-  { path: '/template-library', icon: '📚', label: 'nav_template_library', section: 'section_admin',
+  { path: '/template-library', icon: LUCIDE_ICONS['library'], label: 'nav_template_library', section: 'section_admin',
     entityLabelFn: function () { return t('template_library_title', { term: Term('template_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
-  { path: '/config', icon: '🛠️', label: 'nav_config', section: 'section_admin', roles: ['SystemAdmin'] },
-  { path: '/settings', icon: '⚙️', label: 'nav_settings', section: 'section_admin' }
+  { path: '/config', icon: LUCIDE_ICONS['wrench'], label: 'nav_config', section: 'section_admin', roles: ['SystemAdmin'] },
+  { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 
 function showLogin() {

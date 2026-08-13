@@ -550,12 +550,15 @@ function openIconPickerModal_(customLibraries, onPick) {
       '<input class="field-input" id="customIconInput" placeholder="' + esc(t('custom_icon_placeholder')) + '" style="flex:1;" maxlength="8" />' +
       '<button type="button" class="btn btn-secondary btn-sm" id="customIconUseBtn">' + esc(t('use_btn')) + '</button>' +
     '</div>' +
+    // Built-in palette (icons.js) is Lucide SVGs now, not raw characters -- each entry carries its
+    // own Lucide name (for a title tooltip and for the click handler's LUCIDE_ICONS lookup below)
+    // plus the already-resolved svg markup to render directly in the grid.
     window.ICON_LIBRARY.map(function (group) {
       return '<div style="margin-bottom:10px;">' +
         '<div style="font-size:11px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + esc(group.section) + '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;">' +
         group.icons.map(function (ic) {
-          return '<div class="icon-pick-opt" data-icon="' + esc(ic) + '" style="cursor:pointer;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--border);font-size:18px;">' + ic + '</div>';
+          return '<div class="icon-pick-opt" data-icon-name="' + esc(ic.name) + '" title="' + esc(ic.label) + '" style="cursor:pointer;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--border);font-size:18px;">' + ic.svg + '</div>';
         }).join('') +
         '</div></div>';
     }).join('') +
@@ -590,7 +593,10 @@ function openIconPickerModal_(customLibraries, onPick) {
 
   document.querySelectorAll('.icon-pick-opt').forEach(function (el) {
     el.onclick = function () {
-      var icon = el.getAttribute('data-icon');
+      // Built-in Lucide options store just their name (data-icon-name) and resolve to the actual
+      // svg markup here; custom emoji-library options store the character itself (data-icon).
+      var lucideName = el.getAttribute('data-icon-name');
+      var icon = lucideName ? (window.LUCIDE_ICONS[lucideName] || '') : el.getAttribute('data-icon');
       UI.closeModal();
       onPick(icon);
     };

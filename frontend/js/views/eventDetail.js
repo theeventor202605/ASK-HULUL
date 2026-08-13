@@ -2384,10 +2384,10 @@ async function tabEventChat(content, eventId, detail) {
         '</div>' +
         '<div class="chat-emoji-popover" id="chatEmojiPopover" style="display:none;">' +
           '<div class="chat-emoji-popover-header">' +
-            '<div class="chat-emoji-tabs">' +
-              '<button type="button" class="chat-emoji-tab active" data-emoji-tab="emoji">' + esc(t('tab_emoji_label')) + '</button>' +
-              '<button type="button" class="chat-emoji-tab" data-emoji-tab="icons">' + esc(t('tab_icons_label')) + '</button>' +
-            '</div>' +
+            // Icons tab removed: ICON_LIBRARY (icons.js) now holds Lucide SVG markup, not single
+            // characters -- there's no way to "type" a vector icon into a plain-text chat message,
+            // so this popover only ever inserts real emoji now (still character-based, emoji.js).
+            '<div class="chat-emoji-popover-title">' + esc(t('tab_emoji_label')) + '</div>' +
             '<button type="button" class="chat-emoji-popover-close" id="chatEmojiPopoverClose" aria-label="' + esc(t('aria_close')) + '">' + ICON('close_modal') + '</button>' +
           '</div>' +
           '<div class="chat-emoji-popover-body" id="chatEmojiPopoverBody"></div>' +
@@ -2612,7 +2612,6 @@ async function tabEventChat(content, eventId, detail) {
   var emojiBtn = document.getElementById('chatEmojiBtn');
   var emojiPopover = document.getElementById('chatEmojiPopover');
   var emojiPopoverBody = document.getElementById('chatEmojiPopoverBody');
-  var emojiActiveTab = 'emoji';
 
   function insertAtCursor_(text) {
     var start = textarea.selectionStart, end = textarea.selectionEnd;
@@ -2623,10 +2622,11 @@ async function tabEventChat(content, eventId, detail) {
     textarea.setSelectionRange(newPos, newPos);
   }
 
+  // Emoji only (EMOJI_LIBRARY, emoji.js) -- ICON_LIBRARY (icons.js) used to have a second tab here,
+  // but it now holds Lucide SVG markup rather than single characters, and a vector icon can't be
+  // "typed" into a plain-text chat message the way an emoji can, so that source was dropped.
   function renderEmojiPopoverBody_() {
-    var groups = emojiActiveTab === 'emoji'
-      ? EMOJI_LIBRARY.map(function (g) { return { title: g.category, glyphs: g.emojis }; })
-      : window.ICON_LIBRARY.map(function (g) { return { title: g.section, glyphs: g.icons }; });
+    var groups = EMOJI_LIBRARY.map(function (g) { return { title: g.category, glyphs: g.emojis }; });
     emojiPopoverBody.innerHTML = groups.map(function (g) {
       return '<div class="chat-emoji-category-title">' + esc(g.title) + '</div>' +
         '<div class="chat-emoji-grid">' +
@@ -2652,13 +2652,6 @@ async function tabEventChat(content, eventId, detail) {
     if (emojiPopover.style.display === 'none') openEmojiPopover_(); else closeEmojiPopover_();
   };
   document.getElementById('chatEmojiPopoverClose').onclick = closeEmojiPopover_;
-  emojiPopover.querySelectorAll('.chat-emoji-tab').forEach(function (tabBtn) {
-    tabBtn.onclick = function () {
-      emojiActiveTab = tabBtn.getAttribute('data-emoji-tab');
-      emojiPopover.querySelectorAll('.chat-emoji-tab').forEach(function (b) { b.classList.toggle('active', b === tabBtn); });
-      renderEmojiPopoverBody_();
-    };
-  });
   // A per-tab-visit document click listener (not one registered once at app bootstrap, unlike e.g.
   // the notification panel's own outside-click handler in app.js) -- this popover only exists while
   // the Chat tab itself is on screen, torn down the moment content.innerHTML is replaced by any other
