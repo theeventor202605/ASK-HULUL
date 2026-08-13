@@ -43,11 +43,11 @@ function driveEvidenceThumbUrl_(url, size) {
 // don't run through our click handler's preventDefault).
 function evidenceThumbsHtml_(urls, size) {
   size = size || 120;
-  if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">No evidence attached.</div>';
+  if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">' + esc(t('no_evidence_attached')) + '</div>';
   return '<div style="display:flex;flex-wrap:wrap;gap:12px;">' + urls.map(function (u, i) {
     var thumb = driveEvidenceThumbUrl_(u);
     var full = driveEvidenceThumbUrl_(u, 1600) || u;
-    return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="Click to expand" ' +
+    return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
       'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
       (thumb
         ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" ' +
@@ -64,9 +64,9 @@ function openEvidenceLightbox_(fullImgUrl, originalUrl) {
   var overlay = document.createElement('div');
   overlay.className = 'evidence-lightbox-overlay';
   overlay.innerHTML =
-    '<button type="button" class="evidence-lightbox-close" aria-label="Close" title="Close">' + ICON('close_modal') + '</button>' +
+    '<button type="button" class="evidence-lightbox-close" aria-label="' + esc(t('close')) + '" title="' + esc(t('close')) + '">' + ICON('close_modal') + '</button>' +
     '<img src="' + esc(fullImgUrl) + '" alt="Evidence" />' +
-    '<a href="' + esc(originalUrl) + '" target="_blank" rel="noopener" class="evidence-lightbox-open">' + ICON('view_open') + ' Open original</a>';
+    '<a href="' + esc(originalUrl) + '" target="_blank" rel="noopener" class="evidence-lightbox-open">' + ICON('view_open') + ' ' + esc(t('open_original')) + '</a>';
   document.body.appendChild(overlay);
   function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
   overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); }); // background only -- not the image/buttons
@@ -86,11 +86,14 @@ document.addEventListener('click', function (e) {
 // severity colors UI.riskBadge already uses elsewhere, just surfaced here too since the strip needs
 // the raw color (not just a badge class) for its background/dot.
 function findingRiskMeta_(risk) {
+  // NOTE: the `risk` param itself stays the raw English enum value (Low/Medium/High/Critical) --
+  // it round-trips into <select> values and API payloads elsewhere (see the New/Edit Finding
+  // forms below), so only the displayed `label` is translated here.
   var map = {
-    Critical: { label: 'Critical', color: 'var(--critical)', soft: 'var(--critical-soft)' },
-    High: { label: 'High', color: 'var(--danger)', soft: 'var(--danger-soft)' },
-    Medium: { label: 'Medium', color: 'var(--warning)', soft: 'var(--warning-soft)' },
-    Low: { label: 'Low', color: 'var(--success)', soft: 'var(--success-soft)' }
+    Critical: { label: t('risk_critical'), color: 'var(--critical)', soft: 'var(--critical-soft)' },
+    High: { label: t('risk_high'), color: 'var(--danger)', soft: 'var(--danger-soft)' },
+    Medium: { label: t('risk_medium'), color: 'var(--warning)', soft: 'var(--warning-soft)' },
+    Low: { label: t('risk_low'), color: 'var(--success)', soft: 'var(--success-soft)' }
   };
   return map[risk] || { label: risk || '—', color: 'var(--text-600)', soft: '#f1f3f9' };
 }
@@ -101,7 +104,7 @@ function findingHeroStripHtml_(finding) {
     'padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">' +
     '<div style="display:flex;align-items:center;gap:10px;">' +
       '<span style="width:12px;height:12px;border-radius:50%;background:' + rm.color + ';box-shadow:0 0 0 4px rgba(15,23,42,.06);flex:none;"></span>' +
-      '<span style="font-size:13px;font-weight:800;letter-spacing:.03em;color:' + rm.color + ';">' + esc(rm.label.toUpperCase()) + ' RISK</span>' +
+      '<span style="font-size:13px;font-weight:800;letter-spacing:.03em;color:' + rm.color + ';">' + esc(t('risk_label_suffix', { label: rm.label.toUpperCase() })) + '</span>' +
     '</div>' +
     UI.statusBadge(finding.status) +
   '</div>';
@@ -169,9 +172,9 @@ async function renderNewFinding(params) {
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
-    '<div class="page-header"><div><div class="page-title">Log ' + esc(Term('finding')) + '</div>' +
-    '<div class="page-subtitle">Record a new non-compliance finding for this ' + esc(Term('event').toLowerCase()) + '</div></div>' +
-    '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(t('finding_log_title', { term: Term('finding') })) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('finding_log_subtitle', { term: Term('event').toLowerCase() })) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
     // REQ (follow-up): "move map to the right, and enlarge the canvas to cover empty space." No
     // align-items:flex-start here (default stretch instead) so both cards match the taller column's
     // height -- the map card/body/canvas below are all flex:1 column so the map itself grows to fill
@@ -181,27 +184,27 @@ async function renderNewFinding(params) {
       '<div class="card" style="flex:2 1 400px;max-width:640px;"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
         '<div class="field-group" style="position:relative;">' +
           '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
-          '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
+          '<input id="fParticipantSearch" class="field-input" placeholder="' + esc(t('participant_search_placeholder', { term: Term('participant').toLowerCase() })) + '" autocomplete="off" />' +
           '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
-          '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ Live location side map — coming soon.</div>' +
+          '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ ' + esc(t('live_location_map_soon')) + '</div>' +
         '</div>' +
         UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
           disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
         // REQ (follow-up): "Move Checklist Type to be after Discipline."
-        UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
-        UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
-        UI.field('Suggested action', '<input id="fAction" class="field-input" />') +
+        UI.field(t('checklist_type'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
+        UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
+        UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field('Risk level', '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
-          UI.field('Resolution window (hours)', '<input id="fWindow" type="number" class="field-input" value="24" />') +
+          UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
+          UI.field(t('resolution_window_hours'), '<input id="fWindow" type="number" class="field-input" value="24" />') +
         '</div>' +
-        '<div class="field-label" style="margin-top:8px;">Photo or video evidence</div>' +
+        '<div class="field-label" style="margin-top:8px;">' + esc(t('evidence_photo_video')) + '</div>' +
         // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
         // section further down this file -- opens the device camera directly, no gallery/file picker.
         '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-        '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button>' +
         '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
-        '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">Log ' + esc(Term('finding')) + '</button>' +
+        '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('finding_log_title', { term: Term('finding') })) + '</button>' +
       '</div></div>' +
       // REQ: "Add map... showing Inspector live location centred." This device's own GPS position
       // -- see initFindingLocationMap_ below. No max-width here (unlike the form card, capped at
@@ -209,7 +212,7 @@ async function renderNewFinding(params) {
       // fill outlined empty space" -- once the form card hits its own cap, flexbox redistributes
       // all remaining row width to this card since it's the only sibling left that can still grow.
       '<div class="card" style="flex:1 1 320px;display:flex;flex-direction:column;">' +
-        '<div class="card-header"><div class="card-title">Your location</div></div>' +
+        '<div class="card-header"><div class="card-title">' + esc(t('your_location')) + '</div></div>' +
         '<div class="card-body" style="display:flex;flex-direction:column;flex:1;">' +
           '<div id="findingLocationMap" style="flex:1;min-height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
           '<div id="findingLocationBanner" class="muted" style="font-size:11.5px;margin-top:8px;"></div>' +
@@ -234,7 +237,7 @@ async function renderNewFinding(params) {
             return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
               '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
           }).join('')
-        : '<div class="chat-suggest-empty">No matches</div>');
+        : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
     pSuggest.style.display = '';
     pSuggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
       // mousedown+preventDefault (not click) fires before the input's own blur-hide below, same
@@ -319,9 +322,9 @@ async function renderNewFinding(params) {
   // anything still preparing/uploading is watched (attachFindingEvidenceInBackground_ below) and
   // appended (addFindingEvidence, Findings.gs) the moment each one finishes.
   document.getElementById('createFindingBtn').onclick = async function () {
-    if (!selectedParticipant) { UI.toast(Term('participant') + ' is required — search and select one', 'error'); return; }
+    if (!selectedParticipant) { UI.toast(t('toast_participant_required', { term: Term('participant') }), 'error'); return; }
     var disciplineId = document.getElementById('fDiscipline').value;
-    if (!disciplineId) { UI.toast(Term('discipline') + ' is required', 'error'); return; }
+    if (!disciplineId) { UI.toast(t('toast_discipline_required', { term: Term('discipline') }), 'error'); return; }
     var files = pendingFiles.newFinding || [];
     var doneUrls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
     var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
@@ -334,10 +337,10 @@ async function renderNewFinding(params) {
         evidenceUrls: doneUrls
       });
       if (stillUploading) {
-        UI.toast(Term('finding') + ' logged — evidence still uploading, it\'ll attach automatically', 'success');
+        UI.toast(t('toast_x_logged_uploading', { term: Term('finding') }), 'success');
         attachFindingEvidenceInBackground_(f.id, files, doneUrls);
       } else {
-        UI.toast(Term('finding') + ' logged', 'success');
+        UI.toast(t('toast_x_logged', { term: Term('finding') }), 'success');
       }
       destroyFindingLocationMap_();
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;
@@ -366,19 +369,19 @@ async function renderEditFinding(params) {
   root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
 
   if (!hasPermission('finding.edit')) {
-    root.innerHTML = '<div class="empty-state">You don\'t have permission to edit this ' + Term('finding').toLowerCase() + '.</div>';
+    root.innerHTML = '<div class="empty-state">' + esc(t('no_permission_edit_x', { term: Term('finding').toLowerCase() })) + '</div>';
     return;
   }
 
   var data;
   try { data = await Api.call('viewFinding', { findingId: findingId }); }
-  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">Could not load this ' + Term('finding').toLowerCase() + '.</div>'; return; }
+  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('could_not_load_x', { term: Term('finding').toLowerCase() })) + '</div>'; return; }
 
   var finding = data.finding;
   // Same gate updateFinding itself enforces server-side -- checked here too so someone who reaches
   // this page via a stale link/back-button gets a clear page instead of a save that just fails later.
   if (FINDING_EDITABLE_STATUSES_.indexOf(finding.status) === -1) {
-    UI.toast('This ' + Term('finding').toLowerCase() + ' has already been submitted and can no longer be edited', 'error');
+    UI.toast(t('x_already_submitted', { term: Term('finding').toLowerCase() }), 'error');
     window.location.hash = '#/events/' + eventId + '/findings/' + findingId;
     return;
   }
@@ -396,23 +399,23 @@ async function renderEditFinding(params) {
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '/findings/' + findingId + '">' + esc(finding.description || t('tab_findings')) + '</a></div>' +
-    '<div class="page-header"><div><div class="page-title">Edit ' + esc(Term('finding')) + '</div>' +
-    '<div class="page-subtitle">Update this ' + esc(Term('finding').toLowerCase()) + ' before it\'s submitted</div></div>' +
-    '<button class="btn btn-secondary" id="backEditFindingBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(t('edit_x_title', { term: Term('finding') })) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('edit_finding_subtitle', { term: Term('finding').toLowerCase() })) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backEditFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
     '<div class="card" style="max-width:640px;"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
       '<div class="field-group" style="position:relative;">' +
         '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
-        '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
+        '<input id="fParticipantSearch" class="field-input" placeholder="' + esc(t('participant_search_placeholder', { term: Term('participant').toLowerCase() })) + '" autocomplete="off" />' +
         '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
       '</div>' +
       UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
-      UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
-      UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
-      UI.field('Suggested action', '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
-      UI.field('Risk level', '<select id="fRisk" class="field-input">' +
+      UI.field(t('checklist_type'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
+      UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
+      UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
+      UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
         ['Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
-      '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">Save changes</button>' +
+      '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('save_changes')) + '</button>' +
     '</div></div>';
 
   document.getElementById('backEditFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '/findings/' + findingId; };
@@ -432,7 +435,7 @@ async function renderEditFinding(params) {
             return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
               '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
           }).join('')
-        : '<div class="chat-suggest-empty">No matches</div>');
+        : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
     pSuggest.style.display = '';
     pSuggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
       el.addEventListener('mousedown', function (e) {
@@ -475,9 +478,9 @@ async function renderEditFinding(params) {
   document.getElementById('fChecklistType').value = (finding.category && finding.category !== 'Other') ? finding.category : '';
 
   document.getElementById('saveEditFindingBtn').onclick = async function () {
-    if (!selectedParticipant) { UI.toast(Term('participant') + ' is required — search and select one', 'error'); return; }
+    if (!selectedParticipant) { UI.toast(t('toast_participant_required', { term: Term('participant') }), 'error'); return; }
     var disciplineId = document.getElementById('fDiscipline').value;
-    if (!disciplineId) { UI.toast(Term('discipline') + ' is required', 'error'); return; }
+    if (!disciplineId) { UI.toast(t('toast_discipline_required', { term: Term('discipline') }), 'error'); return; }
     try {
       await Api.call('updateFinding', {
         findingId: findingId, participantId: selectedParticipant.id, disciplineId: disciplineId,
@@ -487,7 +490,7 @@ async function renderEditFinding(params) {
         category: document.getElementById('fChecklistType').value || 'Other',
         riskLevel: document.getElementById('fRisk').value
       });
-      UI.toast(Term('finding') + ' updated', 'success');
+      UI.toast(t('x_updated', { term: Term('finding') }), 'success');
       window.location.hash = '#/events/' + eventId + '/findings/' + findingId;
     } catch (err) { UI.error(err); }
   };
@@ -573,7 +576,7 @@ function initFindingLocationMap_(venue, zones, participants) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    el.textContent = t('map_unavailable');
     return;
   }
   setTimeout(function () {
@@ -625,7 +628,7 @@ function updateFindingMyPosition_(latlng) {
   var banner = document.getElementById('findingLocationBanner');
   if (findingLocationVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], findingLocationVenueBoundary_)) {
     if (findingLocationMyMarker_) { findingLocationMapInstance_.removeLayer(findingLocationMyMarker_); findingLocationMyMarker_ = null; }
-    if (banner) banner.innerHTML = '<div class="muted" style="font-size:11.5px;">' + ICON('warning_banner') + ' You\'re outside the venue boundary — your location isn\'t shown.</div>';
+    if (banner) banner.innerHTML = '<div class="muted" style="font-size:11.5px;">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_banner')) + '</div>';
     return;
   }
   if (!findingLocationMyMarker_) {
@@ -643,10 +646,10 @@ function updateFindingMyPosition_(latlng) {
 function startFindingLocationWatch_() {
   var banner = document.getElementById('findingLocationBanner');
   if (!navigator.geolocation) {
-    if (banner) banner.textContent = 'Location isn\'t available in this browser.';
+    if (banner) banner.textContent = t('location_not_available_browser');
     return;
   }
-  if (banner) banner.innerHTML = ICON('gps_locating') + ' Getting your location…';
+  if (banner) banner.innerHTML = ICON('gps_locating') + ' ' + esc(t('gps_locating'));
   stopFindingLocationWatch_();
   findingLocationWatchId_ = navigator.geolocation.watchPosition(function (pos) {
     var freshBanner = document.getElementById('findingLocationBanner');
@@ -654,7 +657,7 @@ function startFindingLocationWatch_() {
     updateFindingMyPosition_([pos.coords.latitude, pos.coords.longitude]);
   }, function () {
     var freshBanner = document.getElementById('findingLocationBanner');
-    if (freshBanner) freshBanner.textContent = 'Couldn\'t get your location — check GPS/location permission.';
+    if (freshBanner) freshBanner.textContent = t('location_error');
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
 }
 
@@ -668,7 +671,7 @@ async function renderFindingDetail(params) {
 
   var data;
   try { data = await Api.call('viewFinding', { findingId: findingId }); }
-  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">Could not load this finding.</div>'; return; }
+  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('could_not_load_x', { term: Term('finding').toLowerCase() })) + '</div>'; return; }
 
   var finding = data.finding, resolutions = data.resolutions || [];
   // RBAC pilot: which action section renders is now driven by the same admin-configurable
@@ -688,7 +691,7 @@ async function renderFindingDetail(params) {
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
     '<div class="page-header"><div><div class="page-title">' + esc(finding.description || '(no description)') + '</div>' +
     '<div class="page-subtitle">' + esc(finding.disciplineName || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
-    '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' Back</button></div>' +
+    '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
 
     // REQ (follow-up): "Re-arrange in the following order: Card header: Risk Level and Status (as
     // they are); 1. Participant 2. Zone 3. Discipline 4. Category 5. Logged 6. Resolution Window
@@ -701,39 +704,39 @@ async function renderFindingDetail(params) {
       '<div class="card-body">' +
         '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
           findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
-          findingMetaChipHtml_('📍', 'Sub-' + Term('zone').toLowerCase(), esc(finding.subZone || '—')) +
+          findingMetaChipHtml_('📍', t('sub_x', { term: Term('zone').toLowerCase() }), esc(finding.subZone || '—')) +
           findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
-          findingMetaChipHtml_('📋', 'Category', esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
-          findingMetaChipHtml_('🕓', 'Logged', UI.fmtDate(finding.createdAt)) +
-          findingMetaChipHtml_('⏱️', 'Resolution window', UI.fmtDate(finding.resolutionWindowAt)) +
+          findingMetaChipHtml_('📋', t('category'), esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
+          findingMetaChipHtml_('🕓', t('logged'), UI.fmtDate(finding.createdAt)) +
+          findingMetaChipHtml_('⏱️', t('resolution_window'), UI.fmtDate(finding.resolutionWindowAt)) +
           // Not in the requested list (no Location field going forward -- see createFinding's own
           // header comment) but still shown, tacked onto the end, for older records that have one.
-          (finding.location ? findingMetaChipHtml_('🧭', 'Location', esc(finding.location)) : '') +
+          (finding.location ? findingMetaChipHtml_('🧭', t('location'), esc(finding.location)) : '') +
         '</div>' +
         '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
-          '<div class="field-label" style="margin-top:0;">Description</div>' +
+          '<div class="field-label" style="margin-top:0;">' + esc(t('description')) + '</div>' +
           '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(finding.description || '—') + '</div>' +
         '</div>' +
         (finding.suggestedAction
-          ? '<div style="margin-bottom:16px;">' + detailField_('Suggested action', esc(finding.suggestedAction)) + '</div>'
+          ? '<div style="margin-bottom:16px;">' + detailField_(t('suggested_action'), esc(finding.suggestedAction)) + '</div>'
           : '') +
-        '<div class="field-label" style="margin-bottom:8px;">Risk Logging evidence</div>' +
+        '<div class="field-label" style="margin-bottom:8px;">' + esc(t('risk_logging_evidence')) + '</div>' +
         evidenceThumbsHtml_(finding.evidenceUrls, 168) +
       '</div>' +
     '</div>' +
 
     (latestRejected && (finding.status === 'ReOpen' || finding.status === 'Rejected')
       ? '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--danger);"><div class="card-body">' +
-          '<div style="font-weight:700;font-size:12.5px;color:var(--danger);margin-bottom:4px;">Rejected by inspector' +
-          (finding.status === 'Rejected' ? ' — final' : ' — please fix and resubmit') + '</div>' +
+          '<div style="font-weight:700;font-size:12.5px;color:var(--danger);margin-bottom:4px;">' + esc(t('rejected_by_inspector')) +
+          esc(finding.status === 'Rejected' ? t('rejected_final') : t('rejected_fix_resubmit')) + '</div>' +
           '<div style="font-size:13px;">' + esc(latestRejected.comments || '—') + '</div></div></div>'
       : '') +
 
     findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending) +
 
     (resolutions.length
-      ? '<div class="card"><div class="card-header"><div class="card-title">Resolution history</div>' +
-        '<div class="muted" style="font-size:11.5px;">Remarks &amp; photos submitted by the ' + esc(Term('participant').toLowerCase()) + '</div></div>' +
+      ? '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('resolution_history')) + '</div>' +
+        '<div class="muted" style="font-size:11.5px;">' + esc(t('resolution_history_subtitle', { term: Term('participant').toLowerCase() })) + '</div></div>' +
         '<div class="card-body">' + resolutions.map(findingResolutionHistoryRowHtml_).join('') + '</div></div>'
       : '');
 
@@ -747,7 +750,7 @@ function findingResolutionHistoryRowHtml_(r) {
       '<strong style="font-size:12.5px;">' + UI.fmtDate(r.submittedAt) + '</strong>' + UI.statusBadge(r.decision) +
     '</div>' +
     '<div style="font-size:13px;margin-top:6px;">' + esc(r.remarks || '—') + '</div>' +
-    (r.comments ? '<div style="font-size:12.5px;color:var(--danger);margin-top:4px;">Reviewer remarks: ' + esc(r.comments) + '</div>' : '') +
+    (r.comments ? '<div style="font-size:12.5px;color:var(--danger);margin-top:4px;">' + esc(t('reviewer_remarks')) + esc(r.comments) + '</div>' : '') +
     '<div style="margin-top:8px;">' + evidenceThumbsHtml_(r.evidenceUrls) + '</div>' +
   '</div>';
 }
@@ -758,31 +761,31 @@ function findingResolutionHistoryRowHtml_(r) {
 // nothing here -- the read-only card above and the history below are the whole page.
 function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending) {
   if (isParticipant && (finding.status === 'Viewed' || finding.status === 'ReOpen')) {
-    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Resolve this finding</div></div>' +
+    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('resolve_this_x', { term: Term('finding').toLowerCase() })) + '</div></div>' +
       '<div class="card-body">' +
-        UI.field('Remarks', '<textarea id="fResolveRemarks" class="field-input" rows="3"></textarea>') +
-        '<div class="field-label" style="font-size:11.5px;margin-top:8px;">Photo or video evidence of resolution (required)</div>' +
+        UI.field(t('remarks'), '<textarea id="fResolveRemarks" class="field-input" rows="3"></textarea>') +
+        '<div class="field-label" style="font-size:11.5px;margin-top:8px;">' + esc(t('resolution_evidence_required')) + '</div>' +
         // Same camera-only pattern as Record Results' Risk Logging evidence field (eventDetail.js) --
         // the native file input is hidden, a plain camera-icon button triggers it, capture="environment"
         // opens the device camera directly instead of a general file/gallery picker.
         '<input type="file" id="fResolveFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-        '<button type="button" class="btn btn-secondary btn-icon" id="fResolveCameraBtn" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon" id="fResolveCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button>' +
         '<div class="evidence-list" data-evlist="resolve" style="margin-top:6px;"></div>' +
-        '<button class="btn btn-primary btn-sm" id="submitResolveBtn" style="margin-top:12px;">Submit resolution</button>' +
+        '<button class="btn btn-primary btn-sm" id="submitResolveBtn" style="margin-top:12px;">' + esc(t('submit_resolution')) + '</button>' +
       '</div></div>';
   }
   if (isReviewer && finding.status === 'InReview' && latestPending) {
-    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Review resolution</div></div>' +
+    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('review_resolution')) + '</div></div>' +
       '<div class="card-body">' +
-        detailField_('Remarks', esc(latestPending.remarks || '—')) +
+        detailField_(t('remarks'), esc(latestPending.remarks || '—')) +
         '<div style="margin-top:12px;">' + evidenceThumbsHtml_(latestPending.evidenceUrls) + '</div>' +
         '<div style="display:flex;gap:8px;margin-top:16px;">' +
-          '<button class="btn btn-secondary btn-icon" id="acceptFindingBtn" title="Accept">' + ICON('approve') + '</button>' +
-          '<button class="btn btn-secondary btn-icon" id="rejectFindingBtn" title="Reject">' + ICON('reject') + '</button>' +
+          '<button class="btn btn-secondary btn-icon" id="acceptFindingBtn" title="' + esc(t('accept')) + '">' + ICON('approve') + '</button>' +
+          '<button class="btn btn-secondary btn-icon" id="rejectFindingBtn" title="' + esc(t('reject')) + '">' + ICON('reject') + '</button>' +
         '</div>' +
         '<div id="rejectRemarksSection" style="display:none;margin-top:10px;">' +
-          UI.field('Rejection remarks (required)', '<textarea id="fRejectRemarks" class="field-input" rows="2"></textarea>') +
-          '<button class="btn btn-primary btn-sm" id="confirmRejectBtn" style="margin-top:8px;">Confirm rejection</button>' +
+          UI.field(t('rejection_remarks_required_label'), '<textarea id="fRejectRemarks" class="field-input" rows="2"></textarea>') +
+          '<button class="btn btn-primary btn-sm" id="confirmRejectBtn" style="margin-top:8px;">' + esc(t('confirm_rejection')) + '</button>' +
         '</div>' +
       '</div></div>';
   }
@@ -799,16 +802,16 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
     };
     document.getElementById('submitResolveBtn').onclick = async function () {
       var remarks = document.getElementById('fResolveRemarks').value;
-      if (!remarks) { UI.toast('Remarks are required', 'error'); return; }
+      if (!remarks) { UI.toast(t('toast_remarks_required'), 'error'); return; }
       var files = pendingFiles.resolve || [];
       if (files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; })) {
-        UI.toast('Evidence is still uploading — please wait for it to finish', 'error'); return;
+        UI.toast(t('toast_evidence_uploading_wait'), 'error'); return;
       }
       var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
-      if (!urls.length) { UI.toast('A photo or video of the resolution is required', 'error'); return; }
+      if (!urls.length) { UI.toast(t('toast_evidence_required'), 'error'); return; }
       try {
         await Api.call('resolveFinding', { findingId: finding.id, remarks: remarks, evidenceUrls: urls });
-        UI.toast('Resolution submitted', 'success');
+        UI.toast(t('toast_resolution_submitted'), 'success');
         Router.resolve();
       } catch (err) { UI.error(err); }
     };
@@ -816,7 +819,7 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
   }
   if (isReviewer && finding.status === 'InReview' && latestPending) {
     document.getElementById('acceptFindingBtn').onclick = async function () {
-      try { await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Approved' }); UI.toast('Finding resolved', 'success'); Router.resolve(); }
+      try { await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Approved' }); UI.toast(t('toast_x_resolved', { term: Term('finding') }), 'success'); Router.resolve(); }
       catch (err) { UI.error(err); }
     };
     document.getElementById('rejectFindingBtn').onclick = function () {
@@ -824,8 +827,8 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
     };
     document.getElementById('confirmRejectBtn').onclick = async function () {
       var comments = document.getElementById('fRejectRemarks').value;
-      if (!comments) { UI.toast('Rejection remarks are required', 'error'); return; }
-      try { await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments }); UI.toast('Resolution rejected', 'success'); Router.resolve(); }
+      if (!comments) { UI.toast(t('toast_rejection_remarks_required'), 'error'); return; }
+      try { await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments }); UI.toast(t('toast_resolution_rejected'), 'success'); Router.resolve(); }
       catch (err) { UI.error(err); }
     };
   }
