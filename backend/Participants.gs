@@ -28,7 +28,7 @@ function listParticipants(user, p) {
 }
 
 function createParticipant(actingUser, p) {
-  requireRole(actingUser, [ROLES.EVENT_MANAGER, ROLES.INSPECTOR, ROLES.SYSTEM_ADMIN]);
+  requirePermission(actingUser, 'participant.create');
   if (PARTICIPANT_TYPES.indexOf(p.type) === -1) throw new HululError('BAD_REQUEST', 'Invalid participant type');
   if (!p.venueId || !p.name) throw new HululError('BAD_REQUEST', 'venueId and name are required');
   var venue = getById('Venues', p.venueId);
@@ -74,7 +74,7 @@ function mapParticipantRole_(type) {
 function updateParticipant(user, p) {
   var participant = getById('Participants', p.participantId);
   if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
-  requireRole(user, [ROLES.EVENT_MANAGER, ROLES.INSPECTOR, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'participant.edit');
 
   // name/zoneId/location/lat/lng describe the shared physical spot -- computed and applied to every
   // sibling account at that spot (see participantAccountIds_) BEFORE the edit, so a rename can't
@@ -116,7 +116,7 @@ function updateParticipant(user, p) {
 // selected participant's current disciplines in the popup precisely so nothing already set is lost
 // by surprise -- the PM sees and can deliberately uncheck it, instead of it vanishing silently.
 function bulkAssignParticipantDisciplines(user, p) {
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'participant.assignDisciplines');
   if (!p.participantIds || !p.participantIds.length) throw new HululError('BAD_REQUEST', 'Select at least one participant');
   if (!p.disciplineIds || !p.disciplineIds.length) throw new HululError('BAD_REQUEST', 'Select at least one discipline to apply');
 
@@ -250,7 +250,7 @@ function participantDupKey_(p) {
 // left alone (and counted in skippedWithHistory) rather than silently destroying data an inspector
 // already logged against it; merging two histories needs a human decision, not an automatic one.
 function dedupeParticipants(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EVENT_MANAGER]);
+  requirePermission(user, 'participant.dedupe');
   var referencedIds = {};
   getAll('InspectionResults').forEach(function (r) { if (r.participantId) referencedIds[r.participantId] = true; });
   getAll('Findings').forEach(function (f) { if (f.participantId) referencedIds[f.participantId] = true; });

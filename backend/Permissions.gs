@@ -60,6 +60,22 @@ var PERMISSION_REGISTRY_ = {
   'finding.review': {
     module: 'Risk Logging', label: 'Accept/reject a submitted resolution',
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
+  },
+  'participant.create': {
+    module: 'Participants', label: 'Create a participant (vendor/operator/exhibitor)',
+    defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
+  },
+  'participant.edit': {
+    module: 'Participants', label: 'Edit a participant',
+    defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
+  },
+  'participant.assignDisciplines': {
+    module: 'Participants', label: 'Assign disciplines to participants (bulk)',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'participant.dedupe': {
+    module: 'Participants', label: 'Remove duplicate participants',
+    defaultRoles: ['SystemAdmin', 'EventManager']
   }
 };
 

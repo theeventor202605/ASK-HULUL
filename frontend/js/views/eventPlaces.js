@@ -23,8 +23,6 @@
  * temporary ones -- see the eventId filter added to Participants.gs's listParticipants).
  */
 var EVENT_PLACE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
-// Matches dedupeParticipants' own backend requireRole.
-var PARTICIPANT_DEDUPE_ROLES = ['SystemAdmin', 'EventManager'];
 var eventPlaceMapInstance_ = null;
 var eventPlaceMapMarker_ = null;
 var eventPlaceMapBoundaryLayer_ = null;
@@ -40,7 +38,8 @@ async function tabParticipants(content, eventId, detail) {
   // relationship here, matching assertCanManagePlace_ in Places.gs.
   var canManage = !!venue && EVENT_PLACE_MANAGE_ROLES.indexOf(role) !== -1 &&
     (role === 'SystemAdmin' || (event && event.emcId === HululState.user.orgId) || (event && event.eventManagerId === HululState.user.id));
-  var canDedupe = PARTICIPANT_DEDUPE_ROLES.indexOf(role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): matches dedupeParticipants' own requirePermission.
+  var canDedupe = hasPermission('participant.dedupe');
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
 
   if (!venue) {
@@ -163,8 +162,11 @@ var participantDisciplineMarkers_ = {}; // participantId -> Leaflet marker
 async function tabParticipantDisciplines(content, eventId, detail) {
   destroyParticipantDisciplineMap_(); // in case a previous visit to this tab left one behind
   var venue = detail && detail.venue;
-  var role = HululState.user.role;
-  var canManageDisciplines = DISCIPLINE_MANAGER_ROLES.indexOf(role) !== -1;
+  // RBAC pilot: this specifically gates bulkAssignParticipantDisciplines (matches its own
+  // requirePermission), not the separate Disciplines catalog CRUD -- DISCIPLINE_MANAGER_ROLES
+  // (eventDetail.js) happens to share the same default role set today but is left untouched since
+  // it's unrelated and still used elsewhere.
+  var canManageDisciplines = hasPermission('participant.assignDisciplines');
 
   if (!venue) {
     content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">Assign a ' + esc(Term('venue').toLowerCase()) + ' to this ' + esc(Term('event').toLowerCase()) + ' first (Venue &amp; Zones tab) -- ' + esc(Term('participant_plural').toLowerCase()) + ' are registered per event once a venue is set.</div></div></div>';
