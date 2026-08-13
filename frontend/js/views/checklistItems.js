@@ -176,7 +176,9 @@ async function renderChecklistItems() {
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-ci="' + r.id + '">' + ICON('edit') + '</button> ' +
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-ci="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
-      filtered, {}) + '</div></div>';
+      // hideExportButton: this table's own auto Export CSV button would duplicate the one already
+      // in the list-section header above (csvButtonsHtml_).
+      filtered, { hideExportButton: true }) + '</div></div>';
 
     if (!canManage) return;
     wrap.querySelectorAll('[data-edit-ci]').forEach(function (btn) {

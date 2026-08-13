@@ -216,7 +216,12 @@ window.UI = {
         '</div>' +
         // Icon-only (title tooltip, not a text label) -- REQ: Import/Export CSV controls read as
         // icons everywhere, not text buttons; this one call site covers every table in the app.
-        (exportCols.length ? '<button type="button" class="btn btn-secondary btn-sm btn-icon table-export-btn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' : '') +
+        // opts.hideExportButton: for the handful of pages (Events, Checklist Items) that already
+        // have their own richer Export/Import CSV icons in the list-section header -- this table's
+        // auto export button would just be a second, redundant one right below it. exportCols still
+        // gets computed either way (it also drives which columns the filter box searches), only the
+        // button itself is skipped.
+        (exportCols.length && !opts.hideExportButton ? '<button type="button" class="btn btn-secondary btn-sm btn-icon table-export-btn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' : '') +
       '</div>' +
       '<div class="table-filter-chips"></div>';
     }

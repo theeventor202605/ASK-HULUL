@@ -167,7 +167,9 @@ async function renderEventsList() {
             return html + '</div>';
           } }
       ],
-      filtered, {}
+      // hideExportButton: this table's own auto Export CSV button would duplicate the richer
+      // exportEventsCsv icon already in the card-header above (venue/EMC names resolved, etc).
+      filtered, { hideExportButton: true }
     );
     wrap.querySelectorAll('[data-edit-event]').forEach(function (b) {
       b.onclick = function () {
