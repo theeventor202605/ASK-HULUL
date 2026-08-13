@@ -1145,23 +1145,55 @@ async function suggestNameFromMap_(fieldId, lat, lng) {
  * bulkImportPlaces (Places.gs).
  */
 
+// REQ bug report: "Detect places in boundary" -> "OpenStreetMap lookup failed (HTTP 504)". The
+// single hardcoded overpass-api.de endpoint is a free, shared public instance that regularly queues
+// or times out under its own load -- a 504 there usually says nothing about our query (it's already
+// bounded by [timeout:25] below), just that that one server was too busy right now. OSM_MIRRORS_
+// lists the other well-known public Overpass mirrors (same API, independently run/funded) to fall
+// back through in order; a per-mirror AbortController timeout keeps one slow/dead mirror from
+// stalling the whole button click before the next one gets a turn.
+var OSM_OVERPASS_MIRRORS_ = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter'
+];
+var OSM_OVERPASS_MIRROR_TIMEOUT_MS_ = 20000;
+
 // Overpass' `poly` filter wants "lat lon lat lon ..." (space-separated, polygon not explicitly
 // closed). Queries both nodes and ways with a name tag -- most POIs are nodes, but some (e.g. a
-// whole named building) are mapped as ways, whose centroid `out center` provides directly. Throws on
-// a network/HTTP failure so the caller can show a real error instead of silently finding nothing.
+// whole named building) are mapped as ways, whose centroid `out center` provides directly. Tries each
+// mirror in OSM_OVERPASS_MIRRORS_ in turn, only throwing (a network/HTTP failure) once every mirror
+// has failed, so the caller can show a real error instead of silently finding nothing.
 async function queryOsmPlacesInBoundary_(boundary) {
   var polyStr = boundary.map(function (pt) { return pt.lat + ' ' + pt.lng; }).join(' ');
   var query = '[out:json][timeout:25];(node["name"](poly:"' + polyStr + '");way["name"](poly:"' + polyStr + '"););out center tags;';
-  var res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(query) });
-  if (!res.ok) throw new Error('OpenStreetMap lookup failed (HTTP ' + res.status + ')');
-  var data = await res.json();
-  return (data.elements || []).map(function (el) {
-    var lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
-    var lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
-    var tags = el.tags || {};
-    if (lat == null || lng == null || !tags.name) return null;
-    return { name: tags.name, lat: lat, lng: lng, tags: tags };
-  }).filter(Boolean);
+
+  var lastErr = null;
+  for (var i = 0; i < OSM_OVERPASS_MIRRORS_.length; i++) {
+    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, OSM_OVERPASS_MIRROR_TIMEOUT_MS_) : null;
+    try {
+      var res = await fetch(OSM_OVERPASS_MIRRORS_[i], {
+        method: 'POST', body: 'data=' + encodeURIComponent(query),
+        signal: controller ? controller.signal : undefined
+      });
+      if (timer) clearTimeout(timer);
+      if (!res.ok) { lastErr = new Error('OpenStreetMap lookup failed (HTTP ' + res.status + ')'); continue; } // try the next mirror
+      var data = await res.json();
+      return (data.elements || []).map(function (el) {
+        var lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
+        var lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
+        var tags = el.tags || {};
+        if (lat == null || lng == null || !tags.name) return null;
+        return { name: tags.name, lat: lat, lng: lng, tags: tags };
+      }).filter(Boolean);
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      lastErr = (err && err.name === 'AbortError') ? new Error('OpenStreetMap lookup timed out') : err;
+      // fall through to the next mirror
+    }
+  }
+  throw lastErr || new Error('OpenStreetMap lookup failed');
 }
 
 // Best-effort OSM-tag -> PLACE_TYPES guess -- purely a starting point shown (and editable) per row in
