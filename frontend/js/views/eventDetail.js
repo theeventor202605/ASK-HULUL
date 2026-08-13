@@ -13,17 +13,17 @@ var EVENT_TABS = [
   ['overview', 'tab_overview'],
   // REQ: "Add an event chat page after overview tab." FINDING_ROLE_PARTICIPANT_ (findings.js) is
   // the existing Vendor/Operator/Exhibitor list -- reused here rather than redeclared.
-  ['chat', 'tab_chat', function () { return 'Chat'; }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
-  ['venue', 'tab_venue', function () { return Term('venue') + ' & ' + Term('zone_plural'); }],
-  ['templates', 'tab_templates', function () { return 'Readiness ' + Term('template_plural'); }],
-  ['approval', 'tab_approval', function () { return 'Opening Approval'; }],
-  ['disciplines', 'tab_disciplines', function () { return Term('discipline_plural') + ' & ' + Term('inspector_plural'); }],
-  ['inspections', 'tab_inspections', function () { return Term('inspection_plural') + ' & ' + Term('checklistItem_plural'); }],
+  ['chat', 'tab_chat', function () { return t('tab_chat'); }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
+  ['venue', 'tab_venue', function () { return t('and_join', { a: Term('venue'), b: Term('zone_plural') }); }],
+  ['templates', 'tab_templates', function () { return t('readiness_x_label', { term: Term('template_plural') }); }],
+  ['approval', 'tab_approval', function () { return t('tab_approval'); }],
+  ['disciplines', 'tab_disciplines', function () { return t('and_join', { a: Term('discipline_plural'), b: Term('inspector_plural') }); }],
+  ['inspections', 'tab_inspections', function () { return t('and_join', { a: Term('inspection_plural'), b: Term('checklistItem_plural') }); }],
   // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
   // cool. Only relevant to the same roles who can create a Finding at all (FINDING_ROLE_REVIEWER_,
   // findings.js -- loads after this file but only called here, never at top level, so the load-order
   // rule above doesn't apply).
-  ['logPhotos', 'tab_log_photos', function () { return 'Log Photos'; }, function () { return FINDING_ROLE_REVIEWER_.indexOf(HululState.user.role) !== -1; }],
+  ['logPhotos', 'tab_log_photos', function () { return t('tab_log_photos'); }, function () { return FINDING_ROLE_REVIEWER_.indexOf(HululState.user.role) !== -1; }],
   ['findings', 'tab_findings'],
   ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
   ['participants', 'tab_participants', function () { return Term('participant_plural'); }],
@@ -34,7 +34,7 @@ var EVENT_TABS = [
   // REQ: "Add an event log page showing all transaction relevant to an event keep last log first."
   // Open to every viewer (like Coverage gaps etc.) -- it's just history of what already happened,
   // no separate role restriction was asked for here (unlike Chat).
-  ['log', 'tab_event_log', function () { return 'Logs'; }]
+  ['log', 'tab_event_log', function () { return t('tab_event_log'); }]
 ];
 
 // Module-level (not local to renderEventDetail) so Event Chat's "#" screenshot flow (tabEventChat)
@@ -97,7 +97,7 @@ async function renderEventDetail(params) {
   var content = document.getElementById('eventTabContent');
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   try { await (eventTabRenderers_()[activeTab] || tabOverview)(content, eventId, detail, params); }
-  catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">Failed to load this tab.</div>'; }
+  catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; }
 }
 
 /* ---------------- Overview ---------------- */
@@ -125,15 +125,15 @@ async function tabOverview(content, eventId, detail) {
     '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap;">' +
       '<div style="flex:1 1 420px;display:flex;flex-direction:column;gap:16px;">' +
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('event') + ' details') + '</div></div><div class="card-body">' +
-          infoRow('Code', detail.event.code) +
+          infoRow(t('col_code'), detail.event.code) +
           // REQ report: Project/EMC/Inspection Company/Event Manager were all rendering raw ids (or blank)
           // -- detail.project/emc/inspectionCo/eventManager are the resolved rows now attached by
           // getEventDetail (Events.gs); event.project (free-text) is kept as a fallback only for events
           // that predate the structured projectId link (see Utils.gs SCHEMA comment on Events.project).
-          infoRow('Project', detail.project ? detail.project.name : detail.event.project) +
+          infoRow(t('col_project'), detail.project ? detail.project.name : detail.event.project) +
           infoRow('EMC', detail.emc ? detail.emc.name : detail.event.emcId) +
-          infoRow('Inspection Company', detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
-          infoRow('Event Manager', detail.eventManager ? detail.eventManager.name : '') +
+          infoRow(t('field_inspection_company'), detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
+          infoRow(t('label_event_manager'), detail.eventManager ? detail.eventManager.name : '') +
           // REQ report: "Sub-Events / Zones showing as number" -- a bare count wasn't useful; listing
           // the actual names matches every other infoRow here being a real value, not a tally. The
           // fuller Sub-Events list (with dates) and the zone map alongside give the full detail this
@@ -144,10 +144,10 @@ async function tabOverview(content, eventId, detail) {
         // without leaving the Overview tab for the separate top-level Sub-Events page.
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('subEvent_plural')) + '</div></div><div class="card-body">' +
           UI.table([
-            { key: 'name', label: 'Name' },
-            { key: 'startDateTime', label: 'Start', render: r => UI.fmtDate(r.startDateTime) },
-            { key: 'endDateTime', label: 'End', render: r => UI.fmtDate(r.endDateTime) }
-          ], subEvents, { emptyText: 'No ' + esc(Term('subEvent_plural').toLowerCase()) + ' yet.' }) +
+            { key: 'name', label: t('col_name') },
+            { key: 'startDateTime', label: t('col_start'), render: r => UI.fmtDate(r.startDateTime) },
+            { key: 'endDateTime', label: t('col_end'), render: r => UI.fmtDate(r.endDateTime) }
+          ], subEvents, { emptyText: t('empty_no_x_yet', { term: Term('subEvent_plural').toLowerCase() }) }) +
         '</div></div>' +
       '</div>' +
       // REQ report: "Add map zone boundaries as thumbnail image medium size, not including participant
@@ -155,7 +155,7 @@ async function tabOverview(content, eventId, detail) {
       // boundaries -- see its own comment for why.
       (detail.venue
         ? '<div class="card" style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;">' +
-          '<div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + ' map</div></div>' +
+          '<div class="card-header"><div class="card-title">' + esc(t('x_map_title', { term: Term('zone_plural') })) + '</div></div>' +
           '<div class="card-body" style="flex:1;display:flex;">' +
             '<div id="overviewZoneMap" style="flex:1;min-height:320px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
           '</div></div>'
@@ -182,7 +182,7 @@ function initOverviewZoneMap_(venue, zones) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    el.textContent = t('map_unavailable');
     return;
   }
   var hasVenueCoords = !!(venue.lat && venue.lng);
@@ -308,26 +308,26 @@ async function tabVenue(content, eventId, detail) {
     // Venue -- small cards instead of one wide info card, same treatment as the Overview KPIs
     '<div style="font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-600);margin-bottom:10px;">' + esc(Term('venue')) + '</div>' +
     '<div class="kpi-grid">' +
-      venueInfoCard_('Name', detail.venue && detail.venue.name) +
-      venueInfoCard_('Address', detail.venue && detail.venue.address) +
-      venueInfoCard_('City', detail.venue && detail.venue.city) +
+      venueInfoCard_(t('col_name'), detail.venue && detail.venue.name) +
+      venueInfoCard_(t('col_address'), detail.venue && detail.venue.address) +
+      venueInfoCard_(t('col_city'), detail.venue && detail.venue.city) +
     '</div>' +
 
     // Zones -- with calculated Operators/Vendors/Exhibitors/Others (Places by type) and Participants
     // (total, across all types) columns per zone
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + '</div>' +
-    (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">+ Add ' + esc(Term('zone').toLowerCase()) + '</button>' : '') + '</div>' +
+    (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">' + esc(t('add_x_btn', { term: Term('zone').toLowerCase() })) + '</button>' : '') + '</div>' +
     '<div class="card-body">' + UI.table([
       { key: 'name', label: Term('zone') },
-      { key: 'operators', label: 'Operators', render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) },
-      { key: 'vendors', label: 'Vendors', render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) },
-      { key: 'exhibitors', label: 'Exhibitors', render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) },
-      { key: 'others', label: 'Others', render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) },
-      { key: 'participants', label: 'Participants', render: r => participantCountByZone[r.id] || 0 },
-      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) }
+      { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) },
+      { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) },
+      { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) },
+      { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) },
+      { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || 0 },
+      { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-      '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
-      '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+      '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
+      '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
       detail.zones, {}) +
     '</div></div>' +
 
@@ -338,11 +338,11 @@ async function tabVenue(content, eventId, detail) {
     // Large map of every place recorded under this venue -- a dot per place, name labelled above it.
     // Locked to buttons only (zoom controls + the satellite toggle) -- no drag-pan or scroll-zoom.
     (detail.venue ?
-      '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Places map</div></div>' +
+      '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('places_map_title')) + '</div></div>' +
       '<div class="card-body">' +
         '<div id="eventPlacesMap" style="height:440px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
         (places.length && !placesWithCoords.length
-          ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">None of this ' + esc(Term('venue').toLowerCase()) + '\'s places have coordinates on record yet.</div>'
+          ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + esc(t('no_place_coords_hint', { venue: Term('venue').toLowerCase() })) + '</div>'
           : '') +
       '</div></div>'
       : '') +
@@ -354,13 +354,13 @@ async function tabVenue(content, eventId, detail) {
       '<div class="card-body" style="display:flex;gap:20px;">' +
         placeTypeFilterHtml_() +
         '<div style="flex:1;min-width:0;">' +
-          (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">Click a place to locate it on the map above.</div>' : '') +
+          (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(t('click_place_to_locate_hint')) + '</div>' : '') +
           '<div id="eventPlacesListWrap">' + UI.table([
-            { key: 'name', label: 'Name' },
-            { key: 'type', label: 'Type' },
+            { key: 'name', label: t('col_name') },
+            { key: 'type', label: t('col_type') },
             { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
-            { key: 'location', label: 'Location', render: r => r.location ? esc(r.location) : '—' }
-          ], places, { emptyText: 'No places recorded at this ' + esc(Term('venue').toLowerCase()) + ' yet.' }) + '</div>' +
+            { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' }
+          ], places, { emptyText: t('no_places_recorded_hint', { venue: Term('venue').toLowerCase() }) }) + '</div>' +
         '</div>' +
       '</div></div>'
       : '');
@@ -421,7 +421,7 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    el.textContent = t('map_unavailable');
     return;
   }
   var hasVenueCoords = !!(venue.lat && venue.lng);
@@ -544,14 +544,14 @@ var zoneMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanu
 function addZoneCardHtml_(existingZone) {
   var isEdit = !!existingZone;
   var defaultColor = (existingZone && existingZone.color) ? existingZone.color : ZONE_BOUNDARY_COLORS_[0];
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + (isEdit ? 'Edit ' : 'Add ') + esc(Term('zone').toLowerCase()) + '</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(isEdit ? t('edit_x', { term: Term('zone') }) : t('add_x_title', { term: Term('zone') })) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;max-width:640px;">' +
-        '<div style="flex:1;min-width:220px;">' + UI.field(Term('zone') + ' name', '<input id="fZoneName" class="field-input" value="' + (isEdit ? esc(existingZone.name) : '') + '" />') + '</div>' +
-        '<div>' + UI.field('Boundary color', '<input id="fZoneColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc(defaultColor) + '" />') + '</div>' +
+        '<div style="flex:1;min-width:220px;">' + UI.field(Term('zone') + ' ' + t('field_name').toLowerCase(), '<input id="fZoneName" class="field-input" value="' + (isEdit ? esc(existingZone.name) : '') + '" />') + '</div>' +
+        '<div>' + UI.field(t('field_boundary_color'), '<input id="fZoneColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc(defaultColor) + '" />') + '</div>' +
       '</div>' +
       '<div id="zoneMap" style="height:360px;width:100%;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--border);"></div>' +
-      '<div class="muted" style="font-size:11px;margin-top:6px;">Optional: use the polygon tool on the map to draw this ' + esc(Term('zone').toLowerCase()) + '\'s boundary (the ' + esc(Term('venue').toLowerCase()) + '\'s own boundary is shown dashed, for reference).</div>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('zone_boundary_hint', { zone: Term('zone').toLowerCase(), venue: Term('venue').toLowerCase() })) + '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
       '<button class="btn btn-secondary" id="cancelZoneBtn">' + t('cancel') + '</button>' +
@@ -574,7 +574,7 @@ function openZoneCard_(detail, wrap, existingZone, places, eventId) {
   document.getElementById('saveZoneBtn').onclick = async function () {
     try {
       var name = document.getElementById('fZoneName').value.trim();
-      if (!name) { UI.toast(Term('zone') + ' name is required', 'error'); return; }
+      if (!name) { UI.toast(t('toast_x_name_required', { term: Term('zone') }), 'error'); return; }
       var payload = { name: name, color: getZoneColorValue_(), boundary: getZoneBoundaryValue_() };
       if (existingZone) {
         payload.zoneId = existingZone.id;
@@ -584,7 +584,7 @@ function openZoneCard_(detail, wrap, existingZone, places, eventId) {
         await Api.call('createZone', payload);
       }
       destroyZoneMap_();
-      UI.toast(Term('zone') + (existingZone ? ' updated' : ' added'), 'success');
+      UI.toast(existingZone ? t('x_updated', { term: Term('zone') }) : t('x_added', { term: Term('zone') }), 'success');
       Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -596,7 +596,7 @@ function initZoneMap_(venue, existingZone, siblingZones, places, eventId) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library) — the zone can still be created without a boundary.';
+    el.textContent = t('map_unavailable_zone_ok');
     return;
   }
   var venueBoundary = venue ? parseBoundaryClient_(venue.boundary) : null;
@@ -702,7 +702,7 @@ var EVENT_PLACE_TYPE_OPTIONS_ = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
 var EVENT_PLACE_TYPE_COLORS_ = { Operator: '#4f46e5', Vendor: '#16a34a', Exhibitor: '#d97706', Other: '#2563eb' };
 function placeTypeFilterHtml_() {
   return '<div style="min-width:120px;flex:none;">' +
-    '<div class="field-label" style="margin-top:0;">Filter by type</div>' +
+    '<div class="field-label" style="margin-top:0;">' + esc(t('filter_by_type_label')) + '</div>' +
     EVENT_PLACE_TYPE_OPTIONS_.map(function (ty) {
       return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:8px 0;cursor:pointer;">' +
         '<input type="checkbox" class="place-type-filter" value="' + ty + '" checked /> ' +
@@ -756,7 +756,7 @@ function applyPlaceTypeFilter_(places) {
 // tooltip) so the two lists (map + table) stay visually linked without permanently-shown labels.
 function focusEventPlace_(place) {
   if (place.lat === '' || place.lat == null || place.lng === '' || place.lng == null) {
-    UI.toast('No coordinates on record for this place', 'error');
+    UI.toast(t('no_coords_recorded'), 'error');
     return;
   }
   if (!eventPlacesMapInstance_ || !document.getElementById('eventPlacesMap')) return;
@@ -782,29 +782,29 @@ async function openDeleteZoneModal_(zoneId, allZones) {
   var body = '<div style="font-size:13.5px;line-height:1.6;">';
   if (impact.hasImpact) {
     var parts = [];
-    if (impact.assignmentsCount) parts.push(impact.assignmentsCount + ' ' + Term('inspector').toLowerCase() + ' assignment(s)');
-    if (impact.logsCount) parts.push(impact.logsCount + ' ' + Term('finding').toLowerCase() + '(s)');
-    if (impact.participantsCount) parts.push(impact.participantsCount + ' ' + Term('participant').toLowerCase() + '(s)');
-    body += '<div>"' + esc(zone ? zone.name : zoneId) + '" has ' + parts.join(', ') + ' tied to it.</div>' +
-      '<div class="muted" style="margin-top:6px;">You can optionally move this to another ' + esc(Term('zone').toLowerCase()) + ', or just delete — nothing breaks either way.</div>';
+    if (impact.assignmentsCount) parts.push(t('count_x_assignments', { count: impact.assignmentsCount, term: Term('inspector').toLowerCase() }));
+    if (impact.logsCount) parts.push(t('count_x_s', { count: impact.logsCount, term: Term('finding').toLowerCase() }));
+    if (impact.participantsCount) parts.push(t('count_x_s', { count: impact.participantsCount, term: Term('participant').toLowerCase() }));
+    body += '<div>' + esc(t('x_has_parts_tied', { name: zone ? zone.name : zoneId, parts: parts.join(', ') })) + '</div>' +
+      '<div class="muted" style="margin-top:6px;">' + esc(t('move_to_other_x_hint', { term: Term('zone').toLowerCase() })) + '</div>';
     if (otherZones.length) {
-      body += '<div style="margin-top:12px;">' + UI.field('Move to ' + Term('zone').toLowerCase() + ' (optional)',
-        '<select id="fReassignZone" class="field-input"><option value="">Don\'t reassign</option>' +
+      body += '<div style="margin-top:12px;">' + UI.field(t('field_move_to_x_optional', { term: Term('zone').toLowerCase() }),
+        '<select id="fReassignZone" class="field-input"><option value="">' + esc(t('dont_reassign_option')) + '</option>' +
         otherZones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('') + '</select>'
       ) + '</div>';
     }
   } else {
-    body += '<div>Delete "' + esc(zone ? zone.name : zoneId) + '"? This ' + esc(Term('zone').toLowerCase()) + ' has no assignments or logs tied to it.</div>';
+    body += '<div>' + esc(t('delete_x_no_impact_confirm', { name: zone ? zone.name : zoneId, term: Term('zone').toLowerCase() })) + '</div>';
   }
   body += '</div>';
 
-  UI.openModal('Delete ' + Term('zone'), body, [
+  UI.openModal(t('delete_modal_title', { term: Term('zone') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Delete', className: 'btn-danger', onClick: async function () {
+    { label: t('delete'), className: 'btn-danger', onClick: async function () {
         try {
           var reassignSelect = document.getElementById('fReassignZone');
           await Api.call('deleteZone', { zoneId: zoneId, reassignToZoneId: reassignSelect ? reassignSelect.value : '' });
-          UI.closeModal(); UI.toast('Zone deleted', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('x_deleted', { term: Term('zone') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -844,16 +844,16 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
     // the PM can still see the Send action exists and understands why it's blocked; sendTemplates
     // enforces the same rule server-side (see Templates.gs) so this can't be bypassed.
     parts.push(hasDeadline
-      ? '<button class="btn btn-primary btn-sm btn-icon" title="Send" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>'
-      : '<button class="btn btn-primary btn-sm btn-icon" title="Set the documents deadline first" disabled>' + ICON('send') + '</button>');
+      ? '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_send')) + '" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>'
+      : '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_set_deadline_first')) + '" disabled>' + ICON('send') + '</button>');
   }
   if (isEM && ['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) !== -1) {
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="Upload" data-upload-template="' + tpl.id + '">' + ICON('upload') + '</button>');
-    parts.push('<button class="btn btn-primary btn-sm btn-icon" title="Submit" data-submit-template="' + tpl.id + '">' + ICON('submit') + '</button>');
+    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_upload')) + '" data-upload-template="' + tpl.id + '">' + ICON('upload') + '</button>');
+    parts.push('<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_submit')) + '" data-submit-template="' + tpl.id + '">' + ICON('submit') + '</button>');
   }
   if (isAnalyst && ['Submitted', 'Under Review'].indexOf(tpl.status) !== -1) {
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="Mark evaluated" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="Mark missed" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
+    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_evaluated')) + '" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
+    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_missed')) + '" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
   }
   return parts.join(' ') || '—';
 }
@@ -870,31 +870,31 @@ async function tabTemplates(content, eventId, detail) {
     return {
       label: status,
       cards: templates.filter(function (tpl) { return tpl.status === status; }).map(function (tpl) {
-        return { id: tpl.id || ('lib:' + tpl.libraryTemplateId), title: tpl.name, meta: tpl.fileName || 'No file yet', borderColor: TEMPLATE_BOARD_BORDER[status] };
+        return { id: tpl.id || ('lib:' + tpl.libraryTemplateId), title: tpl.name, meta: tpl.fileName || t('toast_no_file_yet'), borderColor: TEMPLATE_BOARD_BORDER[status] };
       })
     };
   });
 
   content.innerHTML =
     templatesDeadlineCardHtml_(detail.event, canManageDeadline) +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Pipeline</div>' +
-    '<div class="muted" style="font-size:11.5px;">Click a card to open its file</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('pipeline_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_file_hint')) + '</div></div>' +
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
-    '<div class="card"><div class="card-header"><div class="card-title">Readiness ' + esc(Term('template_plural').toLowerCase()) + '</div></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('readiness_x_label', { term: Term('template_plural').toLowerCase() })) + '</div></div>' +
     '<div class="card-body">' + UI.table([
-      { key: 'name', label: 'Template' },
+      { key: 'name', label: t('col_template') },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'fileName', label: 'File', render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || 'view') + '</a>' : '—' },
-      { key: 'updatedAt', label: 'Updated', render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
-      { key: 'reviewReason', label: 'Review notes', render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
+      { key: 'fileName', label: t('col_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
+      { key: 'updatedAt', label: t('col_updated'), render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
+      { key: 'reviewReason', label: t('col_review_notes'), render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
       { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt) }
-    ], templates, { emptyText: 'No templates in the library for this Inspection Company yet.' }) + '</div></div>';
+    ], templates, { emptyText: t('no_templates_in_library_hint', { term: t('field_inspection_company') }) }) + '</div></div>';
 
   UI.wireBoard(content, function (id) {
-    if (id.indexOf('lib:') === 0) { UI.toast('Not sent to this event yet', 'error'); return; }
+    if (id.indexOf('lib:') === 0) { UI.toast(t('toast_not_sent_yet'), 'error'); return; }
     var tpl = templates.filter(function (x) { return x.id === id; })[0];
     if (tpl && tpl.fileUrl) { fireOpenTemplate_(tpl.id); window.open(tpl.fileUrl, '_blank'); }
-    else UI.toast('No file yet', 'error');
+    else UI.toast(t('toast_no_file_yet'), 'error');
   });
 
   content.querySelectorAll('[data-open-template]').forEach(function (a) {
@@ -904,7 +904,7 @@ async function tabTemplates(content, eventId, detail) {
     btn.onclick = async function () {
       try {
         await Api.call('sendTemplates', { eventId: eventId, libraryTemplateIds: [btn.getAttribute('data-send-template')] });
-        UI.toast('Sent to Event Manager', 'success'); Router.resolve();
+        UI.toast(t('toast_sent_to_em'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
@@ -915,7 +915,7 @@ async function tabTemplates(content, eventId, detail) {
     btn.onclick = async function () {
       try {
         await Api.call('submitEventTemplate', { templateId: btn.getAttribute('data-submit-template') });
-        UI.toast('Submitted for review', 'success'); Router.resolve();
+        UI.toast(t('toast_submitted_for_review'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   });
@@ -934,18 +934,18 @@ async function tabTemplates(content, eventId, detail) {
       var absVal = document.getElementById('fTplDeadlineAbs').value;
       var deadlineAt;
       if (n && Number(n) > 0) {
-        if (!detail.event.startDateTime) { UI.toast('This event has no start date set yet', 'error'); return; }
+        if (!detail.event.startDateTime) { UI.toast(t('toast_no_start_date_yet'), 'error'); return; }
         var offsetMs = Number(n) * (unit === 'weeks' ? 7 : 1) * 24 * 3600 * 1000;
         deadlineAt = new Date(new Date(detail.event.startDateTime).getTime() - offsetMs).toISOString();
       } else if (absVal) {
         deadlineAt = new Date(absVal).toISOString();
       } else {
-        UI.toast('Pick a deadline date/time, or enter a number of days/weeks before the event start', 'error');
+        UI.toast(t('toast_pick_deadline'), 'error');
         return;
       }
       try {
         await Api.call('setTemplatesDeadline', { eventId: eventId, deadlineAt: deadlineAt });
-        UI.toast('Deadline saved', 'success'); Router.resolve();
+        UI.toast(t('toast_deadline_saved'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   }
@@ -961,22 +961,22 @@ function templatesDeadlineCardHtml_(event, canManage) {
   var deadline = event.templatesDeadlineAt;
   var overdue = deadline && new Date(deadline) < new Date();
   var statusHtml = deadline
-    ? '<div style="font-size:13px;">Deadline: <strong>' + esc(UI.fmtDate(deadline)) + '</strong> — ' +
+    ? '<div style="font-size:13px;">' + esc(t('deadline_prefix')) + '<strong>' + esc(UI.fmtDate(deadline)) + '</strong> — ' +
         '<span style="color:' + (overdue ? 'var(--danger)' : 'var(--text-600)') + ';font-weight:600;">' + esc(UI.fmtCountdown(deadline)) + '</span></div>'
-    : '<div class="muted" style="font-size:13px;">No deadline set yet' + (canManage ? ' — set one below.' : '.') + '</div>';
+    : '<div class="muted" style="font-size:13px;">' + esc(t('no_deadline_set_yet')) + (canManage ? esc(t('set_one_below_suffix')) : '.') + '</div>';
 
   if (!canManage) {
-    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Documents deadline</div></div>' +
+    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('documents_deadline_title')) + '</div></div>' +
       '<div class="card-body">' + statusHtml + '</div></div>';
   }
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Documents deadline</div>' +
-    '<div class="muted" style="font-size:11.5px;">One deadline applies to every Readiness Template sent for this event</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('documents_deadline_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('one_deadline_hint')) + '</div></div>' +
     '<div class="card-body">' + statusHtml +
     '<div class="form-row" style="margin-top:10px;">' +
-      UI.field('Deadline date & time', '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input"' + (deadline ? ' value="' + toDatetimeLocalValue_(deadline) + '"' : '') + ' />') +
-      UI.field('Or: before event start', '<div style="display:flex;gap:6px;"><input type="number" id="fTplDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fTplDeadlineUnit" class="field-input"><option value="days">Days</option><option value="weeks">Weeks</option></select></div>') +
+      UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input"' + (deadline ? ' value="' + toDatetimeLocalValue_(deadline) + '"' : '') + ' />') +
+      UI.field(t('field_or_before_event_start'), '<div style="display:flex;gap:6px;"><input type="number" id="fTplDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fTplDeadlineUnit" class="field-input"><option value="days">' + esc(t('option_days')) + '</option><option value="weeks">' + esc(t('option_weeks')) + '</option></select></div>') +
     '</div>' +
-    '<button class="btn btn-primary btn-sm" id="saveTplDeadlineBtn" style="margin-top:8px;">Save deadline</button>' +
+    '<button class="btn btn-primary btn-sm" id="saveTplDeadlineBtn" style="margin-top:8px;">' + esc(t('save_deadline_btn')) + '</button>' +
   '</div></div>';
 }
 
@@ -999,34 +999,34 @@ function fireOpenTemplate_(templateId) {
 }
 
 function openEventTemplateUploadModal_(templateId) {
-  var body = UI.field('Completed file', '<input type="file" id="fEvtTplFile" class="field-input" />');
-  UI.openModal('Upload completed document', body, [
+  var body = UI.field(t('field_completed_file'), '<input type="file" id="fEvtTplFile" class="field-input" />');
+  UI.openModal(t('upload_completed_document_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         var fileInput = document.getElementById('fEvtTplFile');
-        if (!fileInput.files[0]) { UI.toast('Choose a file first', 'error'); return; }
+        if (!fileInput.files[0]) { UI.toast(t('toast_choose_file_first'), 'error'); return; }
         try {
           var payload = {
             templateId: templateId, fileBase64: await fileToBase64(fileInput.files[0]),
             fileName: fileInput.files[0].name, mimeType: fileInput.files[0].type
           };
           await Api.call('uploadEventTemplateFile', payload);
-          UI.closeModal(); UI.toast('Uploaded', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('toast_uploaded'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
 }
 
 function openReviewTemplateModal_(templateId, decision) {
-  var body = UI.field('Reason', '<textarea id="fReviewReason" class="field-input" rows="3" placeholder="Why is this being ' + decision.toLowerCase() + '?"></textarea>');
+  var body = UI.field(t('field_reason'), '<textarea id="fReviewReason" class="field-input" rows="3" placeholder="' + esc(t('reason_placeholder_why', { decision: decision.toLowerCase() })) + '"></textarea>');
   UI.openModal(decision + ' document', body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: decision, className: decision === 'Evaluated' ? 'btn-primary' : 'btn-danger', onClick: async function () {
         var reason = document.getElementById('fReviewReason').value.trim();
-        if (!reason) { UI.toast('A reason is required', 'error'); return; }
+        if (!reason) { UI.toast(t('toast_reason_required'), 'error'); return; }
         try {
           await Api.call('reviewEventTemplate', { templateId: templateId, decision: decision, reason: reason });
-          UI.closeModal(); UI.toast('Document ' + decision.toLowerCase(), 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('document_prefix') + decision.toLowerCase(), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -1054,41 +1054,41 @@ async function tabApproval(content, eventId) {
   // of the form, matching recordRecommendation's own one-per-evaluation check server-side.
   var recBody = hasRecommendation
     ? '<div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;">' + esc(current.recommendation) + '</div>' +
-      '<div class="muted" style="font-size:11px;margin-top:8px;">Submitted ' + UI.fmtDate(current.recommendationAt) + ' — a recommendation can only be submitted once.</div>'
+      '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('submitted_once_note', { date: UI.fmtDate(current.recommendationAt) })) + '</div>'
     : '<div style="display:flex;flex-direction:column;gap:6px;">' +
-        UI.field('Recommendation', '<textarea id="fRecommendation" class="field-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
+        UI.field(t('field_recommendation'), '<textarea id="fRecommendation" class="field-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
       '</div>' +
-      '<button class="btn btn-primary btn-sm" id="submitRecBtn" style="margin-top:12px;">Submit recommendation</button>';
+      '<button class="btn btn-primary btn-sm" id="submitRecBtn" style="margin-top:12px;">' + esc(t('submit_recommendation_btn')) + '</button>';
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Record recommendation</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('record_recommendation_title')) + '</div></div>' +
     '<div class="card-body">' + recBody + '</div></div>' +
     // Decision / Decided-on at a glance, to the left of the GA decision card (replaces the old
     // full evaluation-history table -- this evaluation's own status is what matters day to day).
     '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;">' +
-      '<div class="kpi-card" style="min-width:150px;"><div class="kpi-label">Decision</div>' +
+      '<div class="kpi-card" style="min-width:150px;"><div class="kpi-label">' + esc(t('label_decision')) + '</div>' +
         '<div style="margin-top:6px;">' + (current && current.decision ? UI.statusBadge(current.decision) : '<span class="kpi-value" style="font-size:16px;">—</span>') + '</div></div>' +
-      '<div class="kpi-card" style="min-width:150px;"><div class="kpi-label">Decided on</div>' +
+      '<div class="kpi-card" style="min-width:150px;"><div class="kpi-label">' + esc(t('label_decided_on')) + '</div>' +
         '<div class="kpi-value" style="font-size:16px;">' + (current && current.decisionAt ? UI.fmtDate(current.decisionAt) : '—') + '</div></div>' +
-      '<div class="card" style="flex:1;min-width:260px;"><div class="card-header"><div class="card-title">' + esc(Term('venue') + ' decision (GA)') + '</div></div>' +
-      '<div class="card-body"><button class="btn btn-secondary btn-sm" id="approveBtn">Approve</button> ' +
-      '<button class="btn btn-danger btn-sm" id="rejectBtn">Not Approved</button></div></div>' +
+      '<div class="card" style="flex:1;min-width:260px;"><div class="card-header"><div class="card-title">' + esc(t('x_decision_ga_label', { term: Term('venue') })) + '</div></div>' +
+      '<div class="card-body"><button class="btn btn-secondary btn-sm" id="approveBtn">' + esc(t('approve_btn')) + '</button> ' +
+      '<button class="btn btn-danger btn-sm" id="rejectBtn">' + esc(t('not_approved_btn')) + '</button></div></div>' +
     '</div>';
 
   if (!hasRecommendation) {
     document.getElementById('submitRecBtn').onclick = async function () {
       var val = document.getElementById('fRecommendation').value.trim();
-      if (!val) { UI.toast('Recommendation is required', 'error'); return; }
+      if (!val) { UI.toast(t('toast_recommendation_required'), 'error'); return; }
       try {
         await Api.call('recordRecommendation', { eventId: eventId, recommendation: val });
-        UI.toast('Recommendation recorded', 'success'); Router.resolve();
+        UI.toast(t('toast_recommendation_recorded'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
   }
   document.getElementById('approveBtn').onclick = () => decide('Approved');
   document.getElementById('rejectBtn').onclick = () => decide('Not Approved');
   async function decide(decision) {
-    try { await Api.call('recordVenueDecision', { eventId: eventId, decision: decision }); UI.toast('Decision recorded', 'success'); Router.resolve(); }
+    try { await Api.call('recordVenueDecision', { eventId: eventId, decision: decision }); UI.toast(t('toast_decision_recorded'), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
   }
 }
@@ -1113,43 +1113,43 @@ async function tabDisciplines(content, eventId, detail) {
   var disciplineOptions = identifiedDisciplines.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc('Identify applicable ' + Term('discipline_plural').toLowerCase()) + '</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('identify_applicable_x', { term: Term('discipline_plural').toLowerCase() })) + '</div></div>' +
     '<div class="card-body">' + disciplines.map(function (d) {
       var checked = identifiedIds.indexOf(d.id) !== -1;
       var locked = !canManage || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
-      var lockReason = !canManage ? 'Only a Project Manager or System Admin can change this.' : 'An ' + Term('inspector').toLowerCase() + ' is already assigned to this ' + Term('discipline').toLowerCase() + ' — remove that assignment below before it can be unselected.';
+      var lockReason = !canManage ? t('only_pm_admin_hint') : t('x_assigned_remove_first_hint', { inspector: Term('inspector').toLowerCase(), discipline: Term('discipline').toLowerCase() });
       return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;' + (locked ? 'opacity:0.65;' : '') + '"' +
         (locked ? ' title="' + lockReason + '"' : '') + '>' +
         '<input type="checkbox" class="disc-check" value="' + d.id + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + ' /> ' +
         esc(d.name) + (checked && assignedDisciplineIds.indexOf(d.id) !== -1 ? ' ' + ICON('locked_indicator') : '') + '</label>';
     }).join('') +
     (canManage
-      ? '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">Save</button></div>' +
-        (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + ICON('locked_indicator') + ' An ' + esc(Term('inspector').toLowerCase()) + ' is already assigned — remove the assignment below to unselect.</div>' : '')
-      : '<div class="muted" style="font-size:11.5px;margin-top:10px;">Read-only — only a Project Manager or System Admin can change this.</div>') +
+      ? '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">' + esc(t('save')) + '</button></div>' +
+        (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + ICON('locked_indicator') + ' ' + esc(t('x_assigned_remove_hint', { term: Term('inspector').toLowerCase() })) + '</div>' : '')
+      : '<div class="muted" style="font-size:11.5px;margin-top:10px;">' + esc(t('readonly_pm_admin_hint')) + '</div>') +
     '</div></div>' +
     renderConflictsCard_(gaps.conflicts, canManage) +
     renderCoverageGapsCard_(gaps, canManage) +
     (canManage
-      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Assign ' + esc(Term('inspector').toLowerCase()) + '</div></div>' +
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('assign_x_title', { term: Term('inspector').toLowerCase() })) + '</div></div>' +
         '<div class="card-body form-row">' +
-          UI.field(Term('discipline'), '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">No ' + esc(Term('discipline_plural').toLowerCase()) + ' identified yet</option>') + '</select>') +
-          UI.field('Qualified ' + Term('inspector').toLowerCase(), '<select id="fAssignInsp" class="field-input"></select>') +
+          UI.field(Term('discipline'), '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">' + esc(t('no_x_identified_yet', { term: Term('discipline_plural').toLowerCase() })) + '</option>') + '</select>') +
+          UI.field(t('field_qualified_x', { term: Term('inspector').toLowerCase() }), '<select id="fAssignInsp" class="field-input"></select>') +
         '</div>' +
         (zonesRequired
-          ? '<div class="card-body" style="padding-top:0;">' + UI.field(Term('zone_plural') + ' (required — this ' + Term('venue').toLowerCase() + ' has multiple ' + Term('zone_plural').toLowerCase() + ')',
+          ? '<div class="card-body" style="padding-top:0;">' + UI.field(t('zones_required_field_label', { zonePluralCap: Term('zone_plural'), venue: Term('venue').toLowerCase(), zonePlural: Term('zone_plural').toLowerCase() }),
               zones.map(function (z) { return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
                 '<input type="checkbox" class="assign-zone-check" value="' + z.id + '" /> ' + esc(z.name) + '</label>'; }).join('')
             ) + '</div>'
           : '') +
-        '<div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>Assign</button></div></div>'
+        '<div class="card-body" style="padding-top:0;"><button class="btn btn-primary btn-sm" id="assignBtn"' + (identifiedDisciplines.length ? '' : ' disabled') + '>' + esc(t('assign_btn')) + '</button></div></div>'
       : '') +
-    '<div class="card"><div class="card-header"><div class="card-title">Assignments</div></div><div class="card-body">' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('assignments_title')) + '</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: Term('discipline') }, { key: 'inspectorName', label: Term('inspector') },
       { key: 'zoneNames', label: Term('zone_plural'), render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
-      { key: 'assignedAt', label: 'Assigned', render: r => UI.fmtDate(r.assignedAt) }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="Remove" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+      { key: 'assignedAt', label: t('col_assigned'), render: r => UI.fmtDate(r.assignedAt) }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
       assignments, {}) +
     '</div></div>';
 
@@ -1159,7 +1159,7 @@ async function tabDisciplines(content, eventId, detail) {
     var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
     try {
       await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids });
-      UI.toast(Term('discipline_plural') + ' saved', 'success'); Router.resolve();
+      UI.toast(t('x_saved', { term: Term('discipline_plural') }), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
 
@@ -1172,30 +1172,30 @@ async function tabDisciplines(content, eventId, detail) {
       var inspectors = await Api.call('listQualifiedInspectors', { disciplineId: discSelect.value, eventId: eventId });
       inspSelect.innerHTML = inspectors.length
         ? inspectors.map(i => '<option value="' + i.id + '">' + esc(i.name) + ' (' + esc(i.email) + ')</option>').join('')
-        : '<option value="">No qualified ' + esc(Term('inspector_plural').toLowerCase()) + ' for this ' + esc(Term('discipline').toLowerCase()) + '</option>';
+        : '<option value="">' + esc(t('no_qualified_x_for_y', { x: Term('inspector_plural').toLowerCase(), y: Term('discipline').toLowerCase() })) + '</option>';
     } catch (err) { UI.error(err); }
   }
   discSelect.onchange = loadQualifiedInspectors;
   if (identifiedDisciplines.length) loadQualifiedInspectors();
 
   document.getElementById('assignBtn').onclick = async function () {
-    if (!inspSelect.value) { UI.toast('No qualified ' + Term('inspector').toLowerCase() + ' selected', 'error'); return; }
+    if (!inspSelect.value) { UI.toast(t('toast_no_qualified_x_selected', { term: Term('inspector').toLowerCase() }), 'error'); return; }
     var zoneIds = Array.from(content.querySelectorAll('.assign-zone-check:checked')).map(c => c.value);
-    if (zonesRequired && !zoneIds.length) { UI.toast('This ' + Term('venue').toLowerCase() + ' has multiple ' + Term('zone_plural').toLowerCase() + ' — select at least one', 'error'); return; }
+    if (zonesRequired && !zoneIds.length) { UI.toast(t('toast_x_multiple_zones_select_one', { venue: Term('venue').toLowerCase(), zonePlural: Term('zone_plural').toLowerCase() }), 'error'); return; }
     try {
       await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value, zoneIds: zoneIds });
-      UI.toast(Term('inspector') + ' assigned', 'success'); Router.resolve();
+      UI.toast(t('x_assigned_toast', { term: Term('inspector') }), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
 
   content.querySelectorAll('[data-remove-assign]').forEach(function (b) {
     b.onclick = function () {
-      UI.confirmModal('Remove this ' + Term('inspector').toLowerCase() + ' assignment?', async function () {
+      UI.confirmModal(t('remove_x_assignment_confirm', { term: Term('inspector').toLowerCase() }), async function () {
         try {
           await Api.call('removeInspectorAssignment', { eventId: eventId, assignmentId: b.getAttribute('data-remove-assign') });
-          UI.toast('Assignment removed', 'success'); Router.resolve();
+          UI.toast(t('toast_assignment_removed'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
-      }, { confirmLabel: 'Remove' });
+      }, { confirmLabel: t('remove_btn') });
     };
   });
 
@@ -1219,7 +1219,7 @@ async function tabDisciplines(content, eventId, detail) {
   // time-specific), so adjusting the conflicting time slot happens there.
   content.querySelectorAll('[data-conflict-reschedule]').forEach(function (btn) {
     btn.onclick = function () {
-      UI.toast('Adjust this ' + Term('inspector').toLowerCase() + '\'s scheduled time in ' + Term('inspection_plural') + ' & Checklist Items to resolve the conflict.', 'info');
+      UI.toast(t('adjust_time_hint', { inspector: Term('inspector').toLowerCase(), inspectionAndChecklist: t('and_join', { a: Term('inspection_plural'), b: Term('checklistItem_plural') }) }), 'info');
       window.location.hash = '#/events/' + eventId + '?tab=inspections';
     };
   });
@@ -1233,20 +1233,20 @@ async function tabDisciplines(content, eventId, detail) {
         candidates = await Api.call('listConflictFreeQualifiedInspectors', { eventId: eventId, disciplineId: disciplineId });
       } catch (err) { UI.error(err); return; }
       if (!candidates.length) {
-        UI.toast('No other qualified, conflict-free ' + Term('inspector').toLowerCase() + ' is available for ' + disciplineName, 'error');
+        UI.toast(t('no_other_qualified_x_for_y', { term: Term('inspector').toLowerCase(), name: disciplineName }), 'error');
         return;
       }
-      var body = '<div style="font-size:13px;margin-bottom:10px;">Replace with a qualified ' + Term('inspector').toLowerCase() + ' who has no scheduling conflict:</div>' +
+      var body = '<div style="font-size:13px;margin-bottom:10px;">' + esc(t('replace_with_qualified_x_hint', { term: Term('inspector').toLowerCase() })) + '</div>' +
         UI.field(Term('inspector'), '<select id="fConflictNewInsp" class="field-input">' +
           candidates.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + ' (' + esc(c.email) + ')</option>'; }).join('') +
         '</select>');
-      UI.openModal('Change ' + Term('inspector').toLowerCase(), body, [
+      UI.openModal(t('change_x_title', { term: Term('inspector').toLowerCase() }), body, [
         { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-        { label: 'Change', className: 'btn-primary', onClick: async function () {
+        { label: t('change_btn'), className: 'btn-primary', onClick: async function () {
             var newInspectorId = document.getElementById('fConflictNewInsp').value;
             try {
               await Api.call('reassignInspector', { eventId: eventId, oldAssignmentId: oldAssignmentId, newInspectorId: newInspectorId });
-              UI.closeModal(); UI.toast(Term('inspector') + ' changed', 'success'); Router.resolve();
+              UI.closeModal(); UI.toast(t('x_changed_toast', { term: Term('inspector') }), 'success'); Router.resolve();
             } catch (err) { UI.error(err); }
           } }
       ]);
@@ -1268,32 +1268,32 @@ async function tabDisciplines(content, eventId, detail) {
 function renderCoverageGapsCard_(gaps, canManage) {
   var body;
   if (!gaps || !gaps.items || !gaps.items.length) {
-    body = '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' Every identified discipline is fully covered' + (gaps && gaps.zoneMode ? ' across all zones.' : '.') + '</div>';
+    body = '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_discipline_covered')) + (gaps && gaps.zoneMode ? esc(t('across_all_zones_suffix')) : '.') + '</div>';
   } else {
     body = gaps.items.map(function (item) {
       var whereText = gaps.zoneMode
-        ? 'Uncovered ' + esc(Term('zone_plural').toLowerCase()) + ': <strong>' + item.uncoveredZones.map(function (z) { return esc(z.name); }).join(', ') + '</strong>'
-        : '<strong>Not yet assigned</strong>';
+        ? esc(t('uncovered_x_prefix', { term: Term('zone_plural').toLowerCase() })) + '<strong>' + item.uncoveredZones.map(function (z) { return esc(z.name); }).join(', ') + '</strong>'
+        : '<strong>' + esc(t('not_yet_assigned')) + '</strong>';
       var zoneIdsAttr = gaps.zoneMode ? item.uncoveredZones.map(function (z) { return z.id; }).join(',') : '';
       var inspectorsHtml = item.availableInspectors.length
         ? item.availableInspectors.map(function (i) {
             var nameStyle = i.assigned ? 'color:silver;' : '';
             var conflictNote = i.conflict
-              ? '<div style="font-size:11px;color:var(--danger);margin-top:2px;">Conflict: also assigned to ' + esc(i.conflict.eventName) + ' (' + esc(UI.fmtDate(i.conflict.startDateTime)) + ' – ' + esc(UI.fmtDate(i.conflict.endDateTime)) + ')</div>'
+              ? '<div style="font-size:11px;color:var(--danger);margin-top:2px;">' + esc(t('conflict_also_assigned', { event: i.conflict.eventName, start: UI.fmtDate(i.conflict.startDateTime), end: UI.fmtDate(i.conflict.endDateTime) })) + '</div>'
               : '';
             return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:12.5px;">' +
               '<span><strong style="' + nameStyle + '">' + esc(i.name) + '</strong> <span class="muted">' + esc(i.email) + '</span>' +
-              (i.assigned ? ' <span class="muted" style="font-size:11px;">(already assigned)</span>' : '') + conflictNote + '</span>' +
-              (canManage && !i.assigned ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">Quick assign</button>' : '') +
+              (i.assigned ? ' <span class="muted" style="font-size:11px;">' + esc(t('already_assigned_paren')) + '</span>' : '') + conflictNote + '</span>' +
+              (canManage && !i.assigned ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">' + esc(t('quick_assign_btn')) + '</button>' : '') +
               '</div>';
           }).join('')
-        : '<div style="font-size:12px;margin-top:6px;color:var(--danger);">No qualified inspector</div>';
+        : '<div style="font-size:12px;margin-top:6px;color:var(--danger);">' + esc(t('no_qualified_x_plain', { term: Term('inspector') })) + '</div>';
       return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
         '<div style="font-weight:600;font-size:13.5px;">' + esc(item.disciplineName) + '</div>' +
         '<div style="font-size:12.5px;margin-top:2px;">' + whereText + '</div>' + inspectorsHtml + '</div>';
     }).join('');
   }
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Coverage gaps</div></div><div class="card-body">' + body + '</div></div>';
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('coverage_gaps_title')) + '</div></div><div class="card-body">' + body + '</div></div>';
 }
 
 // REQ: "If an inspector has conflict in another event then must be added to a conflict list with
@@ -1306,16 +1306,16 @@ function renderConflictsCard_(conflicts, canManage) {
   var rows = conflicts.map(function (c) {
     return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;font-size:12.5px;">' +
       '<div><strong>' + esc(c.inspectorName) + '</strong> <span class="muted">' + esc(c.inspectorEmail) + '</span> — ' + esc(c.disciplineName) + '</div>' +
-      '<div style="color:var(--danger);margin-top:2px;">Also assigned to <strong>' + esc(c.conflict.eventName) + '</strong> (' + esc(UI.fmtDate(c.conflict.startDateTime)) + ' – ' + esc(UI.fmtDate(c.conflict.endDateTime)) + ')</div>' +
+      '<div style="color:var(--danger);margin-top:2px;">' + esc(t('also_assigned_to_event', { event: c.conflict.eventName, start: UI.fmtDate(c.conflict.startDateTime), end: UI.fmtDate(c.conflict.endDateTime) })) + '</div>' +
       (canManage
         ? '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
-            '<button class="btn btn-secondary btn-sm" data-conflict-change="' + esc(c.assignmentId) + '" data-conflict-disc="' + esc(c.disciplineId) + '" data-conflict-discname="' + esc(c.disciplineName) + '">Change inspector</button>' +
-            '<button class="btn btn-secondary btn-sm" data-conflict-reschedule="' + esc(c.assignmentId) + '">Reschedule</button>' +
+            '<button class="btn btn-secondary btn-sm" data-conflict-change="' + esc(c.assignmentId) + '" data-conflict-disc="' + esc(c.disciplineId) + '" data-conflict-discname="' + esc(c.disciplineName) + '">' + esc(t('change_inspector_btn', { term: Term('inspector') })) + '</button>' +
+            '<button class="btn btn-secondary btn-sm" data-conflict-reschedule="' + esc(c.assignmentId) + '">' + esc(t('reschedule_btn')) + '</button>' +
           '</div>'
         : '') +
       '</div>';
   }).join('');
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + ICON('warning_banner') + ' Scheduling conflicts</div></div><div class="card-body">' + rows + '</div></div>';
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + ICON('warning_banner') + ' ' + esc(t('scheduling_conflicts_title')) + '</div></div><div class="card-body">' + rows + '</div></div>';
 }
 
 /* ---------------- Inspections & Checklists ---------------- */
@@ -1365,14 +1365,14 @@ function computeInspectionGaps_(assignments, inspections, checklistItems) {
 // (it's just information), "Quick schedule" only for roles that can act on it.
 function renderInspectionGapsCard_(gaps, canSchedule) {
   var body = !gaps.length
-    ? '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' Every assigned ' + Term('inspector').toLowerCase() + ' has an ' + Term('inspection').toLowerCase() + ' scheduled for every phase their discipline needs.</div>'
+    ? '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_x_scheduled_hint', { inspector: Term('inspector').toLowerCase(), inspection: Term('inspection').toLowerCase() })) + '</div>'
     : gaps.map(function (g) {
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13px;">' +
-          '<div><strong>' + esc(g.disciplineName) + '</strong> · ' + esc(g.inspectorName) + ' <span class="muted">— ' + esc(g.phase) + ' not yet scheduled</span></div>' +
-          (canSchedule ? '<button class="btn btn-secondary btn-sm" data-qs-assignment="' + esc(g.assignmentId) + '" data-qs-phase="' + esc(g.phase) + '">Quick schedule</button>' : '') +
+          '<div><strong>' + esc(g.disciplineName) + '</strong> · ' + esc(g.inspectorName) + ' <span class="muted">— ' + esc(g.phase) + esc(t('not_yet_scheduled_suffix')) + '</span></div>' +
+          (canSchedule ? '<button class="btn btn-secondary btn-sm" data-qs-assignment="' + esc(g.assignmentId) + '" data-qs-phase="' + esc(g.phase) + '">' + esc(t('quick_schedule_btn')) + '</button>' : '') +
           '</div>';
       }).join('');
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Coverage gaps</div></div><div class="card-body">' + body + '</div></div>';
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('coverage_gaps_title')) + '</div></div><div class="card-body">' + body + '</div></div>';
 }
 
 async function tabInspections(content, eventId, detail) {
@@ -1407,35 +1407,35 @@ async function tabInspections(content, eventId, detail) {
   // and the date/time input fills itself in, instead of the PM having to compute and type it by hand.
   content.innerHTML =
     (canSchedule
-      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Schedule ' + esc(Term('inspection').toLowerCase()) + '</div></div>' +
+      ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('schedule_x_title', { term: Term('inspection').toLowerCase() })) + '</div></div>' +
         '<div class="card-body form-row">' +
-          UI.field('Phase', '<select id="fInsPhase" class="field-input"><option>Opening</option><option>Operational</option></select>') +
-          UI.field(Term('inspector'), '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">No ' + esc(Term('inspector_plural').toLowerCase()) + ' assigned yet</option>') + '</select>') +
+          UI.field(t('field_phase'), '<select id="fInsPhase" class="field-input"><option>Opening</option><option>Operational</option></select>') +
+          UI.field(Term('inspector'), '<select id="fInsAssignment" class="field-input">' + (assignOptions || '<option value="">' + esc(t('no_x_assigned_yet', { term: Term('inspector_plural').toLowerCase() })) + '</option>') + '</select>') +
         '</div><div class="card-body form-row" style="padding-top:0;">' +
           UI.field(Term('discipline'), '<input id="fInsDisc" class="field-input" readonly />') +
-          UI.field('Scheduled at',
+          UI.field(t('field_scheduled_at'),
             '<input id="fInsWhen" type="datetime-local" class="field-input" />' +
             (eventStart
               ? '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
                   '<input id="fInsOffsetHours" type="number" min="0" step="0.5" placeholder="Hours" class="field-input" style="width:78px;padding:6px 8px;font-size:12.5px;" />' +
                   '<div class="toggle-pair" id="fInsOffsetDir">' +
-                    '<button type="button" class="toggle-pair-btn active" data-dir="before">Before start</button>' +
-                    '<button type="button" class="toggle-pair-btn" data-dir="after">After start</button>' +
+                    '<button type="button" class="toggle-pair-btn active" data-dir="before">' + esc(t('toggle_before_start')) + '</button>' +
+                    '<button type="button" class="toggle-pair-btn" data-dir="after">' + esc(t('toggle_after_start')) + '</button>' +
                   '</div>' +
                 '</div>' +
-                '<div class="muted" style="font-size:10.5px;margin-top:3px;">Hours relative to the ' + esc(Term('event').toLowerCase()) + '\'s start (' + esc(UI.fmtDate(eventStart)) + ') -- fills in the date/time above automatically.</div>'
+                '<div class="muted" style="font-size:10.5px;margin-top:3px;">' + esc(t('hours_relative_hint', { event: Term('event').toLowerCase(), date: UI.fmtDate(eventStart) })) + '</div>'
               : '')
           ) +
         '</div><div class="card-body" style="padding-top:0;">' +
-          '<button class="btn btn-primary btn-sm" id="scheduleBtn"' + (assignments.length ? '' : ' disabled') + '>Schedule</button></div></div>'
+          '<button class="btn btn-primary btn-sm" id="scheduleBtn"' + (assignments.length ? '' : ' disabled') + '>' + esc(t('schedule_btn')) + '</button></div></div>'
       : '') +
     renderInspectionGapsCard_(gaps, canSchedule) +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('inspection_plural')) + '</div></div><div class="card-body">' +
     UI.table([
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'phase', label: 'Phase' },
+      { key: 'disciplineName', label: Term('discipline') }, { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
-      { key: 'scheduledAt', label: 'When', render: r => UI.fmtDate(r.scheduledAt) },
-      { key: 'progress', label: 'Progress', render: r => r.coverage ? (r.coverage.done + ' / ' + r.coverage.total + ' ' + Term('participant_plural').toLowerCase()) : '—' },
+      { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) },
+      { key: 'progress', label: t('col_progress'), render: r => r.coverage ? t('progress_fraction', { done: r.coverage.done, total: r.coverage.total, term: Term('participant_plural').toLowerCase() }) : '—' },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'actions', label: t('actions'), render: r => {
           // Edit/Delete are only offered while the inspection is still 'Scheduled' -- once results
@@ -1444,13 +1444,13 @@ async function tabInspections(content, eventId, detail) {
           // show that error.
           var btns = '';
           if (canSchedule && r.status === 'Scheduled') {
-            btns += '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-inspection="' + r.id + '">' + ICON('edit') + '</button> ' +
-              '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-inspection="' + r.id + '">' + ICON('delete') + '</button> ';
+            btns += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-inspection="' + r.id + '">' + ICON('edit') + '</button> ' +
+              '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-inspection="' + r.id + '">' + ICON('delete') + '</button> ';
           }
           if (canRecordInspection_(r) && r.status !== 'Completed') {
             btns += new Date(r.scheduledAt) > new Date()
-              ? '<span class="muted" style="font-size:11.5px;">Not due yet</span>'
-              : '<button class="btn btn-secondary btn-sm btn-icon" title="Record results" data-record="' + r.id + '">' + ICON('record_results') + '</button>';
+              ? '<span class="muted" style="font-size:11.5px;">' + esc(t('not_due_yet')) + '</span>'
+              : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_record_results')) + '" data-record="' + r.id + '">' + ICON('record_results') + '</button>';
           }
           return btns || '—';
         } }
@@ -1498,14 +1498,14 @@ async function tabInspections(content, eventId, detail) {
 
     document.getElementById('scheduleBtn').onclick = async function () {
       var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
-      if (!assignment) { UI.toast('Select an assigned ' + Term('inspector').toLowerCase() + ' first', 'error'); return; }
+      if (!assignment) { UI.toast(t('toast_select_assigned_x_first', { term: Term('inspector').toLowerCase() }), 'error'); return; }
       try {
         await Api.call('scheduleInspection', {
           eventId: eventId, disciplineId: assignment.disciplineId, inspectorId: assignment.inspectorId,
           phase: phaseSelect.value,
           scheduledAt: whenInput.value
         });
-        UI.toast(Term('inspection') + ' scheduled', 'success'); Router.resolve();
+        UI.toast(t('x_scheduled_toast', { term: Term('inspection') }), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
 
@@ -1534,14 +1534,14 @@ async function tabInspections(content, eventId, detail) {
   content.querySelectorAll('[data-delete-inspection]').forEach(btn => {
     var inspection = inspections.filter(i => i.id === btn.getAttribute('data-delete-inspection'))[0];
     btn.onclick = () => UI.confirmModal(
-      'Delete this ' + Term('inspection').toLowerCase() + ' (' + (inspection.disciplineName || '') + ' · ' + inspection.phase + ')? This cannot be undone.',
+      t('delete_x_with_detail_confirm', { term: Term('inspection').toLowerCase(), detail: (inspection.disciplineName || '') + ' · ' + inspection.phase }),
       async () => {
         try {
           await Api.call('deleteInspection', { eventId: eventId, inspectionId: inspection.id });
-          UI.toast(Term('inspection') + ' deleted', 'success'); Router.resolve();
+          UI.toast(t('x_deleted', { term: Term('inspection') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       },
-      { confirmLabel: 'Delete' }
+      { confirmLabel: t('delete') }
     );
   });
 }
@@ -1556,7 +1556,7 @@ function openEditInspectionModal_(eventId, inspection, assignments, assignOption
   })[0];
   var body =
     '<div class="form-row">' +
-      UI.field('Phase', '<select id="mInsPhase" class="field-input">' +
+      UI.field(t('field_phase'), '<select id="mInsPhase" class="field-input">' +
         '<option' + (inspection.phase === 'Opening' ? ' selected' : '') + '>Opening</option>' +
         '<option' + (inspection.phase === 'Operational' ? ' selected' : '') + '>Operational</option>' +
         '</select>') +
@@ -1564,16 +1564,16 @@ function openEditInspectionModal_(eventId, inspection, assignments, assignOption
     '</div>' +
     '<div class="form-row">' +
       UI.field(Term('discipline'), '<input id="mInsDisc" class="field-input" readonly />') +
-      UI.field('Scheduled at', '<input id="mInsWhen" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(inspection.scheduledAt)) + '" />') +
+      UI.field(t('field_scheduled_at'), '<input id="mInsWhen" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(inspection.scheduledAt)) + '" />') +
     '</div>';
-  UI.openModal('Edit ' + Term('inspection').toLowerCase(), body, [
+  UI.openModal(t('edit_x', { term: Term('inspection').toLowerCase() }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Save', className: 'btn-primary', onClick: async function () {
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
         var assignSelect = document.getElementById('mInsAssignment');
         var assignment = assignments.filter(a => a.id === assignSelect.value)[0];
-        if (!assignment) { UI.toast('Select an assigned ' + Term('inspector').toLowerCase() + ' first', 'error'); return; }
+        if (!assignment) { UI.toast(t('toast_select_assigned_x_first', { term: Term('inspector').toLowerCase() }), 'error'); return; }
         var when = document.getElementById('mInsWhen').value;
-        if (!when) { UI.toast('Scheduled at is required', 'error'); return; }
+        if (!when) { UI.toast(t('toast_scheduled_at_required'), 'error'); return; }
         try {
           await Api.call('updateInspection', {
             eventId: eventId, inspectionId: inspection.id,
@@ -1581,7 +1581,7 @@ function openEditInspectionModal_(eventId, inspection, assignments, assignOption
             phase: document.getElementById('mInsPhase').value,
             scheduledAt: when
           });
-          UI.closeModal(); UI.toast(Term('inspection') + ' updated', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('x_updated', { term: Term('inspection') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -1638,9 +1638,9 @@ async function openChooseParticipantScreen_(content, eventId, inspection, venue)
   var participants = await Api.call('listInspectionParticipants', { inspectionId: inspection.id });
 
   content.innerHTML =
-    '<div class="page-header" style="margin-bottom:14px;"><div><div class="page-title" style="font-size:17px;">Choose a ' + esc(Term('participant').toLowerCase()) + '</div>' +
-    '<div class="page-subtitle">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + ' — yellow/green dots need ' + (inspection.disciplineName ? 'a ' + esc(inspection.disciplineName) + ' ' : '') + 'checklist under your zone</div></div>' +
-    '<button class="btn btn-secondary btn-sm" id="backToInspectionsBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="page-header" style="margin-bottom:14px;"><div><div class="page-title" style="font-size:17px;">' + esc(t('choose_x_title', { term: Term('participant').toLowerCase() })) + '</div>' +
+    '<div class="page-subtitle">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + ' — ' + esc(t('choose_participant_subtitle_hint', { disc: inspection.disciplineName ? esc(inspection.disciplineName) + ' ' : '' })) + '</div></div>' +
+    '<button class="btn btn-secondary btn-sm" id="backToInspectionsBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
     '<div id="liveInspectionBanner"></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
       '<div id="liveInspectionMap" style="height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
@@ -1663,7 +1663,7 @@ function startLiveInspectionTracking_(content, eventId, inspection, participants
     return;
   }
 
-  banner.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + ICON('gps_locating') + ' Getting your location…</div>';
+  banner.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + ICON('gps_locating') + ' ' + esc(t('getting_location')) + '</div>';
   initLiveInspectionMap_(participants, eventId, inspection);
 
   stopLiveInspectionWatch_();
@@ -1698,9 +1698,8 @@ function showLiveInspectionFallback_(content, eventId, inspection, participants)
   if (!banner) return;
   banner.innerHTML =
     '<div class="card" style="margin-bottom:16px;border-color:var(--warning);"><div class="card-body" style="font-size:12.5px;color:var(--warning);">' +
-    ICON('warning_banner') + ' Location and/or an internet connection isn\'t available — make sure both GPS and WiFi (or mobile data) are turned on while inspecting on site. Showing every ' +
-    esc(Term('participant').toLowerCase()) + ', ' + esc(inspection.disciplineName || 'discipline') + '-related ones first.' +
-    '<div><button class="btn btn-secondary btn-sm" id="retryLocationBtn" style="margin-top:8px;">Try again</button></div></div></div>';
+    ICON('warning_banner') + ' ' + esc(t('location_unavailable_hint', { participant: Term('participant').toLowerCase(), discipline: inspection.disciplineName || Term('discipline').toLowerCase() })) +
+    '<div><button class="btn btn-secondary btn-sm" id="retryLocationBtn" style="margin-top:8px;">' + esc(t('try_again_btn')) + '</button></div></div></div>';
   if (mapEl) mapEl.style.display = 'none';
   renderNearestList_(eventId, inspection, participants, null);
   var retryBtn = document.getElementById('retryLocationBtn');
@@ -1718,7 +1717,7 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library) — the list below still works.';
+    el.textContent = t('map_unavailable_list_ok');
     return;
   }
   setTimeout(function () {
@@ -1786,7 +1785,7 @@ function updateLiveInspectionMyPosition_(latlng) {
   var banner = document.getElementById('liveInspectionBanner');
   if (liveInspectionVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], liveInspectionVenueBoundary_)) {
     if (liveInspectionMyMarker_) { liveInspectionMapInstance_.removeLayer(liveInspectionMyMarker_); liveInspectionMyMarker_ = null; }
-    if (banner) banner.innerHTML = '<div class="muted" style="font-size:12px;">' + ICON('warning_banner') + ' You\'re outside the venue boundary — your location isn\'t shown.</div>';
+    if (banner) banner.innerHTML = '<div class="muted" style="font-size:12px;">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_hint')) + '</div>';
     return;
   }
   if (!liveInspectionMyMarker_) {
@@ -1829,7 +1828,7 @@ function renderNearestList_(eventId, inspection, participants, myLatLng) {
       '<div><div style="font-size:13.5px;font-weight:600;">' + statusIcon + esc(p.name) + '</div>' +
       '<div class="muted" style="font-size:11.5px;margin-top:2px;">' + esc(p.type) + (p.isRelevant ? ' · ' + p.checklistDone + '/' + p.checklistTotal + ' done' : '') + '</div></div>' +
       '<div class="muted" style="font-size:12px;flex:none;">' + distText + '</div></div>';
-  }).join('') || '<div class="empty-state">No ' + esc(Term('participant_plural').toLowerCase()) + ' recorded for this ' + esc(Term('event').toLowerCase()) + ' yet.</div>';
+  }).join('') || '<div class="empty-state">' + esc(t('no_x_recorded_for_y_yet', { term: Term('participant_plural').toLowerCase(), event: Term('event').toLowerCase() })) + '</div>';
 
   listEl.querySelectorAll('[data-participant]').forEach(function (row) {
     row.onclick = function () {
@@ -1859,13 +1858,13 @@ async function openRecordResultsModal(eventId, inspection, participant) {
   var openItems = scope.filter(function (i) { return !doneIds[i.id]; });
 
   if (!scope.length) {
-    UI.openModal('Record results', '<div class="empty-state">No ' + esc(Term('checklistItem_plural').toLowerCase()) + ' are set up for this ' + esc(Term('discipline').toLowerCase()) + '/phase yet.</div>',
-      [{ label: 'Close', className: 'btn-secondary', onClick: UI.closeModal }]);
+    UI.openModal(t('record_results_title'), '<div class="empty-state">' + esc(t('no_x_setup_for_discipline_phase', { term: Term('checklistItem_plural').toLowerCase(), discipline: Term('discipline').toLowerCase() })) + '</div>',
+      [{ label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }]);
     return;
   }
   if (!openItems.length) {
-    UI.openModal('Record results', '<div class="empty-state">' + esc(participant.name) + '\'s checklist for this ' + esc(Term('inspection').toLowerCase()) + ' is already fully recorded.</div>',
-      [{ label: 'Close', className: 'btn-secondary', onClick: UI.closeModal }]);
+    UI.openModal(t('record_results_title'), '<div class="empty-state">' + esc(t('x_checklist_already_recorded', { name: participant.name, term: Term('inspection').toLowerCase() })) + '</div>',
+      [{ label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }]);
     return;
   }
 
@@ -1881,17 +1880,17 @@ function openChecklistTypeStep_(eventId, inspection, participant, scope, openIte
   var ALL_KEY = '__ALL__';
   var body =
     '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div>' +
-    UI.field('Checklist type', '<select id="fRecordType" class="field-input">' +
+    UI.field(t('field_checklist_type'), '<select id="fRecordType" class="field-input">' +
       typeNames.map(function (name) {
-        return '<option value="' + esc(name) + '">' + esc(name || '(untyped)') + ' — ' + byType[name].length + ' open</option>';
+        return '<option value="' + esc(name) + '">' + esc(name || '(untyped)') + esc(t('x_open_count_suffix', { count: byType[name].length })) + '</option>';
       }).join('') +
-      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">All checklist types — ' + openItems.length + ' open</option>' : '') +
+      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">' + esc(t('all_checklist_types_option')) + esc(t('x_open_count_suffix', { count: openItems.length })) + '</option>' : '') +
     '</select>') +
-    '<div class="muted" style="font-size:11px;margin-top:8px;">Only the type you pick gets recorded this visit — anything else stays open for a later visit.</div>';
+    '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('checklist_type_pick_hint')) + '</div>';
 
-  UI.openModal('Record results — ' + esc(participant.name), body, [
+  UI.openModal(t('record_results_for_x_title', { name: participant.name }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Continue', className: 'btn-primary', onClick: function () {
+    { label: t('continue_btn'), className: 'btn-primary', onClick: function () {
         var picked = document.getElementById('fRecordType').value;
         var filtered = picked === ALL_KEY ? openItems : byType[picked];
         var totalForScope = picked === ALL_KEY ? scope.length : scope.filter(function (i) { return i.checklistType === picked; }).length;
@@ -1911,7 +1910,7 @@ function openRecordResultsForm_(eventId, inspection, participant, filteredItems,
   filteredItems.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
 
   var body =
-    (doneCount ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + doneCount + ' item(s) already recorded for ' + esc(participant.name) + ' in this scope — not shown below.</div>' : '') +
+    (doneCount ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('already_recorded_count_hint', { count: doneCount, name: participant.name })) + '</div>' : '') +
     Object.keys(byType).sort().map(function (typeName) {
       return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName) + '</div>' +
         byType[typeName].map(recordResultRowHtml_).join('');
@@ -1931,15 +1930,15 @@ function openRecordResultsForm_(eventId, inspection, participant, filteredItems,
 function recordResultRowHtml_(it) {
   return '<div class="result-row" data-row="' + it.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
     '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
-    '<div class="muted" style="font-size:11.5px;margin-bottom:6px;">default risk ' + esc(it.defaultRisk) + ' · window ' + esc(it.defaultWindowHours) + 'h</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-bottom:6px;">' + esc(t('risk_window_meta', { risk: it.defaultRisk, hours: it.defaultWindowHours })) + '</div>' +
     '<select class="field-input result-state" data-item="' + it.id + '" style="display:inline-block;width:auto;">' +
     '<option value="Ticked">Ticked</option><option value="Crossed">Crossed</option><option value="N/A">N/A</option></select>' +
     '<div class="crossed-extra" data-extra="' + it.id + '" style="display:none;margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;">' +
-      '<div class="field-label" style="font-size:11.5px;">Notes / what was found</div>' +
+      '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_notes_found')) + '</div>' +
       '<textarea class="field-input result-notes" data-item="' + it.id + '" rows="3" style="margin-bottom:6px;"></textarea>' +
-      '<div class="field-label" style="font-size:11.5px;">Suggested action</div>' +
+      '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_suggested_action')) + '</div>' +
       '<input class="field-input result-action" data-item="' + it.id + '" style="margin-bottom:6px;" />' +
-      '<div class="field-label" style="font-size:11.5px;">Risk Logging evidence — photo or video (required)</div>' +
+      '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_evidence_required')) + '</div>' +
       // capture="environment" opens the device camera directly (rear camera) on mobile instead of
       // the general file/gallery picker -- REQ: evidence must be captured on the spot, not uploaded
       // from an existing file. The native input is kept but visually hidden (its own "Choose
@@ -1947,7 +1946,7 @@ function recordResultRowHtml_(it) {
       // button -- same plain-icon styling as every other icon button in the app -- triggers it via
       // .click(), so the only affordance the user sees is "take a photo", not "pick a file".
       '<input type="file" class="result-evidence hidden" data-item="' + it.id + '" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-      '<button type="button" class="btn btn-secondary btn-icon result-evidence-trigger" data-item="' + it.id + '" title="Take photo / video" aria-label="Take photo or video">' + ICON('capture_photo') + '</button>' +
+      '<button type="button" class="btn btn-secondary btn-icon result-evidence-trigger" data-item="' + it.id + '" title="' + esc(t('title_take_photo')) + '" aria-label="' + esc(t('aria_take_photo')) + '">' + ICON('capture_photo') + '</button>' +
       '<div class="evidence-list" data-evlist="' + it.id + '" style="margin-top:6px;"></div>' +
     '</div>' +
   '</div>';
@@ -1999,7 +1998,7 @@ function uploadEvidenceFile_(eventId, itemId, file, pendingFiles, skipPrepare) {
     entry.file = readyFile; // kept for the "Retry now" button below
     if (readyFile.size > EVIDENCE_MAX_UPLOAD_BYTES_) {
       var mb = (readyFile.size / (1024 * 1024)).toFixed(1);
-      throw new Error('File is ' + mb + 'MB, which is too large to upload (max 15MB) -- try a shorter video or a lower-resolution photo.');
+      throw new Error(t('file_too_large_error', { mb: mb }));
     }
     entry.status = 'uploading';
     renderEvidenceList_(itemId, pendingFiles);
@@ -2016,7 +2015,7 @@ function uploadEvidenceFile_(eventId, itemId, file, pendingFiles, skipPrepare) {
     // size is appended so a size-related failure (still possible if the watermark/resize step itself
     // failed and fell back to the untouched original) is visible without needing devtools.
     var sizeMb = entry.file ? (entry.file.size / (1024 * 1024)).toFixed(1) + 'MB' : '?';
-    entry.status = 'saved-locally'; entry.error = (err.message || 'Upload failed') + ' [' + sizeMb + ']';
+    entry.status = 'saved-locally'; entry.error = (err.message || t('upload_failed_fallback')) + ' [' + sizeMb + ']';
     renderEvidenceList_(itemId, pendingFiles);
   });
 }
@@ -2033,7 +2032,7 @@ function retryEvidenceEntry_(itemId, entry, pendingFiles) {
     renderEvidenceList_(itemId, pendingFiles);
   }).catch(function (err) {
     var sizeMb = entry.file ? (entry.file.size / (1024 * 1024)).toFixed(1) + 'MB' : '?';
-    entry.status = 'saved-locally'; entry.error = (err.message || 'Upload failed') + ' [' + sizeMb + ']';
+    entry.status = 'saved-locally'; entry.error = (err.message || t('upload_failed_fallback')) + ' [' + sizeMb + ']';
     renderEvidenceList_(itemId, pendingFiles);
   });
 }
@@ -2043,18 +2042,18 @@ function renderEvidenceList_(itemId, pendingFiles) {
   if (!el) return;
   el.innerHTML = (pendingFiles[itemId] || []).map(function (f) {
     if (f.status === 'preparing') {
-      return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' — stamping date/time, location &amp; logos…</div>';
+      return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' ' + esc(t('stamping_hint')) + '</div>';
     }
     if (f.status === 'uploading') {
-      return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' — uploading ' + f.pct + '%' +
+      return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' ' + esc(t('uploading_pct_suffix', { pct: f.pct })) +
         '<div style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin-top:2px;">' +
         '<div style="background:var(--accent);height:100%;width:' + f.pct + '%;transition:width .1s;"></div></div></div>';
     }
     if (f.status === 'done') return '<div style="font-size:11.5px;margin-top:4px;color:var(--success);">' + ICON('file_upload_done') + ' ' + esc(f.name) + '</div>';
     if (f.status === 'saved-locally') {
-      return '<div style="font-size:11.5px;margin-top:4px;color:var(--warning);">' + ICON('warning_banner') + ' ' + esc(f.name) +
-        ' — saved on this device, not uploaded yet (' + esc(f.error || 'connection issue') + ')' +
-        ' <button type="button" class="btn btn-secondary btn-sm" data-retry-evidence="' + esc(f.localId) + '" style="margin-inline-start:6px;padding:2px 8px;font-size:11px;">Retry now</button></div>';
+      return '<div style="font-size:11.5px;margin-top:4px;color:var(--warning);">' + ICON('warning_banner') + ' ' + esc(f.name) + ' ' +
+        esc(t('saved_locally_suffix', { error: f.error || 'connection issue' })) +
+        ' <button type="button" class="btn btn-secondary btn-sm" data-retry-evidence="' + esc(f.localId) + '" style="margin-inline-start:6px;padding:2px 8px;font-size:11px;">' + esc(t('retry_now_btn')) + '</button></div>';
     }
     return '<div style="font-size:11.5px;margin-top:4px;color:var(--danger);">' + ICON('file_upload_failed') + ' ' + esc(f.name) + ' — ' + esc(f.error || 'failed, try again') + '</div>';
   }).join('');
@@ -2078,12 +2077,12 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
     if (state === 'Crossed') {
       var files = pendingFiles[it.id] || [];
       if (files.some(function (f) { return f.status === 'uploading'; })) {
-        UI.toast('Evidence is still uploading for "' + it.description + '" — please wait for it to finish', 'error');
+        UI.toast(t('toast_evidence_uploading', { desc: it.description }), 'error');
         return;
       }
       var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
       if (!urls.length) {
-        UI.toast('A photo or video is required for "' + it.description + '" since it is marked Crossed', 'error');
+        UI.toast(t('toast_evidence_required', { desc: it.description }), 'error');
         return;
       }
       entry.notes = row.querySelector('.result-notes').value;
@@ -2095,7 +2094,7 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
   try {
     var res = await Api.call('recordInspectionResults', { inspectionId: inspection.id, participantId: participant.id, results: results });
     UI.closeModal();
-    UI.toast(res.findingsCreated.length + ' ' + esc(res.findingsCreated.length === 1 ? Term('finding') : Term('finding_plural')).toLowerCase() + ' created', 'success');
+    UI.toast(t('findings_created_toast', { count: res.findingsCreated.length, term: esc(res.findingsCreated.length === 1 ? Term('finding') : Term('finding_plural')).toLowerCase() }), 'success');
     Router.resolve();
   } catch (err) { UI.error(err); }
 }
@@ -2182,11 +2181,11 @@ async function tabFindings(content, eventId) {
       kpiCard('kpi_reopen', counts.ReOpen, ICON('kpi_reopen'), 'var(--warning)') +
       kpiCard('kpi_rejected', counts.Rejected, ICON('kpi_rejected'), 'var(--danger)') +
     '</div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Pipeline</div>' +
-    '<div class="muted" style="font-size:11.5px;">Click a card to open the log</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('pipeline_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_log_hint')) + '</div></div>' +
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_findings') + '</div>' +
-    (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">+ Log ' + esc(Term('finding').toLowerCase()) + '</button>' : '') + '</div>' +
+    (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">' + esc(t('log_x_btn', { term: Term('finding').toLowerCase() })) + '</button>' : '') + '</div>' +
     // REQ (follow-up): "Change Sub Category to Checklist Type and fill automatically." Findings.category
     // is where the New Finding form's own "Checklist Type" dropdown value actually gets saved
     // (findings.js renderNewFinding -- category: fChecklistType.value, defaulted to 'Other' server-side
@@ -2203,17 +2202,17 @@ async function tabFindings(content, eventId) {
     // is purely about not showing a button that would just come back as a FORBIDDEN error.
     '<div class="card-body">' + UI.table([
       { key: 'participantName', label: Term('participant') },
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: 'Checklist Type' },
-      { key: 'riskLevel', label: 'Severity', render: r => UI.riskBadge(r.riskLevel) },
+      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: t('col_checklist_type') },
+      { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'description', label: 'Description' },
+      { key: 'description', label: t('field_description') },
       { key: 'actions', label: t('actions'), render: r => {
         var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
         var canEdit = canEditAny && stillEditable;
         var canDelete = canDeleteAny && stillEditable;
-        return '<button class="btn btn-secondary btn-sm btn-icon" title="Open log" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
-          (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
-          (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="Delete" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '');
+        return '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_log')) + '" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
+          (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
+          (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="' + esc(t('action_delete')) + '" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '');
       } }
     ], findings, {}) + '</div></div>';
 
@@ -2229,13 +2228,13 @@ async function tabFindings(content, eventId) {
   content.querySelectorAll('[data-finding-delete]').forEach(btn => {
     btn.onclick = () => {
       var findingId = btn.getAttribute('data-finding-delete');
-      UI.confirmModal('Delete this ' + Term('finding').toLowerCase() + '? This can\'t be undone.', async function () {
+      UI.confirmModal(t('delete_x_cant_undo_confirm', { term: Term('finding').toLowerCase() }), async function () {
         try {
           await Api.call('deleteFinding', { findingId: findingId });
-          UI.toast(Term('finding') + ' deleted', 'success');
+          UI.toast(t('x_deleted', { term: Term('finding') }), 'success');
           Router.resolve();
         } catch (err) { UI.error(err); }
-      }, { title: 'Delete ' + Term('finding').toLowerCase(), confirmLabel: 'Delete', confirmClass: 'btn-danger' });
+      }, { title: t('delete_modal_title', { term: Term('finding').toLowerCase() }), confirmLabel: t('delete'), confirmClass: 'btn-danger' });
     };
   });
 }
@@ -2256,35 +2255,35 @@ async function tabEscalations(content, eventId, detail, params) {
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">' +
-    '<div class="muted" style="font-size:13px;">' + esc(Term('escalation_plural')) + ' run automatically every 30 minutes, using the To/Cc roles and timers set in Config &rarr; Escalations. You can also trigger a check manually.</div>' +
-    '<button class="btn btn-secondary btn-sm" id="runEscBtn">Run check now</button></div></div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Manual ' + esc(Term('escalation').toLowerCase()) + ' (admin override)</div></div>' +
+    '<div class="muted" style="font-size:13px;">' + esc(t('escalations_auto_hint', { term: Term('escalation_plural') })) + '</div>' +
+    '<button class="btn btn-secondary btn-sm" id="runEscBtn">' + esc(t('run_check_now_btn')) + '</button></div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('manual_x_override_title', { term: Term('escalation').toLowerCase() })) + '</div></div>' +
     '<div class="card-body form-row">' +
-      UI.field(Term('finding'), '<select id="fEscFinding" class="field-input">' + (findingOptions || '<option value="">No ' + esc(Term('finding_plural').toLowerCase()) + ' logged yet</option>') + '</select>') +
-      UI.field('Tier', '<select id="fEscTier" class="field-input"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>') +
+      UI.field(Term('finding'), '<select id="fEscFinding" class="field-input">' + (findingOptions || '<option value="">' + esc(t('no_x_logged_yet', { term: Term('finding_plural').toLowerCase() })) + '</option>') + '</select>') +
+      UI.field(t('field_tier'), '<select id="fEscTier" class="field-input"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>') +
     '</div><div class="card-body" style="padding-top:0;">' +
-      '<div class="muted" style="font-size:11.5px;margin-bottom:8px;">Recipients are resolved automatically from the Tier\'s configured To/Cc roles.</div>' +
-      '<button class="btn btn-primary btn-sm" id="newEscBtn">Create ' + esc(Term('escalation').toLowerCase()) + '</button></div></div>' +
+      '<div class="muted" style="font-size:11.5px;margin-bottom:8px;">' + esc(t('recipients_resolved_hint')) + '</div>' +
+      '<button class="btn btn-primary btn-sm" id="newEscBtn">' + esc(t('create_x_btn', { term: Term('escalation').toLowerCase() })) + '</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('escalation_plural')) + '</div></div><div class="card-body">' +
     UI.table([
       { key: 'findingId', label: Term('finding'), render: r => '<span data-esc-id="' + esc(r.id) + '">' + esc(findingsById[r.findingId] ? (findingsById[r.findingId].description || r.findingId) : r.findingId) + '</span>' },
-      { key: 'riskLevel', label: 'Risk', sortValue: r => findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '', render: r => UI.riskBadge(findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '') },
-      { key: 'tier', label: 'Tier', render: r => 'Tier ' + r.tier },
-      { key: 'to', label: 'To', sortable: false, render: r => escalationPeopleHtml_(r.to) },
-      { key: 'cc', label: 'Cc', sortable: false, render: r => escalationPeopleHtml_(r.cc) },
-      { key: 'notedUserIds', label: 'Noted', sortValue: r => (r.notedUserIds || []).length, render: r => (r.notedUserIds || []).length + ' of ' + r.to.length },
-      { key: 'triggeredAt', label: 'Triggered', render: r => UI.fmtDate(r.triggeredAt) },
-      { key: 'resolvedAt', label: 'Resolved', render: r => r.resolvedAt ? UI.fmtDate(r.resolvedAt) : '—' }
+      { key: 'riskLevel', label: t('col_risk'), sortValue: r => findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '', render: r => UI.riskBadge(findingsById[r.findingId] ? findingsById[r.findingId].riskLevel : '') },
+      { key: 'tier', label: t('col_tier'), render: r => esc(t('tier_prefix')) + r.tier },
+      { key: 'to', label: t('col_to'), sortable: false, render: r => escalationPeopleHtml_(r.to) },
+      { key: 'cc', label: t('col_cc'), sortable: false, render: r => escalationPeopleHtml_(r.cc) },
+      { key: 'notedUserIds', label: t('col_noted'), sortValue: r => (r.notedUserIds || []).length, render: r => t('count_of_total', { count: (r.notedUserIds || []).length, total: r.to.length }) },
+      { key: 'triggeredAt', label: t('col_triggered'), render: r => UI.fmtDate(r.triggeredAt) },
+      { key: 'resolvedAt', label: t('col_resolved'), render: r => r.resolvedAt ? UI.fmtDate(r.resolvedAt) : '—' }
     ], escalations, {}) + '</div></div>';
 
   document.getElementById('runEscBtn').onclick = async function () {
-    try { var res = await Api.call('runEscalationCheck', {}); UI.toast(res.triggeredCount + ' ' + esc(res.triggeredCount === 1 ? Term('escalation') : Term('escalation_plural')).toLowerCase() + ' triggered', 'success'); Router.resolve(); }
+    try { var res = await Api.call('runEscalationCheck', {}); UI.toast(t('x_triggered_toast', { count: res.triggeredCount, term: esc(res.triggeredCount === 1 ? Term('escalation') : Term('escalation_plural')).toLowerCase() }), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
   };
   document.getElementById('newEscBtn').onclick = async function () {
     try {
       await Api.call('createEscalation', { findingId: document.getElementById('fEscFinding').value, tier: document.getElementById('fEscTier').value });
-      UI.toast(Term('escalation') + ' created', 'success'); Router.resolve();
+      UI.toast(t('x_created', { term: Term('escalation') }), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
 
@@ -2317,8 +2316,8 @@ async function tabReports(content, eventId) {
   var reports = await Api.call('listReports', { eventId: eventId });
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;gap:10px;">' +
-    '<button class="btn btn-primary btn-sm" id="genReadinessBtn">Generate Opening report</button>' +
-    '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">Generate Operational report</button></div></div>' +
+    '<button class="btn btn-primary btn-sm" id="genReadinessBtn">' + esc(t('generate_x_report_btn', { phase: 'Opening' })) + '</button>' +
+    '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">' + esc(t('generate_x_report_btn', { phase: 'Operational' })) + '</button></div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('report_plural')) + '</div></div><div class="card-body">' +
     reports.map(r =>
       '<div style="border-bottom:1px solid #f0f1f6;padding:12px 0;">' +
@@ -2330,7 +2329,7 @@ async function tabReports(content, eventId) {
   document.getElementById('genReadinessBtn').onclick = () => gen('Opening');
   document.getElementById('genInspectionBtn').onclick = () => gen('Operational');
   async function gen(type) {
-    try { await Api.call('generateReport', { eventId: eventId, type: type }); UI.toast(Term('report') + ' generated', 'success'); Router.resolve(); }
+    try { await Api.call('generateReport', { eventId: eventId, type: type }); UI.toast(t('x_generated_toast', { term: Term('report') }), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
   }
 }
@@ -2365,32 +2364,31 @@ async function tabEventChat(content, eventId, detail) {
     .map(function (tb) { return { key: tb[0], label: tb[2] ? tb[2]() : t(tb[1]) }; });
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Chat</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tab_chat')) + '</div></div>' +
     '<div class="card-body" id="chatMessages" style="max-height:480px;overflow-y:auto;">' +
-    (messages.length ? messages.map(chatMessageHtml_).join('') : '<div class="empty-state">No messages yet — start the conversation.</div>') +
+    (messages.length ? messages.map(chatMessageHtml_).join('') : '<div class="empty-state">' + esc(t('no_messages_yet')) + '</div>') +
     '</div></div>' +
-    '<div class="card"><div class="card-header"><div class="card-title">New message</div>' +
-    '<div class="muted" style="font-size:11px;">Type <code>/u</code> to tag a user, <code>/p</code> to tag a ' + esc(Term('participant').toLowerCase()) +
-      ', <code>/e</code> to reference a log entry, or <code>#</code> to attach a screenshot of a tab or one of its sections.</div></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('new_message_title')) + '</div>' +
+    '<div class="muted" style="font-size:11px;">' + t('chat_compose_hint', { participant: esc(Term('participant').toLowerCase()) }) + '</div></div>' +
     '<div class="card-body">' +
-      '<div class="field-label" style="margin-top:0;">Message</div>' +
+      '<div class="field-label" style="margin-top:0;">' + esc(t('field_message')) + '</div>' +
       '<div style="position:relative;">' +
-        '<textarea id="fChatMessage" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Write a message… try /u, /p, /e, or #"></textarea>' +
+        '<textarea id="fChatMessage" class="field-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="' + esc(t('composer_placeholder')) + '"></textarea>' +
         '<div id="chatSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
       '</div>' +
       '<div id="chatStagedChips" style="margin-top:8px;"></div>' +
       '<div style="position:relative;display:inline-block;margin-top:10px;">' +
         '<div style="display:flex;gap:8px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="chatEmojiBtn" title="Insert emoji or icon">🙂</button>' +
-          '<button class="btn btn-primary btn-sm" id="sendChatBtn">' + ICON('send') + ' Send</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="chatEmojiBtn" title="' + esc(t('title_insert_emoji')) + '">🙂</button>' +
+          '<button class="btn btn-primary btn-sm" id="sendChatBtn">' + ICON('send') + ' ' + esc(t('send_btn')) + '</button>' +
         '</div>' +
         '<div class="chat-emoji-popover" id="chatEmojiPopover" style="display:none;">' +
           '<div class="chat-emoji-popover-header">' +
             '<div class="chat-emoji-tabs">' +
-              '<button type="button" class="chat-emoji-tab active" data-emoji-tab="emoji">Emoji</button>' +
-              '<button type="button" class="chat-emoji-tab" data-emoji-tab="icons">Icons</button>' +
+              '<button type="button" class="chat-emoji-tab active" data-emoji-tab="emoji">' + esc(t('tab_emoji_label')) + '</button>' +
+              '<button type="button" class="chat-emoji-tab" data-emoji-tab="icons">' + esc(t('tab_icons_label')) + '</button>' +
             '</div>' +
-            '<button type="button" class="chat-emoji-popover-close" id="chatEmojiPopoverClose" aria-label="Close">' + ICON('close_modal') + '</button>' +
+            '<button type="button" class="chat-emoji-popover-close" id="chatEmojiPopoverClose" aria-label="' + esc(t('aria_close')) + '">' + ICON('close_modal') + '</button>' +
           '</div>' +
           '<div class="chat-emoji-popover-body" id="chatEmojiPopoverBody"></div>' +
         '</div>' +
@@ -2458,7 +2456,7 @@ async function tabEventChat(content, eventId, detail) {
     suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(header) + '</div>' +
       (items.length
         ? items.slice(0, 20).map(function (it, i) { return '<div class="chat-suggest-item" data-idx="' + i + '">' + renderItemFn(it) + '</div>'; }).join('')
-        : '<div class="chat-suggest-empty">No matches</div>');
+        : '<div class="chat-suggest-empty">' + esc(t('no_matches')) + '</div>');
     suggestBox.style.display = '';
     suggestBox.querySelectorAll('.chat-suggest-item').forEach(function (el) {
       // mousedown (not click) + preventDefault -- keeps the textarea focused/its selection intact so
@@ -2523,7 +2521,7 @@ async function tabEventChat(content, eventId, detail) {
   function pickTab_(tb) {
     var myToken = ++captureToken;
     suggestBusy = true;
-    suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">Loading sections…</div>';
+    suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">' + esc(t('loading_sections')) + '</div>';
     cleanupPendingCapture_();
     var liveWidth = Math.round(content.getBoundingClientRect().width) || 900;
     var container = document.createElement('div');
@@ -2537,16 +2535,16 @@ async function tabEventChat(content, eventId, detail) {
         if (myToken !== captureToken) return; // dismissed or superseded while this was in flight
         suggestBusy = false;
         var cards = Array.from(container.querySelectorAll('.card'));
-        var sections = [{ index: -1, label: 'Whole tab' }].concat(cards.map(function (card, i) {
+        var sections = [{ index: -1, label: t('whole_tab_label') }].concat(cards.map(function (card, i) {
           var titleEl = card.querySelector('.card-title');
-          return { index: i, label: titleEl ? titleEl.textContent.trim() : ('Section ' + (i + 1)) };
+          return { index: i, label: titleEl ? titleEl.textContent.trim() : t('section_n_label', { n: i + 1 }) };
         }));
-        showSuggestList_(tb.label + ' — choose a section', sections, function (s) { return esc(s.label); }, function (s) { pickSection_(tb, s); });
+        showSuggestList_(t('choose_a_section_header', { tab: tb.label }), sections, function (s) { return esc(s.label); }, function (s) { pickSection_(tb, s); });
       })
       .catch(function () {
         if (myToken !== captureToken) return;
         suggestBusy = false;
-        suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">Could not load sections</div>';
+        suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(tb.label) + '</div><div class="chat-suggest-empty">' + esc(t('could_not_load_sections')) + '</div>';
       });
   }
 
@@ -2556,7 +2554,7 @@ async function tabEventChat(content, eventId, detail) {
   function pickSection_(tb, section) {
     var myToken = ++captureToken;
     suggestBusy = true;
-    suggestBox.innerHTML = '<div class="chat-suggest-header">Capturing…</div>';
+    suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(t('capturing_label')) + '</div>';
     var container = pendingCaptureContainer_;
     var target = section.index === -1 ? container : (container ? container.querySelectorAll('.card')[section.index] : null);
     var capturePromise = (target && typeof html2canvas === 'function')
@@ -2576,7 +2574,7 @@ async function tabEventChat(content, eventId, detail) {
       .catch(function (err) {
         console.error('[Event Chat] section screenshot failed', err);
         if (myToken !== captureToken) return;
-        UI.toast('Could not capture a screenshot of that section.', 'error');
+        UI.toast(t('toast_screenshot_capture_failed'), 'error');
         hideSuggest_();
       })
       .finally(function () { cleanupPendingCapture_(); });
@@ -2588,16 +2586,16 @@ async function tabEventChat(content, eventId, detail) {
     if (!trig) { hideSuggest_(); return; }
     currentTrigger = trig;
     if (trig.kind === 'user') {
-      showSuggestList_('Tag a user', filterItems_(taggableUsers, trig.query, function (u) { return u.name + ' ' + u.role; }),
+      showSuggestList_(t('tag_a_user_header'), filterItems_(taggableUsers, trig.query, function (u) { return u.name + ' ' + u.role; }),
         function (u) { return '<strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.role) + '</span>'; }, pickUser_);
     } else if (trig.kind === 'participant') {
-      showSuggestList_('Tag a ' + Term('participant').toLowerCase(), filterItems_(taggableParticipants, trig.query, function (p) { return p.name + ' ' + p.type; }),
+      showSuggestList_(t('tag_a_x_header', { term: Term('participant').toLowerCase() }), filterItems_(taggableParticipants, trig.query, function (p) { return p.name + ' ' + p.type; }),
         function (p) { return '<strong>' + esc(p.name) + '</strong> <span class="muted">' + esc(p.type) + '</span>'; }, pickParticipant_);
     } else if (trig.kind === 'log') {
-      showSuggestList_('Reference a log entry', filterItems_(logEntries, trig.query, function (l) { return l.action + ' ' + l.actorName; }),
+      showSuggestList_(t('reference_log_entry_header'), filterItems_(logEntries, trig.query, function (l) { return l.action + ' ' + l.actorName; }),
         function (l) { return esc(l.action) + ' <span class="muted">— ' + esc(l.actorName) + ' · ' + esc(UI.fmtDate(l.timestamp)) + '</span>'; }, pickLog_);
     } else if (trig.kind === 'tab') {
-      showSuggestList_('Attach a screenshot — choose a tab', filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
+      showSuggestList_(t('attach_screenshot_header'), filterItems_(tabPickerItems, trig.query, function (tb) { return tb.label; }),
         function (tb) { return esc(tb.label); }, pickTab_);
     }
   });
@@ -2675,7 +2673,7 @@ async function tabEventChat(content, eventId, detail) {
 
   document.getElementById('sendChatBtn').onclick = async function () {
     var message = textarea.value.trim();
-    if (!message) { UI.toast('Message cannot be empty', 'error'); return; }
+    if (!message) { UI.toast(t('toast_message_empty'), 'error'); return; }
     try {
       await Api.call('postEventChatMessage', {
         eventId: eventId, message: message,
@@ -2700,7 +2698,7 @@ function chatMessageHtml_(m) {
   var logRefsHtml = m.logRefs.length
     ? '<div style="margin-top:6px;">' + m.logRefs.map(function (l) {
         return '<span data-goto-log="' + esc(l.id) + '" style="display:inline-block;cursor:pointer;color:var(--accent);text-decoration:underline;font-size:11.5px;margin:2px 8px 0 0;">' +
-          ICON('forward_link') + ' ' + esc(l.action || 'Log entry') + '</span>';
+          ICON('forward_link') + ' ' + esc(l.action || t('log_entry_fallback')) + '</span>';
       }).join('') + '</div>'
     : '';
   // REQ: "...added as large thumbnail image."
@@ -2725,8 +2723,8 @@ function chatMessageHtml_(m) {
 async function tabEventLog(content, eventId, detail, params) {
   var logs = await Api.call('listEventLog', { eventId: eventId });
   content.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">Logs</div>' +
-    '<div class="muted" style="font-size:11.5px;">Every recorded action relevant to this event, most recent first.</div></div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('tab_event_log')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('event_log_hint')) + '</div></div>' +
     '<div class="card-body">' +
     (logs.length ? logs.map(eventLogRowHtml_).join('') : '<div class="empty-state">' + t('no_data') + '</div>') +
     '</div></div>';
@@ -2749,7 +2747,7 @@ function eventLogRowHtml_(l) {
   }
   return '<div data-log-id="' + esc(l.id) + '" style="padding:9px 0;border-bottom:1px solid #f0f1f6;font-size:12.5px;transition:background 0.4s;">' +
     '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
-    '<span><strong>' + esc(l.action) + '</strong> <span class="muted">by ' + esc(l.actorName) + '</span></span>' +
+    '<span><strong>' + esc(l.action) + '</strong> <span class="muted">' + esc(t('by_prefix')) + esc(l.actorName) + '</span></span>' +
     '<span class="muted" style="white-space:nowrap;">' + esc(UI.fmtDate(l.timestamp)) + '</span></div>' +
     (l.targetType ? '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(l.targetType) + (detailsText ? ' — ' + esc(detailsText) : '') + '</div>' : '') +
     '</div>';
