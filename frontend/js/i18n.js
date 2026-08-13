@@ -91,7 +91,28 @@ window.HULUL_I18N = {
     toast_remarks_required: 'Remarks are required', toast_evidence_uploading_wait: 'Evidence is still uploading — please wait for it to finish',
     toast_evidence_required: 'A photo or video of the resolution is required', toast_resolution_submitted: 'Resolution submitted',
     toast_x_resolved: '{{term}} resolved', toast_rejection_remarks_required: 'Rejection remarks are required', toast_resolution_rejected: 'Resolution rejected',
-    risk_critical: 'Critical', risk_high: 'High', risk_medium: 'Medium', risk_low: 'Low', risk_label_suffix: '{{label}} RISK'
+    risk_critical: 'Critical', risk_high: 'High', risk_medium: 'Medium', risk_low: 'Low', risk_label_suffix: '{{label}} RISK',
+
+    // ---- Settings (settings.js) ----
+    settings_tab_profile: 'Profile', settings_tab_appearance: 'Appearance', settings_tab_security: 'Security',
+    settings_tab_terminology: 'Terminology', settings_tab_icons: 'Icons', settings_tab_permissions: 'Permissions',
+    field_organization: 'Organization',
+    appearance_language: 'Language', switch_to_lang: 'Switch to {{lang}}', appearance_theme: 'Theme',
+    security_current_password: 'Current password', security_new_password: 'New password', update_password: 'Update password',
+    toast_password_updated: 'Password updated',
+    terminology_create_org_first: 'Create an Organization first to customize its terminology.',
+    terminology_intro: 'Rename what these objects are called across the app for your organization\'s users — e.g. call "Events" "Projects". Leave a field blank to use the default. This only changes labels; nothing about the underlying data changes.',
+    col_object: 'Object', col_singular: 'Singular', col_plural: 'Plural', toast_terminology_saved: 'Terminology saved',
+    icons_intro: 'Click any icon to change it, app-wide for every organization. Hover an icon to see what it\'s for.',
+    icons_search_placeholder: 'Search icons…', toast_icons_saved: 'Icons saved',
+    permissions_intro: 'Choose which roles can perform each action below. Changes apply immediately, app-wide, and don\'t require a deploy.',
+    modules_label: 'Modules', roles_label: 'Roles', all_modules: 'All modules', all_roles: 'All roles',
+    no_permissions_match_filter: 'No permissions match the selected filters.',
+    toast_at_least_one_role: 'At least one role must be allowed', toast_permission_saved: 'Permission saved',
+    toast_reverted_default: 'Reverted to default', customized_default_is: 'Customized — default is {{roles}}',
+    reset_to_default: 'Reset to default', choose_icon_modal_title: 'Choose icon',
+    choose_icon_intro: 'Choose an icon below, or paste/type your own.', custom_icon_placeholder: 'Paste or type any icon…',
+    use_btn: 'Use', toast_type_icon_first: 'Type or paste an icon first', nav_group_label: 'Navigation'
   },
   ar: {
     tagline: 'منصة جاهزية الفعاليات والامتثال', email: 'البريد الإلكتروني', password: 'كلمة المرور', signIn: 'تسجيل الدخول',
@@ -163,7 +184,28 @@ window.HULUL_I18N = {
     toast_remarks_required: 'الملاحظات مطلوبة', toast_evidence_uploading_wait: 'الدليل ما زال قيد الرفع — يرجى الانتظار حتى ينتهي',
     toast_evidence_required: 'مطلوب صورة أو فيديو للحل', toast_resolution_submitted: 'تم تقديم الحل',
     toast_x_resolved: 'تم حل {{term}}', toast_rejection_remarks_required: 'ملاحظات الرفض مطلوبة', toast_resolution_rejected: 'تم رفض الحل',
-    risk_critical: 'حرج', risk_high: 'مرتفع', risk_medium: 'متوسط', risk_low: 'منخفض', risk_label_suffix: 'خطورة {{label}}'
+    risk_critical: 'حرج', risk_high: 'مرتفع', risk_medium: 'متوسط', risk_low: 'منخفض', risk_label_suffix: 'خطورة {{label}}',
+
+    // ---- Settings (settings.js) ----
+    settings_tab_profile: 'الملف الشخصي', settings_tab_appearance: 'المظهر', settings_tab_security: 'الأمان',
+    settings_tab_terminology: 'المصطلحات', settings_tab_icons: 'الأيقونات', settings_tab_permissions: 'الصلاحيات',
+    field_organization: 'الجهة',
+    appearance_language: 'اللغة', switch_to_lang: 'التبديل إلى {{lang}}', appearance_theme: 'السمة',
+    security_current_password: 'كلمة المرور الحالية', security_new_password: 'كلمة المرور الجديدة', update_password: 'تحديث كلمة المرور',
+    toast_password_updated: 'تم تحديث كلمة المرور',
+    terminology_create_org_first: 'أنشئ جهة أولاً لتخصيص مصطلحاتها.',
+    terminology_intro: 'أعد تسمية هذه العناصر كما تظهر في التطبيق لمستخدمي جهتك — على سبيل المثال تسمية "الفعاليات" بـ"المشاريع". اترك الحقل فارغًا لاستخدام الاسم الافتراضي. هذا يغيّر التسميات فقط؛ لا شيء يتغير في البيانات نفسها.',
+    col_object: 'العنصر', col_singular: 'المفرد', col_plural: 'الجمع', toast_terminology_saved: 'تم حفظ المصطلحات',
+    icons_intro: 'اضغط على أي أيقونة لتغييرها على مستوى التطبيق لكل الجهات. مرّر المؤشر فوق الأيقونة لمعرفة استخدامها.',
+    icons_search_placeholder: 'ابحث عن أيقونة…', toast_icons_saved: 'تم حفظ الأيقونات',
+    permissions_intro: 'اختر الأدوار التي يمكنها تنفيذ كل إجراء أدناه. تُطبَّق التغييرات فورًا على مستوى التطبيق دون الحاجة لنشر جديد.',
+    modules_label: 'الوحدات', roles_label: 'الأدوار', all_modules: 'كل الوحدات', all_roles: 'كل الأدوار',
+    no_permissions_match_filter: 'لا توجد صلاحيات مطابقة للمرشحات المحددة.',
+    toast_at_least_one_role: 'يجب السماح بدور واحد على الأقل', toast_permission_saved: 'تم حفظ الصلاحية',
+    toast_reverted_default: 'تمت الإعادة إلى الوضع الافتراضي', customized_default_is: 'مخصص — الوضع الافتراضي هو {{roles}}',
+    reset_to_default: 'إعادة إلى الوضع الافتراضي', choose_icon_modal_title: 'اختر أيقونة',
+    choose_icon_intro: 'اختر أيقونة أدناه، أو الصق/اكتب أيقونتك الخاصة.', custom_icon_placeholder: 'الصق أو اكتب أي أيقونة…',
+    use_btn: 'استخدام', toast_type_icon_first: 'اكتب أو الصق أيقونة أولاً', nav_group_label: 'التنقل'
   }
 };
 

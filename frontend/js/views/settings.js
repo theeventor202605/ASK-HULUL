@@ -16,13 +16,13 @@ async function renderSettings(params) {
   var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
 
   var tabs = [
-    { key: 'profile', label: 'Profile' },
-    { key: 'appearance', label: 'Appearance' },
-    { key: 'security', label: 'Security' }
+    { key: 'profile', label: t('settings_tab_profile') },
+    { key: 'appearance', label: t('settings_tab_appearance') },
+    { key: 'security', label: t('settings_tab_security') }
   ];
-  if (canManageLabels) tabs.push({ key: 'terminology', label: 'Terminology' });
-  if (canManageIcons) tabs.push({ key: 'icons', label: 'Icons' });
-  if (canManagePermissions) tabs.push({ key: 'permissions', label: 'Permissions' });
+  if (canManageLabels) tabs.push({ key: 'terminology', label: t('settings_tab_terminology') });
+  if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
+  if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
 
   var activeTab = tabs.some(function (tb) { return params && tb.key === params.tab; }) ? params.tab : 'profile';
 
@@ -59,7 +59,7 @@ function renderProfileTab_(content, u) {
       '<div class="muted" style="font-size:12.5px;">' + esc(u.role) + '</div></div>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px;max-width:560px;">' +
-      infoRow('Email', u.email) + infoRow('Organization', u.orgId) +
+      infoRow(t('email'), u.email) + infoRow(t('field_organization'), u.orgId) +
     '</div>';
 }
 
@@ -67,11 +67,13 @@ function renderProfileTab_(content, u) {
 function renderAppearanceTab_(content) {
   content.innerHTML =
     '<div style="margin-bottom:22px;">' +
-      '<div style="font-size:11.5px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">Language</div>' +
-      '<button class="btn btn-secondary btn-sm" id="settingsLangBtn">Switch to ' + (HululState.lang === 'en' ? 'العربية' : 'English') + '</button>' +
+      '<div style="font-size:11.5px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">' + esc(t('appearance_language')) + '</div>' +
+      // The target language's own name is always shown in its own script (not translated) --
+      // only the "Switch to" wrapper text follows the current UI language.
+      '<button class="btn btn-secondary btn-sm" id="settingsLangBtn">' + esc(t('switch_to_lang', { lang: HululState.lang === 'en' ? 'العربية' : 'English' })) + '</button>' +
     '</div>' +
     '<div>' +
-      '<div style="font-size:11.5px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">Theme</div>' +
+      '<div style="font-size:11.5px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">' + esc(t('appearance_theme')) + '</div>' +
       themeSwatchesHtml_() +
     '</div>';
   document.getElementById('settingsLangBtn').onclick = toggleLanguage;
@@ -108,15 +110,15 @@ function wireThemeSwatches_() {
 function renderSecurityTab_(content) {
   content.innerHTML =
     '<div class="form-row" style="max-width:560px;">' +
-      UI.field('Current password', '<input id="fOldPw" type="password" class="field-input" />') +
-      UI.field('New password', '<input id="fNewPw" type="password" class="field-input" />') +
+      UI.field(t('security_current_password'), '<input id="fOldPw" type="password" class="field-input" />') +
+      UI.field(t('security_new_password'), '<input id="fNewPw" type="password" class="field-input" />') +
     '</div>' +
-    '<button class="btn btn-primary btn-sm" id="changePwBtn" style="margin-top:12px;">Update password</button>';
+    '<button class="btn btn-primary btn-sm" id="changePwBtn" style="margin-top:12px;">' + esc(t('update_password')) + '</button>';
 
   document.getElementById('changePwBtn').onclick = async function () {
     try {
       await Api.call('changePassword', { oldPassword: document.getElementById('fOldPw').value, newPassword: document.getElementById('fNewPw').value });
-      UI.toast('Password updated', 'success');
+      UI.toast(t('toast_password_updated'), 'success');
     } catch (err) { UI.error(err); }
   };
 }
@@ -140,14 +142,14 @@ async function loadAndRenderTerminologyFor_(content, orgId, orgs, isSystemAdmin)
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
 
   if (isSystemAdmin && !orgId) {
-    content.innerHTML = '<div class="empty-state">Create an Organization first to customize its terminology.</div>';
+    content.innerHTML = '<div class="empty-state">' + esc(t('terminology_create_org_first')) + '</div>';
     return;
   }
 
   var overrides = orgId ? await Api.call('getOrgLabels', { orgId: orgId }) : {};
 
   var orgPicker = isSystemAdmin
-    ? '<div style="margin-bottom:14px;max-width:280px;">' + UI.field('Organization', '<select id="fTermOrg" class="field-input">' +
+    ? '<div style="margin-bottom:14px;max-width:280px;">' + UI.field(t('field_organization'), '<select id="fTermOrg" class="field-input">' +
         orgs.map(function (o) { return '<option value="' + o.id + '"' + (o.id === orgId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') +
         '</select>') + '</div>'
     : '';
@@ -164,10 +166,10 @@ async function loadAndRenderTerminologyFor_(content, orgId, orgs, isSystemAdmin)
   }).join('');
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:12px;">Rename what these objects are called across the app for your organization\'s users — e.g. call "Events" "Projects". Leave a field blank to use the default. This only changes labels; nothing about the underlying data changes.</div>' +
+    '<div class="muted" style="font-size:12.5px;margin-bottom:12px;">' + esc(t('terminology_intro')) + '</div>' +
     orgPicker +
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:4px 0;font-size:11px;font-weight:600;color:var(--text-600);">' +
-    '<div>Object</div><div>Singular</div><div>Plural</div></div>' +
+    '<div>' + esc(t('col_object')) + '</div><div>' + esc(t('col_singular')) + '</div><div>' + esc(t('col_plural')) + '</div></div>' +
     rows +
     '<button class="btn btn-primary btn-sm" id="saveTermBtn" style="margin-top:14px;">' + t('save') + '</button>';
 
@@ -185,7 +187,7 @@ async function loadAndRenderTerminologyFor_(content, orgId, orgs, isSystemAdmin)
     try {
       await Api.call('setOrgLabels', { orgId: orgId, labels: labels });
       await loadOrgLabels_force_();
-      UI.toast('Terminology saved', 'success');
+      UI.toast(t('toast_terminology_saved'), 'success');
       renderSidebar();
       loadAndRenderTerminologyFor_(content, orgId, orgs, isSystemAdmin);
     } catch (err) { UI.error(err); }
@@ -222,7 +224,7 @@ function iconSettingsGroups_() {
     var label = item.entityLabelFn ? item.entityLabelFn() : (item.entityLabel ? Term(item.entityLabel) : t(item.label));
     return { key: item.path, label: label, defaultIcon: item.icon };
   });
-  var groups = [{ group: 'Navigation', rows: navRows }];
+  var groups = [{ group: t('nav_group_label'), rows: navRows }];
   window.ICON_KEY_GROUPS.forEach(function (g) {
     groups.push({
       group: g.group,
@@ -244,8 +246,8 @@ function renderIconsTabBody_(content, pending) {
   }).join('');
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">Click any icon to change it, app-wide for every organization. Hover an icon to see what it\'s for.</div>' +
-    '<input class="field-input" id="iconSearchInput" placeholder="Search icons…" style="max-width:240px;margin-bottom:16px;" />' +
+    '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">' + esc(t('icons_intro')) + '</div>' +
+    '<input class="field-input" id="iconSearchInput" placeholder="' + esc(t('icons_search_placeholder')) + '" style="max-width:240px;margin-bottom:16px;" />' +
     groupsHtml +
     '<button class="btn btn-primary btn-sm" id="saveIconsBtn">' + t('save') + '</button>';
 
@@ -274,7 +276,7 @@ function renderIconsTabBody_(content, pending) {
     try {
       await Api.call('setAppIcons', { icons: pending });
       renderSidebar();
-      UI.toast('Icons saved', 'success');
+      UI.toast(t('toast_icons_saved'), 'success');
     } catch (err) { UI.error(err); }
   };
 }
@@ -335,10 +337,10 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
   });
 
   var moduleFilterHtml =
-    permFilterItemHtml_('module', '', 'All modules', data.permissions.length, activeModule === '') +
+    permFilterItemHtml_('module', '', t('all_modules'), data.permissions.length, activeModule === '') +
     moduleNames.map(function (m) { return permFilterItemHtml_('module', m, m, moduleCounts[m], activeModule === m); }).join('');
   var roleFilterHtml =
-    permFilterItemHtml_('role', '', 'All roles', data.permissions.length, activeRole === '') +
+    permFilterItemHtml_('role', '', t('all_roles'), data.permissions.length, activeRole === '') +
     data.allRoles.map(function (r) { return permFilterItemHtml_('role', r.value, r.label, roleCounts[r.value], activeRole === r.value); }).join('');
 
   var groupsHtml = groupOrder.length
@@ -349,14 +351,14 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
           rows +
           '</div>';
       }).join('')
-    : '<div class="empty-state">No permissions match the selected filters.</div>';
+    : '<div class="empty-state">' + esc(t('no_permissions_match_filter')) + '</div>';
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">Choose which roles can perform each action below. Changes apply immediately, app-wide, and don\'t require a deploy.</div>' +
+    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(t('permissions_intro')) + '</div>' +
     '<div class="perm-layout">' +
       '<div class="perm-filters">' +
-        '<div class="perm-filter-group"><div class="perm-filter-title">Modules</div>' + moduleFilterHtml + '</div>' +
-        '<div class="perm-filter-group"><div class="perm-filter-title">Roles</div>' + roleFilterHtml + '</div>' +
+        '<div class="perm-filter-group"><div class="perm-filter-title">' + esc(t('modules_label')) + '</div>' + moduleFilterHtml + '</div>' +
+        '<div class="perm-filter-group"><div class="perm-filter-title">' + esc(t('roles_label')) + '</div>' + roleFilterHtml + '</div>' +
       '</div>' +
       '<div class="perm-main">' + groupsHtml + '</div>' +
     '</div>';
@@ -377,10 +379,10 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
     btn.onclick = async function () {
       var key = btn.getAttribute('data-perm-save');
       var roles = readCheckedRoles_('perm-' + permKeySlug_(key));
-      if (!roles.length) { UI.toast('At least one role must be allowed', 'error'); return; }
+      if (!roles.length) { UI.toast(t('toast_at_least_one_role'), 'error'); return; }
       try {
         await Api.call('updatePermission', { key: key, roles: roles });
-        UI.toast('Permission saved', 'success');
+        UI.toast(t('toast_permission_saved'), 'success');
         await loadPermissions_force_();
         var refreshed = await Api.call('listPermissions', {});
         renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
@@ -392,7 +394,7 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
       var key = btn.getAttribute('data-perm-reset');
       try {
         await Api.call('resetPermission', { key: key });
-        UI.toast('Reverted to default', 'success');
+        UI.toast(t('toast_reverted_default'), 'success');
         await loadPermissions_force_();
         var refreshed = await Api.call('listPermissions', {});
         renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
@@ -421,10 +423,10 @@ function permissionRowHtml_(perm, allRoles) {
   return '<div class="perm-row">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">' +
       '<div><div style="font-weight:600;font-size:13px;">' + esc(perm.label) + '</div>' +
-        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;margin-top:2px;">Customized — default is ' + esc(perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ')) + '</div>' : '') +
+        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;margin-top:2px;">' + esc(t('customized_default_is', { roles: perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ') })) + '</div>' : '') +
       '</div>' +
       '<div style="display:flex;gap:6px;flex:none;">' +
-        (perm.isOverridden ? '<button type="button" class="btn btn-secondary btn-sm" data-perm-reset="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">Reset to default</button>' : '') +
+        (perm.isOverridden ? '<button type="button" class="btn btn-secondary btn-sm" data-perm-reset="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + esc(t('reset_to_default')) + '</button>' : '') +
         '<button type="button" class="btn btn-primary btn-sm" data-perm-save="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + t('save') + '</button>' +
       '</div>' +
     '</div>' +
@@ -458,10 +460,10 @@ async function loadPermissions_force_() {
 // and used directly. onPick receives the chosen icon string, or '' to reset that key back to its
 // built-in default.
 function openIconPickerModal_(onPick) {
-  var body = '<div class="muted" style="font-size:12px;margin-bottom:10px;">Choose an icon below, or paste/type your own.</div>' +
+  var body = '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('choose_icon_intro')) + '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:16px;">' +
-      '<input class="field-input" id="customIconInput" placeholder="Paste or type any icon…" style="flex:1;" maxlength="8" />' +
-      '<button type="button" class="btn btn-secondary btn-sm" id="customIconUseBtn">Use</button>' +
+      '<input class="field-input" id="customIconInput" placeholder="' + esc(t('custom_icon_placeholder')) + '" style="flex:1;" maxlength="8" />' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="customIconUseBtn">' + esc(t('use_btn')) + '</button>' +
     '</div>' +
     window.ICON_LIBRARY.map(function (group) {
       return '<div style="margin-bottom:10px;">' +
@@ -473,14 +475,14 @@ function openIconPickerModal_(onPick) {
         '</div></div>';
     }).join('');
 
-  UI.openModal('Choose icon', body, [
-    { label: 'Reset to default', className: 'btn-secondary', onClick: function () { UI.closeModal(); onPick(''); } },
+  UI.openModal(t('choose_icon_modal_title'), body, [
+    { label: t('reset_to_default'), className: 'btn-secondary', onClick: function () { UI.closeModal(); onPick(''); } },
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal }
   ]);
 
   function useCustomIcon() {
     var val = document.getElementById('customIconInput').value.trim();
-    if (!val) { UI.toast('Type or paste an icon first', 'error'); return; }
+    if (!val) { UI.toast(t('toast_type_icon_first'), 'error'); return; }
     UI.closeModal();
     onPick(val);
   }
