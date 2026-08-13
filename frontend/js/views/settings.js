@@ -287,35 +287,91 @@ function renderIconsTabBody_(content, pending) {
  * (Templates.gs)/getEscalationConfig (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_
  * in config.js for the checkbox-grid pattern this reuses.
  *
- * Foundation + pilot module rollout (explicit decision): only the Risk Logging (Findings) module is
- * wired through requirePermission on the backend so far -- this tab will simply grow one more group
- * as later passes migrate more of the app's ~78 other hardcoded requireRole call sites.
+ * Foundation + pilot module rollout (explicit decision): Risk Logging (Findings) and Participants
+ * are wired through requirePermission on the backend so far -- this tab will simply grow one more
+ * module group as later passes migrate more of the app's other hardcoded requireRole call sites.
+ * The left-hand Module/Role filters (perm-filters below) exist for exactly that growth -- with one
+ * module this list is a formality, but it keeps the page navigable once there are six.
  */
 async function renderPermissionsTab_(content) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   var data = await Api.call('listPermissions', {});
-  renderPermissionsTabBody_(content, data);
+  renderPermissionsTabBody_(content, data, '', '');
 }
 
-function renderPermissionsTabBody_(content, data) {
-  var groups = {};
+// activeModule/activeRole ('' = "All") are threaded through every re-render (including the ones
+// triggered by Save/Reset below) so picking a filter and then saving a row doesn't silently reset it.
+function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
+  activeModule = activeModule || '';
+  activeRole = activeRole || '';
+
+  // Module/role facet counts -- always computed off the FULL unfiltered set (not the currently
+  // visible subset), so the counts in the sidebar stay stable reference points ("Inspector has 4
+  // permissions total") rather than shifting as you filter, which reads as more predictable.
+  var moduleNames = [];
+  var moduleCounts = {};
   data.permissions.forEach(function (perm) {
-    (groups[perm.module] = groups[perm.module] || []).push(perm);
+    if (moduleCounts[perm.module] === undefined) { moduleCounts[perm.module] = 0; moduleNames.push(perm.module); }
+    moduleCounts[perm.module]++;
+  });
+  var roleCounts = {};
+  data.allRoles.forEach(function (r) { roleCounts[r.value] = 0; });
+  data.permissions.forEach(function (perm) {
+    perm.roles.forEach(function (r) { if (roleCounts[r] !== undefined) roleCounts[r]++; });
   });
 
-  var groupsHtml = Object.keys(groups).map(function (moduleName) {
-    var rows = groups[moduleName].map(function (perm) {
-      return permissionRowHtml_(perm, data.allRoles);
-    }).join('');
-    return '<div class="icon-settings-group">' +
-      '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
-      rows +
-      '</div>';
-  }).join('');
+  // Role filter = "what can this role currently do" (an audit view), not just a column-hider --
+  // narrows to permissions the selected role is currently allowed for.
+  var visible = data.permissions.filter(function (perm) {
+    if (activeModule && perm.module !== activeModule) return false;
+    if (activeRole && perm.roles.indexOf(activeRole) === -1) return false;
+    return true;
+  });
+  var groups = {};
+  var groupOrder = [];
+  visible.forEach(function (perm) {
+    if (groups[perm.module] === undefined) { groups[perm.module] = []; groupOrder.push(perm.module); }
+    groups[perm.module].push(perm);
+  });
+
+  var moduleFilterHtml =
+    permFilterItemHtml_('module', '', 'All modules', data.permissions.length, activeModule === '') +
+    moduleNames.map(function (m) { return permFilterItemHtml_('module', m, m, moduleCounts[m], activeModule === m); }).join('');
+  var roleFilterHtml =
+    permFilterItemHtml_('role', '', 'All roles', data.permissions.length, activeRole === '') +
+    data.allRoles.map(function (r) { return permFilterItemHtml_('role', r.value, r.label, roleCounts[r.value], activeRole === r.value); }).join('');
+
+  var groupsHtml = groupOrder.length
+    ? groupOrder.map(function (moduleName) {
+        var rows = groups[moduleName].map(function (perm) { return permissionRowHtml_(perm, data.allRoles); }).join('');
+        return '<div class="icon-settings-group">' +
+          '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
+          rows +
+          '</div>';
+      }).join('')
+    : '<div class="empty-state">No permissions match the selected filters.</div>';
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:14px;">Choose which roles can perform each action below. Changes apply immediately, app-wide, and don\'t require a deploy. This currently covers the Risk Logging module — more will be added over time.</div>' +
-    groupsHtml;
+    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">Choose which roles can perform each action below. Changes apply immediately, app-wide, and don\'t require a deploy.</div>' +
+    '<div class="perm-layout">' +
+      '<div class="perm-filters">' +
+        '<div class="perm-filter-group"><div class="perm-filter-title">Modules</div>' + moduleFilterHtml + '</div>' +
+        '<div class="perm-filter-group"><div class="perm-filter-title">Roles</div>' + roleFilterHtml + '</div>' +
+      '</div>' +
+      '<div class="perm-main">' + groupsHtml + '</div>' +
+    '</div>';
+
+  content.querySelectorAll('[data-filter-module]').forEach(function (el) {
+    el.onclick = function () { renderPermissionsTabBody_(content, data, el.getAttribute('data-filter-module'), activeRole); };
+  });
+  content.querySelectorAll('[data-filter-role]').forEach(function (el) {
+    el.onclick = function () { renderPermissionsTabBody_(content, data, activeModule, el.getAttribute('data-filter-role')); };
+  });
+  // Role chips are real (visually-hidden) checkboxes wrapped in a <label> -- clicking the chip
+  // toggles the checkbox natively, this just keeps the chip's own "active" look in sync with it.
+  content.querySelectorAll('.perm-role-chip input').forEach(function (cb) {
+    cb.onchange = function () { cb.closest('.perm-role-chip').classList.toggle('active', cb.checked); };
+  });
 
   content.querySelectorAll('[data-perm-save]').forEach(function (btn) {
     btn.onclick = async function () {
@@ -327,7 +383,7 @@ function renderPermissionsTabBody_(content, data) {
         UI.toast('Permission saved', 'success');
         await loadPermissions_force_();
         var refreshed = await Api.call('listPermissions', {});
-        renderPermissionsTabBody_(content, refreshed);
+        renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
       } catch (err) { UI.error(err); }
     };
   });
@@ -339,10 +395,15 @@ function renderPermissionsTabBody_(content, data) {
         UI.toast('Reverted to default', 'success');
         await loadPermissions_force_();
         var refreshed = await Api.call('listPermissions', {});
-        renderPermissionsTabBody_(content, refreshed);
+        renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
       } catch (err) { UI.error(err); }
     };
   });
+}
+
+function permFilterItemHtml_(kind, value, label, count, active) {
+  return '<div class="perm-filter-item' + (active ? ' active' : '') + '" data-filter-' + kind + '="' + esc(value) + '">' +
+    '<span>' + esc(label) + '</span><span class="perm-filter-count">' + count + '</span></div>';
 }
 
 // readCheckedRoles_ (config.js) builds a CSS class selector out of whatever prefix it's given
@@ -357,20 +418,22 @@ function permKeySlug_(key) { return String(key).replace(/\./g, '-'); }
 function permissionRowHtml_(perm, allRoles) {
   var checkedSet = {}; perm.roles.forEach(function (r) { checkedSet[r] = true; });
   var prefix = 'perm-' + permKeySlug_(perm.key);
-  return '<div style="padding:12px 0;border-bottom:1px solid #f0f1f6;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">' +
+  return '<div class="perm-row">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">' +
       '<div><div style="font-weight:600;font-size:13px;">' + esc(perm.label) + '</div>' +
-        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;">Customized — default is ' + esc(perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ')) + '</div>' : '') +
+        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;margin-top:2px;">Customized — default is ' + esc(perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ')) + '</div>' : '') +
       '</div>' +
       '<div style="display:flex;gap:6px;flex:none;">' +
         (perm.isOverridden ? '<button type="button" class="btn btn-secondary btn-sm" data-perm-reset="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">Reset to default</button>' : '') +
         '<button type="button" class="btn btn-primary btn-sm" data-perm-save="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + t('save') + '</button>' +
       '</div>' +
     '</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
       allRoles.map(function (r) {
-        return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:2px 0;">' +
-          '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checkedSet[r.value] ? ' checked' : '') + ' /> ' + esc(r.label) + '</label>';
+        var checked = !!checkedSet[r.value];
+        return '<label class="perm-role-chip' + (checked ? ' active' : '') + '">' +
+          '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checked ? ' checked' : '') + ' />' +
+          '<span>' + esc(r.label) + '</span></label>';
       }).join('') +
     '</div>' +
   '</div>';

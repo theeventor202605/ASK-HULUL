@@ -490,6 +490,28 @@ table.data-table tr:hover td{ background:#fafbff; }
    what keeps 45+ icon keys from turning the Icons tab into a huge scrolling list. */
 .icon-settings-group{ margin-bottom:16px; }
 .icon-settings-group-title{ font-size:11px; font-weight:700; color:var(--text-600); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+
+/* ---------- Settings > Permissions (settings.js) ---------- */
+.perm-layout{ display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+.perm-filters{ flex:0 0 200px; display:flex; flex-direction:column; gap:20px; position:sticky; top:80px; }
+.perm-filter-group{ display:flex; flex-direction:column; gap:1px; }
+.perm-filter-title{ font-size:11px; font-weight:700; color:var(--text-600); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+.perm-filter-item{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px;
+  border-radius:var(--radius-sm); font-size:12.5px; font-weight:600; color:var(--text-600); cursor:pointer; }
+.perm-filter-item:hover{ background:var(--surface); }
+.perm-filter-item.active{ background:var(--accent-soft); color:var(--accent-600); }
+.perm-filter-count{ font-size:10.5px; font-weight:700; color:var(--text-400); }
+.perm-filter-item.active .perm-filter-count{ color:var(--accent-600); }
+.perm-main{ flex:1 1 480px; min-width:320px; }
+.perm-row{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 16px; margin-bottom:10px; }
+/* Role toggles as pill chips instead of a dense checkbox+label grid -- the actual <input> stays a
+   real checkbox (readCheckedRoles_/config.js reads it back on Save) but is visually hidden; clicking
+   anywhere on the chip toggles it natively since it's wrapped in the chip's own <label>. */
+.perm-role-chip{ display:inline-flex; align-items:center; padding:5px 12px; border:1px solid var(--border);
+  border-radius:999px; font-size:12px; font-weight:600; color:var(--text-600); cursor:pointer; user-select:none; transition:.12s; }
+.perm-role-chip input{ display:none; }
+.perm-role-chip:hover{ border-color:var(--text-400); }
+.perm-role-chip.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-600); }
 .icon-swatch{ width:44px; height:44px; border-radius:10px; border:1px solid var(--border); background:transparent;
   display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer; transition:.12s; }
 .icon-swatch:hover{ border-color:var(--accent); background:transparent; transform:translateY(-1px); }
