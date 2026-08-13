@@ -321,6 +321,18 @@ window.ICON_DEFAULTS = {
   resolve_ticket: LUCIDE_ICONS['circle-check-big'],
   approve_ticket: LUCIDE_ICONS['thumbs-up'],
   reject_ticket: LUCIDE_ICONS['thumbs-down'],
+  // Meetings Notes rich-text toolbar (meetings.js richTextFieldHtml_) -- BUG (REQ report): "The
+  // rich-text editor styles is invisible." ICON(key) only ever resolves via ICON_DEFAULTS (see
+  // ICON() below), never LUCIDE_ICONS directly -- these 7 keys were vendored into LUCIDE_ICONS but
+  // never registered here, so every toolbar button rendered with an empty icon (title/tooltip still
+  // worked since that's a separate attribute, which is why only the glyph itself was missing).
+  bold: LUCIDE_ICONS['bold'],
+  italic: LUCIDE_ICONS['italic'],
+  underline: LUCIDE_ICONS['underline'],
+  list: LUCIDE_ICONS['list'],
+  'list-ordered': LUCIDE_ICONS['list-ordered'],
+  link: LUCIDE_ICONS['link'],
+  eraser: LUCIDE_ICONS['eraser'],
 };
 // Picker metadata: groups + friendly labels for every ICON_DEFAULTS key, shown in Settings > Icons
 // alongside the sidebar nav items. Every key in ICON_DEFAULTS must appear exactly once below.
@@ -360,6 +372,11 @@ window.ICON_KEY_GROUPS = [
     { key: 'mic_record', label: 'Start voice recording' }, { key: 'mic_stop', label: 'Stop voice recording' },
     { key: 'screen_record', label: 'Record screen + voice' }, { key: 'resolve_ticket', label: 'Mark ticket resolved' },
     { key: 'approve_ticket', label: 'Approve resolution' }, { key: 'reject_ticket', label: 'Reject resolution' }
+  ] },
+  { group: 'Rich text editor (Meetings notes)', keys: [
+    { key: 'bold', label: 'Bold' }, { key: 'italic', label: 'Italic' }, { key: 'underline', label: 'Underline' },
+    { key: 'list', label: 'Bulleted list' }, { key: 'list-ordered', label: 'Numbered list' },
+    { key: 'link', label: 'Insert link' }, { key: 'eraser', label: 'Clear formatting' }
   ] }
 ];
 
