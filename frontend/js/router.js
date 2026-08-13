@@ -82,6 +82,7 @@ window.Router = {
     this.add('/events', renderEventsList);
     this.add('/events/:id', renderEventDetail);
     this.add('/events/:id/findings/new', renderNewFinding);
+    this.add('/events/:id/findings/:findingId/edit', renderEditFinding);
     this.add('/events/:id/findings/:findingId', renderFindingDetail);
     this.add('/projects', renderProjects);
     this.add('/projects/:id', renderProjectDetail);

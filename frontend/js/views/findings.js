@@ -345,6 +345,154 @@ async function renderNewFinding(params) {
   };
 }
 
+/* ---------------- Edit Finding page (route: #/events/:id/findings/:findingId/edit) ----------------
+ * REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Reuses the
+ * same participant/discipline/checklist-type field set as the New Finding form above, pre-filled from
+ * the existing finding, saving via updateFinding (Findings.gs) instead of createFinding. Deliberately
+ * NOT reusing the live-location map or evidence capture from renderNewFinding -- neither
+ * resolutionWindowAt nor evidenceUrls are in updateFinding's patchable field list (by design, see its
+ * own comment in Findings.gs), so there's nothing for those to do here; Resolution window and
+ * evidence stay read-only, still viewable on the finding's own detail page.
+ *
+ * viewFinding (used below to load the finding) only flips status as a side effect for a Participant
+ * viewing an Open finding, or a Reviewer viewing a Submitted/Resubmitted one -- an Inspector/PM/
+ * SysAdmin loading an Open/Viewed finding (the only statuses this page is reachable for, see the gate
+ * below) triggers neither branch, so this is safe to call without accidentally advancing the workflow.
+ */
+async function renderEditFinding(params) {
+  var eventId = params.id;
+  var findingId = params.findingId;
+  var root = document.getElementById('viewRoot');
+  root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+
+  if (FINDING_CREATE_ROLES.indexOf(HululState.user.role) === -1) {
+    root.innerHTML = '<div class="empty-state">You don\'t have permission to edit this ' + Term('finding').toLowerCase() + '.</div>';
+    return;
+  }
+
+  var data;
+  try { data = await Api.call('viewFinding', { findingId: findingId }); }
+  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">Could not load this ' + Term('finding').toLowerCase() + '.</div>'; return; }
+
+  var finding = data.finding;
+  // Same gate updateFinding itself enforces server-side -- checked here too so someone who reaches
+  // this page via a stale link/back-button gets a clear page instead of a save that just fails later.
+  if (FINDING_EDITABLE_STATUSES_.indexOf(finding.status) === -1) {
+    UI.toast('This ' + Term('finding').toLowerCase() + ' has already been submitted and can no longer be edited', 'error');
+    window.location.hash = '#/events/' + eventId + '/findings/' + findingId;
+    return;
+  }
+
+  var disciplines = [], checklistItems = [], participants = [];
+  try {
+    var detail = await Api.call('getEvent', { eventId: eventId });
+    var results = await Promise.all([
+      Api.call('listDisciplines', {}), Api.call('listChecklistItems', {}),
+      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' })
+    ]);
+    disciplines = results[0]; checklistItems = results[1]; participants = results[2];
+  } catch (e) { /* pickers below just end up with fewer options */ }
+  var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
+
+  root.innerHTML =
+    '<div class="breadcrumb"><a href="#/events/' + eventId + '/findings/' + findingId + '">' + esc(finding.description || t('tab_findings')) + '</a></div>' +
+    '<div class="page-header"><div><div class="page-title">Edit ' + esc(Term('finding')) + '</div>' +
+    '<div class="page-subtitle">Update this ' + esc(Term('finding').toLowerCase()) + ' before it\'s submitted</div></div>' +
+    '<button class="btn btn-secondary" id="backEditFindingBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="card" style="max-width:640px;"><div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<div class="field-group" style="position:relative;">' +
+        '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
+        '<input id="fParticipantSearch" class="field-input" placeholder="Search ' + esc(Term('participant').toLowerCase()) + ' by name…" autocomplete="off" />' +
+        '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
+      '</div>' +
+      UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
+        disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
+      UI.field('Checklist Type', '<select id="fChecklistType" class="field-input"><option value="">— (defaults to Other)</option></select>') +
+      UI.field('Description', '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
+      UI.field('Suggested action', '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
+      UI.field('Risk level', '<select id="fRisk" class="field-input">' +
+        ['Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
+      '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">Save changes</button>' +
+    '</div></div>';
+
+  document.getElementById('backEditFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '/findings/' + findingId; };
+
+  /* ---- Participant: searchable dropdown, pre-filled from the finding's current participant ---- */
+  var selectedParticipant = participants.filter(function (pt) { return pt.id === finding.participantId; })[0] || null;
+  var pSearch = document.getElementById('fParticipantSearch');
+  pSearch.value = selectedParticipant ? selectedParticipant.name : (finding.participantName || '');
+  var pSuggest = document.getElementById('participantSuggestBox');
+  var pMatches = [];
+  function renderParticipantSuggest_(query) {
+    var q = (query || '').toLowerCase();
+    pMatches = participants.filter(function (pt) { return !q || pt.name.toLowerCase().indexOf(q) !== -1; });
+    pSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(Term('participant_plural')) + '</div>' +
+      (pMatches.length
+        ? pMatches.slice(0, 20).map(function (pt, i) {
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
+              '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
+          }).join('')
+        : '<div class="chat-suggest-empty">No matches</div>');
+    pSuggest.style.display = '';
+    pSuggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+      el.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        pickParticipant_(pMatches[Number(el.getAttribute('data-idx'))]);
+      });
+    });
+  }
+  function pickParticipant_(pt) {
+    selectedParticipant = pt;
+    pSearch.value = pt.name;
+    pSuggest.style.display = 'none';
+  }
+  pSearch.addEventListener('focus', function () { renderParticipantSuggest_(pSearch.value); });
+  pSearch.addEventListener('input', function () {
+    if (selectedParticipant && pSearch.value !== selectedParticipant.name) selectedParticipant = null; // edited past a selection -- must re-pick
+    renderParticipantSuggest_(pSearch.value);
+  });
+  pSearch.addEventListener('keydown', function (e) { if (e.key === 'Escape') pSuggest.style.display = 'none'; });
+  pSearch.addEventListener('blur', function () { setTimeout(function () { pSuggest.style.display = 'none'; }, 150); });
+
+  /* ---- Discipline + Checklist Type, pre-filled from the finding's current values ---- */
+  document.getElementById('fDiscipline').value = finding.disciplineId || '';
+  function renderChecklistTypeOptions_() {
+    var typeSelect = document.getElementById('fChecklistType');
+    var prev = typeSelect.value;
+    var disciplineId = document.getElementById('fDiscipline').value;
+    var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
+    var relevant = disciplineName ? checklistItems.filter(function (i) { return i.category === disciplineName; }) : checklistItems;
+    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).filter(Boolean))).sort();
+    typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
+      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
+    if (types.indexOf(prev) !== -1) typeSelect.value = prev;
+  }
+  document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
+  renderChecklistTypeOptions_();
+  // A stored category of exactly 'Other' is indistinguishable from "left blank at creation" (both
+  // collapse to the same value server-side, see createFinding) -- shown as blank here too, same as
+  // the New Finding form's own convention.
+  document.getElementById('fChecklistType').value = (finding.category && finding.category !== 'Other') ? finding.category : '';
+
+  document.getElementById('saveEditFindingBtn').onclick = async function () {
+    if (!selectedParticipant) { UI.toast(Term('participant') + ' is required — search and select one', 'error'); return; }
+    var disciplineId = document.getElementById('fDiscipline').value;
+    if (!disciplineId) { UI.toast(Term('discipline') + ' is required', 'error'); return; }
+    try {
+      await Api.call('updateFinding', {
+        findingId: findingId, participantId: selectedParticipant.id, disciplineId: disciplineId,
+        description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
+        // Same "blank -> Other" convention createFinding applies at creation time -- updateFinding
+        // itself doesn't reapply it (see its own comment), so it's done here instead.
+        category: document.getElementById('fChecklistType').value || 'Other',
+        riskLevel: document.getElementById('fRisk').value
+      });
+      UI.toast(Term('finding') + ' updated', 'success');
+      window.location.hash = '#/events/' + eventId + '/findings/' + findingId;
+    } catch (err) { UI.error(err); }
+  };
+}
+
 // REQ: "Log findings while photo is uploading in the background." entries is the SAME pendingFiles.
 // newFinding array uploadEvidenceFile_ keeps mutating in place (status/url) as each file's
 // prepare-then-upload pipeline progresses -- polled here rather than given a completion callback so

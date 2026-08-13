@@ -2113,6 +2113,11 @@ var FINDING_BOARD_LABELS = {
 var RISK_BORDER_COLOR = { Critical: 'var(--critical)', High: 'var(--danger)', Medium: 'var(--warning)', Low: 'var(--success)' };
 // Findings that can create/log a new one -- matches createFinding's backend requireRole.
 var FINDING_CREATE_ROLES = ['Inspector', 'ProjectManager', 'SystemAdmin'];
+// REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Mirrors
+// Findings.gs's FINDING_EDITABLE_STATUSES_ -- kept in sync by hand since frontend/backend don't share
+// constants; the backend re-checks this on every updateFinding/deleteFinding call regardless, so a
+// mismatch here would only ever show/hide a button wrongly, never bypass the real enforcement.
+var FINDING_EDITABLE_STATUSES_ = ['Open', 'Viewed'];
 
 // REQ: Pipeline cards must show risk level, Discipline, Category/sub-category, and time to expire
 // -- deliberately NOT the Inspector's description (that's the point of opening the log itself; the
@@ -2177,13 +2182,26 @@ async function tabFindings(content, eventId) {
     // Rather than relabel Sub category to Checklist Type and have it show nothing, the one real column
     // (already auto-filled from the finding's own Checklist Type at creation time) is relabeled instead,
     // and the always-empty one is dropped so there's no confusing duplicate/blank column.
+    // REQ (follow-up): "Arrange columns in this order: Participant, Discipline, Checklist Type,
+    // Severity, Status, Description, Actions (Allow edit and delete if not submitted)." Edit/Delete
+    // only render for someone who could create a finding in the first place (canCreate) AND only
+    // while the finding is still Open/Viewed (FINDING_EDITABLE_STATUSES_) -- the backend
+    // (updateFinding/deleteFinding, Findings.gs) enforces the same status gate independently, so this
+    // is purely about not showing a button that would just come back as a FORBIDDEN error.
     '<div class="card-body">' + UI.table([
+      { key: 'participantName', label: Term('participant') },
       { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: 'Checklist Type' },
       { key: 'riskLevel', label: 'Severity', render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      { key: 'description', label: 'Description' }, { key: 'participantName', label: Term('participant') },
-      { key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Open log" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button>' }
+      { key: 'description', label: 'Description' },
+      { key: 'actions', label: t('actions'), render: r => {
+        var canEdit = canCreate && FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
+        return '<button class="btn btn-secondary btn-sm btn-icon" title="Open log" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
+          (canEdit
+            ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' +
+              '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="Delete" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>'
+            : '');
+      } }
     ], findings, {}) + '</div></div>';
 
   UI.wireBoard(content, function (id) { window.location.hash = '#/events/' + eventId + '/findings/' + id; });
@@ -2191,6 +2209,21 @@ async function tabFindings(content, eventId) {
   if (canCreate) document.getElementById('newFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '/findings/new'; };
   content.querySelectorAll('[data-finding-view]').forEach(btn => {
     btn.onclick = () => { window.location.hash = '#/events/' + eventId + '/findings/' + btn.getAttribute('data-finding-view'); };
+  });
+  content.querySelectorAll('[data-finding-edit]').forEach(btn => {
+    btn.onclick = () => { window.location.hash = '#/events/' + eventId + '/findings/' + btn.getAttribute('data-finding-edit') + '/edit'; };
+  });
+  content.querySelectorAll('[data-finding-delete]').forEach(btn => {
+    btn.onclick = () => {
+      var findingId = btn.getAttribute('data-finding-delete');
+      UI.confirmModal('Delete this ' + Term('finding').toLowerCase() + '? This can\'t be undone.', async function () {
+        try {
+          await Api.call('deleteFinding', { findingId: findingId });
+          UI.toast(Term('finding') + ' deleted', 'success');
+          Router.resolve();
+        } catch (err) { UI.error(err); }
+      }, { title: 'Delete ' + Term('finding').toLowerCase(), confirmLabel: 'Delete', confirmClass: 'btn-danger' });
+    };
   });
 }
 

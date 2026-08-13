@@ -27,6 +27,11 @@ var FINDING_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'Resolved', '
 // (Resolutions.gs runEscalationCheck) so a finding stuck mid-workflow (e.g. Viewed but never
 // resolved, or ReOpen but never resubmitted) still escalates once its resolutionWindowAt lapses.
 var FINDING_OPEN_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted'];
+// REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Once a
+// Participant has submitted a resolution (or beyond), the finding is part of a workflow other people
+// are already acting on -- editing/deleting it out from under that would be confusing at best and
+// destroy review history at worst. "Not submitted yet" = still Open or Viewed.
+var FINDING_EDITABLE_STATUSES_ = ['Open', 'Viewed'];
 
 function findingVisibleTo_(user, finding) {
   if (user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR) {
@@ -106,6 +111,12 @@ function updateFinding(user, p) {
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
   requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  // REQ (Risk Logging list, follow-up): "Allow edit ... if not submitted." A resolution already in
+  // flight (or further along) means someone else is already acting on this finding as it stands --
+  // see FINDING_EDITABLE_STATUSES_ above.
+  if (FINDING_EDITABLE_STATUSES_.indexOf(finding.status) === -1) {
+    throw new HululError('FORBIDDEN', 'This finding has already been submitted and can no longer be edited');
+  }
   var patch = {};
   // status is deliberately NOT patchable here -- it only moves through the workflow actions below
   // (viewFinding / resolveFinding / reviewFindingResolution), each of which enforces its own
@@ -116,6 +127,22 @@ function updateFinding(user, p) {
   var updated = updateRow('Findings', p.findingId, patch);
   audit(user.id, 'UPDATE_FINDING', 'Findings', p.findingId, patch);
   return updated;
+}
+
+// REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Same
+// not-yet-submitted gate as updateFinding above. Findings that have already moved past Open/Viewed
+// have review/resolution history hanging off them (Resolutions rows) -- deleting those out from under
+// that history would orphan it, so this simply refuses rather than trying to cascade-delete.
+function deleteFinding(user, p) {
+  var finding = getById('Findings', p.findingId);
+  if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
+  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  if (FINDING_EDITABLE_STATUSES_.indexOf(finding.status) === -1) {
+    throw new HululError('FORBIDDEN', 'This finding has already been submitted and can no longer be deleted');
+  }
+  deleteRow('Findings', p.findingId);
+  audit(user.id, 'DELETE_FINDING', 'Findings', p.findingId, {});
+  return { deleted: true };
 }
 
 // REQ: "Log findings while photo is uploading in the background." createFinding no longer waits for
