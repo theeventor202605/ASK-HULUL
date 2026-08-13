@@ -214,7 +214,9 @@ window.UI = {
           '<input type="search" class="table-filter-input field-input" placeholder="' + esc(t('filter')) + '… /c for columns" />' +
           '<div class="table-filter-suggest chat-suggest-box" style="display:none;"></div>' +
         '</div>' +
-        (exportCols.length ? '<button type="button" class="btn btn-secondary btn-sm table-export-btn">' + ICON('export_csv') + ' ' + esc(t('export_csv')) + '</button>' : '') +
+        // Icon-only (title tooltip, not a text label) -- REQ: Import/Export CSV controls read as
+        // icons everywhere, not text buttons; this one call site covers every table in the app.
+        (exportCols.length ? '<button type="button" class="btn btn-secondary btn-sm btn-icon table-export-btn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' : '') +
       '</div>' +
       '<div class="table-filter-chips"></div>';
     }

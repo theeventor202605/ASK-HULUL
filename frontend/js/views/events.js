@@ -39,12 +39,7 @@ async function renderEventsList() {
     '<div class="page-header"><div><div class="page-title">' + esc(Term('event_plural')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('events_subtitle', { term: Term('event_plural') })) + '</div></div>' +
     '<div style="display:flex;gap:8px;">' +
-      '<button class="btn btn-secondary" id="exportCsvBtn">' + esc(t('export_csv')) + '</button>' +
-      (canManage ?
-        '<button class="btn btn-secondary" id="importCsvBtn">' + esc(t('import_csv')) + '</button>' +
-        '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />' +
-        '<button class="btn btn-primary" id="newEventBtn">' + esc(t('new_x', { term: Term('event') })) + '</button>'
-        : '') +
+      (canManage ? '<button class="btn btn-primary" id="newEventBtn">' + esc(t('new_x', { term: Term('event') })) + '</button>' : '') +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       '<div style="width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">' +
@@ -53,7 +48,18 @@ async function renderEventsList() {
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('venue_plural')) + '</div></div>' +
         '<div id="venueFilterPanel" style="padding:8px;max-height:280px;overflow-y:auto;"></div></div>' +
       '</div>' +
-      '<div class="card" style="flex:1;min-width:0;"><div class="card-body" id="eventsTableWrap"></div></div>' +
+      '<div class="card" style="flex:1;min-width:0;">' +
+        // Import/Export CSV live inside this list-section card (not the page header, and not text
+        // buttons) -- REQ: these controls stay with the list they act on, everywhere in the app.
+        '<div class="card-header" style="display:flex;justify-content:flex-end;gap:6px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="exportCsvBtn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' +
+          (canManage ?
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="importCsvBtn" title="' + esc(t('import_csv')) + '">' + ICON('import_csv') + '</button>' +
+            '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />'
+            : '') +
+        '</div>' +
+        '<div class="card-body" id="eventsTableWrap"></div>' +
+      '</div>' +
     '</div>';
 
   renderProjectFilterPanel();

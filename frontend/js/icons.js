@@ -36,7 +36,7 @@ window.ICON_DEFAULTS = {
   domain: '🌐', upload_logo: '🖼️', reupload_version: '🔄', deactivate: '🚫',
   activate: '✅', add_account: '➕', remove_from_project: '➖', location_pin: '📍',
   satellite_toggle: '🛰️', map_toggle: '🗺️', open_calendar: '📅', record_results: '📝',
-  export_csv: '⬇', logout: '↩', capture_photo: '📷',
+  export_csv: '⬇', import_csv: '⬆', logout: '↩', capture_photo: '📷',
   map_fullscreen_enter: '⤢', map_fullscreen_exit: '⤡', detect_places: '🔎',
   page_prev: '←', page_next: '→',
   // Status & badges
@@ -66,6 +66,7 @@ window.ICON_KEY_GROUPS = [
     { key: 'location_pin', label: 'Location / use my location' }, { key: 'satellite_toggle', label: 'Satellite map toggle' },
     { key: 'map_toggle', label: 'Standard map toggle' }, { key: 'open_calendar', label: 'Open calendar picker' },
     { key: 'record_results', label: 'Record inspection results' }, { key: 'export_csv', label: 'Export CSV' },
+    { key: 'import_csv', label: 'Import CSV' },
     { key: 'logout', label: 'Log out' }, { key: 'capture_photo', label: 'Take photo / video (evidence)' },
     { key: 'map_fullscreen_enter', label: 'Expand map to full screen' }, { key: 'map_fullscreen_exit', label: 'Exit full screen map' },
     { key: 'detect_places', label: 'Detect places in boundary' },

@@ -31,26 +31,35 @@ async function renderChecklistItems() {
     '<div class="page-header"><div><div class="page-title">' + esc(Term('checklistItem_plural')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('checklist_catalogue_subtitle', { term: Term('checklistItem'), inspectionTerm: Term('inspection').toLowerCase() })) + '</div></div>' +
     '<div style="display:flex;gap:8px;">' +
-      '<button class="btn btn-secondary" id="ciExportCsvBtn">' + esc(t('export_csv')) + '</button>' +
-      (canManage ?
-        '<button class="btn btn-secondary" id="ciImportCsvBtn">' + esc(t('import_csv')) + '</button>' +
-        '<input type="file" id="ciImportCsvInput" accept=".csv" style="display:none;" />' +
-        '<button class="btn btn-primary" id="newItemBtn">' + esc(t('new_item_btn')) + '</button>'
-        : '') +
+      (canManage ? '<button class="btn btn-primary" id="newItemBtn">' + esc(t('new_item_btn')) + '</button>' : '') +
       (canDedupe ? '<button class="btn btn-danger" id="dedupeBtn">' + esc(t('remove_duplicates_btn')) + '</button>' : '') +
     '</div></div>' +
     '<div id="ciBody"></div>';
 
-  document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
-  if (canManage) {
-    var ciImportInput = document.getElementById('ciImportCsvInput');
-    document.getElementById('ciImportCsvBtn').onclick = function () { ciImportInput.click(); };
-    ciImportInput.onchange = function (e) {
-      var file = e.target.files[0];
-      if (file) importChecklistItemsCsv(file, disciplines);
-      e.target.value = '';
-    };
+  // Import/Export CSV live inside the list section below (ciBody), not the page header, and as
+  // icon buttons -- REQ: these controls stay with the list they act on, everywhere in the app.
+  // wireCsvButtons_ is called after ciBody's innerHTML is actually set (both the empty-state and
+  // populated branches below build their own copy of these two buttons).
+  function wireCsvButtons_() {
+    document.getElementById('ciExportCsvBtn').onclick = function () { exportChecklistItemsCsv(items); };
+    if (canManage) {
+      var ciImportInput = document.getElementById('ciImportCsvInput');
+      document.getElementById('ciImportCsvBtn').onclick = function () { ciImportInput.click(); };
+      ciImportInput.onchange = function (e) {
+        var file = e.target.files[0];
+        if (file) importChecklistItemsCsv(file, disciplines);
+        e.target.value = '';
+      };
+    }
   }
+  function csvButtonsHtml_() {
+    return '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="ciExportCsvBtn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' +
+      (canManage ?
+        '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="ciImportCsvBtn" title="' + esc(t('import_csv')) + '">' + ICON('import_csv') + '</button>' +
+        '<input type="file" id="ciImportCsvInput" accept=".csv" style="display:none;" />'
+        : '');
+  }
+
   if (canDedupe) document.getElementById('dedupeBtn').onclick = function () {
     // Duplicate = same Description + Phase + Checklist Type + Discipline, regardless of Default
     // risk/Window — matches createChecklistItem's dedup check, which blocks new duplicates from
@@ -81,7 +90,12 @@ async function renderChecklistItems() {
   };
 
   if (!phases.length) {
-    document.getElementById('ciBody').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div></div>';
+    document.getElementById('ciBody').innerHTML =
+      '<div class="card">' +
+        '<div class="card-header" style="display:flex;justify-content:flex-end;gap:6px;">' + csvButtonsHtml_() + '</div>' +
+        '<div class="card-body"><div class="empty-state">' + t('no_data') + '</div></div>' +
+      '</div>';
+    wireCsvButtons_();
     return;
   }
 
@@ -94,10 +108,14 @@ async function renderChecklistItems() {
         '<div id="ciCategoryPanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
       '</div>' +
       '<div style="flex:1;min-width:0;">' +
+        // Import/Export CSV live inside this list-section column (not the page header, and not
+        // text buttons) -- REQ: these controls stay with the list they act on, everywhere in the app.
+        '<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px;">' + csvButtonsHtml_() + '</div>' +
         '<div class="tabbar" id="typeTabbar"></div>' +
         '<div id="ciTableWrap"></div>' +
       '</div>' +
     '</div>';
+  wireCsvButtons_();
 
   var rowStyle = 'padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:2px;';
 
