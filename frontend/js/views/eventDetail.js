@@ -2111,8 +2111,11 @@ var FINDING_BOARD_LABELS = {
   ReOpen: 'Re-open', Resubmitted: 'Resubmitted', Resolved: 'Resolved', Rejected: 'Rejected'
 };
 var RISK_BORDER_COLOR = { Critical: 'var(--critical)', High: 'var(--danger)', Medium: 'var(--warning)', Low: 'var(--success)' };
-// Findings that can create/log a new one -- matches createFinding's backend requireRole.
-var FINDING_CREATE_ROLES = ['Inspector', 'ProjectManager', 'SystemAdmin'];
+// Who can create/edit/delete a finding is now RBAC-driven (see PERMISSION_REGISTRY_,
+// backend/Permissions.gs, and hasPermission() calls below) instead of a hardcoded role array --
+// the finding.create/finding.edit/finding.delete permission keys' defaultRoles are exactly what
+// used to live here (['Inspector', 'ProjectManager', 'SystemAdmin']), so behavior is unchanged
+// until a SystemAdmin edits one of them in Settings > Permissions.
 // REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Mirrors
 // Findings.gs's FINDING_EDITABLE_STATUSES_ -- kept in sync by hand since frontend/backend don't share
 // constants; the backend re-checks this on every updateFinding/deleteFinding call regardless, so a
@@ -2158,7 +2161,14 @@ async function tabFindings(content, eventId) {
     };
   });
 
-  var canCreate = FINDING_CREATE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (see backend/Permissions.gs, frontend/js/permissions.js): these three used to all be
+  // one hardcoded FINDING_CREATE_ROLES check (create/edit/delete lumped together); now each is its
+  // own admin-configurable permission key, so a SystemAdmin can e.g. allow editing without allowing
+  // deletion, without a code change. FINDING_CREATE_ROLES is kept as the still-correct default array
+  // reference in Permissions.gs's PERMISSION_REGISTRY_, not read directly here anymore.
+  var canCreate = hasPermission('finding.create');
+  var canEditAny = hasPermission('finding.edit');
+  var canDeleteAny = hasPermission('finding.delete');
 
   content.innerHTML =
     '<div class="kpi-grid">' +
@@ -2195,12 +2205,12 @@ async function tabFindings(content, eventId) {
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'description', label: 'Description' },
       { key: 'actions', label: t('actions'), render: r => {
-        var canEdit = canCreate && FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
+        var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
+        var canEdit = canEditAny && stillEditable;
+        var canDelete = canDeleteAny && stillEditable;
         return '<button class="btn btn-secondary btn-sm btn-icon" title="Open log" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
-          (canEdit
-            ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' +
-              '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="Delete" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>'
-            : '');
+          (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
+          (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="Delete" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '');
       } }
     ], findings, {}) + '</div></div>';
 

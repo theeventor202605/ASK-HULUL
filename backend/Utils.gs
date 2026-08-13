@@ -128,6 +128,13 @@ var SCHEMA = {
   OrgLabels:              ['id','orgId','labelsJson','updatedAt','updatedBy'],
   // Single global row (id 'GLOBAL') -- see getAppIcons/setAppIcons in Accounts.gs.
   AppIcons:               ['id','iconsJson','updatedAt','updatedBy'],
+  // Admin-configurable RBAC overrides -- single global row (id 'GLOBAL'), same one-row-JSON-blob
+  // convention as AppIcons above. overridesJson is a JSON object of permissionKey -> array of role
+  // codes; any key absent from it just falls back to that permission's defaultRoles (see
+  // PERMISSION_REGISTRY_, Permissions.gs), so an empty/missing row is a fully valid, zero-overrides
+  // state and behavior is unchanged from the old hardcoded requireRole calls until a SystemAdmin
+  // actually edits something in Settings > Permissions.
+  Permissions:            ['id','overridesJson','updatedAt','updatedBy'],
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.

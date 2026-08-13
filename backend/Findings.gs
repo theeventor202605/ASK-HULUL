@@ -84,7 +84,7 @@ function listFindings(user, p) {
 // checklist-crossing path (recordInspectionResults, Inspections.gs) builds its own Findings row
 // directly via insertRow and does NOT go through createFinding, so it's unaffected by any of this.
 function createFinding(user, p) {
-  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'finding.create');
   ['eventId', 'description', 'riskLevel', 'participantId', 'disciplineId'].forEach(function (f) { if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required'); });
   var participant = getById('Participants', p.participantId);
   if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
@@ -110,7 +110,7 @@ function createFinding(user, p) {
 function updateFinding(user, p) {
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
-  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'finding.edit');
   // REQ (Risk Logging list, follow-up): "Allow edit ... if not submitted." A resolution already in
   // flight (or further along) means someone else is already acting on this finding as it stands --
   // see FINDING_EDITABLE_STATUSES_ above.
@@ -136,7 +136,7 @@ function updateFinding(user, p) {
 function deleteFinding(user, p) {
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
-  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'finding.delete');
   if (FINDING_EDITABLE_STATUSES_.indexOf(finding.status) === -1) {
     throw new HululError('FORBIDDEN', 'This finding has already been submitted and can no longer be deleted');
   }
@@ -154,7 +154,7 @@ function deleteFinding(user, p) {
 function addFindingEvidence(user, p) {
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
-  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'finding.addEvidence');
   if (!p.evidenceUrl) throw new HululError('BAD_REQUEST', 'evidenceUrl is required');
   var urls = finding.evidenceUrls ? String(finding.evidenceUrls).split(',').filter(Boolean) : [];
   if (urls.indexOf(p.evidenceUrl) === -1) urls.push(p.evidenceUrl);
@@ -202,7 +202,7 @@ function viewFinding(user, p) {
 // a first rejection) -- Open (not viewed yet), Submitted/InReview/Resubmitted (already has a pending
 // resolution), and Resolved/Rejected (terminal) can't be resolved from here.
 function resolveFinding(user, p) {
-  requireRole(user, [ROLES.VENDOR, ROLES.OPERATOR, ROLES.EXHIBITOR]);
+  requirePermission(user, 'finding.resolve');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
@@ -231,7 +231,7 @@ function resolveFinding(user, p) {
 // first rejection on a finding -> ReOpen (participant can retry), the second -> Rejected (terminal)
 // -- tracked via reopenCount (see module header comment).
 function reviewFindingResolution(user, p) {
-  requireRole(user, [ROLES.INSPECTOR, ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'finding.review');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');

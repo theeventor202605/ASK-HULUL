@@ -6,12 +6,14 @@
  */
 var TERMINOLOGY_MANAGE_ROLES = ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'];
 var ICON_MANAGE_ROLES = ['SystemAdmin'];
+var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
 
 async function renderSettings(params) {
   var root = document.getElementById('viewRoot');
   var u = HululState.user;
   var canManageLabels = TERMINOLOGY_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManageIcons = ICON_MANAGE_ROLES.indexOf(u.role) !== -1;
+  var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
 
   var tabs = [
     { key: 'profile', label: 'Profile' },
@@ -20,6 +22,7 @@ async function renderSettings(params) {
   ];
   if (canManageLabels) tabs.push({ key: 'terminology', label: 'Terminology' });
   if (canManageIcons) tabs.push({ key: 'icons', label: 'Icons' });
+  if (canManagePermissions) tabs.push({ key: 'permissions', label: 'Permissions' });
 
   var activeTab = tabs.some(function (tb) { return params && tb.key === params.tab; }) ? params.tab : 'profile';
 
@@ -43,6 +46,7 @@ async function renderSettings(params) {
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
+  else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
   else renderProfileTab_(content, u);
 }
 
@@ -273,6 +277,108 @@ function renderIconsTabBody_(content, pending) {
       UI.toast('Icons saved', 'success');
     } catch (err) { UI.error(err); }
   };
+}
+
+/* ---------------- Permissions (RBAC, "admin-configurable permissions") ----------------
+ * REQ: "It is time we build Role-Based Access Control" -> clarified as: a SystemAdmin should be able
+ * to change WHICH ROLES can do WHAT without a code deploy. listPermissions/updatePermission/
+ * resetPermission (backend/Permissions.gs) are SystemAdmin-only; allRoles rides along in the same
+ * response, same "server hands back its own picklist" convention as getTemplateProcessConfig
+ * (Templates.gs)/getEscalationConfig (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_
+ * in config.js for the checkbox-grid pattern this reuses.
+ *
+ * Foundation + pilot module rollout (explicit decision): only the Risk Logging (Findings) module is
+ * wired through requirePermission on the backend so far -- this tab will simply grow one more group
+ * as later passes migrate more of the app's ~78 other hardcoded requireRole call sites.
+ */
+async function renderPermissionsTab_(content) {
+  content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+  var data = await Api.call('listPermissions', {});
+  renderPermissionsTabBody_(content, data);
+}
+
+function renderPermissionsTabBody_(content, data) {
+  var groups = {};
+  data.permissions.forEach(function (perm) {
+    (groups[perm.module] = groups[perm.module] || []).push(perm);
+  });
+
+  var groupsHtml = Object.keys(groups).map(function (moduleName) {
+    var rows = groups[moduleName].map(function (perm) {
+      return permissionRowHtml_(perm, data.allRoles);
+    }).join('');
+    return '<div class="icon-settings-group">' +
+      '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
+      rows +
+      '</div>';
+  }).join('');
+
+  content.innerHTML =
+    '<div class="muted" style="font-size:12.5px;margin-bottom:14px;">Choose which roles can perform each action below. Changes apply immediately, app-wide, and don\'t require a deploy. This currently covers the Risk Logging module — more will be added over time.</div>' +
+    groupsHtml;
+
+  content.querySelectorAll('[data-perm-save]').forEach(function (btn) {
+    btn.onclick = async function () {
+      var key = btn.getAttribute('data-perm-save');
+      var roles = readCheckedRoles_('perm-' + key);
+      if (!roles.length) { UI.toast('At least one role must be allowed', 'error'); return; }
+      try {
+        await Api.call('updatePermission', { key: key, roles: roles });
+        UI.toast('Permission saved', 'success');
+        await loadPermissions_force_();
+        var refreshed = await Api.call('listPermissions', {});
+        renderPermissionsTabBody_(content, refreshed);
+      } catch (err) { UI.error(err); }
+    };
+  });
+  content.querySelectorAll('[data-perm-reset]').forEach(function (btn) {
+    btn.onclick = async function () {
+      var key = btn.getAttribute('data-perm-reset');
+      try {
+        await Api.call('resetPermission', { key: key });
+        UI.toast('Reverted to default', 'success');
+        await loadPermissions_force_();
+        var refreshed = await Api.call('listPermissions', {});
+        renderPermissionsTabBody_(content, refreshed);
+      } catch (err) { UI.error(err); }
+    };
+  });
+}
+
+function permissionRowHtml_(perm, allRoles) {
+  var checkedSet = {}; perm.roles.forEach(function (r) { checkedSet[r] = true; });
+  var prefix = 'perm-' + perm.key;
+  return '<div style="padding:12px 0;border-bottom:1px solid #f0f1f6;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">' +
+      '<div><div style="font-weight:600;font-size:13px;">' + esc(perm.label) + '</div>' +
+        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;">Customized — default is ' + esc(perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ')) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex:none;">' +
+        (perm.isOverridden ? '<button type="button" class="btn btn-secondary btn-sm" data-perm-reset="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">Reset to default</button>' : '') +
+        '<button type="button" class="btn btn-primary btn-sm" data-perm-save="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + t('save') + '</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;">' +
+      allRoles.map(function (r) {
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:2px 0;">' +
+          '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checkedSet[r.value] ? ' checked' : '') + ' /> ' + esc(r.label) + '</label>';
+      }).join('') +
+    '</div>' +
+  '</div>';
+}
+
+function roleLabelFromAllRoles_(allRoles, roleValue) {
+  var match = allRoles.filter(function (r) { return r.value === roleValue; })[0];
+  return match ? match.label : roleValue;
+}
+
+// updatePermission/resetPermission only affect the backend's stored overrides -- the acting
+// SystemAdmin's own HululState.permissions (cached once per session, see loadPermissions in app.js)
+// needs an explicit refetch so the effect of their own change (e.g. removing SystemAdmin from
+// finding.create) is reflected in their own UI immediately rather than on next login.
+async function loadPermissions_force_() {
+  HululState.permissionsLoaded = false;
+  await loadPermissions();
 }
 
 // A grid of every icon in ICON_LIBRARY (icons.js), grouped by section, PLUS a free-text field so a

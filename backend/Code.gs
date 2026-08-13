@@ -88,6 +88,11 @@ var ROUTES = {
   getAppIcons: function (u, p) { return getAppIcons(u, p); },
   setAppIcons: function (u, p) { return setAppIcons(u, p); },
   auditLog: function (u, p) { return listAuditLog(u, p); },
+  // Admin-configurable RBAC (Permissions.gs) -- foundation + Findings pilot module.
+  listPermissions: function (u, p) { return listPermissions(u, p); },
+  updatePermission: function (u, p) { return updatePermission(u, p); },
+  resetPermission: function (u, p) { return resetPermission(u, p); },
+  getMyPermissions: function (u, p) { return getMyPermissions(u, p); },
 
   // Projects (grouping of several Events)
   listProjects: function (u, p) { return listProjects(u, p); },

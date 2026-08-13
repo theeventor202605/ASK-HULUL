@@ -51,6 +51,7 @@ async function showApp() {
   document.getElementById('appShell').classList.remove('hidden');
   await loadOrgLabels();
   await loadAppIcons();
+  await loadPermissions();
   renderSidebar();
   renderUserChip();
   refreshNotifBadge();
@@ -66,6 +67,16 @@ async function loadAppIcons() {
   HululState.appIconsLoaded = true;
   try { HululState.appIcons = await Api.call('getAppIcons', {}); }
   catch (e) { HululState.appIcons = {}; }
+}
+
+// Loads the signed-in user's effective RBAC permission map (see permissions.js's hasPermission,
+// backend/Permissions.gs's getMyPermissions) once per session -- same caching pattern as
+// loadAppIcons above. Foundation + Findings pilot module only for now.
+async function loadPermissions() {
+  if (HululState.permissionsLoaded) return;
+  HululState.permissionsLoaded = true;
+  try { HululState.permissions = await Api.call('getMyPermissions', {}); }
+  catch (e) { HululState.permissions = {}; }
 }
 
 // Loads the signed-in user's org's custom terminology (e.g. "Events" -> "Projects") once per

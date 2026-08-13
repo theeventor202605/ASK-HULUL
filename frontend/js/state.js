@@ -28,6 +28,7 @@ window.HululState = {
     this.orgLogoLoaded = false; this.orgLogoUrl = '';
     this.orgLabelsLoaded = false; this.orgLabels = {};
     this.appIconsLoaded = false; this.appIcons = {};
+    this.permissionsLoaded = false; this.permissions = {};
     this.notifBadgeLoadedAt = 0;
     this.escalationAlertLoadedAt = 0; this.escalationLockShownId = null;
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');

@@ -365,7 +365,7 @@ async function renderEditFinding(params) {
   var root = document.getElementById('viewRoot');
   root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
 
-  if (FINDING_CREATE_ROLES.indexOf(HululState.user.role) === -1) {
+  if (!hasPermission('finding.edit')) {
     root.innerHTML = '<div class="empty-state">You don\'t have permission to edit this ' + Term('finding').toLowerCase() + '.</div>';
     return;
   }
@@ -671,9 +671,13 @@ async function renderFindingDetail(params) {
   catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">Could not load this finding.</div>'; return; }
 
   var finding = data.finding, resolutions = data.resolutions || [];
-  var role = HululState.user.role;
-  var isParticipant = FINDING_ROLE_PARTICIPANT_.indexOf(role) !== -1;
-  var isReviewer = FINDING_ROLE_REVIEWER_.indexOf(role) !== -1;
+  // RBAC pilot: which action section renders is now driven by the same admin-configurable
+  // finding.resolve/finding.review permissions the backend enforces (resolveFinding/
+  // reviewFindingResolution, Findings.gs), not the hardcoded FINDING_ROLE_PARTICIPANT_/
+  // FINDING_ROLE_REVIEWER_ arrays (those two constants still gate unrelated things -- the Chat and
+  // Log Photos tab visibility in eventDetail.js -- and are deliberately left as-is for now).
+  var isParticipant = hasPermission('finding.resolve');
+  var isReviewer = hasPermission('finding.review');
   var latestPending = resolutions.filter(function (r) { return r.decision === 'Pending'; })[0];
   // Whichever rejection is still "live" -- the reason ReOpen exists, or (if terminal) the reason
   // Rejected happened -- shown as a callout so the Participant knows what to fix without having to
