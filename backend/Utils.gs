@@ -66,7 +66,11 @@ var SCHEMA = {
   // links back to the TemplateLibrary entry it was sent from; name/fileUrl/fileName/mimeType are a
   // locked-in snapshot of that library entry at send time, independent of later library updates.
   Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt'],
-  Meetings:               ['id','eventId','subEventId','type','scheduledAt','notes','createdBy','createdAt'],
+  // toJson/ccJson: JSON-stringified arrays of Users.id (invitee/cc userIds) -- same
+  // array-in-a-single-cell convention as Config.gs's templateUploaderRoles_ etc. status: 'Scheduled'
+  // (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs, same pattern as
+  // ChecklistItems' status:'Deleted').
+  Meetings:               ['id','eventId','subEventId','type','scheduledAt','toJson','ccJson','meetingLink','notes','status','createdBy','createdAt','updatedBy','updatedAt'],
   Disciplines:            ['id','name','code'],
   EventDisciplines:       ['id','eventId','disciplineId','venueId','identifiedBy','createdAt'],
   InspectorQualifications:['id','userId','disciplineId'],

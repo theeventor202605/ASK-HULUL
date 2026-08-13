@@ -27,16 +27,27 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
+// Mirrored verbatim from Templates.gs's own MEETING_MANAGE_ROLES -- who may schedule/edit/delete a
+// meeting (matches scheduleKickoff/updateMeeting/deleteMeeting's own requireRole).
+var MEETING_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'];
+
 async function renderMeetings(params) {
   var root = document.getElementById('viewRoot');
-  var [events, venues, projects, subEvents, meetings] = await Promise.all([
+  var canManage = MEETING_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // listUsers 403s for roles outside its own allow-list (SystemAdmin/GAAdmin/EMCAdmin/
+  // InspectionAdmin/EMCManager/ProjectManager) -- every one of those already covers every role that
+  // can manage a meeting, so canManage is the right gate here too (same "only fetch what this role
+  // can actually use" reasoning as Events' canManage -> listOrganizations).
+  var [events, venues, projects, subEvents, meetings, users] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}), Api.call('listProjects', {}),
-    Api.call('listSubEvents', {}), Api.call('listMeetings', {})
+    Api.call('listSubEvents', {}), Api.call('listMeetings', {}),
+    canManage ? Api.call('listUsers', {}) : Promise.resolve([])
   ]);
   var venueById = {}; venues.forEach(function (v) { venueById[v.id] = v; });
   var projectById = {}; projects.forEach(function (pr) { projectById[pr.id] = pr; });
   var eventById = {}; events.forEach(function (e) { eventById[e.id] = e; });
   var subEventById = {}; subEvents.forEach(function (s) { subEventById[s.id] = s; });
+  var userById = {}; users.forEach(function (u) { userById[u.id] = u; });
 
   if (!events.length) {
     root.innerHTML =
@@ -64,7 +75,7 @@ async function renderMeetings(params) {
     // the state after e.g. picking a Project with no Event yet chosen) with no way to schedule a
     // meeting at all. This one opens the same modal but with its own Event picker, so it works from
     // any filter state.
-    '<button class="btn btn-primary" id="newMtgHeaderBtn">' + esc(t('schedule_x_btn', { term: Term('meeting').toLowerCase() })) + '</button>' +
+    (canManage ? '<button class="btn btn-primary" id="newMtgHeaderBtn">' + esc(t('schedule_x_btn', { term: Term('meeting').toLowerCase() })) + '</button>' : '') +
     '</div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       '<div class="card" style="width:250px;flex-shrink:0;">' +
@@ -203,77 +214,215 @@ async function renderMeetings(params) {
     });
   }
 
+  function safeJsonArray_(raw) {
+    if (!raw) return [];
+    try { var v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+
+  // Only rendered as a clickable link when it's actually http(s) -- a plain text fallback for
+  // anything else (blank, or a non-URL typo) instead of ever emitting a javascript:/data: href.
+  function meetingLinkHref_(link) {
+    return /^https?:\/\//i.test(String(link || '').trim()) ? link.trim() : '';
+  }
+
   function meetingColumns_(withEventCol) {
     var cols = [
-      { key: 'type', label: t('col_type') },
+      { key: 'type', label: t('field_meeting_type') },
       { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) }
     ];
     if (withEventCol) cols.push({ key: 'eventId', label: Term('event'), render: r => esc(eventById[r.eventId] ? eventById[r.eventId].name : r.eventId) });
     cols.push({ key: 'subEventId', label: Term('subEvent'), render: r => r.subEventId && subEventById[r.subEventId] ? esc(subEventById[r.subEventId].name) : '<span class="muted">—</span>' });
+    cols.push({ key: 'meetingLink', label: t('col_link'), exportable: false, render: r => {
+      var href = meetingLinkHref_(r.meetingLink);
+      return href ? '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('open_link_title')) + '" href="' + esc(href) + '" target="_blank" rel="noopener">' + ICON('share') + '</a>' : '<span class="muted">—</span>';
+    } });
     cols.push({ key: 'notes', label: t('col_notes') });
+    if (canManage) cols.push({ key: 'actions', label: t('actions'), exportable: false, render: r =>
+      '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-mtg="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-mtg="' + esc(r.id) + '">' + ICON('delete') + '</button>' +
+      '</div>' });
     return cols;
+  }
+
+  // Wires Edit/Delete on whichever meeting table was just rendered -- called after every
+  // meetingsCardHtml_/combined-table innerHTML assignment in renderBody() below, since UI.table()
+  // output is plain HTML with no handlers of its own attached yet.
+  function wireMeetingRowActions_() {
+    document.querySelectorAll('[data-edit-mtg]').forEach(function (btn) {
+      btn.onclick = function () {
+        var m = meetings.filter(function (x) { return x.id === btn.getAttribute('data-edit-mtg'); })[0];
+        if (m) openMeetingFormModal_('edit', m);
+      };
+    });
+    document.querySelectorAll('[data-delete-mtg]').forEach(function (btn) {
+      btn.onclick = function () {
+        var meetingId = btn.getAttribute('data-delete-mtg');
+        UI.confirmModal(t('delete_x_confirm', { term: Term('meeting').toLowerCase() }), async function () {
+          try {
+            await Api.call('deleteMeeting', { meetingId: meetingId });
+            UI.toast(t('x_deleted', { term: Term('meeting') }), 'success');
+            Router.resolve();
+          } catch (err) { UI.error(err); }
+        }, { confirmLabel: t('delete') });
+      };
+    });
   }
 
   function meetingsCardHtml_(titleHtml, rows, withCreateBtn) {
     return '<div class="card"><div class="card-header"><div class="card-title">' + titleHtml + '</div>' +
-      (withCreateBtn ? '<button class="btn btn-primary btn-sm" id="newMtgBtn">' + esc(t('schedule_btn')) + '</button>' : '') + '</div>' +
+      (withCreateBtn && canManage ? '<button class="btn btn-primary btn-sm" id="newMtgBtn">' + esc(t('schedule_btn')) + '</button>' : '') + '</div>' +
       '<div class="card-body">' + UI.table(meetingColumns_(false), rows, {}) + '</div></div>';
   }
 
-  // Shared by the header's always-visible "+ Schedule" button and each card's own "+ Schedule"
-  // button (meetingsCardHtml_) -- the only difference is whether the Event/Sub-Event fields come
-  // pre-picked (card buttons, already scoped to one Event/Sub-Event) or need picking from scratch
-  // (header button, no Event selected yet). Both go through the same modal so there's one place
-  // that knows how to actually call scheduleKickoff.
-  function openScheduleMeetingModal_(defaultEventId, defaultSubEventId) {
-    var eventOptions = '<option value="">' + esc(t('choose_event_option', { term: Term('event').toLowerCase() })) + '</option>' +
-      events.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-        .map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.id === defaultEventId ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
-    var typeOptions = MEETING_TYPES.map(function (mt) { return '<option value="' + esc(mt) + '">' + esc(mt) + '</option>'; }).join('');
+  // Compact searchable checkbox list of Users -- shared by the To and Cc fields, in both the create
+  // and edit modals. checkedIds pre-checks whichever ids are already on the meeting (edit only).
+  function userPickerFieldHtml_(prefix, label, checkedIds) {
+    var checkedSet = {}; (checkedIds || []).forEach(function (id) { checkedSet[id] = true; });
+    var rows = users.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (u) {
+      return '<label class="' + prefix + '-row" data-search="' + esc((u.name + ' ' + u.email).toLowerCase()) + '" style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;">' +
+        '<input type="checkbox" class="' + prefix + '-check" value="' + esc(u.id) + '"' + (checkedSet[u.id] ? ' checked' : '') + ' /> ' +
+        esc(u.name) + ' <span class="muted">(' + esc(u.role) + ')</span></label>';
+    }).join('');
+    return UI.field(label,
+      '<input class="field-input" id="' + prefix + 'Search" placeholder="' + esc(t('search_people_placeholder')) + '" style="margin-bottom:6px;padding:6px 8px;font-size:12.5px;" />' +
+      '<div style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;">' +
+        (rows || '<div class="muted" style="font-size:12px;">' + esc(t('no_data')) + '</div>') +
+      '</div>'
+    );
+  }
+  function wireUserPickerSearch_(prefix) {
+    var input = document.getElementById(prefix + 'Search');
+    if (!input) return;
+    input.oninput = function () {
+      var q = this.value.trim().toLowerCase();
+      document.querySelectorAll('.' + prefix + '-row').forEach(function (row) {
+        row.style.display = (!q || row.getAttribute('data-search').indexOf(q) !== -1) ? '' : 'none';
+      });
+    };
+  }
+  function readCheckedUserIds_(prefix) {
+    var ids = [];
+    document.querySelectorAll('.' + prefix + '-check:checked').forEach(function (c) { ids.push(c.value); });
+    return ids;
+  }
+
+  // Subject = MEETING_TYPES picklist + an "Other" option that reveals a free-text input (REQ:
+  // "Meeting type as Subject & allow free text as well") -- same dropdown-plus-reveal pattern
+  // Checklist Items' own Checklist Type field uses (checklistItems.js openChecklistItemForm_).
+  function subjectFieldHtml_(currentType) {
+    var matched = currentType && MEETING_TYPES.indexOf(currentType) !== -1;
+    var typeOptions = MEETING_TYPES.map(function (mt) { return '<option value="' + esc(mt) + '"' + (mt === currentType ? ' selected' : '') + '>' + esc(mt) + '</option>'; }).join('');
+    return UI.field(t('field_meeting_type'),
+      '<select id="fMtgTypeSelect" class="field-input">' + typeOptions +
+        '<option value="__other__"' + (currentType && !matched ? ' selected' : '') + '>' + esc(t('other_free_text_option')) + '</option>' +
+      '</select>' +
+      '<input id="fMtgTypeOther" class="field-input" placeholder="' + esc(t('field_meeting_type')) + '" style="margin-top:6px;' + (matched || !currentType ? 'display:none;' : '') + '" value="' + esc(!matched && currentType ? currentType : '') + '" />'
+    );
+  }
+  function wireSubjectField_() {
+    var sel = document.getElementById('fMtgTypeSelect');
+    var other = document.getElementById('fMtgTypeOther');
+    sel.onchange = function () { other.style.display = sel.value === '__other__' ? '' : 'none'; if (sel.value === '__other__') other.focus(); };
+  }
+  function readSubjectValue_() {
+    var sel = document.getElementById('fMtgTypeSelect');
+    return sel.value === '__other__' ? document.getElementById('fMtgTypeOther').value.trim() : sel.value;
+  }
+
+  // Event options, optionally narrowed to one Project -- '' (no project picked) shows every Event,
+  // '__none__' shows only Events with no Project.
+  function eventOptionsHtml_(projectId, selectedEventId) {
+    var opts = events.filter(function (e) { return !projectId || (projectId === '__none__' ? !e.projectId : e.projectId === projectId); });
+    return '<option value="">' + esc(t('choose_event_option', { term: Term('event').toLowerCase() })) + '</option>' +
+      opts.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.id === selectedEventId ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
+  }
+
+  // Shared by the header's always-visible "+ Schedule" button, each card's own "+ Schedule" button
+  // (meetingsCardHtml_ -- already scoped to one Event/Sub-Event), and every row's Edit action.
+  // mode 'create' calls scheduleKickoff, 'edit' calls updateMeeting -- same 9 fields either way, only
+  // the submit call and starting values differ.
+  function openMeetingFormModal_(mode, meeting, defaultEventId, defaultSubEventId) {
+    var isEdit = mode === 'edit';
+    var startEventId = isEdit ? meeting.eventId : (defaultEventId || '');
+    var startSubEventId = isEdit ? meeting.subEventId : (defaultSubEventId || '');
+    var startProjectId = startEventId && eventById[startEventId] ? (eventById[startEventId].projectId || '') : '';
+    var projectOptions = '<option value="">' + esc(t('all_x', { term: Term('project_plural') })) + '</option>' +
+      projects.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .map(function (pr) { return '<option value="' + esc(pr.id) + '"' + (pr.id === startProjectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
+
     var body =
-      UI.field(Term('event'), '<select id="fMtgEvent" class="field-input">' + eventOptions + '</select>') +
+      UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fMtgProject" class="field-input">' + projectOptions + '</select>') +
+      UI.field(Term('event'), '<select id="fMtgEvent" class="field-input">' + eventOptionsHtml_(startProjectId, startEventId) + '</select>') +
       UI.field(t('field_project_optional', { term: Term('subEvent') }), '<select id="fMtgSubEvent" class="field-input"><option value="">' + esc(t('none_option')) + '</option></select>') +
-      UI.field(t('field_meeting_type'), '<select id="fMtgType" class="field-input">' + typeOptions + '</select>') +
-      UI.field(t('field_scheduled_at'), '<input id="fMtgWhen" type="datetime-local" class="field-input" />') +
-      UI.field(t('col_notes'), '<textarea id="fMtgNotes" class="field-input" rows="2"></textarea>');
-    UI.openModal(t('schedule_x_title', { term: Term('meeting').toLowerCase() }), body, [
+      subjectFieldHtml_(isEdit ? meeting.type : '') +
+      UI.field(t('field_scheduled_at'), '<input id="fMtgWhen" type="datetime-local" class="field-input" value="' + esc(isEdit ? normalizeDateTimeLocal(meeting.scheduledAt) : '') + '" />') +
+      userPickerFieldHtml_('fMtgTo', t('field_to'), isEdit ? safeJsonArray_(meeting.toJson) : []) +
+      userPickerFieldHtml_('fMtgCc', t('field_cc'), isEdit ? safeJsonArray_(meeting.ccJson) : []) +
+      UI.field(t('field_meeting_link'), '<input id="fMtgLink" type="url" class="field-input" placeholder="https://…" value="' + esc(isEdit ? (meeting.meetingLink || '') : '') + '" />') +
+      UI.field(t('col_notes'), '<textarea id="fMtgNotes" class="field-input" rows="2">' + esc(isEdit ? (meeting.notes || '') : '') + '</textarea>');
+
+    UI.openModal(isEdit ? t('edit_x', { term: Term('meeting') }) : t('schedule_x_title', { term: Term('meeting').toLowerCase() }), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-      { label: t('create'), className: 'btn-primary', onClick: async function () {
+      { label: isEdit ? t('save') : t('create'), className: 'btn-primary', onClick: async function () {
           var eventId = document.getElementById('fMtgEvent').value;
           if (!eventId) { UI.toast(t('toast_choose_event_first', { term: Term('event').toLowerCase() }), 'error'); return; }
+          var subject = readSubjectValue_();
+          if (!subject) { UI.toast(t('toast_subject_required'), 'error'); return; }
           var subEventId = document.getElementById('fMtgSubEvent').value;
+          var payload = {
+            eventId: eventId, subEventId: subEventId || '', type: subject,
+            scheduledAt: document.getElementById('fMtgWhen').value,
+            to: readCheckedUserIds_('fMtgTo'), cc: readCheckedUserIds_('fMtgCc'),
+            meetingLink: document.getElementById('fMtgLink').value,
+            notes: document.getElementById('fMtgNotes').value
+          };
           try {
-            await Api.call('scheduleKickoff', {
-              eventId: eventId, subEventId: subEventId || '',
-              type: document.getElementById('fMtgType').value,
-              scheduledAt: document.getElementById('fMtgWhen').value,
-              notes: document.getElementById('fMtgNotes').value
-            });
-            UI.closeModal(); UI.toast(t('toast_x_scheduled', { term: Term('meeting') }), 'success');
+            if (isEdit) {
+              payload.meetingId = meeting.id;
+              await Api.call('updateMeeting', payload);
+              UI.toast(t('x_updated', { term: Term('meeting') }), 'success');
+            } else {
+              await Api.call('scheduleKickoff', payload);
+              UI.toast(t('toast_x_scheduled', { term: Term('meeting') }), 'success');
+            }
+            UI.closeModal();
             window.location.hash = '#/meetings?eventId=' + eventId + (subEventId ? '&subEventId=' + subEventId : '');
             Router.resolve();
           } catch (err) { UI.error(err); }
         } }
     ]);
 
+    wireSubjectField_();
+    wireUserPickerSearch_('fMtgTo');
+    wireUserPickerSearch_('fMtgCc');
+
     // Sub-Event options depend on whichever Event is currently picked -- repopulated on every
     // change so you can never submit a Sub-Event that doesn't actually belong to the chosen Event.
+    // Picking a Project re-narrows the Event list (and resets Sub-Event, since the old selection may
+    // no longer be valid) -- purely a convenience filter, not itself stored on the meeting.
     function syncSubEventOptions(eventId) {
       var subSel = document.getElementById('fMtgSubEvent');
       var opts = subEvents.filter(function (s) { return s.eventId === eventId; });
       subSel.innerHTML = '<option value="">' + esc(t('none_option')) + '</option>' + opts.map(function (s) {
-        return '<option value="' + esc(s.id) + '"' + (s.id === defaultSubEventId ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+        return '<option value="' + esc(s.id) + '"' + (s.id === startSubEventId ? ' selected' : '') + '>' + esc(s.name) + '</option>';
       }).join('');
     }
+    var projectSel = document.getElementById('fMtgProject');
     var eventSel = document.getElementById('fMtgEvent');
     syncSubEventOptions(eventSel.value);
     eventSel.onchange = function () { syncSubEventOptions(eventSel.value); };
+    projectSel.onchange = function () {
+      eventSel.innerHTML = eventOptionsHtml_(projectSel.value, '');
+      syncSubEventOptions('');
+    };
   }
 
   function wireNewMeetingBtn_(eventId, subEventId) {
     var btn = document.getElementById('newMtgBtn');
     if (!btn) return;
-    btn.onclick = function () { openScheduleMeetingModal_(eventId, subEventId); };
+    btn.onclick = function () { openMeetingFormModal_('create', null, eventId, subEventId); };
   }
 
   function renderBody() {
@@ -290,6 +439,7 @@ async function renderMeetings(params) {
         rows, true
       );
       wireNewMeetingBtn_(sub.eventId, sub.id);
+      wireMeetingRowActions_();
     } else if (view.eventId) {
       var event = eventById[view.eventId];
       if (!event) { view.eventId = ''; renderBody(); return; }
@@ -301,6 +451,7 @@ async function renderMeetings(params) {
         rows2, true
       );
       wireNewMeetingBtn_(view.eventId, '');
+      wireMeetingRowActions_();
     } else {
       // "All Events" -- combine meetings across every Event currently in scope (Project + Venue
       // filters), tagging each row with its parent Event (and Sub-Event, if any).
@@ -312,10 +463,11 @@ async function renderMeetings(params) {
         '<div class="card-body">' + UI.table(meetingColumns_(true), combined, { emptyText: esc(t('empty_no_meetings_filtered', { term: Term('meeting_plural').toLowerCase() })) }) +
         '<div class="muted" style="font-size:11.5px;margin-top:10px;">' + esc(t('pick_event_or_schedule_hint', { eventTerm: Term('event').toLowerCase(), term: Term('meeting').toLowerCase() })) + '</div>' +
         '</div></div>';
+      wireMeetingRowActions_();
     }
   }
 
-  document.getElementById('newMtgHeaderBtn').onclick = function () { openScheduleMeetingModal_(view.eventId, view.subEventId); };
+  if (canManage) document.getElementById('newMtgHeaderBtn').onclick = function () { openMeetingFormModal_('create', null, view.eventId, view.subEventId); };
 
   renderProjectPanel();
   renderVenuePanel();

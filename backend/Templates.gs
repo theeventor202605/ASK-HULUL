@@ -344,32 +344,113 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
-// REQ-TPL-02: schedule a meeting (any of MEETING_TYPES) between Inspection Co, EMC Manager, Event
-// Manager -- either against the whole Event, or (if subEventId is given) scoped to just that
-// Sub-Event.
+// Same 4 roles that may schedule/edit/delete a meeting -- kept as one constant instead of repeating
+// the array at every requireRole call site below.
+var MEETING_MANAGE_ROLES = [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EMC_MANAGER];
+
+// Cleans a raw To/Cc payload (array of Users.id) down to real, de-duplicated user ids -- silently
+// drops anything blank, duplicated, or not an actual user instead of hard-failing the whole request,
+// since a stale/removed user id in an old invite list shouldn't block scheduling or editing a meeting.
+function meetingRecipientIds_(rawIds) {
+  if (!Array.isArray(rawIds)) return [];
+  var seen = {}, out = [];
+  rawIds.forEach(function (id) {
+    id = String(id || '').trim();
+    if (!id || seen[id] || !getById('Users', id)) return;
+    seen[id] = true;
+    out.push(id);
+  });
+  return out;
+}
+
+// To and Cc are functionally identical inside HULUL's own in-app/email notification system (no
+// header-level distinction once it's just a notify_() call) -- the split on the Meeting record
+// itself is purely for the organizer's own record of who's a primary vs. cc'd invitee.
+function notifyMeetingRecipients_(meeting, to, cc, verb) {
+  var ids = Array.from(new Set(to.concat(cc)));
+  if (!ids.length) return;
+  var when = meeting.scheduledAt ? ' (' + meeting.scheduledAt + ')' : '';
+  notify_(ids, 'MEETING_' + verb.toUpperCase(), 'Meeting ' + verb + ': ' + meeting.type + when, 'Meetings', meeting.id, meeting.eventId);
+}
+
+// REQ-TPL-02: schedule a meeting between Inspection Co, EMC Manager, Event Manager -- either against
+// the whole Event, or (if subEventId is given) scoped to just that Sub-Event. `type` doubles as the
+// meeting's Subject line -- MEETING_TYPES is offered as a picklist on the frontend, but any non-empty
+// free text is accepted here too (REQ: "Meeting type as Subject & allow free text as well").
 function scheduleKickoff(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EMC_MANAGER]);
-  if (MEETING_TYPES.indexOf(p.type) === -1) throw new HululError('BAD_REQUEST', 'type must be one of the standard meeting types');
+  requireRole(user, MEETING_MANAGE_ROLES);
+  var subject = String(p.type || '').trim();
+  if (!subject) throw new HululError('BAD_REQUEST', 'type/subject is required');
   if (p.subEventId) {
     var sub = getById('SubEvents', p.subEventId);
     if (!sub || sub.eventId !== p.eventId) throw new HululError('BAD_REQUEST', 'subEventId must belong to eventId');
   }
+  var to = meetingRecipientIds_(p.to);
+  var cc = meetingRecipientIds_(p.cc);
   var meeting = {
-    id: newId('Meetings'), eventId: p.eventId, subEventId: p.subEventId || '', type: p.type, scheduledAt: p.scheduledAt,
-    notes: p.notes || '', createdBy: user.id, createdAt: nowIso_()
+    id: newId('Meetings'), eventId: p.eventId, subEventId: p.subEventId || '', type: subject, scheduledAt: p.scheduledAt,
+    toJson: JSON.stringify(to), ccJson: JSON.stringify(cc), meetingLink: String(p.meetingLink || '').trim(),
+    notes: p.notes || '', status: 'Scheduled', createdBy: user.id, createdAt: nowIso_(), updatedBy: '', updatedAt: ''
   };
   insertRow('Meetings', meeting);
-  audit(user.id, 'SCHEDULE_MEETING', 'Meetings', meeting.id, { type: p.type });
+  audit(user.id, 'SCHEDULE_MEETING', 'Meetings', meeting.id, { type: subject });
+  notifyMeetingRecipients_(meeting, to, cc, 'scheduled');
   return meeting;
+}
+
+// Edit an existing meeting -- every field is optional in the payload (only what's actually being
+// changed needs to be sent); anything omitted keeps its current value, same "patch, don't replace"
+// convention updateRow itself already follows one level down.
+function updateMeeting(user, p) {
+  requireRole(user, MEETING_MANAGE_ROLES);
+  var existing = getById('Meetings', p.meetingId);
+  if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
+  var eventId = p.eventId !== undefined ? p.eventId : existing.eventId;
+  var subEventId = p.subEventId !== undefined ? p.subEventId : existing.subEventId;
+  if (subEventId) {
+    var sub = getById('SubEvents', subEventId);
+    if (!sub || sub.eventId !== eventId) throw new HululError('BAD_REQUEST', 'subEventId must belong to eventId');
+  }
+  var subject = p.type !== undefined ? String(p.type || '').trim() : existing.type;
+  if (!subject) throw new HululError('BAD_REQUEST', 'type/subject is required');
+  var to = p.to !== undefined ? meetingRecipientIds_(p.to) : (JSON.parse(existing.toJson || '[]') || []);
+  var cc = p.cc !== undefined ? meetingRecipientIds_(p.cc) : (JSON.parse(existing.ccJson || '[]') || []);
+  var patch = {
+    eventId: eventId, subEventId: subEventId || '', type: subject,
+    scheduledAt: p.scheduledAt !== undefined ? p.scheduledAt : existing.scheduledAt,
+    toJson: JSON.stringify(to), ccJson: JSON.stringify(cc),
+    meetingLink: p.meetingLink !== undefined ? String(p.meetingLink || '').trim() : existing.meetingLink,
+    notes: p.notes !== undefined ? p.notes : existing.notes,
+    updatedBy: user.id, updatedAt: nowIso_()
+  };
+  var updated = updateRow('Meetings', p.meetingId, patch);
+  audit(user.id, 'UPDATE_MEETING', 'Meetings', p.meetingId, { type: subject });
+  notifyMeetingRecipients_(updated, to, cc, 'updated');
+  return updated;
+}
+
+// Soft delete (status:'Deleted') -- same pattern as deleteChecklistItem: the row stays (so nothing
+// that ever referenced it breaks), it's just excluded from listMeetings going forward.
+function deleteMeeting(user, p) {
+  requireRole(user, MEETING_MANAGE_ROLES);
+  var existing = getById('Meetings', p.meetingId);
+  if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
+  updateRow('Meetings', p.meetingId, { status: 'Deleted', updatedBy: user.id, updatedAt: nowIso_() });
+  audit(user.id, 'DELETE_MEETING', 'Meetings', p.meetingId, {});
+  return { deleted: true };
 }
 
 // Used by the Meetings page: with no eventId, returns every meeting under an Event visible to the
 // caller (same visibility rule as listSubEvents/listEvents) so the page can show meetings across
 // every Project/Venue/Event/Sub-Event in scope in one call instead of one round-trip per event.
+// Soft-deleted meetings (status:'Deleted') are excluded by default -- pass p.includeDeleted:true to
+// see them (not currently used by the frontend, but keeps the door open for a Trash view later,
+// same shape as evidence.js's own soft-delete convention).
 function listMeetings(user, p) {
   var visibleEventIds = {};
   listEvents(user, {}).forEach(function (e) { visibleEventIds[e.id] = true; });
   var all = getAll('Meetings').filter(function (m) { return visibleEventIds[m.eventId]; });
+  if (!(p && p.includeDeleted)) all = all.filter(function (m) { return m.status !== 'Deleted'; });
   if (p && p.eventId) all = all.filter(function (m) { return m.eventId === p.eventId; });
   if (p && p.subEventId) all = all.filter(function (m) { return m.subEventId === p.subEventId; });
   return all;

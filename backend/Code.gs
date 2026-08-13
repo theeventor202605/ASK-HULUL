@@ -149,6 +149,8 @@ var ROUTES = {
   setTemplateProcessConfig: function (u, p) { return setTemplateProcessConfig(u, p); },
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },
+  updateMeeting: function (u, p) { return updateMeeting(u, p); },
+  deleteMeeting: function (u, p) { return deleteMeeting(u, p); },
 
   // Venue approval (VAP)
   recordRecommendation: function (u, p) { return recordRecommendation(u, p); },
