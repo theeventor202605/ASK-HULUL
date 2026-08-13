@@ -2082,7 +2082,7 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
       }
       var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
       if (!urls.length) {
-        UI.toast(t('toast_evidence_required', { desc: it.description }), 'error');
+        UI.toast(t('toast_evidence_required_desc', { desc: it.description }), 'error');
         return;
       }
       entry.notes = row.querySelector('.result-notes').value;
@@ -2456,7 +2456,7 @@ async function tabEventChat(content, eventId, detail) {
     suggestBox.innerHTML = '<div class="chat-suggest-header">' + esc(header) + '</div>' +
       (items.length
         ? items.slice(0, 20).map(function (it, i) { return '<div class="chat-suggest-item" data-idx="' + i + '">' + renderItemFn(it) + '</div>'; }).join('')
-        : '<div class="chat-suggest-empty">' + esc(t('no_matches')) + '</div>');
+        : '<div class="chat-suggest-empty">' + esc(t('no_suggestion_matches')) + '</div>');
     suggestBox.style.display = '';
     suggestBox.querySelectorAll('.chat-suggest-item').forEach(function (el) {
       // mousedown (not click) + preventDefault -- keeps the textarea focused/its selection intact so
@@ -2574,7 +2574,7 @@ async function tabEventChat(content, eventId, detail) {
       .catch(function (err) {
         console.error('[Event Chat] section screenshot failed', err);
         if (myToken !== captureToken) return;
-        UI.toast(t('toast_screenshot_capture_failed'), 'error');
+        UI.toast(t('toast_screenshot_capture_failed_section'), 'error');
         hideSuggest_();
       })
       .finally(function () { cleanupPendingCapture_(); });

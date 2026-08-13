@@ -29,8 +29,8 @@ window.UI = {
   // Generic error popup for anything that isn't a FORBIDDEN permission error (those get the
   // richer permissionModal below, with contacts).
   errorModal(err) {
-    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err && err.message ? err.message : 'Something went wrong') + '</div>';
-    this.openModal('Error', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
+    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err && err.message ? err.message : t('something_went_wrong')) + '</div>';
+    this.openModal(t('error_title'), body, [{ label: t('ok'), className: 'btn-primary', onClick: UI.closeModal }]);
   },
 
   // Replaces the browser's native window.confirm() with a popup in the app's own style.
@@ -39,9 +39,9 @@ window.UI = {
   confirmModal(message, onConfirm, opts) {
     opts = opts || {};
     var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(message) + '</div>';
-    this.openModal(opts.title || 'Are you sure?', body, [
+    this.openModal(opts.title || t('are_you_sure'), body, [
       { label: opts.cancelLabel || t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-      { label: opts.confirmLabel || 'Confirm', className: opts.confirmClass || 'btn-danger', onClick: function () {
+      { label: opts.confirmLabel || t('confirm'), className: opts.confirmClass || 'btn-danger', onClick: function () {
           UI.closeModal();
           onConfirm();
         } }
@@ -54,7 +54,7 @@ window.UI = {
   // UI.closeModal() when done (typically right before showing a results modal).
   progressModal(title, total) {
     var body =
-      '<div id="progressLabel" style="font-size:13px;margin-bottom:10px;">Starting…</div>' +
+      '<div id="progressLabel" style="font-size:13px;margin-bottom:10px;">' + esc(t('starting_ellipsis')) + '</div>' +
       '<div style="background:#f1f3f9;border-radius:8px;height:10px;overflow:hidden;">' +
         '<div id="progressBarFill" style="background:var(--accent);height:100%;width:0%;transition:width .15s;"></div>' +
       '</div>';
@@ -65,7 +65,7 @@ window.UI = {
         var fill = document.getElementById('progressBarFill');
         var lbl = document.getElementById('progressLabel');
         if (fill) fill.style.width = pct + '%';
-        if (lbl) lbl.textContent = label || (current + ' of ' + total + ' processed…');
+        if (lbl) lbl.textContent = label || t('x_of_y_processed', { current: current, total: total });
       }
     };
   },
@@ -73,16 +73,16 @@ window.UI = {
   // Shown instead of a toast for FORBIDDEN errors, since these need more room to explain
   // who *can* do this and — when the backend was able to work it out — who that is right now.
   permissionModal(err) {
-    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err.message || 'You are not permitted to perform this action.') + '</div>';
+    var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(err.message || t('not_permitted_default')) + '</div>';
     if (err.contacts && err.contacts.length) {
-      body += '<div style="margin-top:14px;"><div class="field-label">Who to contact</div>' +
+      body += '<div style="margin-top:14px;"><div class="field-label">' + esc(t('who_to_contact')) + '</div>' +
         err.contacts.map(function (c) {
           return '<div style="padding:8px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:13px;">' +
             '<strong>' + esc(c.name) + '</strong> — ' + esc(c.role) +
             (c.email ? '<br/><span class="muted">' + esc(c.email) + '</span>' : '') + '</div>';
         }).join('') + '</div>';
     }
-    this.openModal('Not permitted', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
+    this.openModal(t('not_permitted_title'), body, [{ label: t('ok'), className: 'btn-primary', onClick: UI.closeModal }]);
   },
 
   openModal(title, bodyHtml, footerButtons) {
@@ -228,18 +228,18 @@ window.UI = {
     var pagerHtml = paginate
       ? '<div class="table-pager">' +
           '<div class="table-pager-size">' +
-            '<span class="muted" style="font-size:12px;">Show</span>' +
+            '<span class="muted" style="font-size:12px;">' + esc(t('show_label')) + '</span>' +
             '<select class="table-page-size-select field-input">' +
               HULUL_TABLE_PAGE_SIZE_OPTIONS_.map(function (n) {
                 return '<option value="' + n + '"' + (n === HULUL_TABLE_DEFAULT_PAGE_SIZE_ ? ' selected' : '') + '>' + n + '</option>';
               }).join('') +
             '</select>' +
-            '<span class="muted" style="font-size:12px;">per page</span>' +
+            '<span class="muted" style="font-size:12px;">' + esc(t('per_page_label')) + '</span>' +
           '</div>' +
           '<div class="table-pager-nav">' +
-            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-prev" title="Previous page">' + ICON('page_prev') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-prev" title="' + esc(t('previous_page')) + '">' + ICON('page_prev') + '</button>' +
             '<span class="table-pager-indicator muted" style="font-size:12px;"></span>' +
-            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-next" title="Next page">' + ICON('page_next') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon table-page-next" title="' + esc(t('next_page')) + '">' + ICON('page_next') + '</button>' +
           '</div>' +
         '</div>'
       : '';
@@ -296,7 +296,7 @@ window.UI = {
     var hours = Math.floor(abs / 3600000);
     var mins = Math.floor((abs % 3600000) / 60000);
     var label = hours > 0 ? (hours + 'h ' + mins + 'm') : (mins + 'm');
-    return overdue ? ('Overdue ' + label) : (label + ' left');
+    return overdue ? (t('overdue_prefix') + label) : (label + t('left_suffix'));
   },
 
   // Wrapped in a single div (not just the bare label+input pair) so this always behaves as ONE
@@ -375,7 +375,7 @@ window.UI = {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'hulul-map-fullscreen-btn';
-    btn.title = 'Expand map to full screen';
+    btn.title = t('expand_fullscreen');
     btn.innerHTML = ICON('map_fullscreen_enter');
     mapEl.appendChild(btn);
 
@@ -415,7 +415,7 @@ window.UI = {
       mapEl.classList.toggle('hulul-map-fullscreen', active);
       document.body.classList.toggle('hulul-map-fullscreen-lock', active);
       btn.innerHTML = ICON(active ? 'map_fullscreen_exit' : 'map_fullscreen_enter');
-      btn.title = active ? 'Exit full screen' : 'Expand map to full screen';
+      btn.title = active ? t('exit_fullscreen') : t('expand_fullscreen');
       parkExtraControls(active);
       // Matches the CSS transition length below; invalidateSize() needs the box to have already
       // reached its final size or Leaflet measures mid-transition and gets it wrong.
@@ -450,7 +450,7 @@ window.UI = {
 
     var hint = document.createElement('div');
     hint.className = 'hulul-map-click-hint';
-    hint.textContent = 'Click to interact with the map';
+    hint.textContent = t('click_to_interact_map');
     mapEl.appendChild(hint);
 
     function activate() {
@@ -667,7 +667,7 @@ function hululApplyPagination_(wrap) {
   matching.forEach(function (r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
 
   var indicator = pager.querySelector('.table-pager-indicator');
-  if (indicator) indicator.textContent = matching.length ? ('Page ' + page + ' of ' + totalPages) : '';
+  if (indicator) indicator.textContent = matching.length ? t('page_of_total', { page: page, total: totalPages }) : '';
   var prevBtn = pager.querySelector('.table-page-prev');
   var nextBtn = pager.querySelector('.table-page-next');
   if (prevBtn) prevBtn.disabled = page <= 1;
@@ -750,7 +750,7 @@ function hululShowFilterSuggest_(wrap, header, items, renderItemFn, onPick) {
   box.innerHTML = '<div class="chat-suggest-header">' + esc(header) + '</div>' +
     (items.length
       ? items.slice(0, 30).map(function (it, i) { return '<div class="chat-suggest-item" data-idx="' + i + '">' + renderItemFn(it) + '</div>'; }).join('')
-      : '<div class="chat-suggest-empty">No matches</div>');
+      : '<div class="chat-suggest-empty">' + esc(t('no_suggestion_matches')) + '</div>');
   box.style.display = '';
   box.querySelectorAll('.chat-suggest-item').forEach(function (el) {
     // mousedown (not click) + preventDefault -- keeps the input focused so multiple values can be
@@ -775,7 +775,7 @@ function hululShowColumnValues_(wrap, input, col, query) {
   var values = hululFilterableValues_(wrap, col.idx).filter(function (v) {
     return (!query || v.toLowerCase().indexOf(query) !== -1) && !already[v.toLowerCase()];
   });
-  hululShowFilterSuggest_(wrap, col.label + ' — choose a value (multi-select)', values, function (v) { return esc(v); }, function (v) {
+  hululShowFilterSuggest_(wrap, t('choose_value_multiselect', { col: col.label }), values, function (v) { return esc(v); }, function (v) {
     wrap._hululFacets = wrap._hululFacets || [];
     var facet = wrap._hululFacets.filter(function (f) { return f.colIdx === col.idx; })[0];
     if (!facet) { facet = { colIdx: col.idx, colLabel: col.label, values: [] }; wrap._hululFacets.push(facet); }
@@ -796,10 +796,10 @@ function hululRenderFilterChips_(wrap) {
   facets.forEach(function (f, fi) {
     f.values.forEach(function (v, vi) {
       html.push('<span class="table-filter-chip"><strong>' + esc(f.colLabel) + ':</strong> ' + esc(v) +
-        ' <button type="button" data-facet-idx="' + fi + '" data-value-idx="' + vi + '" title="Remove">' + ICON('close_modal') + '</button></span>');
+        ' <button type="button" data-facet-idx="' + fi + '" data-value-idx="' + vi + '" title="' + esc(t('remove_btn')) + '">' + ICON('close_modal') + '</button></span>');
     });
   });
-  if (html.length) html.push('<button type="button" class="table-filter-clear-btn">Clear filters</button>');
+  if (html.length) html.push('<button type="button" class="table-filter-clear-btn">' + esc(t('clear_filters_btn')) + '</button>');
   chipsBox.innerHTML = html.join('');
   chipsBox.querySelectorAll('[data-facet-idx]').forEach(function (btn) {
     btn.onclick = function () {
@@ -871,7 +871,7 @@ document.addEventListener('input', function (e) {
   if (columnQuery !== null) {
     wrap._hululActiveColumn = null; // picking the column itself, not narrowing a chosen one's values yet
     var cols = hululFilterableColumns_(wrap).filter(function (c) { return !columnQuery || c.label.toLowerCase().indexOf(columnQuery) !== -1; });
-    hululShowFilterSuggest_(wrap, 'Filter by column', cols, function (c) { return esc(c.label); }, function (c) {
+    hululShowFilterSuggest_(wrap, t('filter_by_column'), cols, function (c) { return esc(c.label); }, function (c) {
       wrap._hululActiveColumn = c;
       input.value = '';
       input.focus();

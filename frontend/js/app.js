@@ -33,10 +33,10 @@ var NAV_ITEMS = [
   { path: '/checklist-items', icon: '✅', label: 'nav_checklist', entityLabel: 'checklistItem_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/inspector-qualifications', icon: '🎓', label: 'nav_qualifications', section: 'section_admin',
-    entityLabelFn: function () { return Term('inspector_plural') + ' Qualifications'; },
+    entityLabelFn: function () { return t('qualifications_page_title', { term: Term('inspector_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/template-library', icon: '📚', label: 'nav_template_library', section: 'section_admin',
-    entityLabelFn: function () { return Term('template_plural') + ' Library'; },
+    entityLabelFn: function () { return t('template_library_title', { term: Term('template_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/config', icon: '🛠️', label: 'nav_config', section: 'section_admin', roles: ['SystemAdmin'] },
   { path: '/settings', icon: '⚙️', label: 'nav_settings', section: 'section_admin' }
@@ -111,7 +111,7 @@ async function loadOrgLogo() {
 
 function renderSidebar() {
   var search = document.getElementById('globalSearch');
-  if (search) search.placeholder = 'Search ' + Term('event_plural').toLowerCase() + ', ' + Term('finding_plural').toLowerCase() + ', users…';
+  if (search) search.placeholder = t('search_placeholder', { events: Term('event_plural').toLowerCase(), findings: Term('finding_plural').toLowerCase() });
   var nav = document.getElementById('sidebarNav');
   var sections = {};
   NAV_ITEMS.forEach(function (item) {
@@ -216,14 +216,14 @@ function showEscalationLock_(item) {
   overlay.innerHTML =
     '<div class="escalation-lock-box">' +
       '<div class="escalation-lock-icon">⚠️</div>' +
-      '<div class="escalation-lock-tier">Tier ' + esc(item.tier) + ' Escalation</div>' +
+      '<div class="escalation-lock-tier">' + esc(t('tier_x_escalation', { tier: item.tier })) + '</div>' +
       '<div class="escalation-lock-title">' + esc(item.eventName || '') + '</div>' +
       '<div class="escalation-lock-meta">' + UI.riskBadge(item.riskLevel) + ' ' +
         esc(item.findingCategory || '') +
         (item.subZone ? ' · ' + esc(item.subZone) : '') + (item.location ? ' · ' + esc(item.location) : '') +
       '</div>' +
       '<div class="escalation-lock-desc">' + esc(item.findingDescription || '') + '</div>' +
-      '<button class="btn btn-primary" id="escalationLockNotedBtn">Noted</button>' +
+      '<button class="btn btn-primary" id="escalationLockNotedBtn">' + esc(t('noted_btn')) + '</button>' +
     '</div>';
   overlay.classList.remove('hidden');
   document.getElementById('escalationLockNotedBtn').onclick = async function () {
@@ -259,7 +259,7 @@ function wireChrome() {
       window.location.hash = '#/dashboard';
       Router.resolve();
     } catch (err) {
-      errBox.textContent = err.message || 'Login failed';
+      errBox.textContent = err.message || t('toast_login_failed');
       errBox.classList.remove('hidden');
     }
   });
@@ -327,14 +327,14 @@ function renderNotifPanel_(list) {
   var byId = {}; list.forEach(function (n) { byId[n.id] = n; });
   panel.innerHTML =
     '<div class="notif-panel-header"><span>' + esc(t('nav_notifications')) + '</span>' +
-    (list.length ? '<button class="btn btn-secondary btn-sm" id="clearAllNotifBtn">Clear all</button>' : '') + '</div>' +
+    (list.length ? '<button class="btn btn-secondary btn-sm" id="clearAllNotifBtn">' + esc(t('clear_all_btn')) + '</button>' : '') + '</div>' +
     (list.length
       ? list.map(function (n) {
           // notifTargetHash_/NOTIF_TAB_BY_RELATED_ live in notifications.js (loaded before this file).
           var clickable = !!notifTargetHash_(n);
           return '<div class="notif-item"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
             '<div data-goto-notif="' + n.id + '" style="flex:1;min-width:0;' + (clickable ? 'cursor:pointer;' : '') + '"><div>' + esc(n.message) + '</div><div class="meta">' + UI.fmtDate(n.createdAt) + '</div></div>' +
-            '<button class="btn btn-secondary btn-sm btn-icon" title="Clear" data-clear-notif="' + n.id + '" style="flex:none;">' + ICON('clear') + '</button>' +
+            '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('clear_title')) + '" data-clear-notif="' + n.id + '" style="flex:none;">' + ICON('clear') + '</button>' +
           '</div></div>';
         }).join('')
       : '<div class="empty-state">' + t('no_data') + '</div>');
