@@ -379,6 +379,18 @@ function openImportIconLibraryModal_(onDone) {
  * The left-hand Module/Role filters (perm-filters below) exist for exactly that growth -- with one
  * module this list is a formality, but it keeps the page navigable once there are six.
  */
+// Maps a Permissions module name to the real Event-workspace tab it lives under (EVENT_TABS,
+// eventDetail.js -- 'participants'/'findings' are that array's own tab keys). Returns null for a
+// module with no known tab (future modules that migrate to requirePermission but don't map to a
+// single tab can just be left out here -- the "found in / go to page" line simply won't render).
+function moduleTabInfo_(moduleName) {
+  var MODULE_TAB_MAP_ = {
+    'Risk Logging': { tabKey: 'findings', tabLabel: t('tab_findings') },
+    'Participants': { tabKey: 'participants', tabLabel: Term('participant_plural') }
+  };
+  return MODULE_TAB_MAP_[moduleName] || null;
+}
+
 async function renderPermissionsTab_(content) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   var data = await Api.call('listPermissions', {});
@@ -430,8 +442,24 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
   var groupsHtml = groupOrder.length
     ? groupOrder.map(function (moduleName) {
         var rows = groups[moduleName].map(function (perm) { return permissionRowHtml_(perm, data.allRoles); }).join('');
+        // REQ report: "Which module is this? ... refer to the specific page and tabs as it is more
+        // familiar, and easier to reach ... link to that page when clicked will highlight relevant
+        // sections for 10 seconds." Every module so far is a tab inside a specific Event's workspace
+        // (not a standalone top-level page), so there's no single event to deep-link into --
+        // moduleTabInfo_ below resolves the module name to the real tab it lives under; the link
+        // sends the user to the Events list with a one-shot "highlight this tab" flag, which
+        // renderEventDetail (eventDetail.js) picks up and flashes the moment ANY event is opened.
+        var tabInfo = moduleTabInfo_(moduleName);
         return '<div class="icon-settings-group">' +
-          '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
+          '<div class="icon-settings-group-title-row">' +
+            '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
+            (tabInfo
+              ? '<div class="perm-module-found-in">' +
+                  esc(t('module_found_in_event_tab', { term: Term('event').toLowerCase(), tab: tabInfo.tabLabel })) +
+                  ' <a href="#" class="perm-module-goto-link" data-goto-tab="' + esc(tabInfo.tabKey) + '">' + esc(t('go_to_page_link')) + '</a>' +
+                '</div>'
+              : '') +
+          '</div>' +
           rows +
           '</div>';
       }).join('')
@@ -457,6 +485,18 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
   // toggles the checkbox natively, this just keeps the chip's own "active" look in sync with it.
   content.querySelectorAll('.perm-role-chip input').forEach(function (cb) {
     cb.onchange = function () { cb.closest('.perm-role-chip').classList.toggle('active', cb.checked); };
+  });
+
+  // "Go to page" link (icon-settings-group-title-row above) -- stashes which tab to flash, then
+  // hands off to the Events list; see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js)
+  // for the highlight itself, which fires the moment any event is actually opened.
+  content.querySelectorAll('[data-goto-tab]').forEach(function (link) {
+    link.onclick = function (e) {
+      e.preventDefault();
+      sessionStorage.setItem(PENDING_TAB_HIGHLIGHT_KEY_, link.getAttribute('data-goto-tab'));
+      UI.toast(t('toast_open_any_event_hint', { term: Term('event').toLowerCase() }), 'success');
+      window.location.hash = '#/events';
+    };
   });
 
   content.querySelectorAll('[data-perm-save]').forEach(function (btn) {

@@ -60,6 +60,15 @@ function eventTabRenderers_() {
   return EVENT_TAB_RENDERERS_;
 }
 
+// REQ (Settings > Permissions follow-up): "Which module is this? ... link to that page when clicked
+// will highlight relevant sections for 10 seconds." Permissions modules (Participants, Risk Logging)
+// are tabs inside a specific Event's workspace, not standalone pages -- there's no single event to
+// deep-link into, so the Permissions tab's "Go to page" link (settings.js) instead stashes which tab
+// to highlight here and sends the user to the Events list; the moment ANY event is opened,
+// renderEventDetail below picks this up, flashes that tab for 10 seconds, and clears the flag
+// (one-shot, so revisiting an event later never re-flashes it).
+var PENDING_TAB_HIGHLIGHT_KEY_ = 'hululPendingTabHighlight';
+
 async function renderEventDetail(params) {
   var root = document.getElementById('viewRoot');
   var eventId = params.id;
@@ -93,6 +102,17 @@ async function renderEventDetail(params) {
   tabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
     btn.onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=' + btn.getAttribute('data-tab'); };
   });
+
+  var pendingHighlightTab = sessionStorage.getItem(PENDING_TAB_HIGHLIGHT_KEY_);
+  if (pendingHighlightTab) {
+    sessionStorage.removeItem(PENDING_TAB_HIGHLIGHT_KEY_); // one-shot
+    var highlightBtn = tabbar.querySelector('[data-tab="' + pendingHighlightTab + '"]');
+    if (highlightBtn) {
+      highlightBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      highlightBtn.classList.add('tab-btn-highlight');
+      setTimeout(function () { highlightBtn.classList.remove('tab-btn-highlight'); }, 10000);
+    }
+  }
 
   var content = document.getElementById('eventTabContent');
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';

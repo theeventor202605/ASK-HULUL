@@ -333,6 +333,15 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .tab-btn{ padding:10px 14px; font-size:13px; font-weight:600; color:var(--text-600); border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap; }
 .tab-btn:hover{ color:var(--text-900); }
 .tab-btn.active{ color:var(--accent); border-color:var(--accent); }
+/* REQ report (Settings > Permissions "Go to page" link): flashes the target tab for ~10s the moment
+   an event is opened -- see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js), which adds
+   this class and removes it via setTimeout(10000) as the actual (guaranteed) cleanup; the animation's
+   own iteration-count is just infinite pulsing until then. */
+.tab-btn.tab-btn-highlight{ color:var(--accent); border-radius:var(--radius-sm); animation:tabHighlightPulse 1.1s ease-in-out infinite; }
+@keyframes tabHighlightPulse{
+  0%, 100% { background:var(--accent-soft); box-shadow:0 0 0 0 var(--accent-soft); }
+  50% { background:var(--accent-soft); box-shadow:0 0 0 4px var(--accent-soft); }
+}
 
 /* ---------- Tables ---------- */
 .table-wrap{ overflow-x:auto; }
@@ -541,6 +550,13 @@ table.data-table tr:hover td{ background:#fafbff; }
 .perm-filter-count{ font-size:10.5px; font-weight:700; color:var(--text-400); }
 .perm-filter-item.active .perm-filter-count{ color:var(--accent-600); }
 .perm-main{ flex:1 1 480px; min-width:320px; }
+/* REQ report: "Which module is this? ... refer to the specific page and tabs ... link to that page"
+   -- the "found in / go to page" line under each module's title (settings.js groupsHtml). */
+.icon-settings-group-title-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+.icon-settings-group-title-row .icon-settings-group-title{ margin-bottom:0; }
+.perm-module-found-in{ font-size:11.5px; color:var(--text-400); font-weight:500; text-transform:none; letter-spacing:normal; }
+.perm-module-goto-link{ color:var(--accent); font-weight:700; text-decoration:none; }
+.perm-module-goto-link:hover{ text-decoration:underline; }
 .perm-row{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 16px; margin-bottom:10px; }
 /* Role toggles as pill chips instead of a dense checkbox+label grid -- the actual <input> stays a
    real checkbox (readCheckedRoles_/config.js reads it back on Save) but is visually hidden; clicking
