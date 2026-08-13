@@ -236,7 +236,7 @@ async function renderMeetings(params) {
     // whatever richTextPreview_ returns, same as every other custom render() in this app; the HTML
     // itself is only ever rendered in the full-page form (readRichTextField_/sanitizeRichText_
     // guarantee it's already limited to a safe tag allowlist by the time it gets here).
-    cols.push({ key: 'notes', label: t('col_notes'), render: r => {
+    cols.push({ key: 'notes', label: t('field_meeting_message'), render: r => {
       var preview = richTextPreview_(r.notes, 80);
       return preview ? esc(preview) : '<span class="muted">—</span>';
     } });
@@ -626,7 +626,7 @@ async function renderMeetingFormPage_(mode, params) {
       userPickerFieldHtml_('fMtgTo', t('field_to'), isEdit ? safeJsonArray_(meeting.toJson) : [], users) +
       userPickerFieldHtml_('fMtgCc', t('field_cc'), isEdit ? safeJsonArray_(meeting.ccJson) : [], users) +
       UI.field(t('field_meeting_link'), '<input id="fMtgLink" type="url" class="field-input" placeholder="https://…" value="' + esc(isEdit ? (meeting.meetingLink || '') : '') + '" />') +
-      richTextFieldHtml_('fMtgNotes', t('col_notes'), isEdit ? (meeting.notes || '') : '') +
+      richTextFieldHtml_('fMtgNotes', t('field_meeting_message'), isEdit ? (meeting.notes || '') : '') +
       '<div style="display:flex;gap:8px;margin-top:16px;">' +
         '<button class="btn btn-primary" id="saveMtgFormBtn">' + esc(isEdit ? t('save') : t('create')) + '</button>' +
         '<a class="btn btn-secondary" href="' + esc(backHash) + '">' + esc(t('cancel')) + '</a>' +
