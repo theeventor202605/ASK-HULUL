@@ -50,18 +50,18 @@ async function renderVenues() {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('venue_plural')) + '</div>' +
-    '<div class="page-subtitle">' + esc(Term('venue_plural') + ' available to assign to ' + Term('event_plural')) + '</div></div>' +
-    '<button class="btn btn-primary" id="newVenueBtn">+ New ' + esc(Term('venue').toLowerCase()) + '</button></div>' +
+    '<div class="page-subtitle">' + esc(t('venues_subtitle', { term: Term('venue_plural'), eventTerm: Term('event_plural') })) + '</div></div>' +
+    '<button class="btn btn-primary" id="newVenueBtn">' + esc(t('new_x', { term: Term('venue').toLowerCase() })) + '</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'name', label: 'Name' }, { key: 'address', label: 'Address' }, { key: 'city', label: 'City' },
-      { key: 'lat', label: 'Coordinates', render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
-      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
-      { key: 'actions', label: 'Actions', render: r =>
+      { key: 'name', label: t('col_name') }, { key: 'address', label: t('col_address') }, { key: 'city', label: t('col_city') },
+      { key: 'lat', label: t('col_coordinates'), render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
+      { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
+      { key: 'actions', label: t('actions'), render: r =>
           '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
-            '<button class="btn btn-secondary btn-sm btn-icon" title="Places" data-manage-places="' + esc(r.id) + '">' + ICON('location_pin') + '</button>' +
+            '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('places_label')) + '" data-manage-places="' + esc(r.id) + '">' + ICON('location_pin') + '</button>' +
             (canManage
-              ? '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
-                '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-venue="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+              ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
+                '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-venue="' + esc(r.id) + '">' + ICON('delete') + '</button>'
               : '') +
           '</div>'
       }
@@ -85,16 +85,16 @@ async function confirmDeleteVenue_(venueId) {
     if (impact.hasImpact) {
       var parts = [];
       if (impact.zonesCount) parts.push(impact.zonesCount + ' ' + (impact.zonesCount === 1 ? Term('zone') : Term('zone_plural')).toLowerCase());
-      if (impact.placesCount) parts.push(impact.placesCount + ' place' + (impact.placesCount === 1 ? '' : 's'));
+      if (impact.placesCount) parts.push(impact.placesCount + ' ' + (impact.placesCount === 1 ? t('word_place') : t('word_place_plural')));
       if (impact.eventsCount) parts.push(impact.eventsCount + ' ' + (impact.eventsCount === 1 ? Term('event') : Term('event_plural')).toLowerCase());
-      if (impact.evaluationsCount) parts.push(impact.evaluationsCount + ' venue evaluation' + (impact.evaluationsCount === 1 ? '' : 's'));
-      UI.toast('Can\'t delete — this ' + Term('venue').toLowerCase() + ' already has ' + parts.join(', ') + ' tied to it.', 'error');
+      if (impact.evaluationsCount) parts.push(impact.evaluationsCount + ' ' + (impact.evaluationsCount === 1 ? t('word_venue_evaluation') : t('word_venue_evaluation_plural')));
+      UI.toast(t('toast_cant_delete_has_parts', { term: Term('venue').toLowerCase(), parts: parts.join(', ') }), 'error');
       return;
     }
-    UI.confirmModal('Delete this ' + Term('venue').toLowerCase() + '? This can\'t be undone.', async function () {
-      try { await Api.call('deleteVenue', { venueId: venueId }); UI.toast(Term('venue') + ' deleted', 'success'); Router.resolve(); }
+    UI.confirmModal(t('delete_x_confirm', { term: Term('venue').toLowerCase() }), async function () {
+      try { await Api.call('deleteVenue', { venueId: venueId }); UI.toast(t('x_deleted', { term: Term('venue') }), 'success'); Router.resolve(); }
       catch (err) { UI.error(err); }
-    }, { title: 'Delete ' + Term('venue').toLowerCase(), confirmLabel: 'Delete' });
+    }, { title: t('delete_modal_title', { term: Term('venue').toLowerCase() }), confirmLabel: t('delete') });
   } catch (err) { UI.error(err); }
 }
 
@@ -103,7 +103,7 @@ async function renderNewVenue() { await renderVenueForm_(null); }
 async function renderEditVenue(params) {
   var venues = await Api.call('listVenues', { includeDeleted: true });
   var venue = venues.filter(function (v) { return v.id === params.id; })[0];
-  if (!venue) { document.getElementById('viewRoot').innerHTML = '<div class="empty-state">' + esc(Term('venue')) + ' not found.</div>'; return; }
+  if (!venue) { document.getElementById('viewRoot').innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
   await renderVenueForm_(venue);
 }
 
@@ -131,34 +131,34 @@ async function renderVenueForm_(existingVenue) {
   }
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + (isEdit ? 'Edit ' : 'New ') + esc(Term('venue')) + '</div>' +
-    '<div class="page-subtitle">' + (isEdit ? 'Update ' + esc(Term('venue').toLowerCase()) + ' information' : 'Add a ' + esc(Term('venue').toLowerCase()) + ' your ' + esc(Term('event_plural').toLowerCase()) + ' can be held at') + '</div></div>' +
-    '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' Back</button></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(isEdit ? t('edit_x', { term: Term('venue') }) : t('new_x_title', { term: Term('venue') })) + '</div>' +
+    '<div class="page-subtitle">' + esc(isEdit ? t('venue_edit_subtitle', { term: Term('venue').toLowerCase() }) : t('venue_new_subtitle', { term: Term('venue').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() })) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
     '<div class="card">' +
       '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
-        UI.field('Name', '<input id="fVName" class="field-input" value="' + (isEdit ? esc(existingVenue.name) : '') + '" />') +
+        UI.field(t('col_name'), '<input id="fVName" class="field-input" value="' + (isEdit ? esc(existingVenue.name) : '') + '" />') +
         '<div style="margin-top:10px;position:relative;">' +
           '<div style="display:flex;flex-direction:column;gap:4px;">' +
-            UI.field('Search a place (optional)', '<input id="fVSearch" class="field-input" placeholder="Type a place name…" autocomplete="off" />') +
+            UI.field(t('field_search_place'), '<input id="fVSearch" class="field-input" placeholder="' + esc(t('search_place_placeholder')) + '" autocomplete="off" />') +
           '</div>' +
           // z-index must clear Leaflet's own panes/controls (it uses up to 1000 internally, e.g.
           // .leaflet-top/.leaflet-bottom) or this dropdown renders invisibly underneath the map.
           '<div id="fVSearchResults" style="position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;display:none;background:#fff;box-shadow:var(--shadow-md);z-index:2000;"></div>' +
         '</div>' +
-        '<div style="margin-top:10px;">' + UI.field('Boundary color', '<input id="fVColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc((isEdit && existingVenue.color) ? existingVenue.color : VENUE_BOUNDARY_DEFAULT_COLOR_) + '" />') + '</div>' +
+        '<div style="margin-top:10px;">' + UI.field(t('field_boundary_color'), '<input id="fVColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc((isEdit && existingVenue.color) ? existingVenue.color : VENUE_BOUNDARY_DEFAULT_COLOR_) + '" />') + '</div>' +
         '<div id="venueMap" style="height:340px;border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border);"></div>' +
-        '<div class="muted" style="font-size:11px;margin-top:6px;">Search above, or drag the pin, to fill in the location — or just type the fields below manually. Use the polygon tool on the map (optional) to draw this ' + esc(Term('venue').toLowerCase()) + '\'s boundary — Places will need to land inside it once drawn; leave undrawn to keep placement unrestricted. The color picker above sets how the boundary renders on this and every other map that shows it.' +
-          (venuePlacesWithCoords.length ? ' Dots show this ' + esc(Term('venue').toLowerCase()) + '\'s ' + venuePlacesWithCoords.length + ' already-registered place(s).' : '') + '</div>' +
-        UI.field('Address', '<input id="fVAddress" class="field-input" value="' + (isEdit ? esc(existingVenue.address) : '') + '" />') +
-        UI.field('City', '<input id="fVCity" class="field-input" value="' + (isEdit ? esc(existingVenue.city) : '') + '" />') +
+        '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('venue_map_hint', { term: Term('venue').toLowerCase() })) +
+          (venuePlacesWithCoords.length ? esc(t('venue_map_hint_dots', { term: Term('venue').toLowerCase(), count: venuePlacesWithCoords.length })) : '') + '</div>' +
+        UI.field(t('col_address'), '<input id="fVAddress" class="field-input" value="' + (isEdit ? esc(existingVenue.address) : '') + '" />') +
+        UI.field(t('col_city'), '<input id="fVCity" class="field-input" value="' + (isEdit ? esc(existingVenue.city) : '') + '" />') +
         '<div class="form-row">' +
-          UI.field('Latitude', '<input id="fVLat" type="number" step="any" class="field-input" placeholder="24.7136" value="' + (isEdit && existingVenue.lat !== '' ? esc(String(existingVenue.lat)) : '') + '" />') +
-          UI.field('Longitude', '<input id="fVLng" type="number" step="any" class="field-input" placeholder="46.6753" value="' + (isEdit && existingVenue.lng !== '' ? esc(String(existingVenue.lng)) : '') + '" />') +
+          UI.field(t('field_latitude'), '<input id="fVLat" type="number" step="any" class="field-input" placeholder="24.7136" value="' + (isEdit && existingVenue.lat !== '' ? esc(String(existingVenue.lat)) : '') + '" />') +
+          UI.field(t('field_longitude'), '<input id="fVLng" type="number" step="any" class="field-input" placeholder="46.6753" value="' + (isEdit && existingVenue.lng !== '' ? esc(String(existingVenue.lng)) : '') + '" />') +
         '</div>' +
       '</div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
         '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>' +
-        '<button class="btn btn-primary" id="createVenueBtn">' + (isEdit ? 'Save changes' : t('create')) + '</button>' +
+        '<button class="btn btn-primary" id="createVenueBtn">' + (isEdit ? esc(t('save_changes')) : t('create')) + '</button>' +
       '</div>' +
     '</div>';
 
@@ -167,7 +167,7 @@ async function renderVenueForm_(existingVenue) {
   document.getElementById('createVenueBtn').onclick = async function () {
     try {
       var name = document.getElementById('fVName').value.trim();
-      if (!name) { UI.toast('Name is required', 'error'); return; }
+      if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
       var payload = {
         name: name,
         address: document.getElementById('fVAddress').value,
@@ -184,7 +184,7 @@ async function renderVenueForm_(existingVenue) {
         await Api.call('createVenue', payload);
       }
       destroyVenueMap_();
-      UI.toast(Term('venue') + (isEdit ? ' updated' : ' created'), 'success');
+      UI.toast(isEdit ? t('x_updated', { term: Term('venue') }) : t('x_created', { term: Term('venue') }), 'success');
       window.location.hash = '#/venues';
     } catch (err) { UI.error(err); }
   };
@@ -218,7 +218,7 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, v
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library) — search still works if the network allows it, or fill in the fields below manually.';
+    el.textContent = t('venue_map_unavailable');
     return;
   }
   var center = startCenter || VENUE_DEFAULT_CENTER;
@@ -242,12 +242,12 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, v
     var showingSatellite = false;
     // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
-    var venueSatBtn = UI.mapToggleButton('toggleVenueSatelliteBtn', 'satellite_toggle', 'Satellite');
+    var venueSatBtn = UI.mapToggleButton('toggleVenueSatelliteBtn', 'satellite_toggle', t('map_satellite'));
     UI.mapControls(mapEl, [venueSatBtn]);
     venueSatBtn.onclick = function () {
       showingSatellite = !showingSatellite;
-      if (showingSatellite) { venueMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('map_toggle') + ' Map'; }
-      else { venueMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+      if (showingSatellite) { venueMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { venueMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
     };
     // REQ: "Drawing boundaries on small map is hard, need to be able to extend map to full screen" --
     // see UI.wireMapFullscreen (ui.js) for why this isn't the browser Fullscreen API. No extraControls
@@ -435,14 +435,14 @@ async function runVenueSearch_(q, input, results) {
     // privacy/ad-block extension silently dropping the request (the same class of issue we saw
     // with a blocked map-tile CDN earlier). Say so instead of leaving the box looking unresponsive.
     if (results && document.body.contains(results)) {
-      results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--danger);">Search unavailable — a browser extension may be blocking it. Fill in the fields below manually instead.</div>';
+      results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--danger);">' + esc(t('search_unavailable_extension')) + '</div>';
       results.style.display = 'block';
     }
     return;
   }
   if (!input || !results || !document.body.contains(results)) return; // page may have navigated away meanwhile
   if (!places.length) {
-    results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-600);">No matches</div>';
+    results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-600);">' + esc(t('no_matches_suggest')) + '</div>';
     results.style.display = 'block';
     return;
   }
@@ -494,7 +494,7 @@ async function renderVenuePlaces(params) {
   var venueId = params.id;
   var venues = await Api.call('listVenues', {});
   var venue = venues.filter(function (v) { return v.id === venueId; })[0];
-  if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(Term('venue')) + ' not found.</div>'; return; }
+  if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
 
   var role = HululState.user.role;
   // A Venue isn't org-scoped (see file header comment) -- any EMC_MANAGE_ROLES member can manage
@@ -526,40 +526,40 @@ async function renderVenuePlaces(params) {
   }
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">Places — ' + esc(venue.name) + '</div>' +
-    '<div class="page-subtitle">Reusable spots at this ' + esc(Term('venue').toLowerCase()) + ' for Vendors, Operators, and Exhibitors</div></div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(t('places_title', { venueName: venue.name })) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('places_subtitle', { term: Term('venue').toLowerCase() })) + '</div></div>' +
     '<div style="display:flex;gap:8px;">' +
       // REQ: "Add a helper button to identify all places within the venue boundary and add them
       // automatically." Needs a drawn boundary to search within (see openDetectPlacesModal_) --
       // hidden rather than shown-disabled when there isn't one, same convention as the rest of this
       // page (e.g. the Add-a-place map's own boundary-dependent hint text).
       (canManage && hasBoundary
-        ? '<button class="btn btn-secondary" id="detectPlacesBtn">' + ICON('detect_places') + ' Detect places in boundary</button>'
+        ? '<button class="btn btn-secondary" id="detectPlacesBtn">' + ICON('detect_places') + ' ' + esc(t('detect_places_btn')) + '</button>'
         : '') +
-      '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' Back</button>' +
+      '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button>' +
     '</div></div>' +
     (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'name', label: 'Name' },
-      { key: 'type', label: 'Type' },
+      { key: 'name', label: t('col_name') },
+      { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
-      { key: 'location', label: 'Location', render: r => r.location ? esc(r.location) : '—' },
-      { key: 'lat', label: 'Coordinates', render: r => (r.lat !== '' && r.lng !== '') ? (Number(r.lat).toFixed(5) + ', ' + Number(r.lng).toFixed(5)) : '—' },
+      { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' },
+      { key: 'lat', label: t('col_coordinates'), render: r => (r.lat !== '' && r.lng !== '') ? (Number(r.lat).toFixed(5) + ', ' + Number(r.lng).toFixed(5)) : '—' },
       // Auto-provisioned login(s) for this place (see provisionPlaceAccount_ in Places.gs) --
       // usually one, but can be more than one for separate shift staff (addPlaceAccount below).
-      { key: 'accounts', label: 'Account(s)', render: r => (r.accounts && r.accounts.length)
+      { key: 'accounts', label: t('col_accounts'), render: r => (r.accounts && r.accounts.length)
           ? r.accounts.map(a => '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">' +
-              '<span>' + esc(a.email) + (a.status !== 'Active' ? ' <span class="muted">(inactive)</span>' : '') + '</span>' +
-              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="View credentials" data-view-creds="' + esc(a.id) + '">' + ICON('view_credentials') + '</button>' : '') +
+              '<span>' + esc(a.email) + (a.status !== 'Active' ? ' <span class="muted">' + esc(t('word_inactive')) + '</span>' : '') + '</span>' +
+              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('view_credentials_label')) + '" data-view-creds="' + esc(a.id) + '">' + ICON('view_credentials') + '</button>' : '') +
             '</div>').join('')
           : '—' },
-      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
-      { key: 'createdBy', label: 'Created By', render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
-    ].concat(canManage ? [{ key: 'actions', label: 'Actions', render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-place="' + esc(r.id) + '">' + ICON('edit') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Add another account" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
-      places, { emptyText: 'No places yet.' }) + '</div></div>';
+      { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
+      { key: 'createdBy', label: t('col_created_by'), render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-place="' + esc(r.id) + '">' + ICON('edit') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
+      places, { emptyText: t('empty_places') }) + '</div></div>';
 
   document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
   var detectPlacesBtn = document.getElementById('detectPlacesBtn');
@@ -575,10 +575,10 @@ async function renderVenuePlaces(params) {
     });
     document.querySelectorAll('[data-delete-place]').forEach(function (btn) {
       btn.onclick = function () {
-        UI.confirmModal('Remove this place? This can\'t be undone.', async function () {
-          try { await Api.call('deletePlace', { placeId: btn.getAttribute('data-delete-place') }); UI.toast('Place deleted', 'success'); Router.resolve(); }
+        UI.confirmModal(t('confirm_delete_place'), async function () {
+          try { await Api.call('deletePlace', { placeId: btn.getAttribute('data-delete-place') }); UI.toast(t('toast_place_deleted'), 'success'); Router.resolve(); }
           catch (err) { UI.error(err); }
-        }, { title: 'Delete place', confirmLabel: 'Delete' });
+        }, { title: t('delete_place_modal_title'), confirmLabel: t('delete') });
       };
     });
     document.querySelectorAll('[data-add-account]').forEach(function (btn) {
@@ -618,15 +618,15 @@ function showPlaceAccountModal_(place, account) {
   var qrDataUrl = ''; // filled in once the QR renders below; the Print/Share handlers close over this var
   var body =
     '<div style="font-size:13.5px;line-height:1.7;">' +
-      '<div style="margin-bottom:12px;">A ' + esc(account.role) + ' login for <strong>' + esc(name) + '</strong>.</div>' +
-      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">Email</span><span style="font-weight:600;">' + esc(account.email) + '</span></div>' +
-      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">Password</span><span style="font-weight:600;">' + esc(account.password) + '</span></div>' +
-      '<div class="muted" style="font-size:11.5px;margin:12px 0 8px;">Scan on the participant\'s phone to sign them in automatically — no typing required. The same code keeps working every time.</div>' +
+      '<div style="margin-bottom:12px;">' + esc(t('account_role_login_prefix', { role: account.role })) + '<strong>' + esc(name) + '</strong>.</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">' + esc(t('email')) + '</span><span style="font-weight:600;">' + esc(account.email) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span class="muted">' + esc(t('password')) + '</span><span style="font-weight:600;">' + esc(account.password) + '</span></div>' +
+      '<div class="muted" style="font-size:11.5px;margin:12px 0 8px;">' + esc(t('qr_hint')) + '</div>' +
       '<div id="placeAccountQr" style="display:flex;justify-content:center;padding:6px 0;"></div>' +
     '</div>';
-  UI.openModal('Account credentials', body, [
-    { label: ICON('print') + ' Print', className: 'btn-secondary', onClick: function () { printPlaceAccountCredentials_(name, account, qrDataUrl); } },
-    { label: ICON('share') + ' Share', className: 'btn-secondary', onClick: function () { sharePlaceAccountCredentials_(name, account, quickUrl); } },
+  UI.openModal(t('account_credentials_title'), body, [
+    { label: ICON('print') + ' ' + t('print_btn'), className: 'btn-secondary', onClick: function () { printPlaceAccountCredentials_(name, account, qrDataUrl); } },
+    { label: ICON('share') + ' ' + t('share_btn'), className: 'btn-secondary', onClick: function () { sharePlaceAccountCredentials_(name, account, quickUrl); } },
     { label: t('close'), className: 'btn-primary', onClick: UI.closeModal }
   ]);
   var qrEl = document.getElementById('placeAccountQr');
@@ -638,7 +638,7 @@ function showPlaceAccountModal_(place, account) {
     var img = qrEl.querySelector('img');
     qrDataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : '');
   } else if (qrEl) {
-    qrEl.innerHTML = '<div class="muted" style="font-size:11.5px;">QR code unavailable — share the email/password above instead.</div>';
+    qrEl.innerHTML = '<div class="muted" style="font-size:11.5px;">' + esc(t('qr_unavailable')) + '</div>';
   }
 }
 
@@ -646,7 +646,7 @@ function showPlaceAccountModal_(place, account) {
 // name/email/password and QR image, and triggers the browser's print dialog on it.
 function printPlaceAccountCredentials_(name, account, qrDataUrl) {
   var w = window.open('', '_blank', 'width=420,height=640');
-  if (!w) { UI.toast('Please allow pop-ups to print', 'error'); return; }
+  if (!w) { UI.toast(t('toast_allow_popups'), 'error'); return; }
   w.document.write(
     '<!DOCTYPE html><html><head><title>' + esc(name) + ' — login</title>' +
     '<meta charset="UTF-8" /><style>' +
@@ -657,10 +657,10 @@ function printPlaceAccountCredentials_(name, account, qrDataUrl) {
       'p{font-size:12px;color:#666;margin-top:14px;}' +
     '</style></head><body>' +
       '<h2>' + esc(name) + '</h2>' +
-      '<div class="row"><span>Email</span><strong>' + esc(account.email) + '</strong></div>' +
-      '<div class="row"><span>Password</span><strong>' + esc(account.password) + '</strong></div>' +
+      '<div class="row"><span>' + esc(t('email')) + '</span><strong>' + esc(account.email) + '</strong></div>' +
+      '<div class="row"><span>' + esc(t('password')) + '</span><strong>' + esc(account.password) + '</strong></div>' +
       (qrDataUrl ? '<img src="' + qrDataUrl + '" alt="Quick sign-in QR code" />' : '') +
-      '<p>Scan the QR code to sign in automatically.</p>' +
+      '<p>' + esc(t('print_scan_hint')) + '</p>' +
     '</body></html>'
   );
   w.document.close();
@@ -677,8 +677,8 @@ async function sharePlaceAccountCredentials_(name, account, quickUrl) {
     try { await navigator.share({ title: 'HULUL login — ' + name, text: text }); return; }
     catch (e) { return; } // user cancelled the native share sheet -- not an error worth a toast
   }
-  try { await navigator.clipboard.writeText(text); UI.toast('Copied to clipboard', 'success'); }
-  catch (e) { UI.toast('Could not copy — copy the details manually', 'error'); }
+  try { await navigator.clipboard.writeText(text); UI.toast(t('toast_copied_clipboard'), 'success'); }
+  catch (e) { UI.toast(t('toast_copy_failed'), 'error'); }
 }
 
 // Zone field for a Place form: a single-select (No zone / All Zones / one zone) for Vendor/
@@ -699,29 +699,29 @@ async function sharePlaceAccountCredentials_(name, account, quickUrl) {
 // override if the auto-pick is wrong; once they do, autoDetectZone_ stops re-overwriting their
 // choice on later pin moves (see the userOverride dataset flag).
 function zoneFieldHtml_(zones, prefix) {
-  var singleOptions = '<option value="">No zone</option><option value="ALL">All Zones</option>' +
+  var singleOptions = '<option value="">' + esc(t('no_zone_option')) + '</option><option value="ALL">' + esc(t('all_zones_option')) + '</option>' +
     zones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('');
   // "All Zones" spans both columns with a divider below it (it's a distinct select-all toggle, not
   // just another item in the list); the individual zones then flow into a compact 2-column grid
   // instead of one tall single-file list -- keeps the box's footprint close to its actual content
   // instead of a narrow column of checkboxes with a lot of dead space beside it.
   var checkboxRows = '<label style="grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--border);">' +
-      '<input type="checkbox" id="' + prefix + 'ZoneAll" /> All Zones</label>' +
+      '<input type="checkbox" id="' + prefix + 'ZoneAll" /> ' + esc(t('all_zones_option')) + '</label>' +
     (zones.length ? zones.map(function (z) {
       return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
         '<input type="checkbox" class="' + prefix + 'ZoneCheck" value="' + z.id + '" /> ' + esc(z.name) + '</label>';
-    }).join('') : '<div class="muted" style="grid-column:1/-1;font-size:12px;">No ' + esc(Term('zone_plural').toLowerCase()) + ' set up yet.</div>');
+    }).join('') : '<div class="muted" style="grid-column:1/-1;font-size:12px;">' + esc(t('no_zones_setup_yet', { term: Term('zone_plural').toLowerCase() })) + '</div>');
   return (
     '<div id="' + prefix + 'ZoneSingle">' +
       '<div id="' + prefix + 'ZoneAutoWrap" style="display:none;">' +
         '<label class="field-label">' + esc(Term('zone')) + '</label>' +
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);font-size:12.5px;">' +
           '<span id="' + prefix + 'ZoneAutoLabel" style="flex:1;"></span>' +
-          '<button type="button" id="' + prefix + 'ZoneAutoChangeBtn" class="map-toggle-btn" style="padding:3px 8px;font-size:11px;">Change</button>' +
+          '<button type="button" id="' + prefix + 'ZoneAutoChangeBtn" class="map-toggle-btn" style="padding:3px 8px;font-size:11px;">' + esc(t('change_btn')) + '</button>' +
         '</div>' +
       '</div>' +
       '<div id="' + prefix + 'ZoneManualWrap">' +
-        UI.field(Term('zone') + ' (optional)', '<select id="' + prefix + 'ZoneSelect" class="field-input">' + singleOptions + '</select>') +
+        UI.field(t('field_zone_optional', { term: Term('zone') }), '<select id="' + prefix + 'ZoneSelect" class="field-input">' + singleOptions + '</select>') +
       '</div>' +
     '</div>' +
     '<div id="' + prefix + 'ZoneMulti" style="display:none;">' +
@@ -781,7 +781,7 @@ function autoDetectZone_(prefix, zones, lat, lng) {
   })[0];
   if (match) {
     select.value = match.id;
-    if (autoLabel) autoLabel.textContent = 'Auto-detected: ' + match.name;
+    if (autoLabel) autoLabel.textContent = t('auto_detected_prefix', { name: match.name });
     autoWrap.style.display = '';
     manualWrap.style.display = 'none';
   } else {
@@ -811,7 +811,7 @@ function getZoneFieldValue_(prefix) {
 // for inspection purposes (pass 'All zones').
 function zoneDisplayNames_(zoneIdField, zonesById, blankText) {
   if (!zoneIdField) return blankText !== undefined ? blankText : '—';
-  if (zoneIdField === 'ALL') return 'All Zones';
+  if (zoneIdField === 'ALL') return t('all_zones_option');
   return String(zoneIdField).split(',').filter(Boolean).map(function (id) {
     return zonesById[id] ? zonesById[id].name : id;
   }).join(', ');
@@ -822,33 +822,33 @@ function renderAddPlaceCard_(zones, hasBoundary) {
   // fields column, instead of a second full-width map stacked below everything) and the map is a
   // compact fixed height that roughly matches the fields column instead of a large standalone block.
   // flex-wrap lets the map drop below the fields on narrow/mobile widths instead of squeezing both.
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add a place</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('add_place_card_title')) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
       '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
-        UI.field('Name', '<input id="fPlName" class="field-input" />') +
+        UI.field(t('col_name'), '<input id="fPlName" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field('Type', '<select id="fPlType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
+          UI.field(t('col_type'), '<select id="fPlType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fPl') + '</div>' +
         '</div>' +
         '<div class="form-row">' +
-          UI.field('Latitude', '<input id="fPlLat" type="number" step="any" class="field-input" />') +
-          UI.field('Longitude', '<input id="fPlLng" type="number" step="any" class="field-input" />') +
+          UI.field(t('field_latitude'), '<input id="fPlLat" type="number" step="any" class="field-input" />') +
+          UI.field(t('field_longitude'), '<input id="fPlLng" type="number" step="any" class="field-input" />') +
         '</div>' +
-        UI.field('Location (optional)', '<input id="fPlLocation" class="field-input" placeholder="e.g. Near Gate A, north entrance" />') +
+        UI.field(t('field_location_optional'), '<input id="fPlLocation" class="field-input" placeholder="' + esc(t('location_placeholder')) + '" />') +
       '</div>' +
       '<div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:8px;">' +
         '<div id="placeMap" style="height:380px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
         '<div class="muted" style="font-size:11px;">' +
           (hasBoundary
-            ? 'Click or drag the pin to set the exact spot — must stay within the ' + esc(Term('venue').toLowerCase()) + ' boundary (shaded area).'
-            : 'This ' + esc(Term('venue').toLowerCase()) + ' has no boundary drawn yet, so location isn\'t map-restricted — click the map or type coordinates manually.') +
+            ? esc(t('place_map_hint_bounded', { term: Term('venue').toLowerCase() }))
+            : esc(t('place_map_hint_unbounded', { term: Term('venue').toLowerCase() }))) +
         '</div>' +
       '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-      '<button class="btn btn-primary" id="addPlaceBtn">Add place</button>' +
+      '<button class="btn btn-primary" id="addPlaceBtn">' + esc(t('add_place_btn')) + '</button>' +
     '</div>' +
   '</div>';
 }
@@ -861,14 +861,14 @@ function wirePlaceForm_(venue, zones, places) {
   document.getElementById('addPlaceBtn').onclick = async function () {
     try {
       var name = document.getElementById('fPlName').value.trim();
-      if (!name) { UI.toast('Name is required', 'error'); return; }
+      if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
       var payload = {
         venueId: venue.id, name: name, type: document.getElementById('fPlType').value,
         zoneId: getZoneFieldValue_('fPl'), location: document.getElementById('fPlLocation').value,
         lat: document.getElementById('fPlLat').value, lng: document.getElementById('fPlLng').value
       };
       var res = await Api.call('createPlace', payload);
-      UI.toast('Place added', 'success');
+      UI.toast(t('toast_place_added'), 'success');
       await Router.resolve();
       showPlaceAccountModal_(res.place, res.account);
     } catch (err) { UI.error(err); }
@@ -882,25 +882,25 @@ function wirePlaceForm_(venue, zones, places) {
 function openEditPlaceModal_(place, zones) {
   var prefix = 'ePl';
   var body =
-    UI.field('Name', '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
+    UI.field(t('col_name'), '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
     '<div class="form-row">' +
-      UI.field('Type', '<select id="' + prefix + 'Type" class="field-input">' + PLACE_TYPES.map(function (ty) {
+      UI.field(t('col_type'), '<select id="' + prefix + 'Type" class="field-input">' + PLACE_TYPES.map(function (ty) {
         return '<option value="' + ty + '"' + (ty === place.type ? ' selected' : '') + '>' + ty + '</option>';
       }).join('') + '</select>') +
       '<div>' + zoneFieldHtml_(zones, prefix) + '</div>' +
     '</div>' +
     '<div class="form-row">' +
-      UI.field('Latitude', '<input id="' + prefix + 'Lat" type="number" step="any" class="field-input" value="' + (place.lat !== '' && place.lat != null ? esc(String(place.lat)) : '') + '" />') +
-      UI.field('Longitude', '<input id="' + prefix + 'Lng" type="number" step="any" class="field-input" value="' + (place.lng !== '' && place.lng != null ? esc(String(place.lng)) : '') + '" />') +
+      UI.field(t('field_latitude'), '<input id="' + prefix + 'Lat" type="number" step="any" class="field-input" value="' + (place.lat !== '' && place.lat != null ? esc(String(place.lat)) : '') + '" />') +
+      UI.field(t('field_longitude'), '<input id="' + prefix + 'Lng" type="number" step="any" class="field-input" value="' + (place.lng !== '' && place.lng != null ? esc(String(place.lng)) : '') + '" />') +
     '</div>' +
-    UI.field('Location (optional)', '<input id="' + prefix + 'Location" class="field-input" placeholder="e.g. Near Gate A, north entrance" value="' + esc(place.location || '') + '" />');
+    UI.field(t('field_location_optional'), '<input id="' + prefix + 'Location" class="field-input" placeholder="' + esc(t('location_placeholder')) + '" value="' + esc(place.location || '') + '" />');
 
-  UI.openModal('Edit place', body, [
+  UI.openModal(t('edit_place_modal_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Save', className: 'btn-primary', onClick: async function () {
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
         try {
           var name = document.getElementById(prefix + 'Name').value.trim();
-          if (!name) { UI.toast('Name is required', 'error'); return; }
+          if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
           var payload = {
             placeId: place.id, name: name, type: document.getElementById(prefix + 'Type').value,
             zoneId: getZoneFieldValue_(prefix), location: document.getElementById(prefix + 'Location').value,
@@ -908,7 +908,7 @@ function openEditPlaceModal_(place, zones) {
           };
           await Api.call('updatePlace', payload);
           UI.closeModal();
-          UI.toast('Place updated', 'success');
+          UI.toast(t('toast_place_updated'), 'success');
           Router.resolve();
         } catch (err) { UI.error(err); }
       } }
@@ -941,7 +941,7 @@ function initPlaceMap_(venue, zones, places) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library) — type coordinates manually below.';
+    el.textContent = t('place_map_unavailable');
     return;
   }
   var hasCoords = !!(venue.lat && venue.lng);
@@ -961,8 +961,8 @@ function initPlaceMap_(venue, zones, places) {
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map. This
     // also means wireMapFullscreen no longer needs to reparent them (see the old BUG comment this
     // replaced): they're already inside the div that goes full screen.
-    var locBtn = UI.mapToggleButton('useMyLocationBtn', 'location_pin', 'Use my location');
-    var satBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', 'Satellite');
+    var locBtn = UI.mapToggleButton('useMyLocationBtn', 'location_pin', t('use_my_location'));
+    var satBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', t('map_satellite'));
     UI.mapControls(mapEl, [locBtn, satBtn]);
     placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -971,8 +971,8 @@ function initPlaceMap_(venue, zones, places) {
     var showingSatellite = false;
     satBtn.onclick = function () {
       showingSatellite = !showingSatellite;
-      if (showingSatellite) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' Map'; }
-      else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+      if (showingSatellite) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
     };
     if (boundary) {
       var venueBoundaryColor = (venue && venue.color) || VENUE_BOUNDARY_DEFAULT_COLOR_;
@@ -993,7 +993,7 @@ function initPlaceMap_(venue, zones, places) {
     setPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fPl', zones, center[0], center[1]);
     suggestNameFromMap_('fPlName', center[0], center[1]);
-    suggestFromNearestPlace_('fPlLocation', center[0], center[1], places, function (n) { return 'Near ' + n; });
+    suggestFromNearestPlace_('fPlLocation', center[0], center[1], places, function (n) { return t('near_prefix') + n; });
 
     // Shared by drag, click, and "Use my location" -- rejects (with the same message) any point
     // outside the venue's drawn boundary when one exists; otherwise moves the pin and re-centres the
@@ -1001,7 +1001,7 @@ function initPlaceMap_(venue, zones, places) {
     // that point may be far outside the current view.
     function tryPlacePin_(lat, lng, recenter) {
       if (boundary && !pointInPolygonClient_(lat, lng, boundary)) {
-        UI.toast('Must stay within the ' + Term('venue').toLowerCase() + ' boundary', 'error');
+        UI.toast(t('toast_must_stay_within_boundary', { term: Term('venue').toLowerCase() }), 'error');
         return false;
       }
       placeMapMarker_.setLatLng([lat, lng]);
@@ -1022,14 +1022,14 @@ function initPlaceMap_(venue, zones, places) {
     placeMapInstance_.on('click', function (e) { tryPlacePin_(e.latlng.lat, e.latlng.lng, false); });
 
     locBtn.onclick = function () {
-      if (!navigator.geolocation) { UI.toast('Geolocation isn\'t available in this browser', 'error'); return; }
-      locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' Locating…';
+      if (!navigator.geolocation) { UI.toast(t('toast_geolocation_unavailable'), 'error'); return; }
+      locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('locating'));
       navigator.geolocation.getCurrentPosition(function (pos) {
-        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('use_my_location'));
         tryPlacePin_(pos.coords.latitude, pos.coords.longitude, true);
       }, function (err) {
-        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
-        UI.toast(err && err.code === 1 ? 'Location permission denied' : 'Could not get your location', 'error');
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('use_my_location'));
+        UI.toast(err && err.code === 1 ? t('toast_location_denied') : t('toast_location_failed'), 'error');
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
     };
 
@@ -1256,9 +1256,9 @@ function osmCandidateRowHtml_(c, i, zones) {
 
 async function openDetectPlacesModal_(venue, zones, existingPlaces) {
   var boundary = parseBoundaryClient_(venue.boundary);
-  if (!boundary) { UI.toast('Draw this ' + Term('venue').toLowerCase() + '\'s boundary first (Edit ' + Term('venue').toLowerCase() + ') -- there\'s nothing to search within yet.', 'error'); return; }
+  if (!boundary) { UI.toast(t('toast_draw_boundary_first', { term: Term('venue').toLowerCase() }), 'error'); return; }
 
-  UI.openModal('Detect places in boundary', '<div style="font-size:13px;padding:6px 0;">Searching OpenStreetMap for named places inside this ' + esc(Term('venue').toLowerCase()) + '\'s boundary…</div>', []);
+  UI.openModal(t('detect_places_btn'), '<div style="font-size:13px;padding:6px 0;">' + esc(t('searching_osm', { term: Term('venue').toLowerCase() })) + '</div>', []);
   var candidates;
   try {
     candidates = await queryOsmPlacesInBoundary_(boundary);
@@ -1273,30 +1273,30 @@ async function openDetectPlacesModal_(venue, zones, existingPlaces) {
   var newCount = candidates.filter(function (c) { return !c.alreadyExists; }).length;
   if (!candidates.length) {
     UI.closeModal();
-    UI.toast('No named places found on OpenStreetMap inside this boundary.', 'error');
+    UI.toast(t('toast_no_osm_places_found'), 'error');
     return;
   }
 
   function renderBody() {
     return '<div style="font-size:12.5px;margin-bottom:10px;" class="muted">' +
-        (newCount ? 'Found ' + candidates.length + ' place(s), ' + newCount + ' new -- review, adjust type if needed, and uncheck any you don\'t want.'
-          : 'Found ' + candidates.length + ' place(s), all already on record at this ' + esc(Term('venue').toLowerCase()) + '.') +
+        (newCount ? esc(t('found_places_new', { total: candidates.length, newCount: newCount }))
+          : esc(t('found_places_all_existing', { total: candidates.length, term: Term('venue').toLowerCase() }))) +
       '</div>' +
       '<div style="max-height:360px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;">' +
           '<thead><tr style="text-align:left;font-size:11px;color:var(--text-600);text-transform:uppercase;">' +
-            '<th style="padding:6px 8px;"></th><th style="padding:6px 8px;">Name</th><th style="padding:6px 8px;">Type</th><th style="padding:6px 8px;">' + esc(Term('zone')) + '</th>' +
+            '<th style="padding:6px 8px;"></th><th style="padding:6px 8px;">' + esc(t('col_name')) + '</th><th style="padding:6px 8px;">' + esc(t('col_type')) + '</th><th style="padding:6px 8px;">' + esc(Term('zone')) + '</th>' +
           '</tr></thead>' +
           '<tbody>' + candidates.map(function (c, i) { return osmCandidateRowHtml_(c, i, zones); }).join('') + '</tbody>' +
         '</table>' +
       '</div>';
   }
 
-  UI.openModal('Detect places in boundary', renderBody(), [
+  UI.openModal(t('detect_places_btn'), renderBody(), [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: 'Add selected places', className: 'btn-primary', onClick: async function () {
+    { label: t('add_selected_places_btn'), className: 'btn-primary', onClick: async function () {
         var selectedIdx = Array.from(document.querySelectorAll('.osm-candidate-check:checked')).map(function (cb) { return Number(cb.getAttribute('data-idx')); });
-        if (!selectedIdx.length) { UI.toast('Select at least one place to add', 'error'); return; }
+        if (!selectedIdx.length) { UI.toast(t('toast_select_at_least_one_place'), 'error'); return; }
         document.querySelectorAll('.osm-candidate-type').forEach(function (sel) {
           var idx = Number(sel.getAttribute('data-idx'));
           if (candidates[idx]) candidates[idx]._type = sel.value;
@@ -1309,13 +1309,13 @@ async function openDetectPlacesModal_(venue, zones, existingPlaces) {
         // call), not one request per row -- so a real per-item progress bar (UI.progressModal) would
         // have nothing to actually track and just sit at 0% until the whole thing resolves. A plain
         // loading modal says the same thing honestly.
-        UI.openModal('Adding places…', '<div style="font-size:13px;padding:6px 0;">Adding ' + payload.length + ' place(s)…</div>', []);
+        UI.openModal(t('adding_places_title'), '<div style="font-size:13px;padding:6px 0;">' + esc(t('adding_places_body', { count: payload.length })) + '</div>', []);
         var res;
         try {
           res = await Api.call('bulkImportPlaces', { venueId: venue.id, places: payload });
         } catch (err) { UI.closeModal(); UI.error(err); return; }
         UI.closeModal();
-        var msg = res.createdCount + ' place(s) added' + (res.failed.length ? ', ' + res.failed.length + ' failed (' + res.failed.map(function (f) { return f.name; }).join(', ') + ')' : '');
+        var msg = t('places_added_count', { count: res.createdCount }) + (res.failed.length ? t('places_failed_suffix', { count: res.failed.length, names: res.failed.map(function (f) { return f.name; }).join(', ') }) : '');
         UI.toast(msg, res.failed.length ? 'error' : 'success');
         if (res.createdCount) Router.resolve();
       } }
