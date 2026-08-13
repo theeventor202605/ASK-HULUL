@@ -43,7 +43,7 @@ async function tabParticipants(content, eventId, detail) {
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
 
   if (!venue) {
-    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">Assign a ' + esc(Term('venue').toLowerCase()) + ' to this ' + esc(Term('event').toLowerCase()) + ' first (Venue &amp; Zones tab) -- ' + esc(Term('participant_plural').toLowerCase()) + ' are registered per event once a venue is set.</div></div></div>';
+    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('venue_required_first', { venueTerm: Term('venue').toLowerCase(), eventTerm: Term('event').toLowerCase(), participantTerm: Term('participant_plural').toLowerCase() })) + '</div></div></div>';
     return;
   }
 
@@ -70,34 +70,31 @@ async function tabParticipants(content, eventId, detail) {
   }
 
   content.innerHTML =
-    '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(Term('participant_plural')) +
-      ' registered for this ' + esc(Term('event').toLowerCase()) + ' only — each one gets its own login, just like the ' +
-      esc(Term('venue').toLowerCase()) + '\'s Places catalog, but their accounts are automatically deactivated once this ' +
-      esc(Term('event').toLowerCase()) + ' ends.</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(t('participants_registered_note', { participantTerm: Term('participant_plural'), eventTerm: Term('event').toLowerCase(), venueTerm: Term('venue').toLowerCase() })) + '</div>' +
     (canManage ? renderAddEventPlaceCard_(zones, hasBoundary) : '') +
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('participant_plural')) + '</div>' +
-    (canDedupe ? '<button class="btn btn-secondary btn-sm" id="dedupeParticipantsBtn">Remove duplicates</button>' : '') +
+    (canDedupe ? '<button class="btn btn-secondary btn-sm" id="dedupeParticipantsBtn">' + esc(t('remove_duplicates_btn')) + '</button>' : '') +
     '</div><div class="card-body">' + UI.table([
-      { key: 'name', label: 'Name' },
-      { key: 'type', label: 'Type' },
+      { key: 'name', label: t('col_name') },
+      { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
-      { key: 'location', label: 'Location', render: r => r.location ? esc(r.location) : '—' },
-      { key: 'lat', label: 'Coordinates', render: r => (r.lat !== '' && r.lng !== '') ? (Number(r.lat).toFixed(5) + ', ' + Number(r.lng).toFixed(5)) : '—' },
+      { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' },
+      { key: 'lat', label: t('col_coordinates'), render: r => (r.lat !== '' && r.lng !== '') ? (Number(r.lat).toFixed(5) + ', ' + Number(r.lng).toFixed(5)) : '—' },
       // Auto-provisioned login(s) for this place (see provisionPlaceAccount_ in Places.gs) --
       // usually one, but can be more than one for separate shift staff (addPlaceAccount below).
-      { key: 'accounts', label: 'Account(s)', render: r => (r.accounts && r.accounts.length)
+      { key: 'accounts', label: t('col_accounts'), render: r => (r.accounts && r.accounts.length)
           ? r.accounts.map(a => '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">' +
-              '<span>' + esc(a.email) + (a.status !== 'Active' ? ' <span class="muted">(inactive)</span>' : '') + '</span>' +
-              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="View credentials" data-view-creds="' + esc(a.id) + '">' + ICON('view_credentials') + '</button>' : '') +
+              '<span>' + esc(a.email) + (a.status !== 'Active' ? ' <span class="muted">' + esc(t('word_inactive')) + '</span>' : '') + '</span>' +
+              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('view_credentials_label')) + '" data-view-creds="' + esc(a.id) + '">' + ICON('view_credentials') + '</button>' : '') +
             '</div>').join('')
           : '—' },
-      { key: 'createdAt', label: 'Created', render: r => UI.fmtDate(r.createdAt) },
-      { key: 'createdBy', label: 'Created By', render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
-    ].concat(canManage ? [{ key: 'actions', label: 'Actions', render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Add another account" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
-      places, { emptyText: 'No ' + esc(Term('participant_plural').toLowerCase()) + ' registered for this ' + esc(Term('event').toLowerCase()) + ' yet.' }) + '</div></div>';
+      { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
+      { key: 'createdBy', label: t('col_created_by'), render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
+      places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div>';
 
   if (canManage) {
     wireEventPlaceForm_(eventId, venue, zones, places);
@@ -113,10 +110,10 @@ async function tabParticipants(content, eventId, detail) {
     });
     content.querySelectorAll('[data-delete-place]').forEach(function (btn) {
       btn.onclick = function () {
-        UI.confirmModal('Remove this ' + Term('participant').toLowerCase() + '? This can\'t be undone.', async function () {
-          try { await Api.call('deletePlace', { placeId: btn.getAttribute('data-delete-place') }); UI.toast(Term('participant') + ' removed', 'success'); Router.resolve(); }
+        UI.confirmModal(t('remove_x_confirm', { term: Term('participant').toLowerCase() }), async function () {
+          try { await Api.call('deletePlace', { placeId: btn.getAttribute('data-delete-place') }); UI.toast(t('toast_x_removed', { term: Term('participant') }), 'success'); Router.resolve(); }
           catch (err) { UI.error(err); }
-        }, { title: 'Remove ' + Term('participant').toLowerCase(), confirmLabel: 'Remove' });
+        }, { title: t('remove_modal_title', { term: Term('participant').toLowerCase() }), confirmLabel: t('remove_btn') });
       };
     });
     content.querySelectorAll('[data-view-creds]').forEach(function (btn) {
@@ -137,16 +134,16 @@ async function tabParticipants(content, eventId, detail) {
     // dedupeParticipants' own check. Anything that already has recorded inspection history is left
     // alone rather than silently deleted.
     UI.confirmModal(
-      'Scan this ' + Term('venue').toLowerCase() + '\'s ' + Term('participant_plural').toLowerCase() + ' for exact duplicates (same name, type, zone, and location) and delete every copy beyond the first? Any duplicate that already has recorded inspection history is left alone. This cannot be undone.',
+      t('dedupe_confirm_body', { venueTerm: Term('venue').toLowerCase(), participantTerm: Term('participant_plural').toLowerCase() }),
       async function () {
         try {
           var res = await Api.call('dedupeParticipants', { venueId: venue.id });
-          var msg = res.removed ? (res.removed + ' duplicate(s) removed') : 'No duplicates found';
-          if (res.skippedWithHistory) msg += ' — ' + res.skippedWithHistory + ' skipped (already has recorded history)';
+          var msg = res.removed ? t('toast_duplicates_removed', { count: res.removed }) : t('toast_no_duplicates');
+          if (res.skippedWithHistory) msg += t('toast_skipped_with_history', { count: res.skippedWithHistory });
           UI.toast(msg, 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       },
-      { title: 'Remove duplicates', confirmLabel: 'Remove duplicates' }
+      { title: t('remove_duplicates_btn'), confirmLabel: t('remove_duplicates_btn') }
     );
   };
 }
@@ -169,7 +166,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   var canManageDisciplines = hasPermission('participant.assignDisciplines');
 
   if (!venue) {
-    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">Assign a ' + esc(Term('venue').toLowerCase()) + ' to this ' + esc(Term('event').toLowerCase()) + ' first (Venue &amp; Zones tab) -- ' + esc(Term('participant_plural').toLowerCase()) + ' are registered per event once a venue is set.</div></div></div>';
+    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('venue_required_first', { venueTerm: Term('venue').toLowerCase(), eventTerm: Term('event').toLowerCase(), participantTerm: Term('participant_plural').toLowerCase() })) + '</div></div></div>';
     return;
   }
 
@@ -208,17 +205,19 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   }
 
   content.innerHTML =
-    '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">Which ' + esc(Term('discipline_plural').toLowerCase()) + ' each ' + esc(Term('participant').toLowerCase()) +
-      ' must be inspected against — includes both this event\'s own ' + esc(Term('participant_plural').toLowerCase()) + ' and any permanent ones at this ' + esc(Term('venue').toLowerCase()) + '.</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(t('disciplines_intro', {
+      disciplineTerm: Term('discipline_plural').toLowerCase(), participantTerm: Term('participant').toLowerCase(),
+      participantTermPlural: Term('participant_plural').toLowerCase(), venueTerm: Term('venue').toLowerCase()
+    })) + '</div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
       '<div class="btn-group" id="disciplineFilterToggle" style="display:flex;gap:6px;">' +
-        '<button type="button" class="btn btn-sm btn-primary" data-filter-mode="all">All</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="assigned">Assigned</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="unassigned">Unassigned</button>' +
+        '<button type="button" class="btn btn-sm btn-primary" data-filter-mode="all">' + esc(t('filter_all')) + '</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="assigned">' + esc(t('filter_assigned')) + '</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-filter-mode="unassigned">' + esc(t('filter_unassigned')) + '</button>' +
       '</div>' +
       (canManageDisciplines
-        ? '<span class="muted" style="font-size:12.5px;" id="participantSelCount">Select one or more ' + esc(Term('participant_plural').toLowerCase()) + ' below to see them on the map and apply ' + esc(Term('discipline_plural').toLowerCase()) + '.</span>' +
-          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>Apply ' + esc(Term('discipline_plural').toLowerCase()) + '…</button>'
+        ? '<span class="muted" style="font-size:12.5px;" id="participantSelCount">' + esc(t('select_participants_hint', { term: Term('participant_plural').toLowerCase(), disciplineTerm: Term('discipline_plural').toLowerCase() })) + '</span>' +
+          '<button class="btn btn-secondary btn-sm" id="applyDisciplinesBtn" disabled>' + esc(t('apply_x_ellipsis', { term: Term('discipline_plural').toLowerCase() })) + '</button>'
         : '') +
     '</div></div>' +
     '<div class="card"><div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
@@ -236,7 +235,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   function refreshSelection() {
     var ids = selectedIds_();
     if (applyBtn) applyBtn.disabled = ids.length === 0;
-    if (selCountEl) selCountEl.textContent = ids.length ? (ids.length + ' selected') : ('Select one or more ' + Term('participant_plural').toLowerCase() + ' below to see them on the map and apply ' + Term('discipline_plural').toLowerCase() + '.');
+    if (selCountEl) selCountEl.textContent = ids.length ? t('selected_count', { count: ids.length }) : t('select_participants_hint', { term: Term('participant_plural').toLowerCase(), disciplineTerm: Term('discipline_plural').toLowerCase() });
     // REQ: "When selecting a participant(s) show location on map."
     highlightParticipantsOnMap_(ids);
   }
@@ -248,8 +247,8 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   function renderList_() {
     var visible = filteredParticipants_();
     tableWrapEl.innerHTML = UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
-      { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
-      { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, 'All zones') },
+      { key: 'name', label: t('col_name') }, { key: 'type', label: t('col_type') },
+      { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, t('all_zones_option')) },
       { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
     ]), visible, {});
     tableWrapEl.querySelectorAll('.participant-select').forEach(function (cb) { cb.onchange = refreshSelection; });
@@ -275,7 +274,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   applyBtn.onclick = function () {
     var participantIds = selectedIds_();
     if (!participantIds.length) return;
-    if (!disciplines.length) { UI.toast('No ' + Term('discipline_plural').toLowerCase() + ' exist yet — add some in the ' + Term('discipline_plural') + ' catalogue first.', 'error'); return; }
+    if (!disciplines.length) { UI.toast(t('toast_no_disciplines_yet', { term: Term('discipline_plural').toLowerCase(), catalogTerm: Term('discipline_plural') }), 'error'); return; }
     // Overwrites each selected participant's full discipline list with whatever's checked here (see
     // bulkAssignParticipantDisciplines in Participants.gs) -- so pre-check whatever's already set on
     // the selected participant(s) (union, if more than one is selected) rather than starting blank,
@@ -286,19 +285,22 @@ async function tabParticipantDisciplines(content, eventId, detail) {
       if (participantIds.indexOf(pt.id) === -1) return;
       (pt.disciplineIds ? String(pt.disciplineIds).split(',').filter(Boolean) : []).forEach(function (id) { preCheckedIds[id] = true; });
     });
-    var body = '<div style="font-size:13px;margin-bottom:8px;">Applying to ' + participantIds.length + ' selected ' + (participantIds.length === 1 ? Term('participant').toLowerCase() : Term('participant_plural').toLowerCase()) + '. This replaces ' + (participantIds.length === 1 ? 'its' : 'their') + ' full ' + Term('discipline_plural').toLowerCase() + ' list — already-assigned ones are pre-checked below; uncheck to remove them.</div>' +
+    var body = '<div style="font-size:13px;margin-bottom:8px;">' + esc(t('applying_to_count', {
+        count: participantIds.length, term: participantIds.length === 1 ? Term('participant').toLowerCase() : Term('participant_plural').toLowerCase(),
+        disciplineTerm: Term('discipline_plural').toLowerCase()
+      })) + '</div>' +
       disciplines.map(function (d) {
         return '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;margin:6px 0;">' +
           '<input type="checkbox" class="apply-disc-check" value="' + d.id + '"' + (preCheckedIds[d.id] ? ' checked' : '') + ' /> ' + esc(d.name) + '</label>';
       }).join('');
-    UI.openModal('Apply ' + Term('discipline_plural').toLowerCase(), body, [
+    UI.openModal(t('apply_x_title', { term: Term('discipline_plural').toLowerCase() }), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-      { label: 'Apply', className: 'btn-primary', onClick: async function () {
+      { label: t('apply_btn'), className: 'btn-primary', onClick: async function () {
           var disciplineIds = Array.from(document.querySelectorAll('.apply-disc-check:checked')).map(function (cb) { return cb.value; });
-          if (!disciplineIds.length) { UI.toast('Select at least one discipline', 'error'); return; }
+          if (!disciplineIds.length) { UI.toast(t('toast_select_at_least_one_discipline'), 'error'); return; }
           try {
             await Api.call('bulkAssignParticipantDisciplines', { participantIds: participantIds, disciplineIds: disciplineIds });
-            UI.closeModal(); UI.toast('Disciplines applied', 'success'); Router.resolve();
+            UI.closeModal(); UI.toast(t('toast_disciplines_applied'), 'success'); Router.resolve();
           } catch (err) { UI.error(err); }
         } }
     ]);
@@ -315,7 +317,7 @@ function initParticipantDisciplineMap_(venue, zones, participants) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library).';
+    el.textContent = t('map_unavailable');
     return;
   }
   var hasCoords = !!(venue.lat && venue.lng);
@@ -387,33 +389,33 @@ function destroyParticipantDisciplineMap_() {
 function renderAddEventPlaceCard_(zones, hasBoundary) {
   // Same compact side-by-side layout as venues.js's renderAddPlaceCard_ -- kept in sync since this
   // is the same Add-a-place form, just event-scoped.
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Add ' + esc(Term('participant').toLowerCase()) + '</div></div>' +
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('add_x_title', { term: Term('participant').toLowerCase() })) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">' +
       '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
-        UI.field('Name', '<input id="fEPName" class="field-input" />') +
+        UI.field(t('col_name'), '<input id="fEPName" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field('Type', '<select id="fEPType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
+          UI.field(t('col_type'), '<select id="fEPType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fEP') + '</div>' +
         '</div>' +
         '<div class="form-row">' +
-          UI.field('Latitude', '<input id="fEPLat" type="number" step="any" class="field-input" />') +
-          UI.field('Longitude', '<input id="fEPLng" type="number" step="any" class="field-input" />') +
+          UI.field(t('field_latitude'), '<input id="fEPLat" type="number" step="any" class="field-input" />') +
+          UI.field(t('field_longitude'), '<input id="fEPLng" type="number" step="any" class="field-input" />') +
         '</div>' +
-        UI.field('Location (optional)', '<input id="fEPLocation" class="field-input" placeholder="e.g. Near Gate A, north entrance" />') +
+        UI.field(t('field_location_optional'), '<input id="fEPLocation" class="field-input" placeholder="' + esc(t('location_placeholder')) + '" />') +
       '</div>' +
       '<div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:8px;">' +
         '<div id="eventPlaceMap" style="height:380px;width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
         '<div class="muted" style="font-size:11px;">' +
           (hasBoundary
-            ? 'Click or drag the pin to set the exact spot — must stay within the ' + esc(Term('venue').toLowerCase()) + ' boundary (shaded area).'
-            : 'This ' + esc(Term('venue').toLowerCase()) + ' has no boundary drawn yet, so location isn\'t map-restricted — click the map or type coordinates manually.') +
+            ? esc(t('place_map_hint_bounded', { term: Term('venue').toLowerCase() }))
+            : esc(t('place_map_hint_unbounded', { term: Term('venue').toLowerCase() }))) +
         '</div>' +
       '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-      '<button class="btn btn-primary" id="addEventPlaceBtn">Add ' + esc(Term('participant').toLowerCase()) + '</button>' +
+      '<button class="btn btn-primary" id="addEventPlaceBtn">' + esc(t('add_x_title', { term: Term('participant').toLowerCase() })) + '</button>' +
     '</div>' +
   '</div>';
 }
@@ -426,14 +428,14 @@ function wireEventPlaceForm_(eventId, venue, zones, places) {
   document.getElementById('addEventPlaceBtn').onclick = async function () {
     try {
       var name = document.getElementById('fEPName').value.trim();
-      if (!name) { UI.toast('Name is required', 'error'); return; }
+      if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
       var payload = {
         eventId: eventId, name: name, type: document.getElementById('fEPType').value,
         zoneId: getZoneFieldValue_('fEP'), location: document.getElementById('fEPLocation').value,
         lat: document.getElementById('fEPLat').value, lng: document.getElementById('fEPLng').value
       };
       var res = await Api.call('createPlace', payload);
-      UI.toast(Term('participant') + ' added', 'success');
+      UI.toast(t('x_added', { term: Term('participant') }), 'success');
       await Router.resolve();
       showPlaceAccountModal_(res.place, res.account);
     } catch (err) { UI.error(err); }
@@ -452,7 +454,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
   if (typeof HululLeaflet === 'undefined') {
     el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
     el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
-    el.textContent = 'Map unavailable (couldn\'t load the map library) — type coordinates manually below.';
+    el.textContent = t('place_map_unavailable');
     return;
   }
   var hasCoords = !!(venue.lat && venue.lng);
@@ -472,8 +474,8 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     }).addTo(eventPlaceMapInstance_);
     // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
-    var locBtn = UI.mapToggleButton('useMyLocationEPBtn', 'location_pin', 'Use my location');
-    var satBtn = UI.mapToggleButton('toggleSatelliteEPBtn', 'satellite_toggle', 'Satellite');
+    var locBtn = UI.mapToggleButton('useMyLocationEPBtn', 'location_pin', t('use_my_location'));
+    var satBtn = UI.mapToggleButton('toggleSatelliteEPBtn', 'satellite_toggle', t('map_satellite'));
     UI.mapControls(el, [locBtn, satBtn]);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
@@ -481,8 +483,8 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     var showingSatellite = false;
     satBtn.onclick = function () {
       showingSatellite = !showingSatellite;
-      if (showingSatellite) { eventPlaceMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' Map'; }
-      else { eventPlaceMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+      if (showingSatellite) { eventPlaceMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { eventPlaceMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlaceMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
     };
     if (boundary) {
       var venueBoundaryColor = venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_;
@@ -506,11 +508,11 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     setEventPlaceLatLng_(center[0], center[1]);
     autoDetectZone_('fEP', zones, center[0], center[1]);
     suggestNameFromMap_('fEPName', center[0], center[1]);
-    suggestFromNearestPlace_('fEPLocation', center[0], center[1], places, function (n) { return 'Near ' + n; });
+    suggestFromNearestPlace_('fEPLocation', center[0], center[1], places, function (n) { return t('near_prefix') + n; });
 
     function tryEventPlacePin_(lat, lng, recenter) {
       if (boundary && !pointInPolygonClient_(lat, lng, boundary)) {
-        UI.toast('Must stay within the ' + Term('venue').toLowerCase() + ' boundary', 'error');
+        UI.toast(t('toast_must_stay_within_boundary', { term: Term('venue').toLowerCase() }), 'error');
         return false;
       }
       eventPlaceMapMarker_.setLatLng([lat, lng]);
@@ -518,7 +520,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
       setEventPlaceLatLng_(lat, lng);
       autoDetectZone_('fEP', zones, lat, lng);
       suggestNameFromMap_('fEPName', lat, lng);
-      suggestFromNearestPlace_('fEPLocation', lat, lng, places, function (n) { return 'Near ' + n; });
+      suggestFromNearestPlace_('fEPLocation', lat, lng, places, function (n) { return t('near_prefix') + n; });
       if (recenter) eventPlaceMapInstance_.setView([lat, lng], 17);
       return true;
     }
@@ -531,14 +533,14 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     eventPlaceMapInstance_.on('click', function (e) { tryEventPlacePin_(e.latlng.lat, e.latlng.lng, false); });
 
     locBtn.onclick = function () {
-      if (!navigator.geolocation) { UI.toast('Geolocation isn\'t available in this browser', 'error'); return; }
-      locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' Locating…';
+      if (!navigator.geolocation) { UI.toast(t('toast_geolocation_unavailable'), 'error'); return; }
+      locBtn.disabled = true; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('locating'));
       navigator.geolocation.getCurrentPosition(function (pos) {
-        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('use_my_location'));
         tryEventPlacePin_(pos.coords.latitude, pos.coords.longitude, true);
       }, function (err) {
-        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' Use my location';
-        UI.toast(err && err.code === 1 ? 'Location permission denied' : 'Could not get your location', 'error');
+        locBtn.disabled = false; locBtn.innerHTML = ICON('location_pin') + ' ' + esc(t('use_my_location'));
+        UI.toast(err && err.code === 1 ? t('toast_location_denied') : t('toast_location_failed'), 'error');
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
     };
 

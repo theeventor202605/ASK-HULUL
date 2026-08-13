@@ -158,7 +158,26 @@ window.HULUL_I18N = {
     found_places_all_existing: 'Found {{total}} place(s), all already on record at this {{term}}.',
     add_selected_places_btn: 'Add selected places', toast_select_at_least_one_place: 'Select at least one place to add',
     adding_places_title: 'Adding places…', adding_places_body: 'Adding {{count}} place(s)…',
-    places_added_count: '{{count}} place(s) added', places_failed_suffix: ', {{count}} failed ({{names}})', near_prefix: 'Near '
+    places_added_count: '{{count}} place(s) added', places_failed_suffix: ', {{count}} failed ({{names}})', near_prefix: 'Near ',
+    x_added: '{{term}} added', remove_x_confirm: 'Remove this {{term}}? This can\'t be undone.',
+    remove_modal_title: 'Remove {{term}}', remove_btn: 'Remove', toast_x_removed: '{{term}} removed',
+
+    // ---- Participants (eventPlaces.js) ----
+    venue_required_first: 'Assign a {{venueTerm}} to this {{eventTerm}} first (Venue &amp; Zones tab) -- {{participantTerm}} are registered per event once a venue is set.',
+    remove_duplicates_btn: 'Remove duplicates',
+    participants_registered_note: '{{participantTerm}} registered for this {{eventTerm}} only — each one gets its own login, just like the {{venueTerm}}\'s Places catalog, but their accounts are automatically deactivated once this {{eventTerm}} ends.',
+    empty_participants: 'No {{participantTerm}} registered for this {{eventTerm}} yet.',
+    dedupe_confirm_body: 'Scan this {{venueTerm}}\'s {{participantTerm}} for exact duplicates (same name, type, zone, and location) and delete every copy beyond the first? Any duplicate that already has recorded inspection history is left alone. This cannot be undone.',
+    toast_duplicates_removed: '{{count}} duplicate(s) removed', toast_no_duplicates: 'No duplicates found',
+    toast_skipped_with_history: ' — {{count}} skipped (already has recorded history)',
+    disciplines_intro: 'Which {{disciplineTerm}} each {{participantTerm}} must be inspected against — includes both this event\'s own {{participantTermPlural}} and any permanent ones at this {{venueTerm}}.',
+    filter_all: 'All', filter_assigned: 'Assigned', filter_unassigned: 'Unassigned',
+    select_participants_hint: 'Select one or more {{term}} below to see them on the map and apply {{disciplineTerm}}.',
+    apply_x_ellipsis: 'Apply {{term}}…', selected_count: '{{count}} selected',
+    toast_no_disciplines_yet: 'No {{term}} exist yet — add some in the {{catalogTerm}} catalogue first.',
+    applying_to_count: 'Applying to {{count}} selected {{term}}. This replaces the full {{disciplineTerm}} list for each — already-assigned ones are pre-checked below; uncheck to remove them.',
+    apply_x_title: 'Apply {{term}}', apply_btn: 'Apply', toast_select_at_least_one_discipline: 'Select at least one discipline',
+    toast_disciplines_applied: 'Disciplines applied', add_x_title: 'Add {{term}}'
   },
   ar: {
     tagline: 'منصة جاهزية الفعاليات والامتثال', email: 'البريد الإلكتروني', password: 'كلمة المرور', signIn: 'تسجيل الدخول',
@@ -297,7 +316,26 @@ window.HULUL_I18N = {
     found_places_all_existing: 'تم العثور على {{total}} مكان (أماكن)، كلها مسجَّلة بالفعل في {{term}}.',
     add_selected_places_btn: 'إضافة الأماكن المحددة', toast_select_at_least_one_place: 'اختر مكانًا واحدًا على الأقل للإضافة',
     adding_places_title: 'جارٍ إضافة الأماكن…', adding_places_body: 'جارٍ إضافة {{count}} مكان (أماكن)…',
-    places_added_count: 'تمت إضافة {{count}} مكان (أماكن)', places_failed_suffix: '، فشل {{count}} ({{names}})', near_prefix: 'بالقرب من '
+    places_added_count: 'تمت إضافة {{count}} مكان (أماكن)', places_failed_suffix: '، فشل {{count}} ({{names}})', near_prefix: 'بالقرب من ',
+    x_added: 'تمت إضافة {{term}}', remove_x_confirm: 'إزالة هذا العنصر ({{term}})؟ لا يمكن التراجع عن هذا الإجراء.',
+    remove_modal_title: 'إزالة {{term}}', remove_btn: 'إزالة', toast_x_removed: 'تمت إزالة {{term}}',
+
+    // ---- Participants (eventPlaces.js) ----
+    venue_required_first: 'أسنِد {{venueTerm}} لهذه {{eventTerm}} أولاً (تبويب الموقع والمناطق) — تُسجَّل {{participantTerm}} لكل فعالية بمجرد تحديد الموقع.',
+    remove_duplicates_btn: 'إزالة التكرارات',
+    participants_registered_note: 'تُسجَّل {{participantTerm}} لهذه {{eventTerm}} فقط — يحصل كل منها على تسجيل دخول خاص به، تمامًا مثل كتالوج أماكن {{venueTerm}}، لكن حساباتها تُعطَّل تلقائيًا بمجرد انتهاء هذه {{eventTerm}}.',
+    empty_participants: 'لا توجد {{participantTerm}} مسجَّلة لهذه {{eventTerm}} بعد.',
+    dedupe_confirm_body: 'فحص {{participantTerm}} في {{venueTerm}} بحثًا عن تكرارات مطابقة تمامًا (نفس الاسم والنوع والمنطقة والموقع) وحذف كل نسخة زائدة عن الأولى؟ يُترك أي تكرار له سجل تفتيش مسجَّل دون حذف. لا يمكن التراجع عن هذا الإجراء.',
+    toast_duplicates_removed: 'تمت إزالة {{count}} تكرار (تكرارات)', toast_no_duplicates: 'لم يُعثر على تكرارات',
+    toast_skipped_with_history: ' — تم تخطي {{count}} (لديها سجل تفتيش مسجَّل)',
+    disciplines_intro: 'التخصصات ({{disciplineTerm}}) التي يجب أن يُفتَّش كل {{participantTerm}} على أساسها — يشمل هذا {{participantTermPlural}} الخاصة بهذه الفعالية وأي {{participantTermPlural}} دائمة في {{venueTerm}}.',
+    filter_all: 'الكل', filter_assigned: 'مُسنَد', filter_unassigned: 'غير مُسنَد',
+    select_participants_hint: 'حدد {{term}} واحدًا أو أكثر أدناه لرؤيتها على الخريطة وتطبيق {{disciplineTerm}}.',
+    apply_x_ellipsis: 'تطبيق {{term}}…', selected_count: 'تم تحديد {{count}}',
+    toast_no_disciplines_yet: 'لا توجد {{term}} بعد — أضف بعضها في كتالوج {{catalogTerm}} أولاً.',
+    applying_to_count: 'يتم التطبيق على {{count}} {{term}} محدَّدة. سيستبدل هذا قائمة {{disciplineTerm}} الكاملة لكل منها — العناصر المُسنَدة مسبقًا محدَّدة أدناه؛ ألغِ التحديد لإزالتها.',
+    apply_x_title: 'تطبيق {{term}}', apply_btn: 'تطبيق', toast_select_at_least_one_discipline: 'اختر تخصصًا واحدًا على الأقل',
+    toast_disciplines_applied: 'تم تطبيق التخصصات', add_x_title: 'إضافة {{term}}'
   }
 };
 
