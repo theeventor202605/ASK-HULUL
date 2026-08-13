@@ -37,7 +37,7 @@ async function renderDashboard() {
     }).join('') + '</div>' +
 
     '<div class="dashboard-columns">' +
-      '<div class="dashboard-col-main card"><div class="card-header"><div class="card-title">' + esc(Term('event_plural')) + '</div>' +
+      '<div class="dashboard-col-main card"><div class="card-header"><div class="card-title">' + esc('Recent ' + Term('event_plural')) + '</div>' +
         '<a class="btn btn-secondary btn-sm" href="#/events">' + esc(Term('event_plural')) + ' ' + ICON('forward_link') + '</a></div>' +
         '<div class="card-body" id="dashboardRecentEvents"></div></div>' +
 

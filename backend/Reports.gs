@@ -52,6 +52,12 @@ function dashboardSummary(user, p) {
     activeEvents: events.filter(function (e) { return ['Planning', 'VenueApproved'].indexOf(e.status) !== -1; }).length,
     logsOverview: findingKpiBuckets_(findings),
     riskBreakdown: groupCount_(findings, 'riskLevel'),
-    recentEvents: events.slice(0, 6)
+    // REQ bug report: SystemAdmin saw only a handful of events, all one city, and read it as a
+    // permissions bug -- listEvents itself is unfiltered for SystemAdmin (this returns every event
+    // it can see), but the dashboard preview below only ever showed the 6 most-recently-created ones,
+    // and its card was labeled just "Events" with nothing to say it was a partial list. Bumped to 8
+    // and (see dashboard.js) relabeled "Recent events" so it reads as the preview it's always been --
+    // the full, unfiltered list is one click away via the card's own "Events ->" link.
+    recentEvents: events.slice(0, 8)
   };
 }
