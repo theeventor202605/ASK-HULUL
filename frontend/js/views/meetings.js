@@ -349,38 +349,104 @@ function eventOptionsHtml_(eventsList, projectId, selectedEventId) {
       .map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.id === selectedEventId ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
 }
 
-// Compact searchable checkbox list of Users -- shared by the To and Cc fields, in both the create
-// and edit forms. checkedIds pre-checks whichever ids are already on the meeting (edit only).
-// usersList is expected to already exclude PARTICIPANT_ROLES (see renderMeetingFormPage_ below) --
-// REQ: "Do not include participants in To:/Cc:".
+// Search-then-pick multi-select for Users -- shared by the To and Cc fields, in both the create and
+// edit forms. REQ (follow-up): "To:/Cc: should be searchable by username or email or user role.
+// Remove To:/Cc: lists." -- replaces the old always-visible checkbox list with a type-to-search
+// dropdown (same chat-suggest-box/-item pattern as the Event Chat @mention picker and Log Finding's
+// Participant search, findings.js) plus removable chips for whoever's already picked (same chip
+// look as the Event Chat composer's staged @mentions -- eventDetail.js chipHtml_). checkedIds
+// pre-selects whichever ids are already on the meeting (edit only). usersList is expected to already
+// exclude PARTICIPANT_ROLES (see renderMeetingFormPage_ below) -- REQ: "Do not include participants
+// in To:/Cc:".
+var USER_PICKER_STATE_ = {}; // prefix -> { selected: [user,...], usersList: [user,...] } -- one entry per field instance (fMtgTo/fMtgCc)
+
 function userPickerFieldHtml_(prefix, label, checkedIds, usersList) {
   var checkedSet = {}; (checkedIds || []).forEach(function (id) { checkedSet[id] = true; });
-  var rows = usersList.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (u) {
-    return '<label class="' + prefix + '-row" data-search="' + esc((u.name + ' ' + u.email).toLowerCase()) + '" style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;">' +
-      '<input type="checkbox" class="' + prefix + '-check" value="' + esc(u.id) + '"' + (checkedSet[u.id] ? ' checked' : '') + ' /> ' +
-      esc(u.name) + ' <span class="muted">(' + esc(u.role) + ')</span></label>';
-  }).join('');
-  return UI.field(label,
-    '<input class="field-input" id="' + prefix + 'Search" placeholder="' + esc(t('search_people_placeholder')) + '" style="margin-bottom:6px;padding:6px 8px;font-size:12.5px;" />' +
-    '<div style="max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;">' +
-      (rows || '<div class="muted" style="font-size:12px;">' + esc(t('no_data')) + '</div>') +
-    '</div>'
-  );
+  USER_PICKER_STATE_[prefix] = {
+    selected: usersList.filter(function (u) { return checkedSet[u.id]; }),
+    usersList: usersList
+  };
+  // position:relative built inline (not via UI.field()) so the chat-suggest-box dropdown -- itself
+  // position:absolute -- anchors directly under the search input, same as findings.js's own
+  // Participant search field.
+  return '<div class="field-group" style="position:relative;">' +
+    '<label class="field-label">' + esc(label) + '</label>' +
+    '<input class="field-input" id="' + prefix + 'Search" autocomplete="off" placeholder="' + esc(t('search_people_placeholder')) + '" />' +
+    '<div class="chat-suggest-box" id="' + prefix + 'Suggest" style="display:none;"></div>' +
+    '<div id="' + prefix + 'Chips" style="margin-top:6px;"></div>' +
+  '</div>';
 }
+
+// Matches on name, email, OR role (REQ: "searchable by username or email or user role") -- already-
+// picked users are excluded from the results so the same person never appears twice in the dropdown.
+function userPickerMatches_(prefix, query) {
+  var state = USER_PICKER_STATE_[prefix];
+  var q = (query || '').trim().toLowerCase();
+  var selectedIds = {}; state.selected.forEach(function (u) { selectedIds[u.id] = true; });
+  return state.usersList.filter(function (u) {
+    if (selectedIds[u.id]) return false;
+    if (!q) return true;
+    return (u.name && u.name.toLowerCase().indexOf(q) !== -1) ||
+      (u.email && u.email.toLowerCase().indexOf(q) !== -1) ||
+      (u.role && u.role.toLowerCase().indexOf(q) !== -1);
+  }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+}
+
+function renderUserPickerChips_(prefix) {
+  var box = document.getElementById(prefix + 'Chips');
+  var state = USER_PICKER_STATE_[prefix];
+  box.innerHTML = state.selected.map(function (u, i) {
+    return '<span class="badge-neutral" style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;font-size:11.5px;margin:3px 6px 0 0;">' +
+      esc(u.name) + ' <span class="muted" style="font-size:10.5px;">(' + esc(u.role) + ')</span>' +
+      ' <button type="button" data-unpick="' + i + '" title="' + esc(t('action_delete')) + '" aria-label="' + esc(t('action_delete')) + '" style="border:none;background:none;cursor:pointer;color:var(--text-400);font-size:12px;line-height:1;padding:0;">' + ICON('close_modal') + '</button></span>';
+  }).join('');
+  box.querySelectorAll('[data-unpick]').forEach(function (btn) {
+    btn.onclick = function () {
+      state.selected.splice(Number(btn.getAttribute('data-unpick')), 1);
+      renderUserPickerChips_(prefix);
+    };
+  });
+}
+
+function renderUserPickerSuggest_(prefix, query) {
+  var suggest = document.getElementById(prefix + 'Suggest');
+  var matches = userPickerMatches_(prefix, query);
+  suggest.innerHTML = '<div class="chat-suggest-header">' + esc(t('search_people_placeholder')) + '</div>' +
+    (matches.length
+      ? matches.slice(0, 20).map(function (u, i) {
+          return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(u.name) +
+            ' <span class="muted" style="font-size:11px;">' + esc(u.email) + ' · ' + esc(u.role) + '</span></div>';
+        }).join('')
+      : '<div class="chat-suggest-empty">' + esc(t('no_suggestion_matches')) + '</div>');
+  suggest.style.display = '';
+  suggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+    // mousedown (not click) + preventDefault -- same reasoning as the Event Chat @mention picker:
+    // keeps the search input focused instead of losing it to a click-triggered blur first.
+    el.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var picked = matches[Number(el.getAttribute('data-idx'))];
+      USER_PICKER_STATE_[prefix].selected.push(picked);
+      renderUserPickerChips_(prefix);
+      var input = document.getElementById(prefix + 'Search');
+      input.value = '';
+      renderUserPickerSuggest_(prefix, '');
+      input.focus();
+    });
+  });
+}
+
 function wireUserPickerSearch_(prefix) {
   var input = document.getElementById(prefix + 'Search');
   if (!input) return;
-  input.oninput = function () {
-    var q = this.value.trim().toLowerCase();
-    document.querySelectorAll('.' + prefix + '-row').forEach(function (row) {
-      row.style.display = (!q || row.getAttribute('data-search').indexOf(q) !== -1) ? '' : 'none';
-    });
-  };
+  renderUserPickerChips_(prefix);
+  input.addEventListener('focus', function () { renderUserPickerSuggest_(prefix, input.value); });
+  input.addEventListener('input', function () { renderUserPickerSuggest_(prefix, input.value); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.getElementById(prefix + 'Suggest').style.display = 'none'; });
+  input.addEventListener('blur', function () { setTimeout(function () { document.getElementById(prefix + 'Suggest').style.display = 'none'; }, 150); });
 }
+
 function readCheckedUserIds_(prefix) {
-  var ids = [];
-  document.querySelectorAll('.' + prefix + '-check:checked').forEach(function (c) { ids.push(c.value); });
-  return ids;
+  return (USER_PICKER_STATE_[prefix] ? USER_PICKER_STATE_[prefix].selected : []).map(function (u) { return u.id; });
 }
 
 // Subject = MEETING_TYPES picklist + an "Other" option that reveals a free-text input (REQ:
