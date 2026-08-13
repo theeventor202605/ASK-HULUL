@@ -10,6 +10,7 @@
   --danger:#dc2626; --danger-soft:#fef2f2;
   --critical:#7f1d1d; --critical-soft:#fbe4e4;
   --info:#2563eb; --info-soft:#eff6ff;
+  --purple:#7c3aed; --purple-soft:#f5f3ff;
   --radius-lg:16px; --radius-md:12px; --radius-sm:8px;
   --shadow-sm:0 1px 2px rgba(15,23,42,.06);
   --shadow-md:0 8px 24px rgba(15,23,42,.08);
@@ -233,16 +234,44 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .breadcrumb a{ color:var(--accent); cursor:pointer; text-decoration:none; }
 
 /* ---------- Cards / KPIs ---------- */
-.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:22px; }
+/* position:relative + overflow:hidden so ::before (the top accent stripe) clips to the card's own
+   border-radius instead of sitting square-cornered on top of a rounded card. */
 .kpi-card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px;
-  box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:10px; }
+  box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+/* A thin colored top stripe, one per KPI -- opt-in via the --kpi-color custom property set inline
+   per-card (kpiCard()/dashboard.js); falls back to transparent (invisible) so the handful of plain
+   label/value info tiles that also reuse .kpi-card elsewhere (venueInfoCard_, the Decision/Decided-on
+   pair in eventDetail.js) are visually unaffected -- only actual KPI cards opt into the accent. This
+   is a card-level accent, not a background behind the icon glyph itself, so it doesn't conflict with
+   the "no background colours in any icon" REQ below. */
+.kpi-card::before{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--kpi-color, transparent); }
 .kpi-top{ display:flex; align-items:center; justify-content:space-between; }
 .kpi-label{ font-size:12.5px; color:var(--text-600); font-weight:600; }
 /* REQ: "I do not want background colours in any icon within the application." -- was a solid
    color+'22' badge behind the glyph (still set inline per-card, see kpiCard()/dashboard.js); now a
    plain icon at a slightly larger size so it still reads clearly without the colored square. */
 .kpi-icon{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:19px; }
-.kpi-value{ font-size:26px; font-weight:800; }
+.kpi-value{ font-size:28px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+
+/* ---------- Dashboard (dashboard.js) ---------- */
+.dashboard-hero{ display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:22px; }
+.dashboard-greeting{ font-size:24px; font-weight:800; letter-spacing:-.01em; }
+.dashboard-hero-sub{ font-size:13.5px; color:var(--text-600); margin-top:4px; }
+.dashboard-hero-date{ font-size:12.5px; font-weight:600; color:var(--text-600); background:var(--surface);
+  border:1px solid var(--border); border-radius:999px; padding:7px 14px; white-space:nowrap; }
+.dashboard-columns{ display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+.dashboard-col-main{ flex:2 1 420px; min-width:320px; }
+.dashboard-col-side{ flex:1 1 340px; min-width:280px; }
+/* Squircle variant of .avatar (person initials, circular) for an Event's own initial -- same
+   gradient/weight so it reads as the same visual language, just distinguishable from a person. */
+.avatar-tile{ width:38px; height:38px; border-radius:10px; font-size:13px; flex:none; }
+.recent-event-row{ display:flex; align-items:center; gap:12px; padding:12px 6px; cursor:pointer;
+  border-radius:var(--radius-sm); transition:background .12s ease; }
+.recent-event-row:hover{ background:var(--surface); }
+.recent-event-row + .recent-event-row{ border-top:1px solid var(--border); }
+.recent-event-name{ font-size:13.5px; font-weight:700; }
+.recent-event-meta{ font-size:11.5px; color:var(--text-600); margin-top:2px; }
 
 .card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
 .card-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); gap:10px; flex-wrap:wrap; }
@@ -337,7 +366,7 @@ table.data-table tr:hover td{ background:#fafbff; }
 .badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
 .badge-dot{ width:6px; height:6px; border-radius:50%; }
 .badge-open{ background:var(--info-soft); color:var(--info); } .badge-open .badge-dot{ background:var(--info); }
-.badge-inreview{ background:#f5f3ff; color:#7c3aed; } .badge-inreview .badge-dot{ background:#7c3aed; }
+.badge-inreview{ background:var(--purple-soft); color:var(--purple); } .badge-inreview .badge-dot{ background:var(--purple); }
 .badge-resolved{ background:var(--success-soft); color:var(--success); } .badge-resolved .badge-dot{ background:var(--success); }
 .badge-reopen{ background:var(--warning-soft); color:var(--warning); } .badge-reopen .badge-dot{ background:var(--warning); }
 .badge-rejected{ background:var(--danger-soft); color:var(--danger); } .badge-rejected .badge-dot{ background:var(--danger); }

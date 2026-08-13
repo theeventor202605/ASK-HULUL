@@ -117,7 +117,7 @@ async function tabOverview(content, eventId, detail) {
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', detail.kpi.totalLogs, ICON('kpi_total'), 'var(--info)') +
       kpiCard('kpi_open', detail.kpi.open, ICON('kpi_open'), 'var(--info)') +
-      kpiCard('kpi_inreview', detail.kpi.inReview, ICON('kpi_inreview'), '#7c3aed') +
+      kpiCard('kpi_inreview', detail.kpi.inReview, ICON('kpi_inreview'), 'var(--purple)') +
       kpiCard('kpi_resolved', detail.kpi.resolved, ICON('kpi_resolved'), 'var(--success)') +
       kpiCard('kpi_reopen', detail.kpi.reopened, ICON('kpi_reopen'), 'var(--warning)') +
       kpiCard('kpi_rejected', detail.kpi.rejected, ICON('kpi_rejected'), 'var(--danger)') +
@@ -241,7 +241,10 @@ function initOverviewZoneMap_(venue, zones) {
   }, 0);
 }
 function kpiCard(labelKey, value, icon, color) {
-  return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">' + t(labelKey) + '</span>' +
+  // --kpi-color drives the card's top accent stripe (styles.css .kpi-card::before) -- purely a
+  // card-level accent, the icon itself stays a plain foreground-colored glyph (REQ: no background
+  // colours behind icons).
+  return '<div class="kpi-card" style="--kpi-color:' + color + ';"><div class="kpi-top"><span class="kpi-label">' + t(labelKey) + '</span>' +
     '<span class="kpi-icon" style="color:' + color + ';">' + icon + '</span></div><div class="kpi-value">' + value + '</div></div>';
 }
 function infoRow(label, val) {
@@ -2174,7 +2177,7 @@ async function tabFindings(content, eventId) {
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', findings.length, ICON('kpi_total'), 'var(--info)') +
       kpiCard('kpi_open', counts.Open, ICON('kpi_open'), 'var(--info)') +
-      kpiCard('kpi_inreview', counts.InReview, ICON('kpi_inreview'), '#7c3aed') +
+      kpiCard('kpi_inreview', counts.InReview, ICON('kpi_inreview'), 'var(--purple)') +
       kpiCard('kpi_resolved', counts.Resolved, ICON('kpi_resolved'), 'var(--success)') +
       kpiCard('kpi_reopen', counts.ReOpen, ICON('kpi_reopen'), 'var(--warning)') +
       kpiCard('kpi_rejected', counts.Rejected, ICON('kpi_rejected'), 'var(--danger)') +
