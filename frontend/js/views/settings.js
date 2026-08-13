@@ -320,7 +320,7 @@ function renderPermissionsTabBody_(content, data) {
   content.querySelectorAll('[data-perm-save]').forEach(function (btn) {
     btn.onclick = async function () {
       var key = btn.getAttribute('data-perm-save');
-      var roles = readCheckedRoles_('perm-' + key);
+      var roles = readCheckedRoles_('perm-' + permKeySlug_(key));
       if (!roles.length) { UI.toast('At least one role must be allowed', 'error'); return; }
       try {
         await Api.call('updatePermission', { key: key, roles: roles });
@@ -345,9 +345,18 @@ function renderPermissionsTabBody_(content, data) {
   });
 }
 
+// readCheckedRoles_ (config.js) builds a CSS class selector out of whatever prefix it's given
+// ('.' + prefix + '-check') -- fine for config.js's own prefixes (cfgUploader, cfgReviewer, no
+// punctuation), but permission keys are dotted (e.g. 'finding.create') and an unescaped '.' inside a
+// CSS class selector starts a NEW class, so the literal class "perm-finding.create-check" would never
+// match ".perm-finding.create-check:checked". Slugging the dot out of the key before it ever becomes
+// part of a class name (both when the checkboxes are rendered below and when they're read back on
+// Save) keeps the class name a single valid selector.
+function permKeySlug_(key) { return String(key).replace(/\./g, '-'); }
+
 function permissionRowHtml_(perm, allRoles) {
   var checkedSet = {}; perm.roles.forEach(function (r) { checkedSet[r] = true; });
-  var prefix = 'perm-' + perm.key;
+  var prefix = 'perm-' + permKeySlug_(perm.key);
   return '<div style="padding:12px 0;border-bottom:1px solid #f0f1f6;">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">' +
       '<div><div style="font-weight:600;font-size:13px;">' + esc(perm.label) + '</div>' +
