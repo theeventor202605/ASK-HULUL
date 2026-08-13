@@ -92,6 +92,8 @@ window.Router = {
     this.add('/venues/:id/places', renderVenuePlaces);
     this.add('/sub-events', renderSubEvents);
     this.add('/meetings', renderMeetings);
+    this.add('/meetings/new', renderNewMeeting);
+    this.add('/meetings/:meetingId/edit', renderEditMeeting);
     this.add('/disciplines', renderDisciplinesAdmin);
     this.add('/checklist-items', renderChecklistItems);
     this.add('/inspector-qualifications', renderInspectorQualifications);

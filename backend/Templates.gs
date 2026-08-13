@@ -344,9 +344,16 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
-// Same 4 roles that may schedule/edit/delete a meeting -- kept as one constant instead of repeating
-// the array at every requireRole call site below.
-var MEETING_MANAGE_ROLES = [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EMC_MANAGER];
+// Same 4 roles that may schedule/edit/delete a meeting -- kept as one function instead of repeating
+// the array at every requireRole call site below. MUST stay a function (not a top-level var): Apps
+// Script executes every file's top-level statements in filename order (T before U), so a top-level
+// `var ... = ROLES.X` here would run before Utils.gs has defined ROLES and crash the entire backend
+// on load (exact bug class fixed once already -- see "Fix: top-level ROLES reference crashing entire
+// backend"). Wrapping in a function defers the ROLES lookup until requireRole() actually calls it,
+// by which point every file has finished loading.
+function meetingManageRoles_() {
+  return [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EMC_MANAGER];
+}
 
 // Cleans a raw To/Cc payload (array of Users.id) down to real, de-duplicated user ids -- silently
 // drops anything blank, duplicated, or not an actual user instead of hard-failing the whole request,
@@ -378,7 +385,7 @@ function notifyMeetingRecipients_(meeting, to, cc, verb) {
 // meeting's Subject line -- MEETING_TYPES is offered as a picklist on the frontend, but any non-empty
 // free text is accepted here too (REQ: "Meeting type as Subject & allow free text as well").
 function scheduleKickoff(user, p) {
-  requireRole(user, MEETING_MANAGE_ROLES);
+  requireRole(user, meetingManageRoles_());
   var subject = String(p.type || '').trim();
   if (!subject) throw new HululError('BAD_REQUEST', 'type/subject is required');
   if (p.subEventId) {
@@ -402,7 +409,7 @@ function scheduleKickoff(user, p) {
 // changed needs to be sent); anything omitted keeps its current value, same "patch, don't replace"
 // convention updateRow itself already follows one level down.
 function updateMeeting(user, p) {
-  requireRole(user, MEETING_MANAGE_ROLES);
+  requireRole(user, meetingManageRoles_());
   var existing = getById('Meetings', p.meetingId);
   if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
   var eventId = p.eventId !== undefined ? p.eventId : existing.eventId;
@@ -432,7 +439,7 @@ function updateMeeting(user, p) {
 // Soft delete (status:'Deleted') -- same pattern as deleteChecklistItem: the row stays (so nothing
 // that ever referenced it breaks), it's just excluded from listMeetings going forward.
 function deleteMeeting(user, p) {
-  requireRole(user, MEETING_MANAGE_ROLES);
+  requireRole(user, meetingManageRoles_());
   var existing = getById('Meetings', p.meetingId);
   if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
   updateRow('Meetings', p.meetingId, { status: 'Deleted', updatedBy: user.id, updatedAt: nowIso_() });
