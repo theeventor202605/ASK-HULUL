@@ -96,19 +96,22 @@ function assertCanManagePlace_(user, venue, event) {
 // Narrower than assertCanManagePlace_ -- just "who may add a new Event Place" (the Event >
 // Participants tab's add-a-temporary-participant form). A Venue Place (no event) is unchanged: still
 // manager-only via assertCanManagePlace_, since that's the permanent catalog, not a per-event concern.
-// For an Event Place, a Place manager role keeps the exact same org-scoped check as before; anyone
-// else falls through to the admin-configurable participant.create permission (Settings > Permissions >
-// Participants), which already defaults to EventManager/Inspector/SystemAdmin -- see
-// PERMISSION_REGISTRY_ (Permissions.gs), same pattern createFinding (Findings.gs) already uses for
-// Inspector's finding.create. REQ: "Inspector ... ability to add a temporary participant" -- deliberately
-// scoped to create only; addPlaceAccount/updatePlace/deletePlace/getPlaceAccountCredentials still gate
-// on assertCanManagePlace_ alone, so an Inspector can't edit/delete/view-credentials for participants
-// they didn't add.
+// For an Event Place, a Place manager role keeps the exact same org-scoped "is this your event" check
+// as before (that's a business-relationship check, not a role list, so it stays regardless of who's
+// admin-configured in). Anyone else falls through to the fully admin-configurable place.create
+// permission (Settings > Permissions > Participants > "Add a temporary participant") -- see
+// PERMISSION_REGISTRY_ (Permissions.gs) -- so a SystemAdmin can add or remove roles for this exact
+// action from Settings, without a code deploy, same as every other RBAC-pilot-migrated action
+// (createFinding/createParticipant). REQ: "Inspector ... ability to add a temporary participant" --
+// deliberately scoped to create only; addPlaceAccount/updatePlace/deletePlace/
+// getPlaceAccountCredentials still gate on assertCanManagePlace_/EVENT_PLACE_MANAGE_ROLES alone, so
+// a non-manager role can't edit/delete/view-credentials for participants they didn't add.
 function assertCanCreatePlace_(user, venue, event) {
-  if (!event || EVENT_PLACE_MANAGE_ROLES.indexOf(user.role) !== -1) {
+  if (!event) return assertCanManagePlace_(user, venue, event);
+  if (EVENT_PLACE_MANAGE_ROLES.indexOf(user.role) !== -1) {
     return assertCanManagePlace_(user, venue, event);
   }
-  requirePermission(user, 'participant.create');
+  requirePermission(user, 'place.create');
 }
 
 function createPlace(user, p) {

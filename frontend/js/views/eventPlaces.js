@@ -41,8 +41,10 @@ async function tabParticipants(content, eventId, detail) {
   // RBAC pilot (backend/Permissions.gs): matches assertCanCreatePlace_'s own requirePermission
   // fallback in Places.gs -- lets a non-manager role (e.g. Inspector) see the map and add a new
   // temporary participant without granting them canManage's broader edit/delete/view-credentials
-  // rights over every OTHER participant too. defaults to EventManager/Inspector/SystemAdmin.
-  var canCreateParticipant = !!venue && hasPermission('participant.create');
+  // rights over every OTHER participant too. Fully admin-configurable from Settings > Permissions >
+  // Participants > "Add a temporary participant" -- defaults to SystemAdmin/EMCAdmin/EMCManager/
+  // EventManager/Inspector (the old hardcoded manager set plus Inspector).
+  var canCreateParticipant = !!venue && hasPermission('place.create');
   var canAddParticipant = canManage || canCreateParticipant;
   // RBAC pilot (backend/Permissions.gs): matches dedupeParticipants' own requirePermission.
   var canDedupe = hasPermission('participant.dedupe');

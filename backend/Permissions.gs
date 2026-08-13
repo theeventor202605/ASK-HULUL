@@ -65,6 +65,15 @@ var PERMISSION_REGISTRY_ = {
     module: 'Participants', label: 'Create a participant (vendor/operator/exhibitor)',
     defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
   },
+  'place.create': {
+    module: 'Participants', label: 'Add a temporary participant to an event (Participants tab map + form)',
+    // Same five roles Places.gs's EVENT_PLACE_MANAGE_ROLES already allowed (SystemAdmin/EMCAdmin/
+    // EMCManager/EventManager), plus Inspector -- REQ: "Inspector ... ability to add a temporary
+    // participant." A separate key from participant.create (not a shared one) because that key also
+    // gates the unrelated venue-wide createParticipant (Participants.gs); overriding its role list
+    // here would have silently changed that other feature too.
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager', 'Inspector']
+  },
   'participant.edit': {
     module: 'Participants', label: 'Edit a participant',
     defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
