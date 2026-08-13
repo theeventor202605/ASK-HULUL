@@ -2379,7 +2379,22 @@ async function tabEventChat(content, eventId, detail) {
         '<div id="chatSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
       '</div>' +
       '<div id="chatStagedChips" style="margin-top:8px;"></div>' +
-      '<button class="btn btn-primary btn-sm" id="sendChatBtn" style="margin-top:10px;">' + ICON('send') + ' Send</button>' +
+      '<div style="position:relative;display:inline-block;margin-top:10px;">' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="chatEmojiBtn" title="Insert emoji or icon">🙂</button>' +
+          '<button class="btn btn-primary btn-sm" id="sendChatBtn">' + ICON('send') + ' Send</button>' +
+        '</div>' +
+        '<div class="chat-emoji-popover" id="chatEmojiPopover" style="display:none;">' +
+          '<div class="chat-emoji-popover-header">' +
+            '<div class="chat-emoji-tabs">' +
+              '<button type="button" class="chat-emoji-tab active" data-emoji-tab="emoji">Emoji</button>' +
+              '<button type="button" class="chat-emoji-tab" data-emoji-tab="icons">Icons</button>' +
+            '</div>' +
+            '<button type="button" class="chat-emoji-popover-close" id="chatEmojiPopoverClose" aria-label="Close">' + ICON('close_modal') + '</button>' +
+          '</div>' +
+          '<div class="chat-emoji-popover-body" id="chatEmojiPopoverBody"></div>' +
+        '</div>' +
+      '</div>' +
     '</div></div>';
 
   // Scroll to the latest message on open, same as any chat UI.
@@ -2586,8 +2601,77 @@ async function tabEventChat(content, eventId, detail) {
         function (tb) { return esc(tb.label); }, pickTab_);
     }
   });
-  textarea.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSuggest_(); });
+  textarea.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideSuggest_(); closeEmojiPopover_(); } });
   textarea.addEventListener('blur', function () { setTimeout(function () { if (!suggestBusy) hideSuggest_(); }, 150); });
+
+  // REQ: "Add the ability to add icon libraries, and emoji libraries for event chats." Two source
+  // libraries behind one button -- EMOJI_LIBRARY (emoji.js, expressive emoji) and ICON_LIBRARY
+  // (icons.js, the same curated set Settings > Icons already draws from) as two tabs. Unlike the
+  // slash-command suggest box above (which replaces a typed trigger and closes on pick), this
+  // inserts at wherever the cursor currently is and deliberately stays open after each pick so
+  // several emoji/icons can be added in a row -- closing only via the explicit close button, Escape,
+  // or a click outside the popover.
+  var emojiBtn = document.getElementById('chatEmojiBtn');
+  var emojiPopover = document.getElementById('chatEmojiPopover');
+  var emojiPopoverBody = document.getElementById('chatEmojiPopoverBody');
+  var emojiActiveTab = 'emoji';
+
+  function insertAtCursor_(text) {
+    var start = textarea.selectionStart, end = textarea.selectionEnd;
+    var val = textarea.value;
+    textarea.value = val.slice(0, start) + text + val.slice(end);
+    var newPos = start + text.length;
+    textarea.focus();
+    textarea.setSelectionRange(newPos, newPos);
+  }
+
+  function renderEmojiPopoverBody_() {
+    var groups = emojiActiveTab === 'emoji'
+      ? EMOJI_LIBRARY.map(function (g) { return { title: g.category, glyphs: g.emojis }; })
+      : window.ICON_LIBRARY.map(function (g) { return { title: g.section, glyphs: g.icons }; });
+    emojiPopoverBody.innerHTML = groups.map(function (g) {
+      return '<div class="chat-emoji-category-title">' + esc(g.title) + '</div>' +
+        '<div class="chat-emoji-grid">' +
+          g.glyphs.map(function (gl) { return '<button type="button" class="chat-emoji-opt">' + gl + '</button>'; }).join('') +
+        '</div>';
+    }).join('');
+    emojiPopoverBody.querySelectorAll('.chat-emoji-opt').forEach(function (btn) {
+      // mousedown (not click) + preventDefault -- same reasoning as the slash-command suggest list
+      // above: keeps the textarea focused with its selection intact so insertAtCursor_ still has the
+      // right cursor position, instead of losing it to the button's own click-triggered blur.
+      btn.addEventListener('mousedown', function (e) { e.preventDefault(); insertAtCursor_(btn.textContent); });
+    });
+  }
+
+  function openEmojiPopover_() {
+    hideSuggest_(); // never show both popovers at once
+    renderEmojiPopoverBody_();
+    emojiPopover.style.display = '';
+  }
+  function closeEmojiPopover_() { emojiPopover.style.display = 'none'; }
+
+  emojiBtn.onclick = function () {
+    if (emojiPopover.style.display === 'none') openEmojiPopover_(); else closeEmojiPopover_();
+  };
+  document.getElementById('chatEmojiPopoverClose').onclick = closeEmojiPopover_;
+  emojiPopover.querySelectorAll('.chat-emoji-tab').forEach(function (tabBtn) {
+    tabBtn.onclick = function () {
+      emojiActiveTab = tabBtn.getAttribute('data-emoji-tab');
+      emojiPopover.querySelectorAll('.chat-emoji-tab').forEach(function (b) { b.classList.toggle('active', b === tabBtn); });
+      renderEmojiPopoverBody_();
+    };
+  });
+  // A per-tab-visit document click listener (not one registered once at app bootstrap, unlike e.g.
+  // the notification panel's own outside-click handler in app.js) -- this popover only exists while
+  // the Chat tab itself is on screen, torn down the moment content.innerHTML is replaced by any other
+  // render. Self-removes the first time it fires after that happens (emojiPopover no longer attached)
+  // instead of leaking one stray listener per Chat-tab visit for the rest of the session.
+  document.addEventListener('click', function outsideEmojiClick_(e) {
+    if (!document.body.contains(emojiPopover)) { document.removeEventListener('click', outsideEmojiClick_); return; }
+    if (emojiPopover.style.display === 'none') return;
+    if (emojiPopover.contains(e.target) || e.target === emojiBtn) return;
+    closeEmojiPopover_();
+  });
 
   document.getElementById('sendChatBtn').onclick = async function () {
     var message = textarea.value.trim();
