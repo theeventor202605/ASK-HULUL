@@ -87,6 +87,9 @@ var ROUTES = {
   setOrgLabels: function (u, p) { return setOrgLabels(u, p); },
   getAppIcons: function (u, p) { return getAppIcons(u, p); },
   setAppIcons: function (u, p) { return setAppIcons(u, p); },
+  getCustomIconLibraries: function (u, p) { return getCustomIconLibraries(u, p); },
+  addCustomIconLibrary: function (u, p) { return addCustomIconLibrary(u, p); },
+  deleteCustomIconLibrary: function (u, p) { return deleteCustomIconLibrary(u, p); },
   auditLog: function (u, p) { return listAuditLog(u, p); },
   // Admin-configurable RBAC (Permissions.gs) -- foundation + Findings pilot module.
   listPermissions: function (u, p) { return listPermissions(u, p); },

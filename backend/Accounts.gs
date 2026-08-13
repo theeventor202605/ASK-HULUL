@@ -245,6 +245,59 @@ function setAppIcons(user, p) {
   return clean;
 }
 
+// Custom emoji/glyph sets a SystemAdmin can import (paste/upload) so the icon picker isn't limited
+// to the curated ICON_LIBRARY (icons.js) -- e.g. an org's own brand emoji set. Stored alongside the
+// nav/semantic icon overrides above, on the SAME 'GLOBAL' row (one more JSON-blob column), since
+// this is app-wide platform config too, not per-org. Any authenticated user may READ (needed to
+// render the picker); only SystemAdmin may add/delete a library.
+function getCustomIconLibraries(user, p) {
+  var row = findWhere('AppIcons', function (r) { return r.id === 'GLOBAL'; })[0];
+  if (!row || !row.customLibrariesJson) return [];
+  try { return JSON.parse(row.customLibrariesJson) || []; } catch (e) { return []; }
+}
+
+function addCustomIconLibrary(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  var name = String((p && p.name) || '').trim();
+  if (!name) throw new HululError('BAD_REQUEST', 'name is required');
+  var icons = Array.isArray(p && p.icons) ? p.icons : [];
+  var seen = {};
+  icons = icons.map(function (ic) { return String(ic || '').trim(); }).filter(function (ic) {
+    if (!ic || seen[ic]) return false;
+    seen[ic] = true;
+    return true;
+  });
+  if (!icons.length) throw new HululError('BAD_REQUEST', 'At least one icon is required');
+  var existing = findWhere('AppIcons', function (r) { return r.id === 'GLOBAL'; })[0];
+  var libs = [];
+  if (existing && existing.customLibrariesJson) {
+    try { libs = JSON.parse(existing.customLibrariesJson) || []; } catch (e) { libs = []; }
+  }
+  libs.push({ id: Utilities.getUuid(), name: name, icons: icons, createdAt: nowIso_(), createdBy: user.id });
+  var row = { customLibrariesJson: JSON.stringify(libs), updatedAt: nowIso_(), updatedBy: user.id };
+  if (existing) updateRow('AppIcons', existing.id, row);
+  else insertRow('AppIcons', Object.assign({ id: 'GLOBAL' }, row));
+  audit(user.id, 'ADD_CUSTOM_ICON_LIBRARY', 'AppIcons', 'GLOBAL', { name: name, count: icons.length });
+  return libs;
+}
+
+function deleteCustomIconLibrary(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  if (!p || !p.libraryId) throw new HululError('BAD_REQUEST', 'libraryId is required');
+  var existing = findWhere('AppIcons', function (r) { return r.id === 'GLOBAL'; })[0];
+  var libs = [];
+  if (existing && existing.customLibrariesJson) {
+    try { libs = JSON.parse(existing.customLibrariesJson) || []; } catch (e) { libs = []; }
+  }
+  var next = libs.filter(function (lib) { return lib.id !== p.libraryId; });
+  if (next.length === libs.length) throw new HululError('NOT_FOUND', 'Icon library not found');
+  var row = { customLibrariesJson: JSON.stringify(next), updatedAt: nowIso_(), updatedBy: user.id };
+  if (existing) updateRow('AppIcons', existing.id, row);
+  else insertRow('AppIcons', Object.assign({ id: 'GLOBAL' }, row));
+  audit(user.id, 'DELETE_CUSTOM_ICON_LIBRARY', 'AppIcons', 'GLOBAL', { libraryId: p.libraryId });
+  return next;
+}
+
 // REQ-ACC-10: immutable audit trail.
 function listAuditLog(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN]);

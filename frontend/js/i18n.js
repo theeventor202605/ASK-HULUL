@@ -113,6 +113,16 @@ window.HULUL_I18N = {
     reset_to_default: 'Reset to default', choose_icon_modal_title: 'Choose icon',
     choose_icon_intro: 'Choose an icon below, or paste/type your own.', custom_icon_placeholder: 'Paste or type any icon…',
     use_btn: 'Use', toast_type_icon_first: 'Type or paste an icon first', nav_group_label: 'Navigation',
+    custom_icon_libraries_title: 'Custom Icon Libraries', import_icon_library_btn: '+ Import Library',
+    no_custom_libraries_yet: 'No custom libraries imported yet.', icon_count_suffix: '{{count}} icon(s)',
+    import_icon_library_modal_title: 'Import icon library',
+    import_icon_library_intro: 'Paste a list of emoji or glyphs to create a new named group in the icon picker.',
+    field_library_name: 'Library name', field_library_icons: 'Icons',
+    library_icons_placeholder: '🚀 🎯 ⭐ …', library_icons_hint: 'Separate icons with spaces, commas, or new lines.',
+    import_btn: 'Import', toast_library_name_required: 'Library name is required',
+    toast_library_icons_required: 'Add at least one icon', toast_library_imported: 'Icon library imported',
+    delete_library_confirm: 'Delete this icon library? Icons already in use elsewhere won\'t be affected.',
+    toast_library_deleted: 'Icon library deleted',
 
     // ---- Venues + Places (venues.js) ----
     venues_subtitle: '{{term}} available to assign to {{eventTerm}}', places_label: 'Places', col_name: 'Name', col_coordinates: 'Coordinates',
@@ -562,6 +572,16 @@ window.HULUL_I18N = {
     reset_to_default: 'إعادة إلى الوضع الافتراضي', choose_icon_modal_title: 'اختر أيقونة',
     choose_icon_intro: 'اختر أيقونة أدناه، أو الصق/اكتب أيقونتك الخاصة.', custom_icon_placeholder: 'الصق أو اكتب أي أيقونة…',
     use_btn: 'استخدام', toast_type_icon_first: 'اكتب أو الصق أيقونة أولاً', nav_group_label: 'التنقل',
+    custom_icon_libraries_title: 'مكتبات الأيقونات المخصصة', import_icon_library_btn: '+ استيراد مكتبة',
+    no_custom_libraries_yet: 'لم يتم استيراد أي مكتبة مخصصة بعد.', icon_count_suffix: '{{count}} أيقونة',
+    import_icon_library_modal_title: 'استيراد مكتبة أيقونات',
+    import_icon_library_intro: 'الصق قائمة من الإيموجي أو الرموز لإنشاء مجموعة جديدة باسمها الخاص في منتقي الأيقونات.',
+    field_library_name: 'اسم المكتبة', field_library_icons: 'الأيقونات',
+    library_icons_placeholder: '🚀 🎯 ⭐ …', library_icons_hint: 'افصل بين الأيقونات بمسافات أو فواصل أو أسطر جديدة.',
+    import_btn: 'استيراد', toast_library_name_required: 'اسم المكتبة مطلوب',
+    toast_library_icons_required: 'أضف أيقونة واحدة على الأقل', toast_library_imported: 'تم استيراد مكتبة الأيقونات',
+    delete_library_confirm: 'حذف مكتبة الأيقونات هذه؟ لن تتأثر الأيقونات المستخدمة بالفعل في أماكن أخرى.',
+    toast_library_deleted: 'تم حذف مكتبة الأيقونات',
 
     // ---- Venues + Places (venues.js) ----
     venues_subtitle: '{{term}} متاحة لتُسند إلى {{eventTerm}}', places_label: 'الأماكن', col_name: 'الاسم', col_coordinates: 'الإحداثيات',

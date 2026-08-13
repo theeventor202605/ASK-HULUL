@@ -127,7 +127,10 @@ var SCHEMA = {
   // labelsJson is a JSON object of entityKey -> custom label overriding the built-in default.
   OrgLabels:              ['id','orgId','labelsJson','updatedAt','updatedBy'],
   // Single global row (id 'GLOBAL') -- see getAppIcons/setAppIcons in Accounts.gs.
-  AppIcons:               ['id','iconsJson','updatedAt','updatedBy'],
+  // customLibrariesJson: SystemAdmin-imported custom emoji/glyph sets, shown as extra groups in
+  // the icon picker alongside the built-in ICON_LIBRARY -- see getCustomIconLibraries/
+  // addCustomIconLibrary/deleteCustomIconLibrary in Accounts.gs.
+  AppIcons:               ['id','iconsJson','customLibrariesJson','updatedAt','updatedBy'],
   // Admin-configurable RBAC overrides -- single global row (id 'GLOBAL'), same one-row-JSON-blob
   // convention as AppIcons above. overridesJson is a JSON object of permissionKey -> array of role
   // codes; any key absent from it just falls back to that permission's defaultRoles (see

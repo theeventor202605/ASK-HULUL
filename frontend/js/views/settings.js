@@ -212,7 +212,8 @@ async function loadOrgLabels_force_() {
 async function renderIconsTab_(content) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   var overrides = await Api.call('getAppIcons', {});
-  renderIconsTabBody_(content, Object.assign({}, overrides));
+  var customLibraries = await Api.call('getCustomIconLibraries', {});
+  renderIconsTabBody_(content, Object.assign({}, overrides), customLibraries || []);
 }
 
 // Every icon in the app lives in one of two registries that both share this same override store
@@ -234,7 +235,8 @@ function iconSettingsGroups_() {
   return groups;
 }
 
-function renderIconsTabBody_(content, pending) {
+function renderIconsTabBody_(content, pending, customLibraries) {
+  customLibraries = customLibraries || [];
   var groupsHtml = iconSettingsGroups_().map(function (g) {
     var swatches = g.rows.map(function (r) {
       var icon = pending[r.key] || r.defaultIcon;
@@ -247,16 +249,21 @@ function renderIconsTabBody_(content, pending) {
 
   content.innerHTML =
     '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">' + esc(t('icons_intro')) + '</div>' +
+    customLibrariesSectionHtml_(customLibraries) +
     '<input class="field-input" id="iconSearchInput" placeholder="' + esc(t('icons_search_placeholder')) + '" style="max-width:240px;margin-bottom:16px;" />' +
     groupsHtml +
     '<button class="btn btn-primary btn-sm" id="saveIconsBtn">' + t('save') + '</button>';
 
+  wireCustomLibrariesSection_(content, customLibraries, function (updatedLibraries) {
+    renderIconsTabBody_(content, pending, updatedLibraries);
+  });
+
   content.querySelectorAll('.icon-swatch').forEach(function (el) {
     el.onclick = function () {
       var key = el.getAttribute('data-key');
-      openIconPickerModal_(function (chosenIcon) {
+      openIconPickerModal_(customLibraries, function (chosenIcon) {
         if (chosenIcon) pending[key] = chosenIcon; else delete pending[key];
-        renderIconsTabBody_(content, pending);
+        renderIconsTabBody_(content, pending, customLibraries);
       });
     };
   });
@@ -279,6 +286,83 @@ function renderIconsTabBody_(content, pending) {
       UI.toast(t('toast_icons_saved'), 'success');
     } catch (err) { UI.error(err); }
   };
+}
+
+// Custom emoji/glyph sets a SystemAdmin has imported (see backend/Accounts.gs
+// getCustomIconLibraries/addCustomIconLibrary/deleteCustomIconLibrary). Shown as their own card
+// above the built-in icon groups -- purely a management list (name, icon count, preview, delete);
+// the actual "use one of these icons" flow happens in openIconPickerModal_ below, which renders
+// each library as an extra picker group alongside window.ICON_LIBRARY's built-in ones.
+function customLibrariesSectionHtml_(libs) {
+  var rows = libs.map(function (lib) {
+    var preview = (lib.icons || []).slice(0, 14).map(function (ic) { return esc(ic); }).join(' ');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;">' +
+      '<div style="min-width:0;">' +
+        '<div style="font-weight:600;font-size:13px;">' + esc(lib.name) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin:2px 0 4px;">' + esc(t('icon_count_suffix', { count: (lib.icons || []).length })) + '</div>' +
+        '<div style="font-size:16px;">' + preview + '</div>' +
+      '</div>' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-delete-lib="' + esc(lib.id) + '" style="flex:none;">' + esc(t('delete')) + '</button>' +
+    '</div>';
+  }).join('');
+
+  return '<div style="margin-bottom:18px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+      '<div class="icon-settings-group-title" style="margin:0;">' + esc(t('custom_icon_libraries_title')) + '</div>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="importIconLibraryBtn">' + esc(t('import_icon_library_btn')) + '</button>' +
+    '</div>' +
+    (rows || '<div class="muted" style="font-size:12px;">' + esc(t('no_custom_libraries_yet')) + '</div>') +
+  '</div>';
+}
+
+function wireCustomLibrariesSection_(content, customLibraries, onChange) {
+  var importBtn = document.getElementById('importIconLibraryBtn');
+  if (importBtn) importBtn.onclick = function () { openImportIconLibraryModal_(onChange); };
+
+  content.querySelectorAll('[data-delete-lib]').forEach(function (el) {
+    el.onclick = function () {
+      var libraryId = el.getAttribute('data-delete-lib');
+      UI.confirmModal(t('delete_library_confirm'), async function () {
+        try {
+          var updated = await Api.call('deleteCustomIconLibrary', { libraryId: libraryId });
+          UI.toast(t('toast_library_deleted'), 'success');
+          onChange(updated);
+        } catch (err) { UI.error(err); }
+      });
+    };
+  });
+}
+
+// Free-text name + a textarea of space/comma/newline-separated glyphs -- deliberately simple (no
+// file upload) since pasting a run of emoji/characters is the realistic path here, matching the
+// existing free-text "paste your own icon" input already in openIconPickerModal_ below.
+function openImportIconLibraryModal_(onDone) {
+  var body =
+    '<div class="muted" style="font-size:12px;margin-bottom:12px;">' + esc(t('import_icon_library_intro')) + '</div>' +
+    UI.field(t('field_library_name'), '<input class="field-input" id="newLibNameInput" maxlength="60" />') +
+    '<div style="margin-top:10px;">' +
+      UI.field(t('field_library_icons'), '<textarea class="field-input" id="newLibIconsInput" rows="4" placeholder="' + esc(t('library_icons_placeholder')) + '"></textarea>') +
+      '<div class="muted" style="font-size:11px;margin-top:4px;">' + esc(t('library_icons_hint')) + '</div>' +
+    '</div>';
+
+  UI.openModal(t('import_icon_library_modal_title'), body, [
+    { label: t('import_btn'), className: 'btn-primary', onClick: submitImport },
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal }
+  ]);
+
+  async function submitImport() {
+    var name = document.getElementById('newLibNameInput').value.trim();
+    var raw = document.getElementById('newLibIconsInput').value;
+    var icons = raw.split(/[\s,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!name) { UI.toast(t('toast_library_name_required'), 'error'); return; }
+    if (!icons.length) { UI.toast(t('toast_library_icons_required'), 'error'); return; }
+    try {
+      var updated = await Api.call('addCustomIconLibrary', { name: name, icons: icons });
+      UI.closeModal();
+      UI.toast(t('toast_library_imported'), 'success');
+      onDone(updated);
+    } catch (err) { UI.error(err); }
+  }
 }
 
 /* ---------------- Permissions (RBAC, "admin-configurable permissions") ----------------
@@ -459,7 +543,8 @@ async function loadPermissions_force_() {
 // SystemAdmin isn't limited to the curated palette -- any emoji/character can be typed or pasted in
 // and used directly. onPick receives the chosen icon string, or '' to reset that key back to its
 // built-in default.
-function openIconPickerModal_(onPick) {
+function openIconPickerModal_(customLibraries, onPick) {
+  customLibraries = customLibraries || [];
   var body = '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('choose_icon_intro')) + '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:16px;">' +
       '<input class="field-input" id="customIconInput" placeholder="' + esc(t('custom_icon_placeholder')) + '" style="flex:1;" maxlength="8" />' +
@@ -470,6 +555,18 @@ function openIconPickerModal_(onPick) {
         '<div style="font-size:11px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + esc(group.section) + '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;">' +
         group.icons.map(function (ic) {
+          return '<div class="icon-pick-opt" data-icon="' + esc(ic) + '" style="cursor:pointer;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--border);font-size:18px;">' + ic + '</div>';
+        }).join('') +
+        '</div></div>';
+    }).join('') +
+    // SystemAdmin-imported custom emoji/glyph sets (Settings > Icons > Import Icon Library) --
+    // rendered as extra groups after the built-in ICON_LIBRARY ones, same swatch-grid markup so
+    // clicking one is indistinguishable from picking a built-in icon.
+    customLibraries.map(function (lib) {
+      return '<div style="margin-bottom:10px;">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--text-600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + esc(lib.name) + '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;">' +
+        (lib.icons || []).map(function (ic) {
           return '<div class="icon-pick-opt" data-icon="' + esc(ic) + '" style="cursor:pointer;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--border);font-size:18px;">' + ic + '</div>';
         }).join('') +
         '</div></div>';
