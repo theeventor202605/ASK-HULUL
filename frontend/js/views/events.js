@@ -37,13 +37,13 @@ async function renderEventsList() {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('event_plural')) + '</div>' +
-    '<div class="page-subtitle">' + esc('All ' + Term('event_plural') + ' across your organisation') + '</div></div>' +
+    '<div class="page-subtitle">' + esc(t('events_subtitle', { term: Term('event_plural') })) + '</div></div>' +
     '<div style="display:flex;gap:8px;">' +
-      '<button class="btn btn-secondary" id="exportCsvBtn">Export CSV</button>' +
+      '<button class="btn btn-secondary" id="exportCsvBtn">' + esc(t('export_csv')) + '</button>' +
       (canManage ?
-        '<button class="btn btn-secondary" id="importCsvBtn">Import CSV</button>' +
+        '<button class="btn btn-secondary" id="importCsvBtn">' + esc(t('import_csv')) + '</button>' +
         '<input type="file" id="importCsvInput" accept=".csv" style="display:none;" />' +
-        '<button class="btn btn-primary" id="newEventBtn">+ New ' + esc(Term('event')) + '</button>'
+        '<button class="btn btn-primary" id="newEventBtn">' + esc(t('new_x', { term: Term('event') })) + '</button>'
         : '') +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
@@ -104,12 +104,12 @@ async function renderEventsList() {
     var rows = projects.filter(function (pr) { return counts[pr.id]; })
       .map(function (pr) { return { id: pr.id, name: pr.name, count: counts[pr.id] }; })
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
-    if (noProject) rows.push({ id: '__none__', name: 'No ' + Term('project').toLowerCase(), count: noProject });
+    if (noProject) rows.push({ id: '__none__', name: t('no_x', { term: Term('project') }), count: noProject });
     // The active Venue filter may have made the currently-selected Project impossible (0 matches)
     // -- fall back to "All Projects" rather than showing that dead-end combination.
     if (view.projectId && !rows.some(function (r) { return r.id === view.projectId; })) view.projectId = '';
     var panel = document.getElementById('projectFilterPanel');
-    panel.innerHTML = filterPanelHtml_('All ' + Term('project_plural'), rows, view.projectId);
+    panel.innerHTML = filterPanelHtml_(t('all_x', { term: Term('project_plural') }), rows, view.projectId);
     panel.querySelectorAll('.filter-row').forEach(function (row) {
       row.onclick = function () {
         view.projectId = row.getAttribute('data-id');
@@ -127,7 +127,7 @@ async function renderEventsList() {
       .sort(function (a, b) { return a.name.localeCompare(b.name); });
     if (view.venueId && !rows.some(function (r) { return r.id === view.venueId; })) view.venueId = '';
     var panel = document.getElementById('venueFilterPanel');
-    panel.innerHTML = filterPanelHtml_('All ' + Term('venue_plural'), rows, view.venueId);
+    panel.innerHTML = filterPanelHtml_(t('all_x', { term: Term('venue_plural') }), rows, view.venueId);
     panel.querySelectorAll('.filter-row').forEach(function (row) {
       row.onclick = function () {
         view.venueId = row.getAttribute('data-id');
@@ -146,18 +146,18 @@ async function renderEventsList() {
         { key: 'projectId', label: Term('project'), render: function (r) { return r.projectId && projectById[r.projectId]
             ? '<a href="#/projects/' + r.projectId + '" style="color:var(--accent);text-decoration:none;">' + esc(projectById[r.projectId].name) + '</a>'
             : '<span class="muted">—</span>'; } },
-        { key: 'code', label: 'Code' },
-        { key: 'city', label: 'City' },
-        { key: 'startDateTime', label: 'Start', render: function (r) { return UI.fmtDate(r.startDateTime); } },
-        { key: 'endDateTime', label: 'End', render: function (r) { return UI.fmtDate(r.endDateTime); } },
+        { key: 'code', label: t('col_code') },
+        { key: 'city', label: t('col_city') },
+        { key: 'startDateTime', label: t('col_start'), render: function (r) { return UI.fmtDate(r.startDateTime); } },
+        { key: 'endDateTime', label: t('col_end'), render: function (r) { return UI.fmtDate(r.endDateTime); } },
         { key: 'status', label: t('status'), render: function (r) { return UI.statusBadge(r.status); } },
         { key: 'actions', label: t('actions'), render: function (r) {
             var html = '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
-              '<a class="btn btn-secondary btn-sm btn-icon" title="Open" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
+              '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
             var canEdit = ['SystemAdmin', 'GAAdmin', 'GAUser'].indexOf(HululState.user.role) !== -1;
-            if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="Edit" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
+            if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
             var canDelete = r.status === 'Planning' && ['SystemAdmin', 'GAAdmin'].indexOf(HululState.user.role) !== -1;
-            if (canDelete) html += '<button class="btn btn-secondary btn-sm btn-icon" title="Delete" data-del-event="' + r.id + '">' + ICON('delete') + '</button>';
+            if (canDelete) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-event="' + r.id + '">' + ICON('delete') + '</button>';
             return html + '</div>';
           } }
       ],
@@ -172,10 +172,10 @@ async function renderEventsList() {
     wrap.querySelectorAll('[data-del-event]').forEach(function (b) {
       b.onclick = function () {
         var eventId = b.getAttribute('data-del-event');
-        UI.confirmModal('Delete this ' + Term('event') + '? This cannot be undone.', async function () {
-          try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast(Term('event') + ' deleted', 'success'); Router.resolve(); }
+        UI.confirmModal(t('delete_x_confirm', { term: Term('event') }), async function () {
+          try { await Api.call('deleteEvent', { eventId: eventId }); UI.toast(t('x_deleted', { term: Term('event') }), 'success'); Router.resolve(); }
           catch (err) { UI.error(err); }
-        }, { confirmLabel: 'Delete' });
+        }, { confirmLabel: t('delete') });
       };
     });
   }
@@ -204,34 +204,34 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
   var venueOptions = venues.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
   var inspCoOptions = inspectionCos.length
     ? inspectionCos.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
-    : '<option value="">No inspection companies found</option>';
+    : '<option value="">' + esc(t('no_inspection_cos_found')) + '</option>';
   var emcOptions = (emcOrgs || []).length
     ? emcOrgs.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
-    : '<option value="">No EMC organizations found</option>';
-  var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
+    : '<option value="">' + esc(t('no_emc_orgs_found')) + '</option>';
+  var projectOptions = '<option value="">' + esc(t('label_no_project', { term: Term('project') })) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === presetProjectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
-    UI.field(Term('event') + ' name', '<input id="fEventName" class="field-input" />') +
+    UI.field(t('field_x_name', { term: Term('event') }), '<input id="fEventName" class="field-input" />') +
     UI.field(Term('venue'), '<select id="fVenueId" class="field-input">' + venueOptions + '</select>') +
     '<div class="form-row">' +
-      UI.field('Address', '<input id="fAddress" class="field-input" readonly />') +
-      UI.field('City', '<input id="fCity" class="field-input" readonly />') +
+      UI.field(t('col_address'), '<input id="fAddress" class="field-input" readonly />') +
+      UI.field(t('col_city'), '<input id="fCity" class="field-input" readonly />') +
     '</div>' +
-    '<div class="muted" style="font-size:11.5px;margin:-6px 0 12px;">Address & city are pulled from the selected ' + esc(Term('venue').toLowerCase()) + '.</div>' +
+    '<div class="muted" style="font-size:11.5px;margin:-6px 0 12px;">' + esc(t('field_address_city_hint', { term: Term('venue').toLowerCase() })) + '</div>' +
     '<div class="form-row">' +
-      UI.field('Start', '<input id="fStart" type="datetime-local" class="field-input" />') +
-      UI.field('End', '<input id="fEnd" type="datetime-local" class="field-input" />') +
+      UI.field(t('col_start'), '<input id="fStart" type="datetime-local" class="field-input" />') +
+      UI.field(t('col_end'), '<input id="fEnd" type="datetime-local" class="field-input" />') +
     '</div>' +
-    UI.field('Renting EMC', '<select id="fEmcId" class="field-input">' + emcOptions + '</select>') +
-    UI.field('Inspection Company', '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>') +
-    UI.field(Term('project') + ' (optional)', '<select id="fProjectId" class="field-input">' + projectOptions + '</select>');
+    UI.field(t('field_renting_emc'), '<select id="fEmcId" class="field-input">' + emcOptions + '</select>') +
+    UI.field(t('field_inspection_co'), '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>') +
+    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fProjectId" class="field-input">' + projectOptions + '</select>');
 
-  UI.openModal('New ' + Term('event'), body, [
+  UI.openModal(t('new_x', { term: Term('event') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
         try {
           var emcId = document.getElementById('fEmcId').value;
-          if (!emcId) { UI.toast('Renting EMC is required', 'error'); return; }
+          if (!emcId) { UI.toast(t('toast_emc_required'), 'error'); return; }
           await Api.call('createEvent', {
             name: document.getElementById('fEventName').value,
             venueId: document.getElementById('fVenueId').value,
@@ -244,7 +244,7 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
             projectId: document.getElementById('fProjectId').value
           });
           UI.closeModal();
-          UI.toast(Term('event') + ' created', 'success');
+          UI.toast(t('x_created', { term: Term('event') }), 'success');
           Router.resolve();
         } catch (err) { UI.error(err); }
       } }
@@ -272,22 +272,22 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
   var emcOptions = (emcOrgs || []).map(function (o) {
     return '<option value="' + o.id + '"' + (o.id === event.emcId ? ' selected' : '') + '>' + esc(o.name) + '</option>';
   }).join('');
-  var projectOptions = '<option value="">No ' + esc(Term('project').toLowerCase()) + '</option>' +
+  var projectOptions = '<option value="">' + esc(t('label_no_project', { term: Term('project') })) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === event.projectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
   var body =
-    (venue ? '<div class="muted" style="font-size:12px;margin-bottom:12px;">' + esc(Term('venue')) + ': ' + esc(venue.name) + ' — not editable here (fixed at creation)</div>' : '') +
-    UI.field(Term('event') + ' name', '<input id="fEditName" class="field-input" value="' + esc(event.name) + '" />') +
+    (venue ? '<div class="muted" style="font-size:12px;margin-bottom:12px;">' + esc(t('venue_edit_hint', { venueTerm: Term('venue'), venueName: venue.name })) + '</div>' : '') +
+    UI.field(t('field_x_name', { term: Term('event') }), '<input id="fEditName" class="field-input" value="' + esc(event.name) + '" />') +
     '<div class="form-row">' +
-      UI.field('Address', '<input id="fEditAddress" class="field-input" value="' + esc(event.address) + '" />') +
-      UI.field('City', '<input id="fEditCity" class="field-input" value="' + esc(event.city) + '" />') +
+      UI.field(t('col_address'), '<input id="fEditAddress" class="field-input" value="' + esc(event.address) + '" />') +
+      UI.field(t('col_city'), '<input id="fEditCity" class="field-input" value="' + esc(event.city) + '" />') +
     '</div>' +
     '<div class="form-row">' +
-      UI.field('Start', '<input id="fEditStart" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.startDateTime)) + '" />') +
-      UI.field('End', '<input id="fEditEnd" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.endDateTime)) + '" />') +
+      UI.field(t('col_start'), '<input id="fEditStart" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.startDateTime)) + '" />') +
+      UI.field(t('col_end'), '<input id="fEditEnd" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.endDateTime)) + '" />') +
     '</div>' +
-    UI.field('Renting EMC', '<select id="fEditEmcId" class="field-input">' + emcOptions + '</select>') +
-    UI.field(Term('project') + ' (optional)', '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>');
-  UI.openModal('Edit ' + Term('event'), body, [
+    UI.field(t('field_renting_emc'), '<select id="fEditEmcId" class="field-input">' + emcOptions + '</select>') +
+    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>');
+  UI.openModal(t('edit_x', { term: Term('event') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         try {
@@ -301,7 +301,7 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
             emcId: document.getElementById('fEditEmcId').value,
             projectId: document.getElementById('fEditProjectId').value
           });
-          UI.closeModal(); UI.toast(Term('event') + ' updated', 'success'); Router.resolve();
+          UI.closeModal(); UI.toast(t('x_updated', { term: Term('event') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
@@ -372,7 +372,7 @@ function normalizeDateTimeLocal(raw) {
 async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
   var text = await file.text();
   var rows = parseCsv_(text);
-  if (!rows.length) { UI.toast('Empty CSV file', 'error'); return; }
+  if (!rows.length) { UI.toast(t('empty_csv'), 'error'); return; }
   var headers = rows[0].map(function (h) { return h.trim().toLowerCase(); });
   var col = function (name) { return headers.indexOf(name); };
   var idxName = col('event name') !== -1 ? col('event name') : col('name');
@@ -386,7 +386,7 @@ async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
   var idxCode = col('code');
   var idxProject = col('project');
   if (idxName === -1 || idxVenue === -1 || idxStart === -1 || idxEnd === -1) {
-    UI.toast('CSV needs at least: Event Name, Venue, Start, End columns', 'error');
+    UI.toast(t('csv_columns_required'), 'error');
     return;
   }
 
@@ -394,7 +394,7 @@ async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
   for (var i = 1; i < rows.length; i++) {
     if (rows[i].length && !rows[i].every(function (c) { return c.trim() === ''; })) totalRows++;
   }
-  var progress = UI.progressModal('Importing events…', totalRows);
+  var progress = UI.progressModal(t('importing_events'), totalRows);
   var processed = 0;
   var results = { created: [], failed: [] };
   for (var r = 1; r < rows.length; r++) {
@@ -445,13 +445,13 @@ async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
 
 function showImportResults_(results) {
   var body = '<div style="font-size:13.5px;">' +
-    '<div style="margin-bottom:8px;"><strong>' + results.created.length + '</strong> ' + esc(results.created.length === 1 ? Term('event') : Term('event_plural')) + ' created successfully.</div>' +
+    '<div style="margin-bottom:8px;">' + esc(t('import_created_count', { count: results.created.length, term: results.created.length === 1 ? Term('event') : Term('event_plural') })) + '</div>' +
     (results.failed.length
-      ? '<div style="color:var(--danger);font-weight:600;margin-bottom:6px;">' + results.failed.length + ' row(s) failed:</div>' +
+      ? '<div style="color:var(--danger);font-weight:600;margin-bottom:6px;">' + esc(t('import_failed_count', { count: results.failed.length })) + '</div>' +
         '<div style="max-height:240px;overflow-y:auto;">' + results.failed.map(function (f) {
           return '<div style="padding:6px 8px;background:#fef2f2;border-radius:6px;margin-bottom:4px;font-size:12.5px;">Row ' + f.row + ' (' + esc(f.name) + '): ' + esc(f.reason) + '</div>';
         }).join('') + '</div>'
       : '') +
     '</div>';
-  UI.openModal('Import results', body, [{ label: 'OK', className: 'btn-primary', onClick: UI.closeModal }]);
+  UI.openModal(t('import_results_title'), body, [{ label: t('ok'), className: 'btn-primary', onClick: UI.closeModal }]);
 }
