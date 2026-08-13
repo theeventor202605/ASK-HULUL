@@ -11,7 +11,8 @@
  * script after both in index.html.
  *
  * Public surface: window.EvidenceCapture = { prepare, saveAndUpload, retryPending, pendingCount,
- * getPosition, saveLogPhoto, listLogPhotos, deleteLogPhoto }
+ * getPosition, saveLogPhoto, listLogPhotos, deleteLogPhoto, trashLogPhoto, restoreLogPhoto,
+ * listTrashedLogPhotos, purgeExpiredLogPhotos, emptyLogPhotoTrash }
  */
 
 /* ---------------- Local-first durable queue (IndexedDB) ----------------
@@ -32,6 +33,9 @@ var EVIDENCE_DB_NAME_ = 'hulul-evidence';
 var EVIDENCE_DB_VERSION_ = 2;
 var EVIDENCE_STORE_ = 'pending';
 var LOG_PHOTOS_STORE_ = 'logPhotos';
+// REQ: "Any deleted item stays 30 days in trash then gets permanently deleted." See trashLogPhoto/
+// purgeExpiredLogPhotos below.
+var LOG_PHOTO_TRASH_RETENTION_MS_ = 30 * 24 * 60 * 60 * 1000;
 
 function evidenceOpenDb_() {
   return new Promise(function (resolve, reject) {
@@ -75,6 +79,19 @@ function evidenceDbAll_(storeName) {
       req.onerror = function () { reject(req.error); };
     });
   }).catch(function () { return []; });
+}
+// Single-record read -- needed by the trash flow below (trashLogPhoto/restoreLogPhoto do a
+// read-modify-write on the deletedAt field; IndexedDB's put() replaces the whole record, so the
+// current one has to be fetched first rather than blind-writing a partial object).
+function evidenceDbGet_(localId, storeName) {
+  return evidenceOpenDb_().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(storeName || EVIDENCE_STORE_, 'readonly');
+      var req = tx.objectStore(storeName || EVIDENCE_STORE_).get(localId);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }).catch(function () { return null; });
 }
 
 /* ---------------- GPS ---------------- */
@@ -435,10 +452,12 @@ window.EvidenceCapture = {
   // Scoped to eventId and (by default) the current user -- IndexedDB is already device-local, but
   // filtering by userId too guards against a shared/handed-down device where a different inspector
   // was previously logged in and left photos behind. Pass includeAllUsers=true to bypass that (not
-  // currently used, kept for flexibility).
+  // currently used, kept for flexibility). Trashed photos (deletedAt set -- see below) never show up
+  // here; they only appear via listTrashedLogPhotos.
   listLogPhotos: function (eventId, userId, includeAllUsers) {
     return evidenceDbAll_(LOG_PHOTOS_STORE_).then(function (all) {
       return all.filter(function (r) {
+        if (r.deletedAt) return false;
         if (eventId && r.eventId !== eventId) return false;
         if (!includeAllUsers && userId && r.userId !== userId) return false;
         return true;
@@ -446,8 +465,69 @@ window.EvidenceCapture = {
     });
   },
 
+  // Permanent delete -- no trash involved. Used internally by purgeExpiredLogPhotos/emptyLogPhotoTrash
+  // below, and by findings.js/renderNewFinding once a photo has actually been handed off to a Finding
+  // (at that point it's been carried into the Finding's own evidence pipeline, not "deleted" by the
+  // user -- trashing it would be pointless since there's nothing left to restore *to*).
   deleteLogPhoto: function (localId) {
     return evidenceDbDelete_(localId, LOG_PHOTOS_STORE_).catch(function () {});
+  },
+
+  /* ---------------- Log Photos trash ----------------
+   * REQ: "Photos deleted go to trash and can be restored. Any deleted item stays 30 days in trash
+   * then gets permanently deleted. Trash has an empty now button." Soft-delete via a deletedAt
+   * timestamp on the same record/store (no separate trash store to keep in sync) -- listLogPhotos
+   * above already excludes anything with deletedAt set, restore just clears it back to null.
+   */
+  trashLogPhoto: function (localId) {
+    return evidenceDbGet_(localId, LOG_PHOTOS_STORE_).then(function (record) {
+      if (!record) return null;
+      record.deletedAt = Date.now();
+      return evidenceDbPut_(record, LOG_PHOTOS_STORE_).then(function () { return record; });
+    });
+  },
+
+  restoreLogPhoto: function (localId) {
+    return evidenceDbGet_(localId, LOG_PHOTOS_STORE_).then(function (record) {
+      if (!record) return null;
+      record.deletedAt = null;
+      return evidenceDbPut_(record, LOG_PHOTOS_STORE_).then(function () { return record; });
+    });
+  },
+
+  listTrashedLogPhotos: function (eventId, userId) {
+    return evidenceDbAll_(LOG_PHOTOS_STORE_).then(function (all) {
+      return all.filter(function (r) {
+        if (!r.deletedAt) return false;
+        if (eventId && r.eventId !== eventId) return false;
+        if (userId && r.userId !== userId) return false;
+        return true;
+      });
+    });
+  },
+
+  // REQ: "Any deleted item stays 30 days in trash then gets permanently deleted." Called once when
+  // the Log Photos tab loads (see logPhotos.js) -- same "sweep on load" pattern already used for the
+  // pending-evidence retry queue (retryPending, called from tabInspections). Deliberately not scoped
+  // to one event/user -- it's a housekeeping sweep over the whole local trash, cheap either way.
+  purgeExpiredLogPhotos: function () {
+    var cutoff = Date.now() - LOG_PHOTO_TRASH_RETENTION_MS_;
+    return evidenceDbAll_(LOG_PHOTOS_STORE_).then(function (all) {
+      var expired = all.filter(function (r) { return r.deletedAt && r.deletedAt <= cutoff; });
+      return expired.reduce(function (chain, r) {
+        return chain.then(function () { return evidenceDbDelete_(r.localId, LOG_PHOTOS_STORE_).catch(function () {}); });
+      }, Promise.resolve()).then(function () { return expired.length; });
+    });
+  },
+
+  // REQ: "Trash has an empty now button." Same as purgeExpiredLogPhotos but ignores the 30-day
+  // cutoff -- every currently-trashed photo for this event/user is permanently deleted right away.
+  emptyLogPhotoTrash: function (eventId, userId) {
+    return EvidenceCapture.listTrashedLogPhotos(eventId, userId).then(function (trashed) {
+      return trashed.reduce(function (chain, r) {
+        return chain.then(function () { return evidenceDbDelete_(r.localId, LOG_PHOTOS_STORE_).catch(function () {}); });
+      }, Promise.resolve()).then(function () { return trashed.length; });
+    });
   }
 };
 

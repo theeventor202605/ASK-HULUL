@@ -81,6 +81,12 @@ function logPhotoNearestParticipant_(latlng, participants) {
 
 async function tabLogPhotos(content, eventId, detail) {
   revokeLogPhotoObjectUrls_();
+  // REQ: "Any deleted item stays 30 days in trash then gets permanently deleted." Swept once per tab
+  // visit -- same "sweep on load" pattern already used for the pending-evidence retry queue
+  // (EvidenceCapture.retryPending, called from tabInspections) -- rather than a timer, since there's
+  // no background process available for a purely client-side IndexedDB store.
+  try { await EvidenceCapture.purgeExpiredLogPhotos(); } catch (e) { /* non-critical housekeeping */ }
+
   var participants = [];
   try {
     participants = await Api.call('listParticipants', { eventId: eventId, venueId: detail && detail.venue ? detail.venue.id : '' });
@@ -99,7 +105,10 @@ async function tabLogPhotos(content, eventId, detail) {
     '<div id="logPhotoGroups"></div>' +
     '<div id="logPhotoActionBar" style="position:sticky;bottom:12px;display:flex;justify-content:flex-end;margin-top:12px;">' +
       '<button class="btn btn-primary" id="createLogBtn" disabled>Create Log</button>' +
-    '</div>';
+    '</div>' +
+    // REQ: "Photos deleted go to trash and can be restored... Trash has an empty now button." Rendered
+    // empty (no card at all) when there's nothing trashed -- see renderLogPhotoTrash_.
+    '<div id="logPhotoTrash"></div>';
 
   document.getElementById('logPhotoCameraBtn').onclick = function () { document.getElementById('logPhotoFile').click(); };
   document.getElementById('logPhotoFile').onchange = async function (e) {
@@ -131,6 +140,7 @@ async function tabLogPhotos(content, eventId, detail) {
   };
 
   await renderLogPhotoGroups_(eventId, participants, selected);
+  await renderLogPhotoTrash_(eventId, participants, selected);
 }
 
 async function captureLogPhoto_(eventId, file) {
@@ -189,7 +199,7 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
           return '<div style="position:relative;width:110px;">' +
             '<img src="' + url + '" style="width:110px;height:110px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;" />' +
             '<input type="checkbox" class="log-photo-check" data-local-id="' + esc(p.localId) + '" style="position:absolute;top:6px;left:6px;width:18px;height:18px;" ' + (selected[p.localId] ? 'checked' : '') + ' />' +
-            '<button type="button" class="btn btn-secondary btn-sm btn-icon log-photo-remove" data-local-id="' + esc(p.localId) + '" title="Remove photo" style="position:absolute;top:4px;right:4px;padding:2px 5px;">' + ICON('delete') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon log-photo-remove" data-local-id="' + esc(p.localId) + '" title="Move to trash" style="position:absolute;top:4px;right:4px;padding:2px 5px;">' + ICON('delete') + '</button>' +
           '</div>';
         }).join('') +
       '</div>' +
@@ -214,12 +224,74 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
       renderLogPhotoGroups_(eventId, participants, selected);
     });
   });
+  // REQ: "Photos deleted go to trash and can be restored." Soft-delete (trashLogPhoto), not
+  // deleteLogPhoto -- the photo moves into the Trash section below rather than disappearing outright.
   holder.querySelectorAll('.log-photo-remove').forEach(function (btn) {
     btn.addEventListener('click', async function () {
       var id = btn.getAttribute('data-local-id');
-      await EvidenceCapture.deleteLogPhoto(id);
+      await EvidenceCapture.trashLogPhoto(id);
       delete selected[id];
+      UI.toast('Photo moved to trash', 'success');
       await renderLogPhotoGroups_(eventId, participants, selected);
+      await renderLogPhotoTrash_(eventId, participants, selected);
+    });
+  });
+}
+
+// REQ: "Photos deleted go to trash and can be restored. Any deleted item stays 30 days in trash then
+// gets permanently deleted. Trash has an empty now button." Rendered as its own compact card below
+// the groups, only when there's actually something trashed -- keeps the common case (empty trash)
+// out of the way entirely rather than showing a permanently-visible empty section.
+async function renderLogPhotoTrash_(eventId, participants, selected) {
+  var holder = document.getElementById('logPhotoTrash');
+  if (!holder) return; // tab was navigated away from mid-await
+  var trashed = await EvidenceCapture.listTrashedLogPhotos(eventId, HululState.user.id);
+  if (!trashed.length) { holder.innerHTML = ''; return; }
+
+  var dayMs = 24 * 60 * 60 * 1000;
+  holder.innerHTML =
+    '<div class="card" style="margin-top:4px;">' +
+      '<div class="card-header" style="display:flex;align-items:center;gap:10px;">' +
+        '<div class="card-title" style="flex:1;">Trash · ' + trashed.length + ' photo' + (trashed.length > 1 ? 's' : '') + '</div>' +
+        '<button type="button" class="btn btn-secondary btn-sm" id="emptyLogPhotoTrashBtn">Empty now</button>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="muted" style="font-size:11.5px;margin-bottom:10px;">Deleted photos stay here for 30 days, then are permanently removed.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:14px;">' +
+          trashed.map(function (p) {
+            var url = URL.createObjectURL(p.blob);
+            logPhotoObjectUrls_.push(url);
+            var daysLeft = Math.max(0, Math.ceil((LOG_PHOTO_TRASH_RETENTION_MS_ - (Date.now() - p.deletedAt)) / dayMs));
+            return '<div style="width:100px;">' +
+              '<div style="position:relative;width:100px;height:100px;">' +
+                '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;opacity:.6;" />' +
+              '</div>' +
+              '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + ' left</div>' +
+              '<button type="button" class="btn btn-secondary btn-sm log-photo-restore" data-local-id="' + esc(p.localId) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">Restore</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  document.getElementById('emptyLogPhotoTrashBtn').onclick = function () {
+    UI.confirmModal(
+      'Permanently delete ' + trashed.length + ' photo' + (trashed.length > 1 ? 's' : '') + ' from trash? This can\'t be undone.',
+      async function () {
+        await EvidenceCapture.emptyLogPhotoTrash(eventId, HululState.user.id);
+        UI.toast('Trash emptied', 'success');
+        await renderLogPhotoTrash_(eventId, participants, selected);
+      },
+      { title: 'Empty trash', confirmLabel: 'Empty now', confirmClass: 'btn-danger' }
+    );
+  };
+  holder.querySelectorAll('.log-photo-restore').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var id = btn.getAttribute('data-local-id');
+      await EvidenceCapture.restoreLogPhoto(id);
+      UI.toast('Photo restored', 'success');
+      await renderLogPhotoGroups_(eventId, participants, selected);
+      await renderLogPhotoTrash_(eventId, participants, selected);
     });
   });
 }
