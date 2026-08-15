@@ -324,11 +324,21 @@ async function tabVenue(content, eventId, detail) {
     if (!placeCountsByZone[pl.zoneId]) placeCountsByZone[pl.zoneId] = { Operator: 0, Vendor: 0, Exhibitor: 0, Other: 0 };
     if (placeCountsByZone[pl.zoneId][pl.type] !== undefined) placeCountsByZone[pl.zoneId][pl.type]++;
   });
+  // A Participant with no zoneId is documented/treated as covering every zone for inspection
+  // purposes (Participants can never literally hold zoneId 'ALL' -- backend validates zoneId
+  // against a real Zones record -- so blank is their equivalent of a Place's 'ALL'). Fold both
+  // into the same 'ALL' bucket so the synthetic "All Zones" row below reflects both cases.
   var participantCountByZone = {};
   participants.forEach(function (pt) {
-    if (!pt.zoneId) return;
-    participantCountByZone[pt.zoneId] = (participantCountByZone[pt.zoneId] || 0) + 1;
+    var zk = pt.zoneId || 'ALL';
+    participantCountByZone[zk] = (participantCountByZone[zk] || 0) + 1;
   });
+
+  // Synthetic "All Zones" row -- represents Places explicitly assigned 'ALL' plus zoneless
+  // Participants (see above). Prepended to a copy of detail.zones so the table shows it first;
+  // detail.zones itself stays untouched since it's reused unchanged for the map's zone-boundary
+  // drawing and the edit/delete-zone button wiring below.
+  var zonesTableRows = [{ id: 'ALL', name: t('all_zones_option'), createdAt: '' }].concat(detail.zones);
 
   content.innerHTML =
     // Venue -- small cards instead of one wide info card, same treatment as the Overview KPIs
@@ -352,13 +362,14 @@ async function tabVenue(content, eventId, detail) {
       { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) || '' },
       { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) || '' },
       { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || '' },
-      { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) }
+      { key: 'createdAt', label: t('col_created'), render: r => r.id === 'ALL' ? '' : UI.fmtDate(r.createdAt) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+      r.id === 'ALL' ? '' :
       UI.actionsCell(
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>'
       ) }] : []),
-      detail.zones, {}) +
+      zonesTableRows, {}) +
     '</div></div>' +
 
     // Populated/cleared by newZoneBtn below -- an inline card (map + polygon-draw tool), not a
