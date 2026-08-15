@@ -461,30 +461,62 @@ function listInspections(user, p) {
 // REQ: "Develop a completed checklists page under Inspections tab." Once every relevant participant
 // on an Inspection is done, that Inspection's own "Record results" action disappears from the
 // Inspections list (tabInspections, eventDetail.js -- r.status !== 'Completed' gate), so there was no
-// way back into a checklist that had already been finished. One row per (Inspection, relevant
-// participant) pair across the WHOLE event whose OWN checklist is fully recorded --
-// inspectionCoverage_ already computes exactly that per Inspection; this just loops every Inspection
-// under the event and flattens the completed pairs into one list. lastRecordedAt is the most recent
-// InspectionResults.recordedAt among that pair's own rows -- results trickle in one item at a time,
-// so there's no single "completedAt" field to read off any one row; the latest one is the effective
-// "done on" date. Same Inspector-only-sees-their-own filtering as listInspections, via that function.
+// way back into a checklist that had already been finished. One row per (Inspection, participant)
+// pair across the WHOLE event whose OWN checklist is fully recorded. lastRecordedAt is the most
+// recent InspectionResults.recordedAt among that pair's own rows -- results trickle in one item at a
+// time, so there's no single "completedAt" field to read off any one row; the latest one is the
+// effective "done on" date. Same Inspector-only-sees-their-own filtering as listInspections, via
+// that function.
+//
+// BUG (REQ report): "Completed checklist tab not working... McDonald's completed checklist but not
+// appearing there." This used to reuse inspectionCoverage_'s own perParticipant, which only ever
+// considers participants *relevant* to the inspection (matching discipline + the inspector's assigned
+// zone(s), see participantRelevantToInspection_) -- but recordInspectionResults deliberately allows
+// recording against ANY participant on the event, not just relevant ones ("the inspector can still
+// log something unexpected found on site," see its own comment above). A fully-recorded checklist for
+// a participant outside that formal relevance scope (e.g. never explicitly assigned this discipline)
+// silently never showed up here -- exactly the "completed checklists disappear" bug this page exists
+// to fix, and a direct contradiction of its own subtitle ("Every checklist that has been fully
+// recorded across this event," eventDetail.js's tabCompletedChecklists). Fixed by looping every venue
+// participant (merged to one row per physical spot, same as inspectionCoverage_) with NO relevance
+// filter, so anyone who actually has a fully-recorded checklist for this inspection shows up
+// regardless of whether the PM ever formally assigned them this discipline/zone.
 function listCompletedChecklists(user, p) {
   if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
   var inspections = listInspections(user, { eventId: p.eventId });
   var out = [];
   inspections.forEach(function (insp) {
-    var coverage = inspectionCoverage_(insp);
-    coverage.perParticipant.forEach(function (pc) {
-      if (!pc.completed) return;
-      var accountIds = participantAccountIds_(pc.participantId);
+    var venueId = inspectionVenueId_(insp);
+    var merged = mergeParticipantsByLocation_(venueParticipantsForEvent_(venueId, insp.eventId));
+    merged.forEach(function (pt) {
+      var coverage = inspectionParticipantCoverage_(insp, pt.id);
+      if (!coverage.total || coverage.openItems.length) return; // nothing in scope, or not fully recorded yet
+      var accountIds = participantAccountIds_(pt.id);
       var rows = findWhere('InspectionResults', function (r) { return r.inspectionId === insp.id && accountIds.indexOf(r.participantId) !== -1; });
       var lastRecordedAt = rows.reduce(function (max, r) { return (!max || new Date(r.recordedAt) > new Date(max)) ? r.recordedAt : max; }, '');
       out.push({
         inspectionId: insp.id, disciplineName: insp.disciplineName, phase: insp.phase,
         inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
-        participantId: pc.participantId, participantName: pc.participantName,
-        done: pc.done, total: pc.total, lastRecordedAt: lastRecordedAt
+        participantId: pt.id, participantName: pt.name,
+        done: coverage.done, total: coverage.total, lastRecordedAt: lastRecordedAt
       });
+    });
+  });
+  return out.sort(function (a, b) { return new Date(b.lastRecordedAt) - new Date(a.lastRecordedAt); });
+}
+
+// REQ follow-up: "Completed Checklists can be viewed as a full page filterable list." The per-event
+// listCompletedChecklists above, but rolled up across every event the caller can see (listEvents
+// already scopes that per role/org) -- same dashboardSummary/generateReport pattern this app already
+// uses for other cross-event rollups (Reports.gs). Each row carries its own eventId/eventName so the
+// standalone page (completedChecklists.js) can show/filter/link back to the event it belongs to.
+function listAllCompletedChecklists(user, p) {
+  requirePermission(user, 'completedChecklist.view');
+  var events = listEvents(user, p || {});
+  var out = [];
+  events.forEach(function (e) {
+    listCompletedChecklists(user, { eventId: e.id }).forEach(function (row) {
+      out.push(Object.assign({}, row, { eventId: e.id, eventName: e.name }));
     });
   });
   return out.sort(function (a, b) { return new Date(b.lastRecordedAt) - new Date(a.lastRecordedAt); });

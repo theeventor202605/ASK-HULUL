@@ -204,6 +204,7 @@ var ROUTES = {
   deleteInspection: function (u, p) { return deleteInspection(u, p); },
   listInspections: function (u, p) { return listInspections(u, p); },
   listCompletedChecklists: function (u, p) { return listCompletedChecklists(u, p); },
+  listAllCompletedChecklists: function (u, p) { return listAllCompletedChecklists(u, p); },
   listInspectionResults: function (u, p) { return listInspectionResults(u, p); },
   recordInspectionResults: function (u, p) { return recordInspectionResults(u, p); },
   updateInspectionResult: function (u, p) { return updateInspectionResult(u, p); },

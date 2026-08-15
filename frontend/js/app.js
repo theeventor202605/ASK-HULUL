@@ -11,6 +11,10 @@ var NAV_ITEMS = [
     roles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager'] },
   { path: '/meetings', icon: LUCIDE_ICONS['calendar-clock'], label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
+  // REQ follow-up: "Completed Checklists can be viewed as a full page filterable list" -- same
+  // roles as the completedChecklist.view permission's own defaultRoles (backend/Permissions.gs).
+  { path: '/completed-checklists', icon: LUCIDE_ICONS['clipboard-check'], label: 'nav_completed_checklists', section: 'section_main',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'Inspector'] },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as the reassignment.manage

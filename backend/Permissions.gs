@@ -187,6 +187,17 @@ var PERMISSION_REGISTRY_ = {
     module: 'Inspections', label: 'Record checklist results for an inspection', page: 'inspectionsTab', crud: ['update'],
     defaultRoles: ['Inspector', 'SystemAdmin']
   },
+  // REQ follow-up: "Completed Checklists can be viewed as a full page filterable list" -- a
+  // standalone, cross-event page (listAllCompletedChecklists, Inspections.gs), distinct from the
+  // per-event Completed Checklists tab (that one has no permission gate of its own -- it's already
+  // implicitly behind having opened an Event you can see). This one needs its own gate since it's a
+  // top-level nav destination that spans every event at once. Same-ish audience as the two
+  // inspection.* permissions above (whoever schedules or records inspections) plus InspectionAdmin,
+  // who oversees the whole discipline/inspection setup but isn't on either of those by default.
+  'completedChecklist.view': {
+    module: 'Inspections', label: 'View completed checklists across every event', page: 'completedChecklists', crud: ['read'],
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'Inspector']
+  },
   'discipline.manage': {
     module: 'Disciplines', label: 'Add a discipline to the catalogue', page: 'disciplinesCatalog', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin']

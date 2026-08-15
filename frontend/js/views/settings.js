@@ -727,6 +727,7 @@ function permissionPages_() {
     { id: 'disciplinesCatalog', label: Term('discipline_plural'), navPath: '/disciplines' },
     { id: 'inspectorQualifications', label: t('qualifications_page_title', { term: Term('inspector_plural') }), navPath: '/inspector-qualifications' },
     { id: 'inspectionsTab', label: t('tab_inspections'), eventTab: 'inspections' },
+    { id: 'completedChecklists', label: t('tab_completed_checklists'), navPath: '/completed-checklists' },
     { id: 'checklistItems', label: Term('checklistItem_plural'), navPath: '/checklist-items' },
     { id: 'findings', label: t('tab_findings'), eventTab: 'findings' },
     { id: 'escalations', label: Term('escalation_plural'), eventTab: 'escalations' },
