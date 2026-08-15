@@ -2240,8 +2240,8 @@ function recordResultRowHtml_(it) {
         '</div>' +
         '<div class="muted" style="font-size:10.5px;margin-top:3px;">' + esc(t('risk_window_editable_hint')) + '</div>' +
       '</div>' +
-      '<div class="result-state-group" data-item="' + it.id + '" data-state="Ticked" style="display:flex;gap:4px;flex:none;">' +
-        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-ticked active" data-item="' + it.id + '" data-state="Ticked" title="' + esc(t('title_result_ticked')) + '">' + ICON('result_ticked') + '</button>' +
+      '<div class="result-state-group" data-item="' + it.id + '" data-state="" style="display:flex;gap:4px;flex:none;">' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-ticked" data-item="' + it.id + '" data-state="Ticked" title="' + esc(t('title_result_ticked')) + '">' + ICON('result_ticked') + '</button>' +
         '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-crossed" data-item="' + it.id + '" data-state="Crossed" title="' + esc(t('title_result_crossed')) + '">' + ICON('result_crossed') + '</button>' +
         '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-na" data-item="' + it.id + '" data-state="N/A" title="' + esc(t('title_result_na')) + '">' + ICON('result_na') + '</button>' +
       '</div>' +
@@ -2393,6 +2393,13 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
     var row = document.querySelector('[data-row="' + it.id + '"]');
     if (!row) continue;
     var state = row.querySelector('.result-state-group').getAttribute('data-state');
+    // REQ: "None should be selected as default" -- recordResultRowHtml_ no longer pre-picks Comply,
+    // so an Inspector who skips a row entirely would otherwise silently save an empty state; catch
+    // that here, same "toast + abort the whole save" pattern as the evidence checks just below.
+    if (!state) {
+      UI.toast(t('toast_result_state_required', { desc: it.description }), 'error');
+      return;
+    }
     var entry = { checklistItemId: it.id, state: state };
     // Inspector-editable Risk/Window (defaults from the checklist item, see recordResultRowHtml_) --
     // sent for every state, not just Crossed, since InspectionResults (Inspections.gs) records both

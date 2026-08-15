@@ -373,7 +373,7 @@ window.ICON_KEY_GROUPS = [
     { key: 'warning_banner', label: 'Warning banner' }, { key: 'file_upload_done', label: 'File upload done' },
     { key: 'file_upload_failed', label: 'File upload failed' }, { key: 'active_selected', label: 'Active selection mark' },
     { key: 'checklist_done', label: 'Checklist item done' }, { key: 'checklist_pending', label: 'Checklist item pending' },
-    { key: 'result_ticked', label: 'Record result: Ticked' }, { key: 'result_crossed', label: 'Record result: Crossed' },
+    { key: 'result_ticked', label: 'Record result: Comply' }, { key: 'result_crossed', label: 'Record result: None Comply' },
     { key: 'result_na', label: 'Record result: N/A' }
   ] },
   { group: 'Dashboard KPI icons', keys: [
