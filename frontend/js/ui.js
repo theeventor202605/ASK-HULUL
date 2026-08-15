@@ -1026,6 +1026,26 @@ document.addEventListener('focusout', function (e) {
   }, 150);
 }, true);
 
+// REQ: "when typing on any filter list if tab key is pressed first suggestion will autocomplete"
+// -- reuses the exact same pick path a mouse click already uses (each .chat-suggest-item's own
+// mousedown handler, wired in hululShowFilterSuggest_ above) rather than duplicating the two
+// onPick behaviors (column-picking vs. value-picking) here, so this stays correct however those
+// evolve. Only intercepts Tab while a suggestion box is actually open with items in it -- otherwise
+// Tab keeps its normal browser behavior (move focus to the next control).
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Tab') return;
+  var input = e.target.closest ? e.target.closest('.table-filter-input') : null;
+  if (!input) return;
+  var wrap = input.closest('.table-wrap');
+  if (!wrap) return;
+  var box = wrap.querySelector('.table-filter-suggest');
+  if (!box || box.style.display === 'none') return;
+  var first = box.querySelector('.chat-suggest-item');
+  if (!first) return; // "no matches" state -- nothing to autocomplete into
+  e.preventDefault();
+  first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+}, true);
+
 document.addEventListener('click', function (e) {
   // Sortable column header -- reorders the existing <tr> nodes in place (tbody.appendChild on a
   // node already in the document moves it rather than cloning it, so listeners survive).
