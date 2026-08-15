@@ -142,6 +142,19 @@ var SCHEMA = {
   // state and behavior is unchanged from the old hardcoded requireRole calls until a SystemAdmin
   // actually edits something in Settings > Permissions.
   Permissions:            ['id','overridesJson','updatedAt','updatedBy'],
+  // REQ: "I need to have the functionality to create a new role." -- admin-defined roles alongside
+  // the built-in ROLES enum (Utils.gs below). code is the value actually stored on Users.role and
+  // compared everywhere (requireRole/requirePermission do plain string checks, so a custom code works
+  // anywhere a built-in one does -- see canCreateRole/getCustomRoles_, Roles.gs). orgType mirrors
+  // ROLE_ORG_TYPE (users.js): '' for a platform-level role (like SupportAgent), else 'GA'/'EMC'/
+  // 'INSPECTION' so the account-creation Organization picker can filter correctly. creatableBy is a
+  // JSON array of role codes (built-in or custom) allowed to create accounts under this role -- same
+  // idea as ACCOUNT_CREATION_MATRIX (Auth.gs) but per-role and admin-editable instead of hardcoded.
+  // basedOnRole records which role's permissions were cloned as a starting point at creation time
+  // (display-only, "started from X"). status ('Active'/'Inactive', same convention as Users.status)
+  // -- deleteRole soft-deletes rather than removing the row, so AuditLog/Permission-override history
+  // referencing this code stays meaningful; getCustomRoles_ filters to Active only.
+  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt'],
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.
@@ -200,7 +213,16 @@ var ROLE_LABELS = {
   Inspector: 'Inspector', Vendor: 'Vendor', Operator: 'Operator', Exhibitor: 'Exhibitor',
   SupportAgent: 'Support Agent'
 };
-function roleLabel_(role) { return ROLE_LABELS[role] || role; }
+// Falls back to a custom role's own label (Roles sheet, see Roles.gs) when `role` isn't one of the
+// built-in codes above -- getCustomRoles_ isn't defined until Roles.gs loads (R comes after U
+// alphabetically), but that's fine: this is a function body, only ever called at request time after
+// every file has finished loading, not at top-level parse time (see the load-order note on
+// PERMISSION_REGISTRY_ in Permissions.gs for the actual constraint this doesn't run into).
+function roleLabel_(role) {
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  var custom = findWhere('Roles', function (r) { return r.code === role && r.status === 'Active'; })[0];
+  return custom ? custom.label : role;
+}
 
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
@@ -445,7 +467,7 @@ var ID_PREFIX = {
   InspectorQualifications: 'IQ', InspectorAssignments: 'IA', ChecklistItems: 'CHK', Inspections: 'INS',
   InspectionResults: 'IR', Findings: 'FND', Escalations: 'ESC', Resolutions: 'RES', Participants: 'PAR',
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
-  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM'
+  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

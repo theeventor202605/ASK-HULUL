@@ -21,6 +21,7 @@ async function renderSettings(params) {
   ];
   if (canManageLabels) tabs.push({ key: 'terminology', label: t('settings_tab_terminology') });
   if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
+  if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
   if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
 
   var activeTab = tabs.some(function (tb) { return params && tb.key === params.tab; }) ? params.tab : 'profile';
@@ -45,6 +46,7 @@ async function renderSettings(params) {
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
+  else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
   else renderProfileTab_(content, u);
 }
@@ -364,6 +366,166 @@ function openImportIconLibraryModal_(onDone) {
   }
 }
 
+/* ---------------- Roles (RBAC, "create a new role") ----------------
+ * REQ: "I need to have the functionality to create a new role." SystemAdmin-only, same gating as
+ * Permissions. A custom role is just a role CODE (Roles.gs, backend) -- once created it's usable
+ * anywhere a built-in role is: the Users & Roles account-creation form offers it to whichever actors
+ * its `creatableBy` list names (users.js), and it shows up as its own column in the Settings >
+ * Permissions CRUD matrix below to actually grant it access to anything. This tab only manages the
+ * role's identity (name, org tie, who can create accounts under it) -- fine-grained page/action
+ * access is deliberately left to the Permissions tab rather than duplicated here.
+ */
+async function renderRolesTab_(content) {
+  content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+  // listPermissions (SystemAdmin-only, same as this tab) already computes the full built-in+custom
+  // role picklist (allRolePicklist_, backend/Roles.gs) -- reused here rather than standing up a
+  // second endpoint just to hand back the same list.
+  var permData = await Api.call('listPermissions', {});
+  var customRoles = await Api.call('listCustomRoles', {});
+  renderRolesTabBody_(content, permData.allRoles, customRoles);
+}
+
+function renderRolesTabBody_(content, allRoles, customRoles) {
+  var rows = customRoles.length
+    ? customRoles.map(function (r) { return roleRowHtml_(r, allRoles); }).join('')
+    : '<div class="empty-state">' + esc(t('no_custom_roles_yet')) + '</div>';
+
+  content.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;">' +
+      '<div class="muted" style="font-size:12.5px;max-width:520px;">' + esc(t('roles_tab_intro')) + '</div>' +
+      '<button type="button" class="btn btn-primary btn-sm" id="newRoleBtn" style="flex:none;">' + esc(t('new_role_btn')) + '</button>' +
+    '</div>' +
+    rows;
+
+  document.getElementById('newRoleBtn').onclick = function () { openNewRoleModal_(allRoles); };
+  content.querySelectorAll('[data-edit-role]').forEach(function (btn) {
+    btn.onclick = function () {
+      var role = customRoles.filter(function (r) { return r.code === btn.getAttribute('data-edit-role'); })[0];
+      if (role) openEditRoleModal_(role, allRoles);
+    };
+  });
+  content.querySelectorAll('[data-delete-role]').forEach(function (btn) {
+    btn.onclick = function () {
+      var code = btn.getAttribute('data-delete-role');
+      UI.confirmModal(t('delete_role_confirm'), async function () {
+        try {
+          await Api.call('deleteRole', { code: code });
+          UI.toast(t('toast_role_deleted'), 'success');
+          renderSettings({ tab: 'roles' });
+        } catch (err) { UI.error(err); }
+      });
+    };
+  });
+}
+
+function roleOrgTypeLabel_(orgType) {
+  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : orgType === 'INSPECTION' ? t('org_type_inspection') : t('org_type_none');
+}
+
+function roleRowHtml_(role, allRoles) {
+  var creatableLabels = (role.creatableBy || []).map(function (code) { return roleLabelFromAllRoles_(allRoles, code); });
+  return '<div class="perm-row">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+      '<div>' +
+        '<div style="font-weight:700;font-size:13.5px;">' + esc(role.label) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(role.code) + ' · ' + esc(roleOrgTypeLabel_(role.orgType)) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('creatable_by_label')) + ': ' +
+          (creatableLabels.length ? esc(creatableLabels.join(', ')) : esc(t('nobody_yet'))) + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex:none;">' +
+        '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('edit_title')) + '" data-edit-role="' + esc(role.code) + '">' + ICON('edit') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete')) + '" data-delete-role="' + esc(role.code) + '">' + ICON('delete') + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function roleOrgTypeSelectHtml_(id, selected) {
+  return '<select id="' + id + '" class="field-input">' +
+    ['', 'GA', 'EMC', 'INSPECTION'].map(function (v) {
+      return '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + esc(roleOrgTypeLabel_(v)) + '</option>';
+    }).join('') +
+  '</select>';
+}
+
+// Role-chip checkboxes reused from the Permissions role editor (.perm-role-chip, styles.css) --
+// same visually-hidden-checkbox-in-a-label pattern, so the same click-to-toggle wiring applies.
+function roleCreatableByChipsHtml_(prefix, allRoles, checkedCodes) {
+  var checkedSet = {}; (checkedCodes || []).forEach(function (c) { checkedSet[c] = true; });
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' +
+    allRoles.map(function (r) {
+      var checked = !!checkedSet[r.value];
+      return '<label class="perm-role-chip' + (checked ? ' active' : '') + '">' +
+        '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checked ? ' checked' : '') + ' />' +
+        '<span>' + esc(r.label) + '</span></label>';
+    }).join('') +
+  '</div>';
+}
+function wireRoleChipToggles_() {
+  document.querySelectorAll('#modalRoot .perm-role-chip input').forEach(function (cb) {
+    cb.onchange = function () { cb.closest('.perm-role-chip').classList.toggle('active', cb.checked); };
+  });
+}
+
+function openNewRoleModal_(allRoles) {
+  var body =
+    UI.field(t('field_role_name'), '<input id="fRoleLabel" class="field-input" maxlength="60" />') +
+    UI.field(t('field_org_type'), roleOrgTypeSelectHtml_('fRoleOrgType', '')) +
+    UI.field(t('field_based_on_role'), '<select id="fRoleBasedOn" class="field-input">' +
+      '<option value="">' + esc(t('start_blank_option')) + '</option>' +
+      allRoles.map(function (r) { return '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>'; }).join('') +
+    '</select>') +
+    '<div class="muted" style="font-size:11px;margin:4px 0 12px;">' + esc(t('based_on_role_hint')) + '</div>' +
+    '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
+    roleCreatableByChipsHtml_('new-role-creatable', allRoles, []);
+
+  UI.openModal(t('new_role_title'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('create'), className: 'btn-primary', onClick: async function () {
+        var label = document.getElementById('fRoleLabel').value.trim();
+        if (!label) { UI.toast(t('field_role_name'), 'error'); return; }
+        try {
+          await Api.call('createRole', {
+            label: label, orgType: document.getElementById('fRoleOrgType').value,
+            basedOnRole: document.getElementById('fRoleBasedOn').value,
+            creatableBy: readCheckedRoles_('new-role-creatable')
+          });
+          UI.closeModal();
+          UI.toast(t('toast_role_created'), 'success');
+          renderSettings({ tab: 'roles' });
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+  wireRoleChipToggles_();
+}
+
+function openEditRoleModal_(role, allRoles) {
+  var body =
+    '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(role.code) + '</div>' +
+    UI.field(t('field_role_name'), '<input id="fERoleLabel" class="field-input" maxlength="60" value="' + esc(role.label) + '" />') +
+    UI.field(t('field_org_type'), roleOrgTypeSelectHtml_('fERoleOrgType', role.orgType || '')) +
+    '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
+    roleCreatableByChipsHtml_('edit-role-creatable', allRoles, role.creatableBy);
+
+  UI.openModal(t('edit_role_title') + ' — ' + esc(role.label), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
+        var label = document.getElementById('fERoleLabel').value.trim();
+        if (!label) { UI.toast(t('field_role_name'), 'error'); return; }
+        try {
+          await Api.call('updateRole', {
+            code: role.code, label: label, orgType: document.getElementById('fERoleOrgType').value,
+            creatableBy: readCheckedRoles_('edit-role-creatable')
+          });
+          UI.closeModal();
+          UI.toast(t('toast_role_updated'), 'success');
+          renderSettings({ tab: 'roles' });
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+  wireRoleChipToggles_();
+}
+
 /* ---------------- Permissions (RBAC, "admin-configurable permissions") ----------------
  * REQ: "It is time we build Role-Based Access Control" -> clarified as: a SystemAdmin should be able
  * to change WHICH ROLES can do WHAT without a code deploy. listPermissions/updatePermission/
@@ -419,6 +581,20 @@ function permissionPages_() {
 }
 
 var PERM_CRUD_COLUMNS_ = ['create', 'read', 'update', 'delete'];
+
+// Reverse lookups over permissionPages_ -- used by app.js's navItemVisible_ (a NAV_ITEMS path -> its
+// permission page id, if any) so nav visibility can be derived from HululState.pageAccess instead of
+// only the hardcoded `roles` arrays. Not cached: permissionPages_() itself is cheap (26 short array
+// literals, a handful of t()/Term() calls) and re-deriving it keeps this from ever drifting out of
+// sync with a language switch or terminology change.
+// EVENT_TABS (eventDetail.js) has no equivalent per-tab `roles` gate today (every tab is visible to
+// any signed-in event viewer; access is enforced inside each tab's own actions/API calls instead --
+// see the `visibleFn` note at the top of eventDetail.js), so there's no pageIdForEventTab_ counterpart
+// wired up here yet -- add one the same way if that ever changes.
+function pageIdForNavPath_(navPath) {
+  var match = permissionPages_().filter(function (p) { return p.navPath === navPath; })[0];
+  return match ? match.id : null;
+}
 
 async function renderPermissionsTab_(content) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';

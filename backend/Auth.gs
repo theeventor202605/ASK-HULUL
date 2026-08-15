@@ -129,7 +129,12 @@ function requireRole(user, allowedRoles, contextOrgId) {
 
 function canCreateRole(actingRole, targetRole) {
   var allowed = ACCOUNT_CREATION_MATRIX[actingRole] || [];
-  return allowed.indexOf(targetRole) !== -1;
+  if (allowed.indexOf(targetRole) !== -1) return true;
+  // Custom roles (Roles.gs) carry their own admin-configured creatableBy list instead of a hardcoded
+  // ACCOUNT_CREATION_MATRIX entry -- getCustomRoles_ already filters to Active roles only, so a
+  // retired role's code correctly stops being creatable by anyone.
+  var custom = getCustomRoles_().filter(function (r) { return r.code === targetRole; })[0];
+  return !!(custom && custom.creatableBy && custom.creatableBy.indexOf(actingRole) !== -1);
 }
 
 // Org-scoping: everything except SystemAdmin belongs to exactly one org (REQ-ACC-11).

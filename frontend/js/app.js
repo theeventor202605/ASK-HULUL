@@ -83,6 +83,12 @@ async function loadPermissions() {
   HululState.permissionsLoaded = true;
   try { HululState.permissions = await Api.call('getMyPermissions', {}); }
   catch (e) { HululState.permissions = {}; }
+  // See HululState.pageAccess (state.js)/navItemVisible_ below -- a separate call rather than folded
+  // into getMyPermissions above since that one's flat permissionKey->boolean shape is depended on
+  // elsewhere (hasPermission) and a page id has no '.' the way every real permission key does, so
+  // keeping them apart avoids any ambiguity.
+  try { HululState.pageAccess = await Api.call('getMyPageAccess', {}); }
+  catch (e) { HululState.pageAccess = {}; }
 }
 
 // Loads the signed-in user's org's custom terminology (e.g. "Events" -> "Projects") once per
@@ -115,13 +121,29 @@ async function loadOrgLogo() {
   else img.classList.add('hidden');
 }
 
+// A nav item with no `roles` array is open to everyone -- unchanged. One WITH a `roles` array is
+// visible if the signed-in user's role is in it (exactly as before, so every built-in role keeps
+// working byte-for-byte the same), OR if that item's real page (permissionPages_, settings.js) has
+// any permission granted to this role at all (HululState.pageAccess, getMyPageAccess backend/
+// Permissions.gs) -- the second check is what makes a brand-new custom role (Roles.gs) see a nav item
+// automatically the moment a SystemAdmin grants it something in the Settings > Permissions matrix,
+// with no NAV_ITEMS code change. Items whose page isn't in the permission registry at all (e.g.
+// /config, SystemAdmin-only bootstrapping) simply can't gain visibility this way -- pageIdForNavPath_
+// returns null and the OR contributes nothing, same as before this change existed.
+function navItemVisible_(item) {
+  if (!item.roles) return true;
+  if (HululState.user && item.roles.indexOf(HululState.user.role) !== -1) return true;
+  var pageId = typeof pageIdForNavPath_ === 'function' ? pageIdForNavPath_(item.path) : null;
+  return !!(pageId && HululState.pageAccess && HululState.pageAccess[pageId]);
+}
+
 function renderSidebar() {
   var search = document.getElementById('globalSearch');
   if (search) search.placeholder = t('search_placeholder', { events: Term('event_plural').toLowerCase(), findings: Term('finding_plural').toLowerCase() });
   var nav = document.getElementById('sidebarNav');
   var sections = {};
   NAV_ITEMS.forEach(function (item) {
-    if (item.roles && HululState.user && item.roles.indexOf(HululState.user.role) === -1) return;
+    if (!navItemVisible_(item)) return;
     sections[item.section] = sections[item.section] || [];
     sections[item.section].push(item);
   });

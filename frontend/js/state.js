@@ -9,6 +9,11 @@ window.HululState = {
   currentEventId: null,
   notifications: [],
   notifBadgeLoadedAt: 0,
+  // Which PERMISSION_REGISTRY_ `page` ids the signed-in role has any granted action on (getMyPageAccess,
+  // backend/Permissions.gs) -- lets a brand-new custom role (Roles.gs) automatically see nav items its
+  // Settings > Permissions grants cover, on top of the existing hardcoded NAV_ITEMS `roles` arrays.
+  // See navItemVisible_, app.js.
+  pageAccess: {},
   escalationAlertLoadedAt: 0,
   escalationLockShownId: null, // id of the escalation currently occupying the full-screen lock (or null) -- see refreshEscalationAlert in app.js
 
@@ -28,7 +33,7 @@ window.HululState = {
     this.orgLogoLoaded = false; this.orgLogoUrl = '';
     this.orgLabelsLoaded = false; this.orgLabels = {};
     this.appIconsLoaded = false; this.appIcons = {};
-    this.permissionsLoaded = false; this.permissions = {};
+    this.permissionsLoaded = false; this.permissions = {}; this.pageAccess = {};
     this.notifBadgeLoadedAt = 0;
     this.escalationAlertLoadedAt = 0; this.escalationLockShownId = null;
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');

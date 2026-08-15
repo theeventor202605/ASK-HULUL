@@ -13,10 +13,33 @@ var CREATABLE_ROLES_BY_ACTOR = {
 // the account hierarchy.
 var ROLE_ORG_TYPE = { GAAdmin: 'GA', EMCAdmin: 'EMC', InspectionAdmin: 'INSPECTION' };
 
+// Custom roles (Roles.gs) each carry their own admin-configured creatableBy list instead of a
+// hardcoded ACCOUNT_CREATION_MATRIX/CREATABLE_ROLES_BY_ACTOR entry -- merged in here at render time
+// so this page (and the modals below) offer them exactly like a built-in role, with zero further
+// frontend code needed when a SystemAdmin defines a new one. listCustomRoles is open to any
+// authenticated user (see backend/Roles.gs) precisely so THIS lookup works no matter who's signed in,
+// not just SystemAdmin.
+function mergeCustomRolesIntoCreatable_(actorRole, customRoles) {
+  var base = CREATABLE_ROLES_BY_ACTOR[actorRole] || [];
+  var custom = customRoles.filter(function (r) { return (r.creatableBy || []).indexOf(actorRole) !== -1; }).map(function (r) { return r.code; });
+  return base.concat(custom);
+}
+function mergeCustomRolesIntoOrgType_(customRoles) {
+  var merged = Object.assign({}, ROLE_ORG_TYPE);
+  customRoles.forEach(function (r) { if (r.orgType) merged[r.code] = r.orgType; });
+  return merged;
+}
+function roleDisplayLabel_(code, customRoles) {
+  var custom = customRoles.filter(function (r) { return r.code === code; })[0];
+  return custom ? custom.label : code; // built-in roles show their raw code, same as before this change
+}
+
 async function renderUsers() {
   var root = document.getElementById('viewRoot');
   var users = await Api.call('listUsers', {});
-  var creatable = CREATABLE_ROLES_BY_ACTOR[HululState.user.role] || [];
+  var customRoles = [];
+  try { customRoles = await Api.call('listCustomRoles', {}); } catch (e) { /* fall back to built-in roles only */ }
+  var creatable = mergeCustomRolesIntoCreatable_(HululState.user.role, customRoles);
   var orgs = [];
   try { orgs = await Api.call('listOrganizations', {}); } catch (e) { /* fall back to raw id below */ }
   var orgsById = {}; orgs.forEach(function (o) { orgsById[o.id] = o; });
@@ -37,12 +60,12 @@ async function renderUsers() {
             : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('activate_title')) + '" data-act="' + r.id + '">' + ICON('activate') + '</button>')) }
     ], users, {}) + '</div></div>';
 
-  if (creatable.length) document.getElementById('newUserBtn').onclick = () => openNewUserModal(creatable, orgs);
+  if (creatable.length) document.getElementById('newUserBtn').onclick = () => openNewUserModal(creatable, orgs, customRoles);
   root.querySelectorAll('[data-deact]').forEach(b => b.onclick = () => toggle(b.getAttribute('data-deact'), 'deactivateUser'));
   root.querySelectorAll('[data-act]').forEach(b => b.onclick = () => toggle(b.getAttribute('data-act'), 'activateUser'));
   root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     var target = users.filter(u => u.id === b.getAttribute('data-edit'))[0];
-    if (target) openEditUserModal(target, orgs);
+    if (target) openEditUserModal(target, orgs, customRoles);
   });
   root.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => {
     var target = users.filter(u => u.id === b.getAttribute('data-reset'))[0];
@@ -60,14 +83,15 @@ async function renderUsers() {
 // openNewUserModal already offers, so this can't be used to promote someone outside the actor's own
 // authority; if the target's current role isn't in that set (e.g. a SystemAdmin editing an
 // EventManager) the role field is shown read-only instead of silently omitted.
-function openEditUserModal(user, orgs) {
-  var creatable = CREATABLE_ROLES_BY_ACTOR[HululState.user.role] || [];
+function openEditUserModal(user, orgs, customRoles) {
+  customRoles = customRoles || [];
+  var creatable = mergeCustomRolesIntoCreatable_(HululState.user.role, customRoles);
   var roleOptions = creatable.indexOf(user.role) === -1 ? [user.role] : creatable;
   var body =
     UI.field(t('field_full_name'), '<input id="fEUName" class="field-input" value="' + esc(user.name || '') + '" />') +
     UI.field(t('email'), '<input id="fEUEmail" type="email" class="field-input" value="' + esc(user.email || '') + '" />') +
     UI.field(t('field_role'), '<select id="fEURole" class="field-input"' + (roleOptions.length <= 1 ? ' disabled' : '') + '>' +
-      roleOptions.map(r => '<option' + (r === user.role ? ' selected' : '') + '>' + r + '</option>').join('') + '</select>');
+      roleOptions.map(r => '<option value="' + esc(r) + '"' + (r === user.role ? ' selected' : '') + '>' + esc(roleDisplayLabel_(r, customRoles)) + '</option>').join('') + '</select>');
   UI.openModal(t('edit_account_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save_changes_btn'), className: 'btn-primary', onClick: async function () {
@@ -102,13 +126,15 @@ function openResetPasswordModal(user) {
   ]);
 }
 
-function openNewUserModal(creatableRoles, orgs) {
+function openNewUserModal(creatableRoles, orgs, customRoles) {
+  customRoles = customRoles || [];
   var isSystemAdmin = HululState.user.role === 'SystemAdmin';
   var body =
     UI.field(t('field_full_name'), '<input id="fName" class="field-input" />') +
     UI.field(t('email'), '<input id="fUEmail" type="email" class="field-input" />') +
     UI.field(t('field_temp_password'), '<input id="fUPass" type="text" class="field-input" value="ChangeMe123!" />') +
-    UI.field(t('field_role'), '<select id="fURole" class="field-input">' + creatableRoles.map(r => '<option>' + r + '</option>').join('') + '</select>') +
+    UI.field(t('field_role'), '<select id="fURole" class="field-input">' +
+      creatableRoles.map(r => '<option value="' + esc(r) + '">' + esc(roleDisplayLabel_(r, customRoles)) + '</option>').join('') + '</select>') +
     (isSystemAdmin ? UI.field(t('field_organization'), '<select id="fUOrg" class="field-input"></select>') : '');
   UI.openModal(t('new_account_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -129,10 +155,11 @@ function openNewUserModal(creatableRoles, orgs) {
   ]);
 
   if (isSystemAdmin) {
+    var roleOrgTypeMerged = mergeCustomRolesIntoOrgType_(customRoles);
     var roleSelect = document.getElementById('fURole');
     var orgSelect = document.getElementById('fUOrg');
     var syncOrgOptions = function () {
-      var wantedType = ROLE_ORG_TYPE[roleSelect.value] || '';
+      var wantedType = roleOrgTypeMerged[roleSelect.value] || '';
       if (!wantedType) { orgSelect.innerHTML = '<option value="">' + esc(t('no_org_required_option')) + '</option>'; orgSelect.disabled = true; return; }
       var matching = orgs.filter(function (o) { return o.type === wantedType; });
       orgSelect.disabled = false;

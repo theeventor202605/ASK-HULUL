@@ -91,11 +91,17 @@ var ROUTES = {
   addCustomIconLibrary: function (u, p) { return addCustomIconLibrary(u, p); },
   deleteCustomIconLibrary: function (u, p) { return deleteCustomIconLibrary(u, p); },
   auditLog: function (u, p) { return listAuditLog(u, p); },
-  // Admin-configurable RBAC (Permissions.gs) -- foundation + Findings pilot module.
+  // Admin-configurable RBAC (Permissions.gs) -- see its header comment for current rollout status.
   listPermissions: function (u, p) { return listPermissions(u, p); },
   updatePermission: function (u, p) { return updatePermission(u, p); },
   resetPermission: function (u, p) { return resetPermission(u, p); },
   getMyPermissions: function (u, p) { return getMyPermissions(u, p); },
+  getMyPageAccess: function (u, p) { return getMyPageAccess(u, p); },
+  // Admin-defined custom roles (Roles.gs) -- "create a new role" without a code deploy.
+  listCustomRoles: function (u, p) { return listCustomRoles(u); },
+  createRole: function (u, p) { return createRole(u, p); },
+  updateRole: function (u, p) { return updateRole(u, p); },
+  deleteRole: function (u, p) { return deleteRole(u, p); },
 
   // Projects (grouping of several Events)
   listProjects: function (u, p) { return listProjects(u, p); },

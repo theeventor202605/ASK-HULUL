@@ -12,11 +12,14 @@
  *        else PERMISSION_REGISTRY_[key].defaultRoles -- i.e. exactly what used to be hardcoded inline)
  *     -> requireRole(user, effectiveRoles, contextOrgId)
  *
- * Rollout (explicit user decision, see PERMISSION_REGISTRY_ below): foundation + ONE pilot module
- * (Findings/Risk Logging, migrated in Findings.gs) as a working end-to-end proof. The other ~78
- * requireRole call sites across the rest of the app are DELIBERATELY left untouched for now -- they
- * keep working exactly as before, and get migrated to requirePermission (each adding its own
- * PERMISSION_REGISTRY_ entry) in later passes, not all at once.
+ * Rollout status: started as foundation + ONE pilot module (Findings/Risk Logging) as a working
+ * end-to-end proof, then grown module-by-module across most of the app (Events/Venues/Zones,
+ * Participants/Places, Disciplines, Inspections, Accounts/Organizations, Notifications, Escalations,
+ * Projects, Venue Approval, Reassignment, Support, Reports, Templates/Meetings -- see the `requirePermission(user, '...')`
+ * call sites throughout backend/*.gs for the current, authoritative list; PERMISSION_REGISTRY_ below
+ * is kept in sync with exactly those). A small number of requireRole call sites are DELIBERATELY left
+ * untouched -- mostly SystemAdmin-only bootstrapping (account/org creation, escalation/template
+ * config) that intentionally isn't meant to become admin-configurable.
  *
  * Storage: a single global row (id 'GLOBAL') in the Permissions sheet holding a JSON blob of
  * permissionKey -> array of role codes -- same one-row-JSON-blob convention as AppIcons
@@ -309,7 +312,9 @@ function listPermissions(user, p) {
       isOverridden: !!(override && override.length)
     };
   });
-  var allRoles = Object.keys(ROLES).map(function (k) { return ROLES[k]; }).map(function (r) { return { value: r, label: roleLabel_(r) }; });
+  // allRolePicklist_ (Roles.gs) is built-in ROLES + any active custom roles -- a custom role needs to
+  // show up here to be checkable in the CRUD matrix's role-chip editor at all.
+  var allRoles = allRolePicklist_();
   return { permissions: permissions, allRoles: allRoles };
 }
 
@@ -318,7 +323,8 @@ function updatePermission(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
   if (!p || !p.key || !PERMISSION_REGISTRY_[p.key]) throw new HululError('BAD_REQUEST', 'A valid permission key is required');
   if (!p.roles || !p.roles.length) throw new HululError('BAD_REQUEST', 'At least one role must be allowed');
-  var validRoles = Object.keys(ROLES).map(function (k) { return ROLES[k]; });
+  var validRoles = allRoleCodes_(); // built-in + active custom roles (Roles.gs) -- else a grant to a
+  // newly-created custom role would be silently filtered out right here and never actually save.
   var clean = p.roles.filter(function (r) { return validRoles.indexOf(r) !== -1; });
   if (!clean.length) throw new HululError('BAD_REQUEST', 'No valid roles supplied');
   var overrides = getPermissionOverrides_();
@@ -351,4 +357,27 @@ function getMyPermissions(user, p) {
     out[key] = effectivePermissionRoles_(key, overrides).indexOf(user.role) !== -1;
   });
   return out;
+}
+
+// Any authenticated user: which PERMISSION_REGISTRY_ `page` ids their role has at least one granted
+// action on. REQ follow-up: "a newly-created role should see pages/tabs it's been granted access to
+// without a code change" -- NAV_ITEMS (app.js) still hardcodes its own `roles` arrays for the
+// built-in roles (unchanged, so nothing about their behavior changes), but navItemVisible_ (app.js)
+// ALSO checks this map so a nav item whose page has ANY permission key granted to the signed-in
+// user's role shows up too -- the one path that makes a brand new custom role's Settings > Permissions
+// grants actually visible in the sidebar with zero code changes. Deliberately its own endpoint rather
+// than folded into getMyPermissions above: that one's shape (permissionKey -> boolean) is a stable
+// contract several call sites already depend on (hasPermission, permissions.js), and every real key
+// contains a '.' while every page id doesn't, so mixing them into one flat object risked confusion for
+// no real benefit.
+function getMyPageAccess(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  var overrides = getPermissionOverrides_();
+  var pages = {};
+  Object.keys(PERMISSION_REGISTRY_).forEach(function (key) {
+    var entry = PERMISSION_REGISTRY_[key];
+    if (!entry.page || pages[entry.page]) return;
+    if (effectivePermissionRoles_(key, overrides).indexOf(user.role) !== -1) pages[entry.page] = true;
+  });
+  return pages;
 }
