@@ -85,6 +85,9 @@ window.Router = {
     // (Completed Checklists tab, eventDetail.js) -- renderCompletedChecklistDetail, same tabbed-page-
     // route pattern as the findings sub-routes just below.
     this.add('/events/:id/completed-checklist/:inspectionId/:participantId', renderCompletedChecklistDetail);
+    // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
+    // attached file?" -- Document Review scoring form (renderTemplateScoring, eventDetail.js).
+    this.add('/events/:id/template-scoring/:templateId', renderTemplateScoring);
     this.add('/events/:id/findings/new', renderNewFinding);
     this.add('/events/:id/findings/:findingId/edit', renderEditFinding);
     this.add('/events/:id/findings/:findingId', renderFindingDetail);

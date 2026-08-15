@@ -142,6 +142,7 @@ var ROUTES = {
   // Templates (TPL)
   listTemplateLibrary: function (u, p) { return listTemplateLibrary(u, p); },
   createLibraryTemplate: function (u, p) { return createLibraryTemplate(u, p); },
+  updateLibraryTemplate: function (u, p) { return updateLibraryTemplate(u, p); },
   uploadLibraryTemplateVersion: function (u, p) { return uploadLibraryTemplateVersion(u, p); },
   getEventTemplates: function (u, p) { return getEventTemplates(u, p); },
   sendTemplates: function (u, p) { return sendTemplates(u, p); },
@@ -151,6 +152,10 @@ var ROUTES = {
   reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
   setTemplatesDeadline: function (u, p) { return setTemplatesDeadline(u, p); },
   getTemplateProcessRoles: function (u, p) { return getTemplateProcessRoles(u); },
+  // Document Review scoring (REQ follow-up: "convert the templates to forms and include evaluation process")
+  listTemplateScoringItems: function (u, p) { return listTemplateScoringItems(u, p); },
+  getTemplateScoringResults: function (u, p) { return getTemplateScoringResults(u, p); },
+  saveTemplateScoring: function (u, p) { return saveTemplateScoring(u, p); },
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },

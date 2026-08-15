@@ -65,7 +65,15 @@ var SCHEMA = {
   // document to the event (see Templates.gs) -- there's no row for "not sent yet". libraryTemplateId
   // links back to the TemplateLibrary entry it was sent from; name/fileUrl/fileName/mimeType are a
   // locked-in snapshot of that library entry at send time, independent of later library updates.
-  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt'],
+  // docType appended at the end -- REQ: "convert the templates to forms and include evaluation
+  // process" (Document Review Tool, GA26/JDCB workbook). Snapshotted from the TemplateLibrary entry
+  // at send time (same locked-in-copy convention as name/fileUrl/fileName/mimeType above), so a
+  // scoring form always uses the catalog that matched this document when it was sent, even if the
+  // library entry's own docType is later retagged. 'ZSMP'/'ZERP' (v1 scope) drive
+  // TemplateScoringItems lookups (see listTemplateScoringItems, Templates.gs); blank or any other
+  // value just means this document type has no structured scoring form yet -- the plain Evaluated/
+  // Missed decision (reviewEventTemplate) keeps working exactly as before either way.
+  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType'],
   // toJson/ccJson: JSON-stringified arrays of Users.id (invitee/cc userIds) -- same
   // array-in-a-single-cell convention as the Permissions sheet's overridesJson (Permissions.gs).
   // status: 'Scheduled' (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs,
@@ -158,7 +166,38 @@ var SCHEMA = {
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.
-  TemplateLibrary:        ['id','orgId','name','fileUrl','fileName','mimeType','uploadedBy','createdAt','updatedAt'],
+  // docType appended at the end -- REQ: "convert the templates to forms and include evaluation
+  // process." Tags which structured scoring catalog (TemplateScoringItems below) applies to this
+  // library document, e.g. 'ZSMP'/'ZERP' (v1 scope) or '' for a document with no scoring form yet
+  // (Traffic & Transport, Crowd Management, Security Management, or any custom entry an org adds --
+  // those keep working exactly as a plain upload+review document, same as before this feature).
+  TemplateLibrary:        ['id','orgId','name','fileUrl','fileName','mimeType','uploadedBy','createdAt','updatedAt','docType'],
+  // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
+  // attached file?" -- a reusable, admin-seeded catalog of the scoring items an Inspection Analyst
+  // reviews a submitted document against, one row per item (not per section -- section grouping is
+  // denormalized onto every item row, sectionCode/sectionName, same flat convention ChecklistItems
+  // already uses for category/phase rather than a separate lookup table). Sourced from the GA26/JDCB
+  // "Document Review Tool" workbook's own ZSMP/ZERP sheets (seedTemplateScoringItems_, Setup.gs) --
+  // itemCode/sectionCode mirror that workbook's own numbering (e.g. '4.00' / '4.00.01') purely for
+  // traceability back to the source tool, not because the app parses/relies on the numbering scheme
+  // itself. multiplier is the item's scoring weight (workbook's own "Multiplier" column) -- an
+  // item's max possible contribution is always 4 * multiplier (Quality tops out at 4, see
+  // TemplateScoringResults below), matching the workbook's own MaxScore column exactly. Global, not
+  // per-org -- this is a fixed audit standard, not something each Inspection Company customizes
+  // (same reasoning ChecklistItems' own catalog is global, not per-org). status: 'Active'/'Deleted'
+  // (same soft-delete convention as ChecklistItems).
+  TemplateScoringItems:   ['id','docType','sectionCode','sectionName','itemCode','description','multiplier','sortOrder','status'],
+  // One row per (Templates row, TemplateScoringItems row) an Inspection Analyst has scored --
+  // sparse: a row only exists once that specific item has actually been scored (same "nothing
+  // written until acted on" convention as the Templates row itself only existing once sent).
+  // completeness: 'Yes'/'No'/'N/A' (workbook's own "Completion" checklist axis). quality: 0-4
+  // (workbook's own "Quality" review-score axis) -- this item's Score (workbook's own Score column)
+  // is quality * the matching TemplateScoringItems.multiplier, computed on read rather than stored,
+  // so it never drifts if the catalog's multiplier is ever corrected. remarks/detail mirror the
+  // workbook's own "Free Text" and "Detail" columns -- remarks for the short review comment, detail
+  // for a longer note or link to bespoke coaching material (see the workbook's own Guide sheet on
+  // coaching cards).
+  TemplateScoringResults: ['id','templateId','itemId','completeness','quality','remarks','detail','recordedBy','recordedAt'],
   // A reusable catalog of exact physical spots within a Venue (see Places.gs). accountIds appended
   // at the end -- comma-joined Users ids (same convention as InspectorAssignments.zoneIds) for the
   // login account(s) auto-created for this place; more than one supports e.g. separate morning/
@@ -467,7 +506,8 @@ var ID_PREFIX = {
   InspectorQualifications: 'IQ', InspectorAssignments: 'IA', ChecklistItems: 'CHK', Inspections: 'INS',
   InspectionResults: 'IR', Findings: 'FND', Escalations: 'ESC', Resolutions: 'RES', Participants: 'PAR',
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
-  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL'
+  Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
+  TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

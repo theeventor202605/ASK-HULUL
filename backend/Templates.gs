@@ -57,14 +57,20 @@ function listTemplateLibrary(user, p) {
   return findWhere('TemplateLibrary', function (l) { return l.orgId === orgId; });
 }
 
+// REQ follow-up: "convert the templates to forms and include evaluation process." docType (optional,
+// validated against TEMPLATE_DOC_TYPES_) tags which structured scoring catalog applies to documents
+// sent from this library entry -- blank/omitted keeps the old plain upload+review behavior exactly
+// as it was before this feature existed.
+var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC', 'Other'];
 function createLibraryTemplate(user, p) {
   requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
+  if (p.docType && TEMPLATE_DOC_TYPES_.indexOf(p.docType) === -1) throw new HululError('BAD_REQUEST', 'Invalid docType');
   var orgId = user.role === ROLES.SYSTEM_ADMIN ? (p.orgId || user.orgId) : user.orgId;
   if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
   var row = {
     id: newId('TemplateLibrary'), orgId: orgId, name: p.name, fileUrl: '', fileName: '', mimeType: '',
-    uploadedBy: '', createdAt: nowIso_(), updatedAt: nowIso_()
+    uploadedBy: '', createdAt: nowIso_(), updatedAt: nowIso_(), docType: p.docType || ''
   };
   if (p.fileBase64) {
     var uploaded = uploadTemplateFile_(orgId, p.fileBase64, p.fileName, p.mimeType);
@@ -73,6 +79,23 @@ function createLibraryTemplate(user, p) {
   insertRow('TemplateLibrary', row);
   audit(user.id, 'CREATE_LIBRARY_TEMPLATE', 'TemplateLibrary', row.id, {});
   return row;
+}
+
+// Edits a library entry's own metadata (name/docType) -- separate from uploadLibraryTemplateVersion
+// below, which only ever replaces the file. Lets an org retag an existing entry (e.g. their "Zone
+// Safety Plan" upload as docType 'ZSMP') without needing to re-create it from scratch.
+function updateLibraryTemplate(user, p) {
+  requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
+  var lib = getById('TemplateLibrary', p.templateLibraryId);
+  if (!lib) throw new HululError('NOT_FOUND', 'Template not found');
+  if (user.role !== ROLES.SYSTEM_ADMIN && lib.orgId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s template');
+  if (p.docType && TEMPLATE_DOC_TYPES_.indexOf(p.docType) === -1) throw new HululError('BAD_REQUEST', 'Invalid docType');
+  var patch = { updatedAt: nowIso_() };
+  if (p.name !== undefined) { if (!p.name) throw new HululError('BAD_REQUEST', 'name is required'); patch.name = p.name; }
+  if (p.docType !== undefined) patch.docType = p.docType;
+  var updated = updateRow('TemplateLibrary', lib.id, patch);
+  audit(user.id, 'UPDATE_LIBRARY_TEMPLATE', 'TemplateLibrary', lib.id, {});
+  return updated;
 }
 
 // Replaces the current file on a library template — this IS the versioning: there's only ever one
@@ -124,7 +147,8 @@ function getEventTemplates(user, p) {
     return {
       id: '', eventId: p.eventId, libraryTemplateId: lib.id, name: lib.name, status: 'Not Sent',
       fileUrl: '', fileName: '', mimeType: '', sentBy: '', sentAt: '', uploadedBy: '', updatedAt: '',
-      reviewedBy: '', reviewedAt: '', reviewReason: '', libraryFileUrl: lib.fileUrl, libraryFileName: lib.fileName
+      reviewedBy: '', reviewedAt: '', reviewReason: '', docType: lib.docType || '',
+      libraryFileUrl: lib.fileUrl, libraryFileName: lib.fileName
     };
   });
   // Historical safety net: a Templates row whose library entry was later removed still shows.
@@ -155,7 +179,12 @@ function sendTemplates(user, p) {
     var row = {
       id: newId('Templates'), eventId: p.eventId, libraryTemplateId: libId, name: lib.name, status: 'Sent',
       fileUrl: lib.fileUrl, fileName: lib.fileName, mimeType: lib.mimeType, sentBy: user.id, sentAt: nowIso_(),
-      uploadedBy: '', updatedAt: nowIso_(), reviewedBy: '', reviewedAt: '', reviewReason: '', createdAt: nowIso_()
+      uploadedBy: '', updatedAt: nowIso_(), reviewedBy: '', reviewedAt: '', reviewReason: '', createdAt: nowIso_(),
+      // REQ follow-up: "convert the templates to forms and include evaluation process" -- locked-in
+      // snapshot of the library entry's docType, same reasoning as the fileUrl/fileName/mimeType
+      // snapshot just above (a later retag of the library entry shouldn't retroactively change which
+      // scoring form an already-sent document uses).
+      docType: lib.docType || ''
     };
     insertRow('Templates', row);
     sent.push(row);
@@ -242,6 +271,81 @@ function reviewEventTemplate(user, p) {
   var event = getById('Events', tpl.eventId);
   if (event) notifyEventStakeholders_(event.id, 'TEMPLATE_' + p.decision.toUpperCase(), tpl.name + ' ' + p.decision.toLowerCase() + ': ' + p.reason, 'Templates', tpl.id);
   return updated;
+}
+
+/* ---------------- Document Review scoring (REQ follow-up: "Can I convert the templates to forms
+ * and include evaluation process as per attached file?") -----------------------------------------
+ * Two-axis, item-level scoring an Inspection Analyst works through while a document sits at
+ * Submitted/Under Review, ported from the GA26/JDCB "Document Review Tool" workbook: a Yes/No/N/A
+ * Completeness checklist plus a 0-4 Quality review score per item, each item weighted by its own
+ * Multiplier (TemplateScoringItems, seeded once via seedTemplateScoringItems_ in Setup.gs). This
+ * sits ALONGSIDE the existing plain Evaluated/Missed decision above, not in place of it -- scoring
+ * is optional working detail the analyst can save progressively; reviewEventTemplate is still the
+ * one action that actually finalizes the document's status. Only wired up for docTypes that have a
+ * seeded catalog (v1: ZSMP, ZERP) -- any other docType (or a document sent before this feature
+ * existed, docType '') has no scoring form, and the frontend falls back to plain review-only,
+ * exactly as it always has.
+ */
+
+// Read-only, open to any authenticated user (same visibility as listChecklistItems) -- both the
+// scoring form and a read-only viewer (e.g. the Event Manager checking progress) need this.
+function listTemplateScoringItems(user, p) {
+  if (!p || !p.docType) throw new HululError('BAD_REQUEST', 'docType is required');
+  var items = findWhere('TemplateScoringItems', function (i) { return i.docType === p.docType && i.status !== 'Deleted'; });
+  // itemCode sorts correctly as plain text here (e.g. '4.00.01' < '4.00.02' < '4.01.01') since every
+  // segment in this catalog's source data is already zero-padded to two digits -- no numeric-aware
+  // comparator needed, unlike an arbitrary user-typed sort key.
+  return items.sort(function (a, b) { return a.itemCode < b.itemCode ? -1 : a.itemCode > b.itemCode ? 1 : 0; });
+}
+
+// Same read visibility as listTemplateScoringItems above -- the scoring form's two source calls are
+// deliberately both open reads; only saving a score is gated (saveTemplateScoring below).
+function getTemplateScoringResults(user, p) {
+  if (!p || !p.templateId) throw new HululError('BAD_REQUEST', 'templateId is required');
+  return findWhere('TemplateScoringResults', function (r) { return r.templateId === p.templateId; });
+}
+
+// Bulk upsert -- the whole form's current state is sent in one call (p.results: [{itemId,
+// completeness, quality, remarks, detail}]), same "save everything currently on screen" shape as
+// saveInspectionResults_'s own frontend caller (eventDetail.js), but one call instead of that
+// function's own per-changed-row diffing since a Document Review form is expected to be worked
+// through in a handful of sittings, not hundreds of items at once. Each entry independently upserts
+// (existing itemId -> update in place, new -> insert) so a partial save (not every item scored yet)
+// is completely normal, not an error -- matches the Completed Checklists flow's own "unset items
+// stay open" convention.
+function saveTemplateScoring(user, p) {
+  var tpl = getById('Templates', p.templateId);
+  if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
+  requirePermission(user, 'template.review'); // same role as the final Evaluated/Missed decision
+  if (!p.results || !p.results.length) throw new HululError('BAD_REQUEST', 'results is required');
+  var existing = findWhere('TemplateScoringResults', function (r) { return r.templateId === p.templateId; });
+  var existingByItemId = {};
+  existing.forEach(function (r) { existingByItemId[r.itemId] = r; });
+
+  var saved = [];
+  p.results.forEach(function (entry) {
+    if (!entry.itemId) return;
+    if (entry.completeness && ['Yes', 'No', 'N/A'].indexOf(entry.completeness) === -1) {
+      throw new HululError('BAD_REQUEST', 'completeness must be Yes, No, or N/A');
+    }
+    if (entry.quality !== undefined && entry.quality !== '' && entry.quality !== null) {
+      var q = Number(entry.quality);
+      if (isNaN(q) || q < 0 || q > 4) throw new HululError('BAD_REQUEST', 'quality must be 0-4');
+    }
+    var patch = {
+      completeness: entry.completeness || '', quality: (entry.quality === '' || entry.quality == null) ? '' : Number(entry.quality),
+      remarks: entry.remarks || '', detail: entry.detail || '', recordedBy: user.id, recordedAt: nowIso_()
+    };
+    var row = existingByItemId[entry.itemId];
+    if (row) { saved.push(updateRow('TemplateScoringResults', row.id, patch)); }
+    else {
+      var newRow = Object.assign({ id: newId('TemplateScoringResults'), templateId: p.templateId, itemId: entry.itemId }, patch);
+      insertRow('TemplateScoringResults', newRow);
+      saved.push(newRow);
+    }
+  });
+  audit(user.id, 'SAVE_TEMPLATE_SCORING', 'Templates', p.templateId, { count: saved.length });
+  return saved;
 }
 
 // REQ: "PM must set one deadline for all documents, by date/time picker or by N weeks/days before

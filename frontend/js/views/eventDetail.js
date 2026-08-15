@@ -458,6 +458,16 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_evaluated')) + '" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_missed')) + '" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
   }
+  // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
+  // attached file?" -- a structured item-level scoring form (renderTemplateScoring below), only for
+  // docTypes with a seeded catalog (v1: ZSMP/ZERP) and only once there's actually something to
+  // review (id is truthy -- excludes the virtual "Not Sent" placeholder row). Kept visible past
+  // Evaluated/Missed too (unlike the Evaluate/Mark Missed buttons themselves, which are one-shot) so
+  // the analyst can still open and review their own past scoring.
+  if (isAnalyst && tpl.id && ['ZSMP', 'ZERP'].indexOf(tpl.docType) !== -1 &&
+      ['Submitted', 'Under Review', 'Evaluated', 'Missed'].indexOf(tpl.status) !== -1) {
+    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_score_document')) + '" data-score-template="' + tpl.id + '">' + ICON('record_results') + '</button>');
+  }
   // No dots-menu toggle when there's genuinely nothing to do on this row (e.g. viewing as a role
   // with no send/upload/review permission for its current status) -- just the plain dash, same as
   // before; a three-dot button that opens to reveal only a dash would be a pointless extra click.
@@ -535,6 +545,9 @@ async function tabTemplates(content, eventId, detail) {
   });
   content.querySelectorAll('[data-reject-template]').forEach(function (btn) {
     btn.onclick = function () { openReviewTemplateModal_(btn.getAttribute('data-reject-template'), 'Missed'); };
+  });
+  content.querySelectorAll('[data-score-template]').forEach(function (btn) {
+    btn.onclick = function () { window.location.hash = '#/events/' + eventId + '/template-scoring/' + btn.getAttribute('data-score-template'); };
   });
 
   if (canManageDeadline) {
@@ -649,6 +662,193 @@ function fileToBase64(file) {
     reader.onload = function () { resolve(reader.result.split(',')[1]); };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+/* ---------------- Document Review scoring (REQ follow-up: "Can I convert the templates to forms
+ * and include evaluation process as per attached file?") -----------------------------------------
+ * A full page (route: #/events/:id/template-scoring/:templateId, router.js) an Inspection Analyst
+ * works through while a document sits at Submitted/Under Review (still reachable afterward too --
+ * see templateActionsHtml_ above): a Yes/No/N/A Completeness checklist plus a 0-4 Quality review
+ * score per item, ported item-for-item from the GA26/JDCB "Document Review Tool" workbook (v1 scope:
+ * ZSMP/ZERP -- TemplateScoringItems, seeded via seedTemplateScoringItems_, Setup.gs). Sits ALONGSIDE
+ * the plain Evaluated/Missed decision (openReviewTemplateModal_ above), not in place of it -- Save
+ * here just persists progress (saveTemplateScoring, Templates.gs); the analyst still uses the
+ * existing Evaluate/Mark Missed buttons on the Templates tab to actually finalize the document.
+ */
+async function renderTemplateScoring(params) {
+  var root = document.getElementById('viewRoot');
+  var eventId = params.id, templateId = params.templateId;
+  root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+
+  var templates;
+  try { templates = await Api.call('getEventTemplates', { eventId: eventId }); }
+  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; return; }
+  var tpl = templates.filter(function (t2) { return t2.id === templateId; })[0];
+  if (!tpl) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('template') })) + '</div>'; return; }
+
+  var [items, results] = await Promise.all([
+    Api.call('listTemplateScoringItems', { docType: tpl.docType }),
+    Api.call('getTemplateScoringResults', { templateId: templateId })
+  ]);
+
+  if (!items.length) {
+    root.innerHTML =
+      '<div class="page-header"><div><div class="page-title">' + esc(tpl.name) + '</div></div>' +
+      '<button class="btn btn-secondary" id="backTplScoringBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+      '<div class="empty-state">' + esc(t('no_scoring_form_for_doctype')) + '</div>';
+    document.getElementById('backTplScoringBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=templates'; };
+    return;
+  }
+
+  var resultsByItemId = {};
+  results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(tpl.name) + '</div>' +
+    '<div class="page-subtitle">' + esc(tpl.docType) + (tpl.fileUrl ? ' · <a href="' + tpl.fileUrl + '" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(t('word_view')) + '</a>' : '') + '</div></div>' +
+    '<button class="btn btn-secondary" id="backTplScoringBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
+      '<div id="tplScoringProgress" style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px;font-weight:600;"></div>' +
+    '</div></div>' +
+    '<div class="card"><div class="card-body">' +
+      templateScoringItemsHtml_(items, resultsByItemId) +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+      '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
+    '</div></div>';
+
+  document.getElementById('backTplScoringBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=templates'; };
+  document.getElementById('saveTplScoringBtn').onclick = async function () {
+    try {
+      await Api.call('saveTemplateScoring', { templateId: templateId, results: collectTemplateScoringResults_(items) });
+      UI.toast(t('toast_scoring_saved'), 'success'); Router.resolve();
+    } catch (err) { UI.error(err); }
+  };
+
+  wireTemplateScoringRows_(items);
+  updateTemplateScoringProgress_(items);
+}
+
+// Items already arrive from listTemplateScoringItems sorted by itemCode -- which, since every
+// segment in this catalog is zero-padded to two digits (see seedTemplateScoringItems_'s own
+// comment), sorts in exactly the same order as sectionCode groups them -- so a single linear pass
+// detecting sectionCode changes is enough to emit section headers, no separate group-then-sort step.
+function templateScoringItemsHtml_(items, resultsByItemId) {
+  var html = '';
+  var lastSectionCode = null;
+  items.forEach(function (it) {
+    if (it.sectionCode !== lastSectionCode) {
+      html += '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:14px 0 4px;">' + esc(it.sectionCode) + ' ' + esc(it.sectionName) + '</div>';
+      lastSectionCode = it.sectionCode;
+    }
+    html += templateScoringRowHtml_(it, resultsByItemId[it.id]);
+  });
+  return html;
+}
+
+function templateScoringRowHtml_(item, result) {
+  var completeness = result ? result.completeness : '';
+  var quality = (result && result.quality !== '' && result.quality != null) ? String(result.quality) : '';
+  var completenessBtns = ['Yes', 'No', 'N/A'].map(function (v) {
+    return '<button type="button" class="btn btn-secondary btn-sm doc-completeness-btn' + (completeness === v ? ' active' : '') + '" data-item="' + item.id + '" data-value="' + v + '">' + esc(t('completeness_' + v.toLowerCase().replace('/', ''))) + '</button>';
+  }).join('');
+  var qualityBtns = [0, 1, 2, 3, 4].map(function (q) {
+    return '<button type="button" class="btn btn-secondary btn-sm doc-quality-btn' + (quality === String(q) ? ' active' : '') + '" data-item="' + item.id + '" data-value="' + q + '" title="' + esc(t('quality_level_' + q)) + '">' + q + '</button>';
+  }).join('');
+  return '<div class="tpl-score-row" data-tsi="' + item.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+      '<div style="flex:1 1 260px;">' +
+        '<div style="font-weight:600;font-size:13px;">' + esc(item.description) + '</div>' +
+        '<div class="muted" style="font-size:10.5px;margin-top:2px;">' + esc(item.itemCode) + ' · ' + esc(t('field_multiplier')) + ': ' + esc(item.multiplier) + '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">' +
+        '<div class="muted" style="font-size:10px;">' + esc(t('col_completeness')) + '</div>' +
+        '<div class="doc-completeness-group" data-item="' + item.id + '" data-value="' + esc(completeness) + '" style="display:flex;gap:4px;">' + completenessBtns + '</div>' +
+        '<div class="muted" style="font-size:10px;margin-top:2px;">' + esc(t('col_quality')) + '</div>' +
+        '<div class="doc-quality-group" data-item="' + item.id + '" data-value="' + esc(quality) + '" style="display:flex;gap:3px;">' + qualityBtns + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
+      '<div style="flex:1 1 240px;">' + UI.field(t('field_remarks'), '<textarea class="field-input doc-remarks" data-item="' + item.id + '" rows="2">' + esc(result ? result.remarks : '') + '</textarea>') + '</div>' +
+      '<div style="flex:1 1 240px;">' + UI.field(t('field_detail'), '<textarea class="field-input doc-detail" data-item="' + item.id + '" rows="2">' + esc(result ? result.detail : '') + '</textarea>') + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function wireTemplateScoringRows_(items) {
+  document.querySelectorAll('.doc-completeness-btn').forEach(function (btn) {
+    btn.onclick = function () {
+      var group = document.querySelector('.doc-completeness-group[data-item="' + btn.getAttribute('data-item') + '"]');
+      if (!group) return;
+      // Clicking the already-active choice clears it back to unset -- same "an explicit pick, but
+      // not an irreversible one" affordance as toggling a single-select checkbox off again.
+      var value = group.getAttribute('data-value') === btn.getAttribute('data-value') ? '' : btn.getAttribute('data-value');
+      group.setAttribute('data-value', value);
+      group.querySelectorAll('.doc-completeness-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === value); });
+      updateTemplateScoringProgress_(items);
+    };
+  });
+  document.querySelectorAll('.doc-quality-btn').forEach(function (btn) {
+    btn.onclick = function () {
+      var group = document.querySelector('.doc-quality-group[data-item="' + btn.getAttribute('data-item') + '"]');
+      if (!group) return;
+      var value = group.getAttribute('data-value') === btn.getAttribute('data-value') ? '' : btn.getAttribute('data-value');
+      group.setAttribute('data-value', value);
+      group.querySelectorAll('.doc-quality-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === value); });
+      updateTemplateScoringProgress_(items);
+    };
+  });
+}
+
+// Live "Completeness X% · Quality Y% (score/maxScore)" readout, recomputed from the DOM (not from
+// the last-saved results alone) so every click counts immediately, same "read the DOM, not a stale
+// in-memory copy" convention as updateRecordResultsProgress_ (Completed Checklists) above.
+// Completeness excludes N/A and not-yet-set items from both sides of the ratio (an "N/A" or blank
+// item says nothing about completeness either way); Quality's denominator is every item's own
+// 4 * multiplier (its max possible, workbook's own MaxScore column) regardless of whether it's been
+// scored yet, so the running % honestly reflects "how much of the whole document is fully scored,"
+// not just "how much of what's been touched so far."
+function updateTemplateScoringProgress_(items) {
+  var el = document.getElementById('tplScoringProgress');
+  if (!el) return;
+  var yes = 0, no = 0, qualityScore = 0, qualityMax = 0;
+  items.forEach(function (it) {
+    var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
+    var cVal = cGroup ? cGroup.getAttribute('data-value') : '';
+    if (cVal === 'Yes') yes++; else if (cVal === 'No') no++;
+    var qGroup = document.querySelector('.doc-quality-group[data-item="' + it.id + '"]');
+    var qVal = qGroup ? qGroup.getAttribute('data-value') : '';
+    var mult = Number(it.multiplier) || 0;
+    qualityMax += 4 * mult;
+    if (qVal !== '') qualityScore += Number(qVal) * mult;
+  });
+  var completenessPct = (yes + no) ? Math.round((yes / (yes + no)) * 100) : null;
+  var qualityPct = qualityMax ? Math.round((qualityScore / qualityMax) * 100) : null;
+  el.innerHTML =
+    '<div>' + esc(t('col_completeness')) + ': <span style="color:var(--accent);">' + (completenessPct === null ? '—' : completenessPct + '%') + '</span></div>' +
+    '<div>' + esc(t('col_quality')) + ': <span style="color:var(--accent);">' + (qualityPct === null ? '—' : qualityPct + '%') + '</span> ' +
+      '<span class="muted" style="font-weight:400;">(' + qualityScore.toFixed(2) + ' / ' + qualityMax.toFixed(2) + ')</span></div>';
+}
+
+// Reads every item row's current DOM state back into the flat array saveTemplateScoring expects --
+// same "read the DOM at Save time" convention as inspectionResultsSnapshot_/saveInspectionResults_
+// above, just without their partial-save diffing (this form's own saveTemplateScoring always upserts
+// every entry sent, so sending every item's current state -- scored or still blank -- every Save is
+// simplest and correct either way).
+function collectTemplateScoringResults_(items) {
+  return items.map(function (it) {
+    var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
+    var qGroup = document.querySelector('.doc-quality-group[data-item="' + it.id + '"]');
+    var remarksEl = document.querySelector('.doc-remarks[data-item="' + it.id + '"]');
+    var detailEl = document.querySelector('.doc-detail[data-item="' + it.id + '"]');
+    return {
+      itemId: it.id,
+      completeness: cGroup ? cGroup.getAttribute('data-value') : '',
+      quality: qGroup ? qGroup.getAttribute('data-value') : '',
+      remarks: remarksEl ? remarksEl.value : '',
+      detail: detailEl ? detailEl.value : ''
+    };
   });
 }
 

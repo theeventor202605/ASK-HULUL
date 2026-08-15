@@ -170,6 +170,230 @@ function migrateTemplateLibrary() {
   return { seeded: seeded, linked: linked };
 }
 
+// One-time seed: the item-level scoring catalog behind the Document Review feature (REQ follow-up:
+// "Can I convert the templates to forms and include evaluation process as per attached file?"),
+// extracted verbatim (itemCode/sectionCode/sectionName/description/multiplier) from the GA26/JDCB
+// "Document Review Tool" workbook's own ZSMP and ZERP sheets -- v1 scope (see the sibling TTP/CMP/
+// SEC sheets in that same workbook for a future phase). Run once from the Apps Script editor's
+// function dropdown after deploying this feature. Idempotent per docType: if TemplateScoringItems
+// already has any 'ZSMP' (or 'ZERP') rows, that docType is left alone and only re-seeds if you first
+// delete its existing rows -- safe to re-run without duplicating on a second accidental click.
+function seedTemplateScoringItems_() {
+  var existing = getAll('TemplateScoringItems');
+  var existingDocTypes = {};
+  existing.forEach(function (i) { existingDocTypes[i.docType] = true; });
+
+  var seeded = 0;
+  [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_]].forEach(function (pair) {
+    var docType = pair[0], items = pair[1];
+    if (existingDocTypes[docType]) { Logger.log('seedTemplateScoringItems_: ' + docType + ' already has rows, skipping.'); return; }
+    items.forEach(function (it, idx) {
+      insertRow('TemplateScoringItems', {
+        id: newId('TemplateScoringItems'), docType: docType, sectionCode: it.sectionCode, sectionName: it.sectionName,
+        itemCode: it.itemCode, description: it.description, multiplier: it.multiplier, sortOrder: idx, status: 'Active'
+      });
+      seeded++;
+    });
+  });
+  Logger.log('seedTemplateScoringItems_: seeded ' + seeded + ' item(s).');
+  return { seeded: seeded };
+}
+
+// Source data for seedTemplateScoringItems_ above -- one entry per real scoring item (the workbook's
+// own '<section>.00' rows are section HEADERS, not items, and are folded into sectionName/sectionCode
+// on every real item instead of getting their own row here, matching ChecklistItems' flat category/
+// phase convention rather than a separate Sections table).
+var ZSMP_SEED_ITEMS_ = [
+  { itemCode: '4.00.01', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Civil Defense', multiplier: 1.0 },
+  { itemCode: '4.00.02', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Evacuation', multiplier: 1.0 },
+  { itemCode: '4.00.03', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Fire Safety', multiplier: 1.0 },
+  { itemCode: '4.00.04', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Electrical Installation', multiplier: 1.0 },
+  { itemCode: '4.00.05', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Temporary Structures', multiplier: 1.0 },
+  { itemCode: '4.00.06', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - Rigging & AVL', multiplier: 1.0 },
+  { itemCode: '4.00.07', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: '3rd Party Sign Off - F&B Booths/Trucks', multiplier: 1.0 },
+  { itemCode: '4.00.08', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: 'Safety Certificate: Fire Retardancy for Fabrics', multiplier: 1.0 },
+  { itemCode: '4.00.09', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: 'Safety Certificate: Trusses', multiplier: 1.0 },
+  { itemCode: '4.00.10', sectionCode: '4.00', sectionName: 'Third Party Sign Off', description: 'Safety Certificate: Rides & Activations', multiplier: 1.0 },
+  { itemCode: '4.01.02', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP clearly describes the event.', multiplier: 0.75 },
+  { itemCode: '4.01.03', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP contains an up-to-date Event Schedule with details on operational timing and the various activities going on at the Event.', multiplier: 0.75 },
+  { itemCode: '4.01.04', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP embeds Zone Maps and Plans and a high quality site plan is uyloaded..', multiplier: 0.75 },
+  { itemCode: '4.01.05', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP embeds the EMC\'s information.', multiplier: 0.75 },
+  { itemCode: '4.01.06', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP embeds EMC Insurance Information.', multiplier: 0.75 },
+  { itemCode: '4.01.07', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The Zone Organisational Structure Organogram is embedded in the ZSMP.', multiplier: 0.75 },
+  { itemCode: '4.01.08', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP contains a clear list of suppliers and their contact details.', multiplier: 0.5 },
+  { itemCode: '4.01.09', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP embeds a section on the Zone HSE management Structure.', multiplier: 2.0 },
+  { itemCode: '4.01.10', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP shows evidence of an appointed HSE Manager for the operational Phase.', multiplier: 3.0 },
+  { itemCode: '4.01.11', sectionCode: '4.01', sectionName: 'Zone Organisational Structure', description: 'The ZSMP shows Overview information on the Event Control Room', multiplier: 1.0 },
+  { itemCode: '4.02.01', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Event Owner', multiplier: 0.5 },
+  { itemCode: '4.02.02', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: EMC Project Manager', multiplier: 0.5 },
+  { itemCode: '4.02.03', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Health & Safety Manager', multiplier: 4.0 },
+  { itemCode: '4.02.04', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Crowd Safety Manager', multiplier: 1.5 },
+  { itemCode: '4.02.05', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Security Manager', multiplier: 1.5 },
+  { itemCode: '4.02.06', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Traffic & Transport Manager', multiplier: 1.5 },
+  { itemCode: '4.02.07', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Control Room Manager', multiplier: 1.0 },
+  { itemCode: '4.02.08', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Food Safety Manager', multiplier: 0.0 },
+  { itemCode: '4.02.09', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Facility Manager', multiplier: 0.0 },
+  { itemCode: '4.02.10', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Technical Production Manager', multiplier: 0.0 },
+  { itemCode: '4.02.11', sectionCode: '4.02', sectionName: 'Roles and Responsibilities', description: 'Roles and Responsibilities are defined on the level of: Medical Manager', multiplier: 1.0 },
+  { itemCode: '4.03.01', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds an overview of the different Risk Assessments for the Zone.', multiplier: 0.5 },
+  { itemCode: '4.03.02', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds the General Event Risk Assessment for the Operational Phase.', multiplier: 0.5 },
+  { itemCode: '4.03.03', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The General Event Risk Assessment clearly mentions the person responsible for the docment.', multiplier: 1.0 },
+  { itemCode: '4.03.04', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The General Event Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.05', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The General Event Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.06', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The General Event Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.07', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The General Event Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.09', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds the Fire Risk Assessment for the Operational Phase.', multiplier: 1.0 },
+  { itemCode: '4.03.10', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Fire Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.5 },
+  { itemCode: '4.03.11', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Fire Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.12', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Fire Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.13', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Fire Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.14', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Fire Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.15', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Medical Risk Assessment  for the Operational Phase.', multiplier: 0.25 },
+  { itemCode: '4.03.16', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Medical Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.125 },
+  { itemCode: '4.03.17', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Medical Risk Assessment clearly mentions the date of assessment.', multiplier: 0.125 },
+  { itemCode: '4.03.18', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Medical Risk Assessment holds a section on Risk Identification.', multiplier: 0.125 },
+  { itemCode: '4.03.19', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Medical Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.125 },
+  { itemCode: '4.03.20', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Medical Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.125 },
+  { itemCode: '4.03.21', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Traffic & Transport Risk Assessment for the Operational Phase.', multiplier: 1.0 },
+  { itemCode: '4.03.22', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Traffic & Transport Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.5 },
+  { itemCode: '4.03.23', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Traffic & Transport Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.24', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Traffic & Transport Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.25', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Traffic & Transport Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.26', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Traffic & Transport Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.27', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Crowd Safety Risk Assessment for the Operational Phase.', multiplier: 1.0 },
+  { itemCode: '4.03.28', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Crowd Safety Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.5 },
+  { itemCode: '4.03.29', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Crowd Safety Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.30', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Crowd Safety Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.31', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Crowd Safety Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.32', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Crowd Safety Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.33', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Security Risk Assessment for the Operational Phase.', multiplier: 1.0 },
+  { itemCode: '4.03.34', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Security Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.5 },
+  { itemCode: '4.03.35', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Security Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.36', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Security Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.37', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Security Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.38', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Security Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.39', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Food Safety Risk Assessment for the Operational Phase.', multiplier: 0.5 },
+  { itemCode: '4.03.40', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Food Safety Risk Assessment clearly mentions the person responsible for the document.', multiplier: 0.5 },
+  { itemCode: '4.03.41', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Food Safety Risk Assessment clearly mentions the date of assessment.', multiplier: 0.5 },
+  { itemCode: '4.03.42', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Food Safety Risk Assessment holds a section on Risk Identification.', multiplier: 0.5 },
+  { itemCode: '4.03.43', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Food Safety Risk Assessment holds a section on Risk Analysis (weight).', multiplier: 0.5 },
+  { itemCode: '4.03.44', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The Food Safety Risk Assessment holds a section on Risk Priorisation.', multiplier: 0.5 },
+  { itemCode: '4.03.45', sectionCode: '4.03', sectionName: 'Event Risk Assessment', description: 'The ZSMP embeds a Summary of the Event\'s Risk Assessments.', multiplier: 1.0 },
+  { itemCode: '4.04.03', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an analysis of the Holding Capacity for the Zone as a whole.', multiplier: 1.25 },
+  { itemCode: '4.04.04', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an analysis of the Holding Capacity, for every significant subzone or building within the Zone and scope.', multiplier: 1.125 },
+  { itemCode: '4.04.05', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an analysis of the Emergency Exit Capacity, for the Zone as a whole.', multiplier: 1.25 },
+  { itemCode: '4.04.06', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an analysis of the Emergency Exit Capacity, for every significant subzone or building within the Zone and scope.', multiplier: 1.125 },
+  { itemCode: '4.04.02', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an analysis of the Calculated Theoretical Emergency Exit Time.', multiplier: 1.25 },
+  { itemCode: '4.04.07', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an overview of the different parts of the Capacity Study, for the Zone as a whole.', multiplier: 1.125 },
+  { itemCode: '4.04.08', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds an overview of the different parts of the Capacity Study, for every significant subzone or building within the Zone and scope.', multiplier: 1.125 },
+  { itemCode: '4.04.09', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a conclusion and final number on capacity, for the Zone as a whole.', multiplier: 1.25 },
+  { itemCode: '4.04.10', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a conclusion and final number on capacity, for every significant subzone or building within the Zone and scope.', multiplier: 1.125 },
+  { itemCode: '4.04.11', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a clear procedure for overcrowding and potential overcrowding, based on set thresholds, for the zone as a whole.', multiplier: 1.125 },
+  { itemCode: '4.04.12', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a clear procedure for overcrowding and potential overcrowding, based on set thresholds, for every significant subzone or building within the Zone and scope.', multiplier: 1.125 },
+  { itemCode: '4.04.13', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a detailed methodology for capacity monitorig, for the zone as a whole.', multiplier: 1.125 },
+  { itemCode: '4.04.14', sectionCode: '4.04', sectionName: 'Capacity', description: 'The ZSMP embeds a detailed methodology for capacity monitorig, for every significant subzone or building within the Zone and scope.', multiplier: 1.0 },
+  { itemCode: '4.05.01', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP embeds details on the location of sanitary facilites.', multiplier: 1.0 },
+  { itemCode: '4.05.02', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP embeds details on the number of sanitary facilities and the male/female ratio.', multiplier: 1.0 },
+  { itemCode: '4.05.03', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP embeds details on the cleaning management for sanitary facilities.', multiplier: 1.0 },
+  { itemCode: '4.05.05', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP makes reference to the cleaning plans and schedules for the venue', multiplier: 1.0 },
+  { itemCode: '4.05.06', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP makes reference to the preventive and planned maintenance and engineering services for plumbing services, HVAC, power supplies etc.', multiplier: 1.0 },
+  { itemCode: '4.05.07', sectionCode: '4.05', sectionName: 'Site Management - Sanitary Facilities', description: 'The ZSMP makes reference to emergency repairs for engineering systems (resources and actions for repairing engineering systems of infrastructure in case of emergency situations)', multiplier: 1.0 },
+  { itemCode: '4.06.01', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The ZSMP embeds a Fire Risk Map.', multiplier: 0.5 },
+  { itemCode: '4.06.02', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The Fire Safety Plan provides details on the management (storage and use) of Liquified Petroleum Gas (LPG) at the venue.', multiplier: 1.0 },
+  { itemCode: '4.06.03', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The ZSMP embeds details on the location of the Deployment of Civil Defense.', multiplier: 0.5 },
+  { itemCode: '4.06.04', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The Fire Plan embeds the location of all the Fire Fighting Equipment on site, DOT plan/List, the plan embeds details on the type of equipment.', multiplier: 4.0 },
+  { itemCode: '4.06.05', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The Fire Plan embeds evidence of a procedure to initiate response to emerging fire or smoke.', multiplier: 0.5 },
+  { itemCode: '4.06.06', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The Fire Plan embeds evidence of competent staff to engage in a first intervention, and use of the fire fighting equipment in case of fire', multiplier: 0.5 },
+  { itemCode: '4.06.07', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The Fire Safety Plan contains the relevant fire certificates for the materials used in the construction of the venue', multiplier: 1.0 },
+  { itemCode: '4.06.08', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The ZSMP embeds the Zone\'s Evacuation Plan.', multiplier: 2.0 },
+  { itemCode: '4.06.09', sectionCode: '4.06', sectionName: 'Fire Safety Plan', description: 'The ZSMP embeds details on the mandatory Evacuation Drill.', multiplier: 1.0 },
+  { itemCode: '4.07.01', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan defines the entity responsible for the on-site medical coverage, the Medical Provider.', multiplier: 1.0 },
+  { itemCode: '4.07.02', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The ZSMP embeds the SALEM tool results.', multiplier: 0.5 },
+  { itemCode: '4.07.03', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'A clear Organogram for the Medical Provider is embedded', multiplier: 0.5 },
+  { itemCode: '4.07.04', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'Roles and Responsibilities within the Medical Department are defined', multiplier: 0.5 },
+  { itemCode: '4.07.05', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'Roles and Responsibilities within the Medical Department are assigned', multiplier: 0.5 },
+  { itemCode: '4.07.06', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'Clear timing is defined for the major Milestones within the delivery of the Medical plan', multiplier: 0.5 },
+  { itemCode: '4.07.07', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan defines the entity responsible for the off-site transfer of patients, the Ambulance Service.', multiplier: 1.0 },
+  { itemCode: '4.07.08', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan embeds a section that defines how the Site Medical Provider communicates and coordinates with the Ambulance Service, the Red Crescent, for Off-Site patient transfers', multiplier: 1.0 },
+  { itemCode: '4.07.09', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan gives a clear overview of the deployment of the Medical Staff, Field Hospitals, Treatment rooms, Ambulances and equipment.', multiplier: 1.0 },
+  { itemCode: '4.07.10', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan contains a DOT plan clearly displaying the locations of medical units, first aid positions, ambulances and other medical provisions', multiplier: 1.0 },
+  { itemCode: '4.07.11', sectionCode: '4.07', sectionName: 'Medical Plan', description: 'The Medical Plan contains the points of the nearest Medical Facilities with distance and travel time details.', multiplier: 1.0 },
+  { itemCode: '4.08.01', sectionCode: '4.08', sectionName: 'Food Safety Plan', description: 'The Food Safety Plan embeds full details on all Food & Beverage facilities on site.', multiplier: 1.5 },
+  { itemCode: '4.08.02', sectionCode: '4.08', sectionName: 'Food Safety Plan', description: 'The Food Safety Plan embeds rules on Employee Personal Hygiene', multiplier: 1.0 },
+  { itemCode: '4.08.03', sectionCode: '4.08', sectionName: 'Food Safety Plan', description: 'The Food Safety Plan embeds rules on Chemical and Pesticides', multiplier: 1.0 },
+  { itemCode: '4.08.04', sectionCode: '4.08', sectionName: 'Food Safety Plan', description: 'The Food Safety Plan embeds rules on Food Preparation, handling and storage', multiplier: 1.0 },
+  { itemCode: '4.08.05', sectionCode: '4.08', sectionName: 'Food Safety Plan', description: 'The Food Safety Plan embeds rules on Food Trucks', multiplier: 0.5 },
+  { itemCode: '4.09.01', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, Signage provisions are embedded for Parking Routes', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.02', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, the number of available Accessibility Parking Spaces & Vehicle Bays is embedded', multiplier: 1.0 },
+  { itemCode: '4.09.03', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Parking Spaces & Vehicle Bays', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.04', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, and design provisions are embedded for Accessibility Entry Procedure', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.05', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Sidewalks, Slopes and Ramps', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.06', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Information, Reception & Service Counters.', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.07', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Ablution areas and Prayer Rooms.', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.08', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Toilet Stalls.', multiplier: 0.3333333333333333 },
+  { itemCode: '4.09.09', sectionCode: '4.09', sectionName: 'Universal Accessibility', description: 'The ZSMP embeds provisions for \'Accessible People\' throughout the Customer Journey, design provisions are embedded for Accessibility Viewing spaces.', multiplier: 0.3333333333333333 },
+  { itemCode: '4.10.01', sectionCode: '4.10', sectionName: 'SFX, Fireworks & Pyrotechnics', description: 'The ZSMP contains information about the operators of the SFX.', multiplier: 1.0 },
+  { itemCode: '4.10.02', sectionCode: '4.10', sectionName: 'SFX, Fireworks & Pyrotechnics', description: 'The ZSMP contains information about special effects such as show lasers, fog and hazers along with the controls in place for them.', multiplier: 0.75 },
+  { itemCode: '4.10.04', sectionCode: '4.10', sectionName: 'SFX, Fireworks & Pyrotechnics', description: 'The ZSMP contains information about fireworks and pyrotechnics at the venue and the controls in place for them.', multiplier: 0.75 },
+  { itemCode: '4.10.05', sectionCode: '4.10', sectionName: 'SFX, Fireworks & Pyrotechnics', description: 'The ZSMP contains information about the use of unmanned aerial vehicles and drones along with the site rules and controls in place for them.', multiplier: 1.0 },
+  { itemCode: '4.11.01', sectionCode: '4.11', sectionName: 'Adverse Weather', description: 'The ZSMP embeds an Adverse Weather Plan.', multiplier: 0.75 },
+  { itemCode: '4.12.01', sectionCode: '4.12', sectionName: 'Operational Plans', description: 'The ZSMP embeds an overview for the Traffic and Transport Plan.', multiplier: 0.25 },
+  { itemCode: '4.12.02', sectionCode: '4.12', sectionName: 'Operational Plans', description: 'The ZSMP embeds an overview for the Crowd Management Plan.', multiplier: 0.25 },
+  { itemCode: '4.12.03', sectionCode: '4.12', sectionName: 'Operational Plans', description: 'The ZSMP embeds an overview for the Security Management Plan.', multiplier: 0.25 },
+  { itemCode: '4.13.01', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP describes arrangements for the welfare of staff at the venue', multiplier: 0.75 },
+  { itemCode: '4.13.02', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP provides details of the location and number of prayers rooms scoped for the venue', multiplier: 0.75 },
+  { itemCode: '4.13.03', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP describes arrangements for the mitigation of noise at the venue, such as monitoring of the noise levels and the required PPE for relevant staff (earplugs for those working near the stage)', multiplier: 0.75 },
+  { itemCode: '4.13.04', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP describes arrangements for controlling noise levels during prayer times', multiplier: 1.0 },
+  { itemCode: '4.13.05', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP contains information regarding structural calculations and sign-off', multiplier: 0.75 },
+  { itemCode: '4.13.06', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP contains information regarding electrical safety requirements', multiplier: 0.75 },
+  { itemCode: '4.13.07', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP clearly defines the process for incident reporting', multiplier: 0.75 },
+  { itemCode: '4.13.08', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP clearly defines the process for lost property', multiplier: 0.5 },
+  { itemCode: '4.13.09', sectionCode: '4.13', sectionName: 'General Site Conditions', description: 'The ZSMP contains a Pre-Opening Checklist (“Pre-doors”)', multiplier: 0.75 }
+];
+
+var ZERP_SEED_ITEMS_ = [
+  { itemCode: '5.01.01', sectionCode: '5.01', sectionName: 'Zone Organisational Structure', description: 'The ZERP clearly describes the event.', multiplier: 1.0 },
+  { itemCode: '5.01.02', sectionCode: '5.01', sectionName: 'Zone Organisational Structure', description: 'The ZERP contains an up-to-date Event Schedule with details on operational timing and the various activities going on at the Event.', multiplier: 0.5 },
+  { itemCode: '5.01.03', sectionCode: '5.01', sectionName: 'Zone Organisational Structure', description: 'The ZERP embeds basic Zone Maps and Plans.', multiplier: 0.5 },
+  { itemCode: '5.01.04', sectionCode: '5.01', sectionName: 'Zone Organisational Structure', description: 'The ZERP embeds the EMC\'s information.', multiplier: 0.5 },
+  { itemCode: '5.01.05', sectionCode: '5.01', sectionName: 'Zone Organisational Structure', description: 'The ZERP embeds the Zone Organisational Structure Organogram.', multiplier: 1.0 },
+  { itemCode: '5.02.01', sectionCode: '5.02', sectionName: 'Roles and Responsibilities', description: 'The ZERP clearly identifies the necessary Roles and Responsibilities.', multiplier: 1.5 },
+  { itemCode: '5.02.02', sectionCode: '5.02', sectionName: 'Roles and Responsibilities', description: 'The ZERP assigns all minimal Responsabilites.', multiplier: 2.0 },
+  { itemCode: '5.03.01', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds a Control Room Organogram.', multiplier: 1.0 },
+  { itemCode: '5.03.02', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP defines named individuals for all CORE members of the Event Control Team.', multiplier: 1.0 },
+  { itemCode: '5.03.03', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP defines named individuals for all EXTENDED members of the Event Control Team.', multiplier: 1.0 },
+  { itemCode: '5.03.04', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP defines the location and layout of the Event Control Room.', multiplier: 2.0 },
+  { itemCode: '5.03.05', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds detail on how Event Control Communicates and Coordinates.', multiplier: 2.0 },
+  { itemCode: '5.03.06', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds information on how radio communication is structured during event operation.', multiplier: 1.0 },
+  { itemCode: '5.03.07', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds specific information on how radio comms are structured during emergency response.', multiplier: 2.0 },
+  { itemCode: '5.03.08', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds information on how the radio fleet is managed and structured.', multiplier: 1.0 },
+  { itemCode: '5.03.09', sectionCode: '5.03', sectionName: 'Event Control Team', description: 'The ZERP embeds information on the used terminology and radio codes.', multiplier: 0.5 },
+  { itemCode: '5.04.01', sectionCode: '5.04', sectionName: 'Incident Notification', description: 'The ZERP embeds details on the incident notification process.', multiplier: 4.0 },
+  { itemCode: '5.04.02', sectionCode: '5.04', sectionName: 'Incident Notification', description: 'The ZERP defines named individuals and their respective contacts for Off Hours Incident Notification.', multiplier: 1.0 },
+  { itemCode: '5.05.01', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds detailed maps and information on Assembly points', multiplier: 1.5 },
+  { itemCode: '5.05.02', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds detailed maps and information on Evacuation Routes.', multiplier: 1.5 },
+  { itemCode: '5.05.03', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds detailed information on Emergency/Evacuation Signage.', multiplier: 1.25 },
+  { itemCode: '5.05.04', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds a detailed Evacuation Plans for the Zone as a whole.', multiplier: 1.0 },
+  { itemCode: '5.05.05', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds a detailed Evacuation Plans for every significant subzone or building within the Zone and scope.', multiplier: 1.0 },
+  { itemCode: '5.05.06', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Emergency/Evacuation.', multiplier: 2.0 },
+  { itemCode: '5.05.07', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds information on how staff is alarmed in case of evacuation or emergency.', multiplier: 1.0 },
+  { itemCode: '5.05.08', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds information on how attendees are alarmed in case of evacuation or emergency.', multiplier: 1.0 },
+  { itemCode: '5.05.09', sectionCode: '5.05', sectionName: 'Evacuation', description: 'The ZERP embeds information on the procedure to evacuate People with Disabilities.', multiplier: 1.0 },
+  { itemCode: '5.06.01', sectionCode: '5.06', sectionName: 'Medical Incident Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of Medical Incident, in line with the Medical Plan.', multiplier: 1.0 },
+  { itemCode: '5.07.01', sectionCode: '5.07', sectionName: 'Lost Child/Missing Person Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of Lost Child and Missing Person.', multiplier: 1.0 },
+  { itemCode: '5.08.01', sectionCode: '5.08', sectionName: 'Harassment Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of harassment.', multiplier: 1.0 },
+  { itemCode: '5.09.01', sectionCode: '5.09', sectionName: 'Fire, Explosion, Smoke Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of Fire, Explosion or Smoke; in line with the Fire Plan.', multiplier: 1.0 },
+  { itemCode: '5.10.01', sectionCode: '5.10', sectionName: 'Show Stop Procedure', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Show Stop, Show Calm, and Show Pause.', multiplier: 1.0 },
+  { itemCode: '5.11.01', sectionCode: '5.11', sectionName: 'Evacuation Procedure', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Evacuation.', multiplier: 1.0 },
+  { itemCode: '5.12.01', sectionCode: '5.12', sectionName: 'Shelter In Place - Lock Down Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of a Shelter in place or lockdown response.', multiplier: 1.0 },
+  { itemCode: '5.13.01', sectionCode: '5.13', sectionName: 'Structural Collapse Procedure', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Structural Collapse.', multiplier: 1.0 },
+  { itemCode: '5.14.01', sectionCode: '5.14', sectionName: 'Suspicious Object Procedure', description: 'The ZERP embeds a detailed action chart with actions in case of  a suspicious object.', multiplier: 1.0 },
+  { itemCode: '5.15.01', sectionCode: '5.15', sectionName: 'Malfunction of Safety Critical Facilities Procedure', description: 'The ZERP embeds a detailed action chart with actions in case Safety Critical Infrastructure is lost.', multiplier: 1.0 },
+  { itemCode: '5.16.01', sectionCode: '5.16', sectionName: 'Adverse Weather Procedure', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Adverse Weather.', multiplier: 1.0 },
+  { itemCode: '5.17.01', sectionCode: '5.17', sectionName: 'Terror or Bomb Threat', description: 'The ZERP embeds a detailed action chart with actions in case of Terror or Bomb threat.', multiplier: 1.0 },
+  { itemCode: '5.18.01', sectionCode: '5.18', sectionName: 'Public Announcements', description: 'The ZERP embeds a section that documents and defines public announcements, pre-recorded or to be made live, for the different applicable procedures', multiplier: 1.0 }
+];
+
 function seedDisciplines_() {
   var existing = getAll('Disciplines');
   if (existing.length > 0) return;
