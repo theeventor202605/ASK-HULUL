@@ -38,8 +38,8 @@ async function renderSubEvents(params) {
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('subEvent_plural')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('subevents_nested_subtitle', { term: Term('subEvent_plural'), eventTerm: Term('event') })) + '</div></div></div>' +
-    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:250px;flex-shrink:0;">' +
+    '<div class="list-page-layout">' +
+      '<div class="card list-page-sidebar" style="width:250px;">' +
         '<div class="card-header"><div class="card-title">' + esc(Term('project_plural')) + '</div></div>' +
         '<div id="sevProjectPanel" style="padding:8px;max-height:160px;overflow-y:auto;"></div>' +
         '<div class="card-header" style="border-top:1px solid var(--border);"><div class="card-title">' + esc(Term('venue_plural')) + '</div></div>' +

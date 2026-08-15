@@ -420,7 +420,7 @@ table.data-table tr:hover td{ background:#fafbff; }
 
 /* Event Chat emoji/icon picker (EMOJI_LIBRARY, emoji.js + ICON_LIBRARY, icons.js) -- opens upward
    from the composer's toolbar row, see tabEventChat/chatEmojiBtn in eventDetail.js. */
-.chat-emoji-popover{ position:absolute; bottom:100%; left:0; margin-bottom:6px; z-index:60; width:300px;
+.chat-emoji-popover{ position:absolute; bottom:100%; left:0; margin-bottom:6px; z-index:60; width:300px; max-width:calc(100vw - 40px);
   background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md); overflow:hidden; }
 .chat-emoji-popover-header{ display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-bottom:1px solid var(--border); }
 /* Single source now (emoji only -- see eventDetail.js chat composer comment for why the Icons tab
@@ -503,6 +503,16 @@ table.data-table tr:hover td{ background:#fafbff; }
    actually shrink to the row's real available width, so content wraps/clips in place instead. */
 .form-row{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
 
+/* ---------- List-page filter + content layout ----------
+   Shared by Events/Meetings/Sub-Events/Checklist Items list views: a fixed-width filter/nav card on
+   the start side (each page sets its own width, 230-250px, inline) and a flexible content pane
+   (table/cards) on the end side. Extracted into shared classes (was duplicated per-view as inline
+   styles) so the <=900px override below can stack them into one column instead of squeezing the
+   content pane into an unusable sliver on a phone-width screen -- flex-shrink:0 on a 230-250px panel
+   left as little as ~60-100px for the actual table on a typical phone viewport. */
+.list-page-layout{ display:flex; gap:16px; align-items:flex-start; }
+.list-page-sidebar{ flex-shrink:0; display:flex; flex-direction:column; gap:16px; }
+
 /* ---------- Map full screen toggle (UI.wireMapFullscreen, ui.js) ----------
    Higher than Leaflet's own panes/controls (max 1000, see the z-index note above) and higher than
    the modal stack (1600/1700) too -- if a venue/zone map is ever opened from within a modal in the
@@ -543,7 +553,7 @@ table.data-table tr:hover td{ background:#fafbff; }
 .toast.success{ background:#166534; } .toast.error{ background:#991b1b; }
 
 /* ---------- Notif panel ---------- */
-.notif-panel{ position:fixed; top:64px; inset-inline-end:24px; width:340px; max-height:70vh; overflow-y:auto; background:#fff;
+.notif-panel{ position:fixed; top:64px; inset-inline-end:24px; width:340px; max-width:calc(100vw - 32px); max-height:70vh; overflow-y:auto; background:#fff;
   border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); z-index:1500; }
 .notif-panel-header{ position:sticky; top:0; background:#fff; display:flex; align-items:center; justify-content:space-between;
   padding:10px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700; }
@@ -610,6 +620,24 @@ table.data-table tr:hover td{ background:#fafbff; }
   .sidebar.collapsed{ width:248px; padding:18px 14px; border-inline-end:1px solid var(--sidebar-border); transform:translateX(-110%); }
   html[dir="rtl"] .sidebar.collapsed{ transform:translateX(110%); }
   .form-row{ grid-template-columns:1fr; }
+  /* List-page filter + content layout (see .list-page-layout/.list-page-sidebar above) -- stack
+     instead of a fixed-width side panel squeezing the content pane down to nothing. !important
+     overrides each page's own inline width:230px/250px, which otherwise wins over any stylesheet
+     rule (inline styles beat non-!important selectors regardless of specificity). */
+  .list-page-layout{ flex-direction:column; }
+  .list-page-sidebar{ width:100% !important; }
+  /* Reclaim horizontal room for actual content on a phone-width screen -- 24px of padding on each
+     side is fine on desktop but eats a real chunk of a 320-375px viewport. */
+  .view-root{ padding:14px; }
+  /* Topbar: mobileNavBtn + search + org logo + support/escalation/notif icons + full user-chip
+     (avatar + name + role text) never fit a phone-width screen at once -- the search input was the
+     one that lost, shrinking toward unusable. Drop the two purely-decorative/duplicated-elsewhere
+     pieces (org logo is also in the sidebar brand; name/role are also shown in the user menu the
+     avatar opens) so search gets real room again. */
+  .topbar{ padding:10px 14px; gap:8px; }
+  .topbar-search{ max-width:none; }
+  .org-logo{ display:none; }
+  .user-chip-text{ display:none; }
 }
 
 /* ---------- Support: raise-a-ticket capture overlay (js/views/support.js) ----------

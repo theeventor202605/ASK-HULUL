@@ -95,8 +95,8 @@ async function renderChecklistItems() {
   }
 
   document.getElementById('ciBody').innerHTML =
-    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:230px;flex-shrink:0;">' +
+    '<div class="list-page-layout">' +
+      '<div class="card list-page-sidebar" style="width:230px;">' +
         '<div class="card-header"><div class="card-title">' + esc(t('col_phase')) + '</div></div>' +
         '<div id="ciPhasePanel" style="padding:8px;max-height:260px;overflow-y:auto;"></div>' +
         '<div class="card-header" style="border-top:1px solid var(--border);"><div class="card-title">' + esc(Term('discipline')) + '</div></div>' +

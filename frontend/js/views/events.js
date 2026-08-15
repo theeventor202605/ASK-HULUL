@@ -42,8 +42,8 @@ async function renderEventsList() {
     '<div style="display:flex;gap:8px;">' +
       (canManage ? '<button class="btn btn-primary" id="newEventBtn">' + esc(t('new_x', { term: Term('event') })) + '</button>' : '') +
     '</div></div>' +
-    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div style="width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">' +
+    '<div class="list-page-layout">' +
+      '<div class="list-page-sidebar" style="width:230px;">' +
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('project_plural')) + '</div></div>' +
         '<div id="projectFilterPanel" style="padding:8px;max-height:280px;overflow-y:auto;"></div></div>' +
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('venue_plural')) + '</div></div>' +

@@ -80,8 +80,8 @@ async function renderMeetings(params) {
     // it works from any filter state.
     (canManage ? '<a class="btn btn-primary" id="newMtgHeaderBtn" href="#">' + esc(t('schedule_x_btn', { term: Term('meeting').toLowerCase() })) + '</a>' : '') +
     '</div>' +
-    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:250px;flex-shrink:0;">' +
+    '<div class="list-page-layout">' +
+      '<div class="card list-page-sidebar" style="width:250px;">' +
         '<div class="card-header"><div class="card-title">' + esc(Term('project_plural')) + '</div></div>' +
         '<div id="mtgProjectPanel" style="padding:8px;max-height:150px;overflow-y:auto;"></div>' +
         '<div class="card-header" style="border-top:1px solid var(--border);"><div class="card-title">' + esc(Term('venue_plural')) + '</div></div>' +
