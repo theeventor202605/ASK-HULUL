@@ -282,6 +282,7 @@ var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if ne
 var eventPlacesMapInstance_ = null;
 var eventPlacesMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initEventPlacesMap_
 var eventPlacesMarkers_ = {}; // placeId -> Leaflet marker, so a places-list click can re-focus the right dot
+var eventPlacesFilterObserver_ = null; // see wireEventPlacesFilterSync_ below
 var eventPlacesBoundaryLayer_ = null; // the venue's own drawn boundary, shown for reference (read-only)
 var eventPlacesZoneLayers_ = []; // each zone's own drawn boundary (read-only) -- see initEventPlacesMap_
 // Cycled per zone (by list order) so multiple zone boundaries stay visually distinguishable from
@@ -413,9 +414,11 @@ async function tabVenue(content, eventId, detail) {
         var pl = places[i];
         if (!pl) return;
         tr.style.cursor = 'pointer';
+        tr.dataset.placeId = pl.id; // lets wireEventPlacesFilterSync_ map a row back to its marker without positional indexing
         tr.onclick = function () { focusEventPlace_(pl); };
       });
     }
+    wireEventPlacesFilterSync_();
   }
 
   if (!canManage) return;
@@ -565,8 +568,38 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
   }, 0);
 }
 
+// BUG (REQ report): "Places list map filter is still not working." Removing the old custom type-
+// filter checkbox panel (see the REQ comment above EVENT_PLACE_TYPE_OPTIONS_) handed type-filtering
+// over to the table's own built-in filter box/column facets -- correct for the LIST (sort-safe,
+// reads data-tx-N/data-search per row), but that generic mechanism only ever toggles each row's own
+// data-hulul-filtered-out attribute and style.display; it has no idea this particular table has a
+// map sitting next to it, so the dots never moved. This watches for that attribute changing (however
+// it changes -- typed search, a facet chip, the clear button, all funnel through the same
+// hululRecomputeTableFilter_ in ui.js) and mirrors it onto the matching marker, keyed by the
+// data-place-id stamped on each row above rather than DOM position -- same reasoning as the row-click
+// wiring: stays correct no matter how the rows get reordered by a column sort.
+function wireEventPlacesFilterSync_() {
+  if (eventPlacesFilterObserver_) { eventPlacesFilterObserver_.disconnect(); eventPlacesFilterObserver_ = null; }
+  var wrap = document.getElementById('eventPlacesListWrap');
+  if (!wrap) return;
+  function sync() {
+    if (!eventPlacesMapInstance_) return;
+    wrap.querySelectorAll('tbody tr[data-place-id]').forEach(function (tr) {
+      var marker = eventPlacesMarkers_[tr.dataset.placeId];
+      if (!marker) return; // e.g. a place with no coordinates never got a marker in the first place
+      var show = tr.dataset.hululFilteredOut !== '1';
+      if (show) { if (!eventPlacesMapInstance_.hasLayer(marker)) marker.addTo(eventPlacesMapInstance_); }
+      else if (eventPlacesMapInstance_.hasLayer(marker)) { eventPlacesMapInstance_.removeLayer(marker); }
+    });
+  }
+  eventPlacesFilterObserver_ = new MutationObserver(sync);
+  eventPlacesFilterObserver_.observe(wrap, { attributes: true, attributeFilter: ['data-hulul-filtered-out'], subtree: true });
+  sync(); // baseline pass -- harmless no-op today (nothing's filtered right after a fresh render) but correct if that ever changes
+}
+
 function destroyEventPlacesMap_() {
   if (eventPlacesMapInspectorPollStop_) { eventPlacesMapInspectorPollStop_(); eventPlacesMapInspectorPollStop_ = null; }
+  if (eventPlacesFilterObserver_) { eventPlacesFilterObserver_.disconnect(); eventPlacesFilterObserver_ = null; }
   if (eventPlacesMapInstance_) { eventPlacesMapInstance_.remove(); eventPlacesMapInstance_ = null; }
   eventPlacesBoundaryLayer_ = null;
   eventPlacesZoneLayers_ = [];
