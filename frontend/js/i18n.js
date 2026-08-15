@@ -32,6 +32,9 @@ window.HULUL_I18N = {
     status_approved: 'Approved', status_not_approved: 'Not Approved', status_evaluated: 'Evaluated', status_missed: 'Missed',
     status_pending: 'Pending', status_scheduled: 'Scheduled', status_completed: 'Completed', status_planning: 'Planning',
     status_venue_approved: 'Venue Approved', status_venue_rejected: 'Venue Rejected', status_inprogress: 'In Progress',
+    // Readiness Templates' own statuses not already covered above (Submitted/Evaluated/Missed are
+    // shared with Findings/Venue Approval; 'In Progress' reuses status_inprogress).
+    status_not_sent: 'Not Sent', status_sent: 'Sent', status_under_review: 'Under Review',
     // risk_critical/high/medium/low already exist further down (used by the risk filter chips) --
     // UI.riskBadge (ui.js) reuses those same keys, no new ones needed.
     nav_dashboard: 'Dashboard', nav_events: 'Events', nav_projects: 'Projects', nav_users: 'Users & Roles', nav_orgs: 'Organizations',
@@ -526,11 +529,13 @@ window.HULUL_I18N = {
   ar: {
     tagline: 'منصة جاهزية الفعاليات والامتثال', email: 'البريد الإلكتروني', password: 'كلمة المرور', signIn: 'تسجيل الدخول',
     searchPlaceholder: 'ابحث عن الفعاليات والملاحظات والمستخدمين…',
-    status_open: 'مفتوح', status_viewed: 'تمت المشاهدة', status_submitted: 'تم الإرسال', status_inreview: 'قيد المراجعة',
-    status_resubmitted: 'أُعيد الإرسال', status_resolved: 'تم الحل', status_reopen: 'إعادة فتح', status_rejected: 'مرفوض',
+    status_open: 'مفتوح', status_viewed: 'تمت المشاهدة', status_submitted: 'تم التقديم', status_inreview: 'قيد المراجعة',
+    status_resubmitted: 'أُعيد التقديم', status_resolved: 'تم الحل', status_reopen: 'إعادة فتح', status_rejected: 'مرفوض',
     status_approved: 'معتمد', status_not_approved: 'غير معتمد', status_evaluated: 'تم التقييم', status_missed: 'فائت',
     status_pending: 'قيد الانتظار', status_scheduled: 'مجدول', status_completed: 'مكتمل', status_planning: 'التخطيط',
     status_venue_approved: 'المكان معتمد', status_venue_rejected: 'المكان مرفوض', status_inprogress: 'قيد التنفيذ',
+    // Readiness Templates' own statuses (see the matching EN comment).
+    status_not_sent: 'لم يُرسل', status_sent: 'تم الإرسال', status_under_review: 'قيد المراجعة',
     nav_dashboard: 'لوحة التحكم', nav_events: 'الفعاليات', nav_projects: 'المشاريع', nav_users: 'المستخدمون والأدوار', nav_orgs: 'الجهات',
     nav_notifications: 'الإشعارات', nav_settings: 'الإعدادات', nav_logout: 'تسجيل الخروج', nav_support: 'الدعم الفني',
     nav_reassignment: 'إعادة التكليف',

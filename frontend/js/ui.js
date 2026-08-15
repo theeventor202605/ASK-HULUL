@@ -114,30 +114,47 @@ window.UI = {
 
   // REQ follow-up: "event-workspace field labels are still English-only." Every status badge in the
   // app (Findings, Templates, Venue Approval, Events, Inspections, Support tickets) rendered through
-  // this ONE shared function, which used to hardcode its own English label text right in the map
-  // below -- so no matter how many individual call sites got their own labels translated, every
-  // status badge anywhere still came out English. Fixing it once here covers every badge app-wide,
-  // not just eventDetail.js. Status keys themselves (map's left-hand side) stay exactly as they are
-  // -- those are the real data values compared elsewhere (finding.status === 'Open' etc.), only the
-  // display text (now routed through t()) changes with the language.
+  // this ONE shared map, which used to hardcode its own English label text -- so no matter how many
+  // individual call sites got their own labels translated, every status badge anywhere still came out
+  // English. Fixing it once here covers every badge app-wide, not just eventDetail.js. Status keys
+  // themselves (left-hand side) stay exactly as they are -- those are the real data values compared
+  // elsewhere (finding.status === 'Open' etc.), only the display text (routed through t()) changes
+  // with the language. Module-level (not inline in statusBadge) so statusLabel below -- and non-badge
+  // callers like a board column's plain-text header (eventDetail.js's Templates/Findings pipeline
+  // boards, which don't want the colored pill markup) -- can reuse the exact same lookup instead of
+  // eventDetail.js keeping its own separate, easy-to-forget-to-translate copy of these labels.
+  _STATUS_BADGE_MAP: {
+    Open: ['badge-open', 'status_open'], Viewed: ['badge-open', 'status_viewed'],
+    Submitted: ['badge-inreview', 'status_submitted'], InReview: ['badge-inreview', 'status_inreview'],
+    Resubmitted: ['badge-inreview', 'status_resubmitted'], Resolved: ['badge-resolved', 'status_resolved'],
+    ReOpen: ['badge-reopen', 'status_reopen'], Rejected: ['badge-rejected', 'status_rejected'],
+    Approved: ['badge-resolved', 'status_approved'], 'Not Approved': ['badge-rejected', 'status_not_approved'],
+    // Readiness Templates (Templates.gs) -- formerly Approved/Rejected, renamed to avoid clashing
+    // with the Venue Approval / Findings decisions above, which keep their own separate statuses.
+    Evaluated: ['badge-resolved', 'status_evaluated'], Missed: ['badge-rejected', 'status_missed'],
+    Pending: ['badge-neutral', 'status_pending'], Scheduled: ['badge-open', 'status_scheduled'], Completed: ['badge-resolved', 'status_completed'],
+    Planning: ['badge-neutral', 'status_planning'], VenueApproved: ['badge-resolved', 'status_venue_approved'], VenueRejected: ['badge-rejected', 'status_venue_rejected'],
+    // Support tickets (Support.gs) -- Open/Resolved/Completed/Rejected all reuse maps above.
+    InProgress: ['badge-inreview', 'status_inprogress'],
+    // Readiness Templates' own 4 remaining statuses (TEMPLATE_BOARD_COLUMNS, eventDetail.js) -- these
+    // were missing entirely (Submitted/Evaluated/Missed above already covered the other 3), which is
+    // why the Templates status column and pipeline board only translated 3 of 7 columns. 'In Progress'
+    // reuses InProgress's own status_inprogress key -- same displayed word either way, just a
+    // differently-spaced source status string ('In Progress' here vs 'InProgress' for Support tickets).
+    'Not Sent': ['badge-neutral', 'status_not_sent'], Sent: ['badge-open', 'status_sent'],
+    'In Progress': ['badge-open', 'status_inprogress'], 'Under Review': ['badge-reopen', 'status_under_review']
+  },
+
+  // Bare translated text, no badge markup -- for places that show a status as plain text (a board
+  // column header) rather than a colored pill. statusBadge below is just this wrapped in the pill.
+  statusLabel(status) {
+    var m = UI._STATUS_BADGE_MAP[status];
+    return m ? t(m[1]) : (status || '—');
+  },
+
   statusBadge(status) {
-    var map = {
-      Open: ['badge-open', 'status_open'], Viewed: ['badge-open', 'status_viewed'],
-      Submitted: ['badge-inreview', 'status_submitted'], InReview: ['badge-inreview', 'status_inreview'],
-      Resubmitted: ['badge-inreview', 'status_resubmitted'], Resolved: ['badge-resolved', 'status_resolved'],
-      ReOpen: ['badge-reopen', 'status_reopen'], Rejected: ['badge-rejected', 'status_rejected'],
-      Approved: ['badge-resolved', 'status_approved'], 'Not Approved': ['badge-rejected', 'status_not_approved'],
-      // Readiness Templates (Templates.gs) -- formerly Approved/Rejected, renamed to avoid clashing
-      // with the Venue Approval / Findings decisions above, which keep their own separate statuses.
-      Evaluated: ['badge-resolved', 'status_evaluated'], Missed: ['badge-rejected', 'status_missed'],
-      Pending: ['badge-neutral', 'status_pending'], Scheduled: ['badge-open', 'status_scheduled'], Completed: ['badge-resolved', 'status_completed'],
-      Planning: ['badge-neutral', 'status_planning'], VenueApproved: ['badge-resolved', 'status_venue_approved'], VenueRejected: ['badge-rejected', 'status_venue_rejected'],
-      // Support tickets (Support.gs) -- Open/Resolved/Completed/Rejected all reuse maps above.
-      InProgress: ['badge-inreview', 'status_inprogress']
-    };
-    var m = map[status];
-    var label = m ? t(m[1]) : (status || '—');
-    return '<span class="badge ' + (m ? m[0] : 'badge-neutral') + '"><span class="badge-dot"></span>' + esc(label) + '</span>';
+    var m = UI._STATUS_BADGE_MAP[status];
+    return '<span class="badge ' + (m ? m[0] : 'badge-neutral') + '"><span class="badge-dot"></span>' + esc(UI.statusLabel(status)) + '</span>';
   },
 
   // Same "shared function, one fix covers every call site" reasoning as statusBadge above --

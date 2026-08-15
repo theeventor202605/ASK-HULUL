@@ -1041,7 +1041,10 @@ async function tabTemplates(content, eventId, detail) {
 
   var boardColumns = TEMPLATE_BOARD_COLUMNS.map(function (status) {
     return {
-      label: status,
+      // REQ follow-up: this board's column headers were raw untranslated status strings ('Not Sent',
+      // 'Under Review', etc.) even after UI.statusBadge itself got translated -- UI.statusLabel (same
+      // lookup, no pill markup) fixes both this and the equivalent Findings board below in one place.
+      label: UI.statusLabel(status),
       cards: templates.filter(function (tpl) { return tpl.status === status; }).map(function (tpl) {
         return { id: tpl.id || ('lib:' + tpl.libraryTemplateId), title: tpl.name, meta: tpl.fileName || t('toast_no_file_yet'), borderColor: TEMPLATE_BOARD_BORDER[status] };
       })
@@ -2378,10 +2381,9 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
  * the finding detail page's own Resolve/Accept/Reject actions (see findings.js) and removed.
  */
 var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted', 'Resolved', 'Rejected'];
-var FINDING_BOARD_LABELS = {
-  Open: 'Open', Viewed: 'Viewed', Submitted: 'Submitted', InReview: 'In review',
-  ReOpen: 'Re-open', Resubmitted: 'Resubmitted', Resolved: 'Resolved', Rejected: 'Rejected'
-};
+// FINDING_BOARD_LABELS (a second, separate hardcoded English label map) used to live here -- removed
+// in favor of UI.statusLabel(status), which is the exact same lookup UI.statusBadge itself now uses
+// (ui.js), so this board's headers translate for free instead of needing their own copy kept in sync.
 var RISK_BORDER_COLOR = { Critical: 'var(--critical)', High: 'var(--danger)', Medium: 'var(--warning)', Low: 'var(--success)' };
 // Who can create/edit/delete a finding is now RBAC-driven (see PERMISSION_REGISTRY_,
 // backend/Permissions.gs, and hasPermission() calls below) instead of a hardcoded role array --
@@ -2428,7 +2430,7 @@ async function tabFindings(content, eventId) {
 
   var boardColumns = FINDING_BOARD_COLUMNS.map(function (status) {
     return {
-      label: FINDING_BOARD_LABELS[status],
+      label: UI.statusLabel(status),
       cards: findings.filter(function (f) { return f.status === status; }).map(function (f) { return findingBoardCard_(f); })
     };
   });
