@@ -196,6 +196,19 @@ textarea.field-input{ resize:vertical; min-height:64px; }
   color:var(--text-900); transition:.15s; box-shadow:var(--shadow-md); }
 .map-toggle-btn:hover{ background:#f1f3f9; }
 
+/* BUG FIX: "Map in front of top bar" -- an in-page map (e.g. Venue & Zones' Places map) sits in
+   normal document flow, but Leaflet's own panes/controls plus our overlay controls/legend above go
+   up to z-index:1000 -- .topbar is only z-index:20 (sticky, see below), and neither the map's outer
+   div nor any ancestor between it and <body> establishes a stacking context, so those high z-index
+   descendants compete directly against .topbar in the SAME (root) stacking context. Whenever the
+   page is scrolled so the map's box geometrically overlaps the sticky topbar's screen position, the
+   map's tiles/controls/legend paint OVER the topbar instead of staying pinned behind it. Every
+   Leaflet map gets the 'leaflet-container' class straight from Leaflet itself, so this one rule
+   contains all of them at once: isolation:isolate makes the whole map (as a unit) participate in
+   its parent's stacking context at its own element's z-index (auto/0, same as ordinary page
+   content), so nothing inside it can ever escape above .topbar again, no per-view change needed. */
+.leaflet-container{ isolation:isolate; }
+
 /* REQ: "Move the Use my location / Satellite buttons inside map canvas. This applies to all maps."
    (UI.mapControls, ui.js) -- bottom-left, clear of Leaflet's own top-left zoom control and the
    top-right full-screen-expand button (.hulul-map-fullscreen-btn below). Reuses the same corner the

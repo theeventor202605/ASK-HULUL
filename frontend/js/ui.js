@@ -734,7 +734,14 @@ function hululApplyPagination_(wrap) {
   var tbody = wrap.querySelector('tbody');
   if (!tbody) return;
   var pageSize = Number(wrap.dataset.hululPageSize || HULUL_TABLE_DEFAULT_PAGE_SIZE_);
-  var matching = hululTableRows_(tbody).filter(function (r) { return r.dataset.hululFilteredOut !== '1'; });
+  var allRows = hululTableRows_(tbody);
+  var matching = allRows.filter(function (r) { return r.dataset.hululFilteredOut !== '1'; });
+  // BUG FIX: "filtered to Vendor but list displays other types" -- this loop used to only walk
+  // `matching`, so a row that WAS visible on the current page and then gets filtered out (a facet
+  // is picked) was never touched -- its stale style.display:'' from before the filter stuck around
+  // forever, since nothing outside `matching` was ever revisited. Explicitly hide every filtered-out
+  // row here too, not just the ones still in the running for a page slot.
+  allRows.forEach(function (r) { if (r.dataset.hululFilteredOut === '1') r.style.display = 'none'; });
   var totalPages = Math.max(1, Math.ceil(matching.length / pageSize));
   var page = Math.min(Math.max(1, Number(wrap.dataset.hululPage || 1)), totalPages);
   wrap.dataset.hululPage = String(page);
