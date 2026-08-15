@@ -19,7 +19,9 @@ async function renderCompletedChecklistsPage() {
     '<div class="page-header"><div><div class="page-title">' + esc(t('tab_completed_checklists')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('completed_checklists_hint')) + '</div></div></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'eventName', label: Term('event'), render: r => '<a href="#/events/' + esc(r.eventId) + '?tab=completedChecklists">' + esc(r.eventName) + '</a>' },
+      // Same accent-color/bold/no-underline treatment as venues.js's own name-link column --
+      // Tailwind's preflight reset otherwise leaves an unstyled <a> looking like plain text.
+      { key: 'eventName', label: Term('event'), render: r => '<a href="#/events/' + esc(r.eventId) + '?tab=completedChecklists" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.eventName) + '</a>' },
       { key: 'participantName', label: Term('participant') },
       { key: 'disciplineName', label: Term('discipline') },
       { key: 'phase', label: t('col_phase') },

@@ -58,7 +58,11 @@ async function renderVenues() {
       // itself is now the single entry point into the tabbed venue detail page (renderVenueDetail
       // below), landing on its Venue tab; Zones/Places are just tabs on that same page now, not
       // separate destinations that need their own row-action icon.
-      { key: 'name', label: t('col_name'), render: r => '<a href="#/venues/' + esc(r.id) + '">' + esc(r.name) + '</a>' },
+      // Tailwind's preflight reset (this app is "built on top of Tailwind's CDN utilities," see
+      // styles.css's own header comment) strips <a> back to color:inherit/text-decoration:inherit,
+      // so an unstyled link here renders as plain text -- same accent-color/bold/no-underline
+      // treatment projects.js's own name-link column already uses.
+      { key: 'name', label: t('col_name'), render: r => '<a href="#/venues/' + esc(r.id) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.name) + '</a>' },
       { key: 'address', label: t('col_address') }, { key: 'city', label: t('col_city') },
       { key: 'lat', label: t('col_coordinates'), render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
@@ -170,21 +174,73 @@ async function renderVenueDetail(params) {
   catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; }
 }
 
-// Tab 1: today's Edit Venue form, embedded (no page-header/back button of its own -- the tabbed
-// page's own chrome already provides those). Saving re-resolves the current route instead of
-// navigating away, so the header (venue name) and Zones/Places tabs immediately reflect any change.
+// Tab 1: REQ follow-up: "Clicking on venue name opens the edit mode. It should open view mode
+// instead. Add edit from inside." Read-only by default (venueViewMode_) with a gated Edit button
+// that swaps the SAME container over to the existing editable form in place -- no navigation, no
+// page-header/back button of its own either way (the tabbed page's own chrome already provides
+// those). Saving re-resolves the whole route (lands back on this tab, back in view mode, showing
+// the just-saved values); Cancel swaps back to view mode locally without saving or navigating.
 async function venueTabMain_(content, venue) {
-  await renderVenueForm_(venue, { container: content, onSaved: function () { Router.resolve(); } });
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venues >
+  // "Create, edit, or delete a venue" -- same permission the Venues list page's own Edit/Delete
+  // buttons are already gated by (renderVenues above).
+  var canManage = hasPermission('venue.manage');
+  venueViewMode_(content, venue, canManage);
+}
+
+function venueViewMode_(content, venue, canManage) {
+  destroyVenueMap_(); // view mode has no map of its own -- in case Cancel is returning here from edit mode
+  content.innerHTML =
+    '<div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:2px;max-width:640px;">' +
+      venueInfoRow_(t('col_name'), esc(venue.name || '—')) +
+      venueInfoRow_(t('col_address'), esc(venue.address || '—')) +
+      venueInfoRow_(t('col_city'), esc(venue.city || '—')) +
+      venueInfoRow_(t('col_coordinates'), (venue.lat !== '' && venue.lat != null && venue.lng !== '' && venue.lng != null)
+        ? esc(Number(venue.lat).toFixed(5) + ', ' + Number(venue.lng).toFixed(5)) : '—') +
+      venueInfoRow_(t('field_boundary_color'), venueColorSwatchHtml_(venue.color)) +
+    '</div>' +
+    (canManage
+      ? '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+          '<button class="btn btn-primary" id="editVenueBtn">' + ICON('edit') + ' ' + esc(t('action_edit')) + '</button>' +
+        '</div>'
+      : '') +
+    '</div>';
+  if (canManage) {
+    document.getElementById('editVenueBtn').onclick = function () {
+      renderVenueForm_(venue, {
+        container: content,
+        onCancel: function () { venueViewMode_(content, venue, canManage); },
+        onSaved: function () { Router.resolve(); }
+      });
+    };
+  }
+}
+
+function venueInfoRow_(label, valueHtml) {
+  return '<div style="display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13.5px;">' +
+    '<span class="muted">' + esc(label) + '</span><span style="font-weight:600;">' + (valueHtml || '—') + '</span></div>';
+}
+
+function venueColorSwatchHtml_(color) {
+  var c = color || VENUE_BOUNDARY_DEFAULT_COLOR_;
+  return '<span style="display:inline-flex;align-items:center;gap:6px;">' +
+    '<span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--border);background:' + esc(c) + ';display:inline-block;"></span>' +
+    esc(c) + '</span>';
 }
 
 // Shared by New Venue (existingVenue === null) and Edit Venue (existingVenue is the row being
 // edited). No EMC organization field here -- a Venue isn't connected to one (see file header
 // comment); which EMC rents it is chosen per-Event instead (events.js's New Event form).
-// opts (optional): { container, onSaved } -- REQ follow-up: "Venue main page to become a tab". When
-// container is given, this renders just the form/map card into it (no page-header/back/cancel --
-// the caller, renderVenueDetail's own tabbed chrome, already provides those) and calls onSaved()
-// instead of navigating to #/venues after a successful create/update. Plain #/venues/new still calls
-// this with no opts at all, so its own full-page behavior is completely unchanged.
+// opts (optional): { container, onSaved, onCancel } -- REQ follow-up: "Venue main page to become a
+// tab". When container is given, this renders just the form/map card into it (no page-header/back
+// of its own -- the caller, renderVenueDetail's own tabbed chrome, already provides that) and calls
+// onSaved() instead of navigating to #/venues after a successful create/update. Plain #/venues/new
+// still calls this with no opts at all, so its own full-page behavior is completely unchanged.
+//
+// REQ follow-up: "Add edit from inside [view mode]." onCancel (only meaningful together with
+// container) is what venueViewMode_ passes so its own Cancel button swaps back to the read-only view
+// locally instead of navigating anywhere -- without it, an embedded render has no Cancel button at
+// all (nothing to cancel back to), same as before this feature existed.
 async function renderVenueForm_(existingVenue, opts) {
   opts = opts || {};
   var embedded = !!opts.container;
@@ -235,7 +291,7 @@ async function renderVenueForm_(existingVenue, opts) {
         '</div>' +
       '</div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-        (embedded ? '' : '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>') +
+        ((!embedded || opts.onCancel) ? '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>' : '') +
         '<button class="btn btn-primary" id="createVenueBtn">' + (isEdit ? esc(t('save_changes')) : t('create')) + '</button>' +
       '</div>' +
     '</div>';
@@ -243,6 +299,8 @@ async function renderVenueForm_(existingVenue, opts) {
   if (!embedded) {
     document.getElementById('backVenuesBtn').onclick = goBackToVenues_;
     document.getElementById('cancelVenueBtn').onclick = goBackToVenues_;
+  } else if (opts.onCancel) {
+    document.getElementById('cancelVenueBtn').onclick = function () { destroyVenueMap_(); opts.onCancel(); };
   }
   document.getElementById('createVenueBtn').onclick = async function () {
     try {
