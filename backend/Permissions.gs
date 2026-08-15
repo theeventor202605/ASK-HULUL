@@ -146,13 +146,25 @@ var PERMISSION_REGISTRY_ = {
     module: 'Templates', label: 'Set an event\'s documents deadline', page: 'templates', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
+  // REQ follow-up: "move items in the Process tab to Permissions tab." These two used to live behind
+  // their own dedicated Settings > Process editor (templateUploaderRoles_/templateReviewerRoles_,
+  // backed by their own Config-sheet keys) instead of this registry -- that was a deliberate call at
+  // the time, to avoid a second parallel "who can do this" control for the same actions. Since then
+  // the Process tab has been retired and these are now ordinary registry entries like everything else
+  // -- templateUploaderRoles_/templateReviewerRoles_ (Templates.gs) now just read effectivePermissionRoles_
+  // for these two keys instead of a separate Config-JSON value.
+  'template.upload': {
+    module: 'Templates', label: 'Upload/replace and submit an event\'s document (the "Event Manager" step)',
+    page: 'templates', crud: ['update'],
+    defaultRoles: ['EventManager', 'SystemAdmin']
+  },
+  'template.review': {
+    module: 'Templates', label: 'Review and evaluate a submitted document (the "Inspection Analyst" step)',
+    page: 'templates', crud: ['update'],
+    defaultRoles: ['InspectionAnalyst', 'SystemAdmin']
+  },
   'meeting.manage': {
     module: 'Meetings', label: 'Schedule, edit, or delete a meeting', page: 'meetings', crud: ['create', 'update', 'delete'],
-    // NOTE: uploadEventTemplateFile/submitEventTemplate/reviewEventTemplate/openEventTemplate
-    // (Templates.gs) are deliberately NOT migrated here -- those already have their own dedicated,
-    // purpose-built admin surface (Settings > Configuration > Process tab, templateUploaderRoles_/
-    // templateReviewerRoles_, backed by the Config sheet) predating this Permissions module. Adding a
-    // second, parallel "who can do this" control for the same actions would just be confusing.
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager']
   },
   'checklistItem.manage': {
@@ -293,11 +305,19 @@ function requirePermission(user, key, contextOrgId) {
   return requireRole(user, roles, contextOrgId);
 }
 
+// Non-throwing companion to requirePermission -- for call sites that need to branch on "can this
+// user do X" (e.g. openEventTemplate's auto-transition logic, Templates.gs) rather than reject the
+// whole request when they can't. Returns false (not an error) for a signed-out user.
+function hasPermissionRole_(user, key) {
+  if (!user) return false;
+  return effectivePermissionRoles_(key, getPermissionOverrides_()).indexOf(user.role) !== -1;
+}
+
 // SystemAdmin-only: the full catalog (every registered key, its module/label/defaultRoles) merged
 // with whatever's currently overridden, for the Settings > Permissions admin screen. allRoles (every
 // role code + display label) rides along too -- same "server hands back its own picklist" convention
-// as getTemplateProcessConfig (Templates.gs)/getEscalationConfig (Resolutions.gs), so the frontend
-// never needs its own hardcoded copy of the role list.
+// as getEscalationConfig (Resolutions.gs), so the frontend never needs its own hardcoded copy of the
+// role list.
 function listPermissions(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
   var overrides = getPermissionOverrides_();

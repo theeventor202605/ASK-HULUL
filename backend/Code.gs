@@ -151,8 +151,6 @@ var ROUTES = {
   reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
   setTemplatesDeadline: function (u, p) { return setTemplatesDeadline(u, p); },
   getTemplateProcessRoles: function (u, p) { return getTemplateProcessRoles(u); },
-  getTemplateProcessConfig: function (u, p) { return getTemplateProcessConfig(u); },
-  setTemplateProcessConfig: function (u, p) { return setTemplateProcessConfig(u, p); },
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },

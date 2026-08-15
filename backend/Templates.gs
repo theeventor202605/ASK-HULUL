@@ -9,7 +9,7 @@
  *    Sent -> In Progress -> Submitted -> Under Review -> Evaluated/Missed as whichever role(s) are
  *    configured for the Event-Manager step and the Inspection-Analyst step act on it (defaults to
  *    Event Manager / Inspection Analyst respectively -- see templateUploaderRoles_/
- *    templateReviewerRoles_ below, configurable from Configuration > Process). A library update
+ *    templateReviewerRoles_ below, configurable from Settings > Permissions). A library update
  *    after a document has already been sent does NOT retroactively change the event's copy — it's
  *    locked to whatever version it got.
  *
@@ -24,55 +24,27 @@
 
 var TEMPLATE_STATUSES = ['Not Sent', 'Sent', 'In Progress', 'Submitted', 'Under Review', 'Evaluated', 'Missed'];
 
-// ---- Configurable process roles (Configuration page > Process tab) -------------------------------
+// ---- Configurable process roles (Settings > Permissions -- 'template.upload'/'template.review') --
 // REQ: "role assignments... Inspection Analyst and Event Manager, where I can change them and allow
 // one or multiple role assignment." Who fills the Event-Manager step (upload/submit, and triggering
 // the auto Sent->In Progress transition by opening the file) and who fills the Inspection-Analyst
-// step (review/evaluate, and triggering the auto Submitted->Under Review transition) are no longer
-// hardcoded to those two roles -- they're read from Config (JSON array of role codes) with the
-// original roles as the fallback default, so an un-configured install behaves exactly as before.
-// SystemAdmin can always act regardless of what's configured, same "SystemAdmin bypasses everything"
-// convention used everywhere else in the app -- it's appended at each call site, not stored in the
-// list itself, so it can never accidentally be configured away.
-var TEMPLATE_UPLOADER_ROLES_CONFIG_KEY_ = 'templateUploaderRoles';
-var TEMPLATE_REVIEWER_ROLES_CONFIG_KEY_ = 'templateReviewerRoles';
-var TEMPLATE_DEFAULT_UPLOADER_ROLES_ = ['EventManager'];
-var TEMPLATE_DEFAULT_REVIEWER_ROLES_ = ['InspectionAnalyst'];
-
+// step (review/evaluate, and triggering the auto Submitted->Under Review transition) is admin-
+// configurable via the ordinary Permissions CRUD matrix -- these used to be a separate, dedicated
+// Settings > Process editor backed by their own Config-sheet keys, but that was folded into
+// Permissions (REQ follow-up: "move items in the Process tab to Permissions tab") once the matrix
+// existed to do the same job without a second parallel "who can do this" control.
 function templateUploaderRoles_() {
-  var roles = getConfigJson_(TEMPLATE_UPLOADER_ROLES_CONFIG_KEY_, TEMPLATE_DEFAULT_UPLOADER_ROLES_);
-  return (Array.isArray(roles) && roles.length) ? roles : TEMPLATE_DEFAULT_UPLOADER_ROLES_;
+  return effectivePermissionRoles_('template.upload', getPermissionOverrides_());
 }
 function templateReviewerRoles_() {
-  var roles = getConfigJson_(TEMPLATE_REVIEWER_ROLES_CONFIG_KEY_, TEMPLATE_DEFAULT_REVIEWER_ROLES_);
-  return (Array.isArray(roles) && roles.length) ? roles : TEMPLATE_DEFAULT_REVIEWER_ROLES_;
+  return effectivePermissionRoles_('template.review', getPermissionOverrides_());
 }
 
 // Read-only, open to any authenticated user (same visibility as e.g. listVenues) -- the Templates
-// tab needs this to know which action buttons to show a given user; it is NOT the admin edit surface
-// (that's getTemplateProcessConfig/setTemplateProcessConfig below, SystemAdmin-only).
+// tab needs this to know which action buttons to show a given user (see templateActionsHtml_,
+// eventDetail.js). Not an admin edit surface itself -- editing happens in Settings > Permissions.
 function getTemplateProcessRoles(user) {
   return { uploaderRoles: templateUploaderRoles_(), reviewerRoles: templateReviewerRoles_() };
-}
-
-// Configuration page > Process tab: full read (with the role catalog to populate pickers from) and
-// write, both SystemAdmin-only -- matches listConfig/setConfigEntry's existing gating in Utils.gs.
-function getTemplateProcessConfig(user) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN]);
-  var roles = getTemplateProcessRoles(user);
-  roles.allRoles = Object.keys(ROLES).map(function (k) { return ROLES[k]; }).map(function (r) { return { value: r, label: roleLabel_(r) }; });
-  return roles;
-}
-function setTemplateProcessConfig(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN]);
-  var uploaderRoles = Array.isArray(p.uploaderRoles) ? p.uploaderRoles.filter(function (r) { return !!ROLE_LABELS[r]; }) : [];
-  var reviewerRoles = Array.isArray(p.reviewerRoles) ? p.reviewerRoles.filter(function (r) { return !!ROLE_LABELS[r]; }) : [];
-  if (!uploaderRoles.length) throw new HululError('BAD_REQUEST', 'At least one role must be able to upload/submit documents');
-  if (!reviewerRoles.length) throw new HululError('BAD_REQUEST', 'At least one role must be able to review documents');
-  setConfigJson_(TEMPLATE_UPLOADER_ROLES_CONFIG_KEY_, uploaderRoles);
-  setConfigJson_(TEMPLATE_REVIEWER_ROLES_CONFIG_KEY_, reviewerRoles);
-  audit(user.id, 'SET_TEMPLATE_PROCESS_CONFIG', 'Config', '', { uploaderRoles: uploaderRoles, reviewerRoles: reviewerRoles });
-  return getTemplateProcessConfig(user);
 }
 
 /* ---------------- Template library (Inspection Admin) ---------------- */
@@ -203,9 +175,9 @@ function sendTemplates(user, p) {
 function openEventTemplate(user, p) {
   var tpl = getById('Templates', p.templateId);
   if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
-  if ((templateUploaderRoles_().indexOf(user.role) !== -1 || user.role === ROLES.SYSTEM_ADMIN) && tpl.status === 'Sent') {
+  if (hasPermissionRole_(user, 'template.upload') && tpl.status === 'Sent') {
     updateRow('Templates', tpl.id, { status: 'In Progress', updatedAt: nowIso_() });
-  } else if ((templateReviewerRoles_().indexOf(user.role) !== -1 || user.role === ROLES.SYSTEM_ADMIN) && tpl.status === 'Submitted') {
+  } else if (hasPermissionRole_(user, 'template.review') && tpl.status === 'Submitted') {
     updateRow('Templates', tpl.id, { status: 'Under Review', updatedAt: nowIso_() });
   }
   return getById('Templates', tpl.id);
@@ -218,7 +190,7 @@ function openEventTemplate(user, p) {
 function uploadEventTemplateFile(user, p) {
   var tpl = getById('Templates', p.templateId);
   if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
-  requireRole(user, templateUploaderRoles_().concat([ROLES.SYSTEM_ADMIN]));
+  requirePermission(user, 'template.upload');
   if (['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) === -1) {
     throw new HululError('BAD_REQUEST', 'This template can\'t be re-uploaded in its current status (' + tpl.status + ')');
   }
@@ -238,7 +210,7 @@ function uploadEventTemplateFile(user, p) {
 function submitEventTemplate(user, p) {
   var tpl = getById('Templates', p.templateId);
   if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
-  requireRole(user, templateUploaderRoles_().concat([ROLES.SYSTEM_ADMIN]));
+  requirePermission(user, 'template.upload');
   if (['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) === -1) {
     throw new HululError('BAD_REQUEST', 'This template can\'t be submitted in its current status (' + tpl.status + ')');
   }
@@ -257,7 +229,7 @@ function submitEventTemplate(user, p) {
 function reviewEventTemplate(user, p) {
   var tpl = getById('Templates', p.templateId);
   if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
-  requireRole(user, templateReviewerRoles_().concat([ROLES.SYSTEM_ADMIN]));
+  requirePermission(user, 'template.review');
   if (['Submitted', 'Under Review'].indexOf(tpl.status) === -1) {
     throw new HululError('BAD_REQUEST', 'This template isn\'t awaiting review');
   }

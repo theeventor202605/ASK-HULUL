@@ -58,8 +58,8 @@ function escalationDefaultDelayMinutesByRisk_(legacyHoursConfigKey, legacyDefaul
 function getEscalationConfig(user) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
   var cfg = getEscalationConfig_();
-  // Same "server hands back the picklist" convention as getTemplateProcessConfig (Templates.gs) --
-  // the Settings panel never needs its own hardcoded copy of which roles are offerable.
+  // Same "server hands back the picklist" convention as listPermissions (Permissions.gs) -- the
+  // Settings panel never needs its own hardcoded copy of which roles are offerable.
   cfg.allRoles = ESCALATION_SELECTABLE_ROLES_.map(function (r) { return { value: r, label: roleLabel_(r) }; });
   cfg.riskLevels = RISK_LEVELS_;
   // REQ follow-up: "resolution of tier timing, not true real-time" -- the sweep interval used to be

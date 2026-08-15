@@ -15,15 +15,21 @@ var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
 // legacy seed defaults that getEscalationConfig_ (Resolutions.gs) only ever reads as a fallback
 // BEFORE the Escalations tab has been saved even once; after that, the real per-risk-level values
 // live in their own JSON blob and those two keys are never consulted again. So General had nothing
-// left to usefully edit -- it's dropped rather than moved. Process and Escalations, which ARE still
-// live and SystemAdmin-only exactly like Roles/Permissions above, move in here as two more tabs.
+// left to usefully edit -- it's dropped rather than moved. Escalations, which IS still live and
+// SystemAdmin-only exactly like Roles/Permissions above, moved in here as its own tab.
+//
+// REQ follow-up #2: "move items in the Process tab to Permissions tab." Process only ever held two
+// role pickers (who can upload/submit a document, who can review/evaluate one) -- both now ordinary
+// 'template.upload'/'template.review' entries in PERMISSION_REGISTRY_ (Permissions.gs), editable as
+// chips on the Templates row of the Permissions matrix below instead of their own tab. So Process
+// itself is gone; CONFIG_MANAGE_ROLES now only gates Escalations.
 var CONFIG_MANAGE_ROLES = ['SystemAdmin'];
-// Tabs that build their own stack of .card blocks (same as Process/Escalations did on the old /config
-// page) render into a plain, un-carded content div instead of the shared one -- otherwise every one
-// of their cards would sit nested inside the shared outer card, doubling the border/padding for no
+// Tabs that build their own stack of .card blocks (same as Escalations did on the old /config page)
+// render into a plain, un-carded content div instead of the shared one -- otherwise every one of
+// their cards would sit nested inside the shared outer card, doubling the border/padding for no
 // reason. Every other tab (Profile, Terminology, Icons, Roles, Permissions, ...) still gets the
 // shared card, unchanged.
-var SETTINGS_PLAIN_CONTENT_TABS_ = { process: true, escalations: true };
+var SETTINGS_PLAIN_CONTENT_TABS_ = { escalations: true };
 
 async function renderSettings(params) {
   var root = document.getElementById('viewRoot');
@@ -40,7 +46,6 @@ async function renderSettings(params) {
   ];
   if (canManageLabels) tabs.push({ key: 'terminology', label: t('settings_tab_terminology') });
   if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
-  if (canManageConfig) tabs.push({ key: 'process', label: t('tab_process') });
   if (canManageConfig) tabs.push({ key: 'escalations', label: t('tab_escalations') });
   if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
   if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
@@ -69,7 +74,6 @@ async function renderSettings(params) {
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
-  else if (activeTab === 'process' && canManageConfig) await renderProcessTab_(content);
   else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
@@ -391,38 +395,12 @@ function openImportIconLibraryModal_(onDone) {
   }
 }
 
-/* ---------------- Process (per-process settings, starting with Readiness Templates roles) ------
- * Moved here from the old standalone Config page (frontend/js/views/config.js) -- see the
- * CONFIG_MANAGE_ROLES comment above for why. getTemplateProcessConfig (SystemAdmin-only,
- * Templates.gs) returns the currently-configured uploaderRoles/reviewerRoles plus allRoles (every
- * role code + display label) so this tab never needs its own hardcoded copy of the role list.
- */
-async function renderProcessTab_(content) {
-  var cfg = await Api.call('getTemplateProcessConfig', {});
-  content.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('readiness_process_title', { term: Term('template_plural') })) + '</div>' +
-    '<div class="muted" style="font-size:11.5px;">' + esc(t('readiness_process_subtitle')) + '</div></div>' +
-    '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
-      processRoleFieldHtml_(t('upload_submit_docs_title'), t('upload_submit_docs_subtitle'), cfg.allRoles, cfg.uploaderRoles, 'cfgUploader') +
-      processRoleFieldHtml_(t('review_evaluate_docs_title'), t('review_evaluate_docs_subtitle'), cfg.allRoles, cfg.reviewerRoles, 'cfgReviewer') +
-    '</div>' +
-    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-      '<button class="btn btn-primary" id="saveProcessBtn">' + t('save') + '</button>' +
-    '</div></div>';
-
-  document.getElementById('saveProcessBtn').onclick = async function () {
-    try {
-      var uploaderRoles = readCheckedRoles_('cfgUploader');
-      var reviewerRoles = readCheckedRoles_('cfgReviewer');
-      if (!uploaderRoles.length) { UI.toast(t('toast_pick_uploader_role'), 'error'); return; }
-      if (!reviewerRoles.length) { UI.toast(t('toast_pick_reviewer_role'), 'error'); return; }
-      await Api.call('setTemplateProcessConfig', { uploaderRoles: uploaderRoles, reviewerRoles: reviewerRoles });
-      UI.toast(t('toast_process_settings_saved'), 'success');
-      renderSettings({ tab: 'process' });
-    } catch (err) { UI.error(err); }
-  };
-}
-
+// processRoleFieldHtml_ renders one role-checkbox-grid field (title + subtitle + scrollable list of
+// role checkboxes) -- used by the Escalations tab below for its To/Cc pickers. It used to also back
+// a dedicated Process tab (who can upload/submit vs. review/evaluate a readiness document); that pair
+// is now just 'template.upload'/'template.review' in PERMISSION_REGISTRY_ (Permissions.gs), edited as
+// chips on the Templates row of the Permissions matrix instead of its own tab -- see
+// templateUploaderRoles_/templateReviewerRoles_ (Templates.gs).
 function processRoleFieldHtml_(title, subtitle, allRoles, checkedRoles, prefix) {
   var checkedSet = {}; (checkedRoles || []).forEach(function (r) { checkedSet[r] = true; });
   return '<div>' +
@@ -438,9 +416,9 @@ function processRoleFieldHtml_(title, subtitle, allRoles, checkedRoles, prefix) 
 }
 
 // readCheckedRoles_ builds a CSS class selector out of whatever prefix it's given ('.' + prefix +
-// '-check') -- shared by every role-chip/checkbox-grid editor in Settings (this tab, Escalations
-// below, and the Permissions/Roles editors above, which slug their own dotted keys first -- see
-// permKeySlug_ -- for exactly this reason).
+// '-check') -- shared by every role-chip/checkbox-grid editor in Settings (Escalations below, and the
+// Permissions/Roles editors above, which slug their own dotted keys first -- see permKeySlug_ -- for
+// exactly this reason).
 function readCheckedRoles_(prefix) {
   var ids = [];
   document.querySelectorAll('.' + prefix + '-check:checked').forEach(function (c) { ids.push(c.value); });
@@ -714,9 +692,9 @@ function openEditRoleModal_(role, allRoles) {
  * REQ: "It is time we build Role-Based Access Control" -> clarified as: a SystemAdmin should be able
  * to change WHICH ROLES can do WHAT without a code deploy. listPermissions/updatePermission/
  * resetPermission (backend/Permissions.gs) are SystemAdmin-only; allRoles rides along in the same
- * response, same "server hands back its own picklist" convention as getTemplateProcessConfig
- * (Templates.gs)/getEscalationConfig (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_
- * above (Process/Escalations tabs) for the checkbox-grid pattern the role editor below still reuses.
+ * response, same "server hands back its own picklist" convention as getEscalationConfig
+ * (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_ above (Escalations tab) for the
+ * checkbox-grid pattern the role editor below still reuses.
  *
  * REQ follow-up: "control who has Create, Read, Update and Delete for sections or Pages or tabs" ->
  * clarified as: redesign this tab as a Page x CRUD matrix built on TOP OF the existing ~45 permission
@@ -880,10 +858,9 @@ function permFilterItemHtml_(kind, value, label, count, active) {
     '<span>' + esc(label) + '</span><span class="perm-filter-count" style="margin-inline-start:6px;">' + count + '</span></div>';
 }
 
-// readCheckedRoles_ (Process/Escalations tabs above) builds a CSS class selector out of whatever
-// prefix it's given ('.' + prefix + '-check') -- fine for those tabs' own prefixes (cfgUploader,
-// cfgReviewer, no punctuation), but permission keys are dotted (e.g. 'finding.create') and an
-// unescaped '.' inside a
+// readCheckedRoles_ (Escalations tab above) builds a CSS class selector out of whatever prefix it's
+// given ('.' + prefix + '-check') -- fine for that tab's own prefixes (cfgTier1To, cfgTier2Cc, no
+// punctuation), but permission keys are dotted (e.g. 'finding.create') and an unescaped '.' inside a
 // CSS class selector starts a NEW class, so the literal class "perm-finding.create-check" would never
 // match ".perm-finding.create-check:checked". Slugging the dot out of the key before it ever becomes
 // part of a class name (both when the checkboxes are rendered below and when they're read back on
