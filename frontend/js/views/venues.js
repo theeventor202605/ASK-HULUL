@@ -58,13 +58,13 @@ async function renderVenues() {
       { key: 'lat', label: t('col_coordinates'), render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'actions', label: t('actions'), render: r =>
-          '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
+          UI.actionsCell(
             '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('places_label')) + '" data-manage-places="' + esc(r.id) + '">' + ICON('location_pin') + '</button>' +
             (canManage
               ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
                 '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-venue="' + esc(r.id) + '">' + ICON('delete') + '</button>'
-              : '') +
-          '</div>'
+              : '')
+          )
       }
     ], venues, {}) + '</div></div>';
 
@@ -557,9 +557,11 @@ async function renderVenuePlaces(params) {
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'createdBy', label: t('col_created_by'), render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-place="' + esc(r.id) + '">' + ICON('edit') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
+        UI.actionsCell(
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-place="' + esc(r.id) + '">' + ICON('edit') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+        ) }] : []),
       places, { emptyText: t('empty_places') }) + '</div></div>';
 
   document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };

@@ -38,7 +38,7 @@ window.HULUL_I18N = {
     tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Disciplines & Inspectors',
     tab_inspections: 'Inspections & Checklists', tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
     tab_escalations: 'Escalations', tab_participants: 'Participants', tab_reports: 'Reports', tab_event_log: 'Logs',
-    save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Actions', status: 'Status',
+    save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Do', status: 'Status',
     loading: 'Loading…', no_data: 'Nothing here yet.',
     filter: 'Filter', export_csv: 'Export CSV', no_matches: 'No rows match your filter.',
 
@@ -506,7 +506,7 @@ window.HULUL_I18N = {
     tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'التخصصات والمفتشون',
     tab_inspections: 'التفتيش وقوائم المراجعة', tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_reports: 'التقارير', tab_event_log: 'السجلات',
-    save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'إجراءات', status: 'الحالة',
+    save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'تنفيذ', status: 'الحالة',
     loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.',
     filter: 'تصفية', export_csv: 'تصدير CSV', no_matches: 'لا توجد صفوف مطابقة للتصفية.',
 

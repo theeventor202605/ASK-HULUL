@@ -46,7 +46,7 @@ async function renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage) {
       { key: 'name', label: t('col_name') },
       { key: 'fileName', label: t('col_current_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.uploadedBy ? UI.fmtDate(r.updatedAt) : '—' }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('upload_new_version_title')) + '" data-upload-version="' + r.id + '">' + ICON('reupload_version') + '</button>' }] : []),
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('upload_new_version_title')) + '" data-upload-version="' + r.id + '">' + ICON('reupload_version') + '</button>') }] : []),
       library, { emptyText: esc(t('empty_no_templates')) }) + '</div></div>';
 
   if (isSystemAdmin) {

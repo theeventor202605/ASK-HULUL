@@ -351,8 +351,10 @@ async function tabVenue(content, eventId, detail) {
       { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || 0 },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-      '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
-      '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+      UI.actionsCell(
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>'
+      ) }] : []),
       detail.zones, {}) +
     '</div></div>' +
 
@@ -878,7 +880,10 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_evaluated')) + '" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_missed')) + '" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
   }
-  return parts.join(' ') || '—';
+  // No dots-menu toggle when there's genuinely nothing to do on this row (e.g. viewing as a role
+  // with no send/upload/review permission for its current status) -- just the plain dash, same as
+  // before; a three-dot button that opens to reveal only a dash would be a pointless extra click.
+  return parts.length ? UI.actionsCell(parts.join(' ')) : '—';
 }
 
 async function tabTemplates(content, eventId, detail) {
@@ -1189,7 +1194,7 @@ async function tabDisciplines(content, eventId, detail) {
       { key: 'disciplineName', label: Term('discipline') }, { key: 'inspectorName', label: Term('inspector') },
       { key: 'zoneNames', label: Term('zone_plural'), render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
       { key: 'assignedAt', label: t('col_assigned'), render: r => UI.fmtDate(r.assignedAt) }
-    ].concat(canAssign ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+    ].concat(canAssign ? [{ key: 'actions', label: t('actions'), render: r => UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>') }] : []),
       assignments, {}) +
     '</div></div>';
 
@@ -1498,7 +1503,7 @@ async function tabInspections(content, eventId, detail) {
               ? '<span class="muted" style="font-size:11.5px;">' + esc(t('not_due_yet')) + '</span>'
               : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_record_results')) + '" data-record="' + r.id + '">' + ICON('record_results') + '</button>';
           }
-          return btns || '—';
+          return btns ? UI.actionsCell(btns) : '—';
         } }
     ], inspections, {}) + '</div></div>';
 
@@ -2256,9 +2261,11 @@ async function tabFindings(content, eventId) {
         var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
         var canEdit = canEditAny && stillEditable;
         var canDelete = canDeleteAny && stillEditable;
-        return '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_log')) + '" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
+        return UI.actionsCell(
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_log')) + '" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
           (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
-          (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="' + esc(t('action_delete')) + '" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '');
+          (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="' + esc(t('action_delete')) + '" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '')
+        );
       } }
     ], findings, {}) + '</div></div>';
 

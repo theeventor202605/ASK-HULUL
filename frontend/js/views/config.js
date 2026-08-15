@@ -51,7 +51,7 @@ async function renderConfigGeneral_(content) {
     '<button class="btn btn-primary btn-sm" id="newCfgBtn">' + esc(t('new_update_setting_btn')) + '</button></div>' +
     '<div class="card-body">' + UI.table([
       { key: 'key', label: t('col_key') }, { key: 'value', label: t('col_value') },
-      { key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit="' + esc(r.key) + '" data-value="' + esc(r.value) + '">' + ICON('edit') + '</button>' }
+      { key: 'actions', label: t('actions'), render: r => UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit="' + esc(r.key) + '" data-value="' + esc(r.value) + '">' + ICON('edit') + '</button>') }
     ], rows, {}) + '</div></div>';
 
   document.getElementById('newCfgBtn').onclick = () => openCfgModal_('', '');

@@ -169,8 +169,10 @@ async function renderChecklistItems() {
       { key: 'description', label: t('field_description') }, { key: 'defaultRisk', label: t('col_default_risk'), render: r => UI.riskBadge(r.defaultRisk) },
       { key: 'defaultWindowHours', label: t('col_window_hours') }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-ci="' + r.id + '">' + ICON('edit') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-ci="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+        UI.actionsCell(
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-ci="' + r.id + '">' + ICON('edit') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-ci="' + r.id + '">' + ICON('delete') + '</button>'
+        ) }] : []),
       // hideExportButton: this table's own auto Export CSV button would duplicate the one already
       // in the list-section header above (csvButtonsHtml_).
       filtered, { hideExportButton: true }) + '</div></div>';

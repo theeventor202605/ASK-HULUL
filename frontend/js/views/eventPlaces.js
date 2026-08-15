@@ -101,8 +101,10 @@ async function tabParticipants(content, eventId, detail) {
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'createdBy', label: t('col_created_by'), render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>' }] : []),
+        UI.actionsCell(
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+        ) }] : []),
       places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div>';
 
   if (canAddParticipant) {

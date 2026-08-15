@@ -255,6 +255,25 @@ window.UI = {
       '<table class="data-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>' + pagerHtml + '</div>';
   },
 
+  // Wraps whatever action button(s) HTML a view's own 'actions' column render() already builds
+  // (edit/delete/view/approve/etc. -- unchanged per-view) into a single three-dot toggle. Nothing
+  // about how those buttons are built or wired changes -- views still attach their own onclick
+  // handlers via querySelectorAll('[data-x]') right after inserting the table HTML, exactly like
+  // before; this just hides them inside a popover that opens on click instead of always showing
+  // them inline in the cell. buttonsHtml may be '' (e.g. a row with no actions available under the
+  // current permissions) -- the toggle still renders so the column stays visually consistent, it
+  // just opens an empty popover.
+  // See the delegated open/close/position wiring (hululActionsMenu*) further down this file, and
+  // .actions-menu/.actions-menu-popover in styles.css for why the popover is position:fixed rather
+  // than a normal absolute-positioned dropdown (it has to escape .table-wrap's overflow:auto, which
+  // would otherwise clip it).
+  actionsCell(buttonsHtml) {
+    return '<div class="actions-menu">' +
+      '<button type="button" class="btn btn-secondary btn-sm btn-icon actions-menu-toggle" title="' + esc(t('actions')) + '">' + ICON('actions_menu') + '</button>' +
+      '<div class="actions-menu-popover">' + buttonsHtml + '</div>' +
+    '</div>';
+  },
+
   // String-vs-numeric-aware comparator used by the sort-on-header-click handler below: numbers
   // (including numeric strings) compare numerically, everything else (including ISO date strings,
   // which sort correctly as plain strings) falls back to a locale-aware string compare.
@@ -706,6 +725,36 @@ var hululPagerObserver_ = new MutationObserver(function (mutations) {
   });
 });
 hululPagerObserver_.observe(document.body, { childList: true, subtree: true });
+
+// UI.actionsCell's three-dot toggle -- delegated once here, same "wired generically for every
+// table on every page, no per-view code needed" approach as everything else in this file. Only
+// one popover is ever open at a time. The popover itself is position:fixed (see styles.css) so it
+// escapes .table-wrap's overflow:auto instead of getting clipped/scrolled with the table -- which
+// means its on-screen position has to be computed in JS from the toggle button's own
+// getBoundingClientRect() rather than plain CSS anchoring, and closed again on scroll/resize since
+// a fixed position won't track the row if the page moves under it.
+function hululCloseActionsMenus_() {
+  document.querySelectorAll('.actions-menu-popover.show').forEach(function (p) { p.classList.remove('show'); });
+}
+document.addEventListener('click', function (e) {
+  var toggle = e.target.closest ? e.target.closest('.actions-menu-toggle') : null;
+  if (!toggle) { hululCloseActionsMenus_(); return; } // outside click (or a click on an action button inside an open popover, after its own handler already ran) closes everything
+  e.stopPropagation();
+  var popover = toggle.parentElement.querySelector('.actions-menu-popover');
+  var wasOpen = popover.classList.contains('show');
+  hululCloseActionsMenus_();
+  if (wasOpen) return; // second click on the same toggle just closes it
+  popover.classList.add('show'); // display:flex now, so it has real dimensions to measure below
+  var rect = toggle.getBoundingClientRect();
+  var pw = popover.offsetWidth;
+  var left = document.documentElement.dir === 'rtl' ? rect.left : (rect.right - pw);
+  left = Math.max(8, Math.min(left, window.innerWidth - pw - 8)); // never run off either edge
+  popover.style.left = left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+});
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hululCloseActionsMenus_(); });
+window.addEventListener('scroll', hululCloseActionsMenus_, true); // capture:true -- also catches .table-wrap's own horizontal scroll, not just window scroll
+window.addEventListener('resize', hululCloseActionsMenus_);
 
 // REQ: "in any list search box typing /c lists all columns typing or selecting a column will
 // suggest values user can select multi-values from the suggestions or continue typing to narrow

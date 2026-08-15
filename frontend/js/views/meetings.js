@@ -238,10 +238,10 @@ async function renderMeetings(params) {
       return preview ? esc(preview) : '<span class="muted">—</span>';
     } });
     if (canManage) cols.push({ key: 'actions', label: t('actions'), exportable: false, render: r =>
-      '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
+      UI.actionsCell(
         '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" href="#/meetings/' + esc(r.id) + '/edit">' + ICON('edit') + '</a>' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-mtg="' + esc(r.id) + '">' + ICON('delete') + '</button>' +
-      '</div>' });
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-mtg="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+      ) });
     return cols;
   }
 

@@ -393,6 +393,20 @@ table.data-table tr:hover td{ background:#fafbff; }
 .table-pager-nav{ display:flex; align-items:center; gap:8px; }
 .table-pager-indicator{ min-width:88px; text-align:center; }
 
+/* UI.actionsCell's three-dot row-actions toggle (ui.js) -- every table's "Do" (formerly "Actions")
+   column now renders one of these instead of always showing its icon buttons inline. The popover
+   is position:fixed, NOT absolute -- .table-wrap above is overflow-x:auto, which per the CSS spec
+   also computes overflow-y as auto once any axis is non-visible, so an absolutely-positioned
+   dropdown here would get clipped/scrolled with the table instead of floating freely. Fixed
+   position escapes that; ui.js's delegated click handler computes its top/left from the toggle
+   button's own getBoundingClientRect() since CSS alone can't anchor a fixed element to another
+   element. z-index 60: same layer as the other free-floating popovers above (.chat-suggest-box/
+   .chat-emoji-popover), comfortably above table rows and the sticky topbar (20). */
+.actions-menu{ position:relative; display:inline-block; }
+.actions-menu-popover{ display:none; position:fixed; z-index:60; gap:6px; padding:6px;
+  background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md); }
+.actions-menu-popover.show{ display:flex; }
+
 /* Event Chat slash-command suggestion dropdown (/u /p /e #) -- anchored under the textarea, see
    tabEventChat in eventDetail.js. */
 .chat-suggest-box{ position:absolute; top:100%; left:0; right:0; margin-top:4px; z-index:60;

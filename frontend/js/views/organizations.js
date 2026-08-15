@@ -17,8 +17,10 @@ async function renderOrganizations() {
       { key: 'status', label: t('status'), render: r => UI.statusBadge('Resolved') },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'actions', label: t('actions'), render: r =>
-          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('edit_domain_title')) + '" data-edit-domain="' + r.id + '">' + ICON('domain') + '</button> ' +
-          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('upload_logo_title')) + '" data-upload-logo="' + r.id + '">' + ICON('upload_logo') + '</button>' }
+          UI.actionsCell(
+            '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('edit_domain_title')) + '" data-edit-domain="' + r.id + '">' + ICON('domain') + '</button> ' +
+            '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('upload_logo_title')) + '" data-upload-logo="' + r.id + '">' + ICON('upload_logo') + '</button>'
+          ) }
     ], orgs, {}) + '</div></div>';
 
   document.getElementById('newOrgBtn').onclick = function () {

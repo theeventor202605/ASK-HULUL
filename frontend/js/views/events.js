@@ -159,13 +159,12 @@ async function renderEventsList() {
         { key: 'endDateTime', label: t('col_end'), render: function (r) { return UI.fmtDate(r.endDateTime); } },
         { key: 'status', label: t('status'), render: function (r) { return UI.statusBadge(r.status); } },
         { key: 'actions', label: t('actions'), render: function (r) {
-            var html = '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
-              '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
+            var html = '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
             var canEdit = hasPermission('event.manage');
             if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
             var canDelete = r.status === 'Planning' && hasPermission('event.delete');
             if (canDelete) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-event="' + r.id + '">' + ICON('delete') + '</button>';
-            return html + '</div>';
+            return UI.actionsCell(html);
           } }
       ],
       // hideExportButton: this table's own auto Export CSV button would duplicate the richer

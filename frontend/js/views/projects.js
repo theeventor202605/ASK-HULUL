@@ -304,7 +304,7 @@ async function renderProjectDetail(params) {
       { key: 'endDateTime', label: t('col_end'), render: r => UI.fmtDate(r.endDateTime) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_from_x_title', { term: Term('project').toLowerCase() })) + '" data-remove-event="' + r.id + '">' + ICON('remove_from_project') + '</button>' }] : []),
+        UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_from_x_title', { term: Term('project').toLowerCase() })) + '" data-remove-event="' + r.id + '">' + ICON('remove_from_project') + '</button>') }] : []),
       linked, { emptyText: esc(t('empty_no_events_in_project', { eventTerm: Term('event_plural').toLowerCase(), term: Term('project').toLowerCase() })) }) + '</div></div>';
 
   wireEndDotsToggle_();
