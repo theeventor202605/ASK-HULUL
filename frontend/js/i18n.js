@@ -48,9 +48,9 @@ window.HULUL_I18N = {
     kpi_total: 'Total Logs', kpi_open: 'Open', kpi_inreview: 'In Review', kpi_resolved: 'Resolved',
     kpi_reopen: 'Re-open', kpi_rejected: 'Rejected', kpi_events: 'Active Events',
     events_title: 'Events', new_event: 'New Event', tab_overview: 'Overview', tab_chat: 'Chat', tab_venue: 'Venue & Zones',
-    tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Disciplines & Inspectors',
-    tab_inspections: 'Inspections & Checklists', tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
-    tab_escalations: 'Escalations', tab_participants: 'Participants', tab_reports: 'Reports', tab_event_log: 'Logs',
+    tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Assignments',
+    tab_inspections: 'Checklists', tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
+    tab_escalations: 'Escalations', tab_participants: 'Participants', tab_participants_new: 'New', tab_reports: 'Reports', tab_event_log: 'Logs',
     // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
     // (EVENT_TAB_GROUPS_, eventDetail.js). Each parent's own subtab row still uses the individual
     // tab_x labels above -- these are only for the collapsed top-level button.
@@ -548,9 +548,9 @@ window.HULUL_I18N = {
     kpi_total: 'إجمالي السجلات', kpi_open: 'مفتوح', kpi_inreview: 'قيد المراجعة', kpi_resolved: 'تم الحل',
     kpi_reopen: 'إعادة فتح', kpi_rejected: 'مرفوض', kpi_events: 'فعاليات نشطة',
     events_title: 'الفعاليات', new_event: 'فعالية جديدة', tab_overview: 'نظرة عامة', tab_chat: 'المحادثة', tab_venue: 'الموقع والمناطق',
-    tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'التخصصات والمفتشون',
-    tab_inspections: 'التفتيش وقوائم المراجعة', tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
-    tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_reports: 'التقارير', tab_event_log: 'السجلات',
+    tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'المهام',
+    tab_inspections: 'قوائم المراجعة', tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
+    tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_participants_new: 'جديد', tab_reports: 'التقارير', tab_event_log: 'السجلات',
     tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'النتائج',
     tab_group_participants: 'المشاركون', tab_group_reports: 'التقارير',
     save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'تنفيذ', status: 'الحالة',

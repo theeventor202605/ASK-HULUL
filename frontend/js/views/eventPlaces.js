@@ -72,13 +72,6 @@ async function tabParticipants(content, eventId, detail) {
   var places = results[0], participants = results[1], zonesAll = results[2];
   var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
 
-  var creatorIds = Array.from(new Set(places.map(function (pl) { return pl.createdBy; }).filter(Boolean)));
-  var usersById = {};
-  if (creatorIds.length) {
-    try { (await Api.call('listUsers', { orgId: event && event.emcId })).forEach(function (u) { usersById[u.id] = u; }); }
-    catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
-  }
-
   content.innerHTML =
     '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(t('participants_registered_note', { participantTerm: Term('participant_plural'), eventTerm: Term('event').toLowerCase(), venueTerm: Term('venue').toLowerCase() })) + '</div>' +
     (canAddParticipant ? renderAddEventPlaceCard_(zones, hasBoundary) : '') +
@@ -100,7 +93,7 @@ async function tabParticipants(content, eventId, detail) {
             '</div>').join('')
           : '—' },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
-      { key: 'createdBy', label: t('col_created_by'), render: r => usersById[r.createdBy] ? esc(usersById[r.createdBy].name) : (r.createdBy || '—') }
+      { key: 'createdBy', label: t('col_created_by'), render: r => r.createdByName ? esc(r.createdByName) : (r.createdBy || '—') }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
         UI.actionsCell(
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +

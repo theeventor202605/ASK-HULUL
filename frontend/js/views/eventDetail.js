@@ -17,24 +17,34 @@ var EVENT_TABS = [
   ['venue', 'tab_venue', function () { return t('and_join', { a: Term('venue'), b: Term('zone_plural') }); }],
   ['templates', 'tab_templates', function () { return t('readiness_x_label', { term: Term('template_plural') }); }],
   ['approval', 'tab_approval', function () { return t('tab_approval'); }],
-  ['disciplines', 'tab_disciplines', function () { return t('and_join', { a: Term('discipline_plural'), b: Term('inspector_plural') }); }],
-  ['inspections', 'tab_inspections', function () { return t('and_join', { a: Term('inspection_plural'), b: Term('checklistItem_plural') }); }],
+  // REQ follow-up: "Disciplines & Inspectors" -> "Assignments", "Inspections & Checklist Items" ->
+  // "Checklists" -- both used to compose their label from two Term()s via and_join; now just a plain
+  // fixed word for each, so no entityLabelFn is needed at all (tabLabel_ falls back to t(tb[1]) --
+  // see tab_disciplines/tab_inspections in i18n.js).
+  ['disciplines', 'tab_disciplines'],
+  ['inspections', 'tab_inspections'],
+  ['findings', 'tab_findings'],
   // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
   // cool. Only relevant to the same roles who can create a Finding at all (FINDING_ROLE_REVIEWER_,
   // findings.js -- loads after this file but only called here, never at top level, so the load-order
-  // rule above doesn't apply).
+  // rule above doesn't apply). REQ follow-up: moved next to the other Findings-group tabs (was
+  // between Inspections and Findings) once it moved into findingsGroup, EVENT_TAB_GROUPS_ below.
   ['logPhotos', 'tab_log_photos', function () { return t('tab_log_photos'); }, function () { return FINDING_ROLE_REVIEWER_.indexOf(HululState.user.role) !== -1; }],
-  ['findings', 'tab_findings'],
-  ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
   // REQ: "Create a Log photos timeline for every photo under an event... modern design." Every
   // Finding's evidence photo(s), newest first, grouped by day -- see tabFindingPhotos below and the
   // shared renderFindingPhotoTimeline_ (findings.js), which also backs the Project detail page's own
   // rolled-up timeline.
   ['findingPhotos', 'tab_finding_photos'],
-  ['participants', 'tab_participants', function () { return Term('participant_plural'); }],
+  ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
+  // REQ follow-up: "Participants" subtab -> "New" (its own Participants GROUP header already says
+  // "Participants" -- see tab_group_participants below -- so the subtab itself doesn't need to repeat
+  // it).
+  ['participants', 'tab_participants', function () { return t('tab_participants_new'); }],
   // REQ: "Move Disciplines list to a new tab name it Participant's Discipline." -- split out of the
   // Participants tab (was a second section below the participants table) into its own tab.
-  ['participantDisciplines', 'tab_participant_disciplines', function () { return Term('participant') + '\'s ' + Term('discipline'); }],
+  // REQ follow-up: shortened to just "Discipline" -- same "group header already says Participants"
+  // reasoning as the New subtab above.
+  ['participantDisciplines', 'tab_participant_disciplines', function () { return Term('discipline'); }],
   ['reports', 'tab_reports', function () { return Term('report_plural'); }],
   // REQ: "Add an event log page showing all transaction relevant to an event keep last log first."
   // Open to every viewer (like Coverage gaps etc.) -- it's just history of what already happened,
@@ -57,8 +67,12 @@ var EVENT_TAB_GROUPS_ = [
   { tabs: ['chat'] },
   { tabs: ['venue'] },
   { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
-  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'logPhotos'] },
-  { key: 'findingsGroup', labelKey: 'tab_group_findings', tabs: ['findings', 'escalations', 'findingPhotos'] },
+  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections'] },
+  // REQ follow-up: "Move Log Photos to Findings tab" + explicit subtab order (Log Photos, Risk
+  // Logging, Photo Timeline, Escalations) -- logPhotos moved out of inspectionsGroup above into here,
+  // first; findings/findingPhotos/escalations reordered to match ('findings' tab's own display label
+  // is "Risk Logging", tab_findings; 'findingPhotos' is "Photo Timeline", tab_finding_photos).
+  { key: 'findingsGroup', labelKey: 'tab_group_findings', tabs: ['logPhotos', 'findings', 'findingPhotos', 'escalations'] },
   { key: 'participantsGroup', labelKey: 'tab_group_participants', tabs: ['participants', 'participantDisciplines'] },
   { key: 'reportsGroup', labelKey: 'tab_group_reports', tabs: ['reports', 'log'] }
 ];

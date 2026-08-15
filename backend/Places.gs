@@ -72,7 +72,12 @@ function listPlaces(user, p) {
       var count = pt ? (countByParticipantId[pt.id] || 0) : 0;
       return Math.max(max, count);
     }, 0);
-    return Object.assign({}, pl, { accounts: accounts, openFindingsCount: openFindingsCount });
+    // createdByName resolved here (not left to the client) because usersById above is a full,
+    // unscoped map -- the client can only fetch listUsers scoped to its own org (scopeToOrg,
+    // Auth.gs), which misses creators from other orgs (e.g. an Inspector whose org is an
+    // Inspection Company, not the Event's EMC), leaving Created By showing a raw id instead.
+    var createdByName = pl.createdBy && usersById[pl.createdBy] ? usersById[pl.createdBy].name : '';
+    return Object.assign({}, pl, { accounts: accounts, openFindingsCount: openFindingsCount, createdByName: createdByName });
   });
 }
 
