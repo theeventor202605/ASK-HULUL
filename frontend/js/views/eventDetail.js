@@ -376,40 +376,52 @@ async function tabVenue(content, eventId, detail) {
     // modal, since "the map needs real room to be usable" (same reasoning as the Add-a-place form).
     '<div id="addZoneCardWrap"></div>' +
 
-    // Large map of every place recorded under this venue -- a dot per place, name labelled above it.
-    // Locked to buttons only (zoom controls + the satellite toggle) -- no drag-pan or scroll-zoom.
+    // Places list + Places map -- REQ: "Places list and Places map to sit side by side, map on the
+    // right." (.list-page-layout/.list-page-sidebar, styles.css -- same shared two-column shape
+    // Events/Meetings/Sub-Events/Checklist Items already use for a fixed-width panel beside a
+    // flexible content pane; that panel is normally a filter sidebar on the left, but flex order
+    // just follows DOM order, so putting the list markup first and the map markup second lands the
+    // map on the right without needing a new CSS rule). Stacks to one column under 900px via that
+    // same shared media query, list-above-map.
+    //
+    // REQ: "Remove Filter by type from Places list and make sure filter works properly" -- the
+    // removed checklist panel (placeTypeFilterHtml_/applyPlaceTypeFilter_) matched rows to `places`
+    // by DOM position, which silently broke the moment a column got sorted: UI.table's sort reorders
+    // the actual <tr> nodes in place (see ui.js's own comment on hululTableRows_/the th-sortable
+    // click handler), so "row i" no longer meant "places[i]" once a user sorted the table. The
+    // table's own built-in filter box/column facets read data-tx-N/data-search attributes stamped
+    // onto each row at render time instead, so they stay correct regardless of sort order -- that's
+    // what now does the type filtering, nothing custom needed. Clicking a (visible) row still
+    // focuses the map on that place -- that part was already sort-safe (each row's click handler
+    // below closes over its own `pl` at wiring time, not by re-deriving it from position).
     (detail.venue ?
-      '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('places_map_title')) + '</div></div>' +
-      '<div class="card-body">' +
-        '<div id="eventPlacesMap" style="height:440px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
-        (places.length && !placesWithCoords.length
-          ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + esc(t('no_place_coords_hint', { venue: Term('venue').toLowerCase() })) + '</div>'
-          : '') +
-      '</div></div>'
-      : '') +
+      '<div class="list-page-layout" style="margin-bottom:16px;">' +
+        '<div class="card" style="flex:1;min-width:0;"><div class="card-header"><div class="card-title">Places</div></div>' +
+        '<div class="card-body">' +
+          (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(t('click_place_to_locate_hint')) + '</div>' : '') +
+          '<div id="eventPlacesListWrap">' + UI.table([
+            { key: 'name', label: t('col_name') },
+            { key: 'type', label: t('col_type') },
+            { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
+            { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' }
+          ], places, { emptyText: t('no_places_recorded_hint', { venue: Term('venue').toLowerCase() }) }) + '</div>' +
+        '</div></div>' +
 
-    // Places list -- below the zones list. REQ: "Remove Filter by type from Places list and make
-    // sure filter works properly" -- the removed checklist panel (placeTypeFilterHtml_/
-    // applyPlaceTypeFilter_) matched rows to `places` by DOM position, which silently broke the
-    // moment a column got sorted: UI.table's sort reorders the actual <tr> nodes in place (see
-    // ui.js's own comment on hululTableRows_/the th-sortable click handler), so "row i" no longer
-    // meant "places[i]" once a user sorted the table. The table's own built-in filter box/column
-    // facets read data-tx-N/data-search attributes stamped onto each row at render time instead, so
-    // they stay correct regardless of sort order -- that's what now does the type filtering, nothing
-    // custom needed. Clicking a (visible) row still focuses the map above on that place -- that part
-    // was already sort-safe (each row's click handler below closes over its own `pl` at wiring time,
-    // not by re-deriving it from position).
-    (detail.venue ?
-      '<div class="card"><div class="card-header"><div class="card-title">Places</div></div>' +
-      '<div class="card-body">' +
-        (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(t('click_place_to_locate_hint')) + '</div>' : '') +
-        '<div id="eventPlacesListWrap">' + UI.table([
-          { key: 'name', label: t('col_name') },
-          { key: 'type', label: t('col_type') },
-          { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
-          { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' }
-        ], places, { emptyText: t('no_places_recorded_hint', { venue: Term('venue').toLowerCase() }) }) + '</div>' +
-      '</div></div>'
+        // Every place recorded under this venue -- a dot per place, name labelled above it. Locked
+        // to buttons only (zoom controls + the satellite toggle) -- no drag-pan or scroll-zoom.
+        // Wrapped in .list-page-sidebar (not merged onto .card itself) -- that class sets its own
+        // display:flex/gap for stacking multiple sidebar cards, which would shove an unwanted 16px
+        // gap between THIS card's own header and body if applied directly to it.
+        '<div class="list-page-sidebar" style="width:420px;">' +
+          '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('places_map_title')) + '</div></div>' +
+          '<div class="card-body">' +
+            '<div id="eventPlacesMap" style="height:440px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+            (places.length && !placesWithCoords.length
+              ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + esc(t('no_place_coords_hint', { venue: Term('venue').toLowerCase() })) + '</div>'
+              : '') +
+          '</div></div>' +
+        '</div>' +
+      '</div>'
       : '');
 
   if (canManage) document.getElementById('newZoneBtn').onclick = function () {

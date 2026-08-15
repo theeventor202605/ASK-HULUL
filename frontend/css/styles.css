@@ -436,6 +436,10 @@ table.data-table tr:hover td{ background:#fafbff; }
   color:var(--text-400); border-bottom:1px solid var(--border); }
 .chat-suggest-item{ padding:8px 12px; font-size:12.5px; cursor:pointer; }
 .chat-suggest-item:hover{ background:#f6f7fb; }
+/* REQ: "tab key... first suggestion will autocomplete and allow selection by pressing on arrow
+   keys." -- keyboard-highlighted item (hululMoveSuggestActive_, ui.js), independent of :hover so
+   arrowing with the mouse resting elsewhere still shows clearly which item Tab/Enter will pick. */
+.chat-suggest-item.active{ background:var(--accent-soft); }
 .chat-suggest-empty{ padding:10px 12px; font-size:12.5px; color:var(--text-400); }
 
 /* Event Chat emoji/icon picker (EMOJI_LIBRARY, emoji.js + ICON_LIBRARY, icons.js) -- opens upward

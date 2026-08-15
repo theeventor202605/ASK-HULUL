@@ -904,10 +904,32 @@ function hululShowFilterSuggest_(wrap, header, items, renderItemFn, onPick) {
       onPick(items[Number(el.getAttribute('data-idx'))]);
     });
   });
+  // REQ: "tab key... first suggestion will autocomplete and allow selection by pressing on arrow
+  // keys." -- the first item starts highlighted every time this (re)renders (each keystroke while
+  // narrowing), so Tab always has a sane default even before any arrow key is pressed.
+  hululSetActiveSuggestItem_(box, items.length ? 0 : -1);
 }
 function hululHideFilterSuggest_(wrap) {
   var box = wrap.querySelector('.table-filter-suggest');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+// Keyboard highlight for the suggestion dropdown -- kept separate from :hover so arrowing with the
+// mouse sitting elsewhere still shows unambiguously which item Tab/Enter is about to pick.
+// box._hululActiveIdx tracks the current highlight across keystrokes (read by the Tab/Enter/Arrow
+// keydown handler below); -1 means nothing to highlight (empty suggestion list).
+function hululSetActiveSuggestItem_(box, idx, itemEls) {
+  var items = itemEls || Array.prototype.slice.call(box.querySelectorAll('.chat-suggest-item'));
+  items.forEach(function (el, i) { el.classList.toggle('active', i === idx); });
+  box._hululActiveIdx = idx;
+  if (idx >= 0 && items[idx] && items[idx].scrollIntoView) items[idx].scrollIntoView({ block: 'nearest' });
+}
+function hululMoveSuggestActive_(box, delta) {
+  var items = Array.prototype.slice.call(box.querySelectorAll('.chat-suggest-item'));
+  if (!items.length) return;
+  var cur = box._hululActiveIdx == null || box._hululActiveIdx < 0 ? -1 : box._hululActiveIdx;
+  var next = ((cur + delta) % items.length + items.length) % items.length; // wraps both directions
+  hululSetActiveSuggestItem_(box, next, items);
 }
 
 function hululShowColumnValues_(wrap, input, col, query) {
@@ -1057,24 +1079,34 @@ document.addEventListener('focusout', function (e) {
   }, 150);
 }, true);
 
-// REQ: "when typing on any filter list if tab key is pressed first suggestion will autocomplete"
-// -- reuses the exact same pick path a mouse click already uses (each .chat-suggest-item's own
-// mousedown handler, wired in hululShowFilterSuggest_ above) rather than duplicating the two
+// REQ: "when typing on any filter list if tab key is pressed first suggestion will autocomplete
+// and allow selection by pressing on arrow keys." -- standard combobox keyboard behavior: Up/Down
+// move a highlight (hululMoveSuggestActive_ above, defaults to the first item so plain Tab with no
+// arrowing still autocompletes that one), Tab or Enter confirms whichever item is highlighted.
+// Confirming reuses the exact same pick path a mouse click already uses (each .chat-suggest-item's
+// own mousedown handler, wired in hululShowFilterSuggest_ above) rather than duplicating the two
 // onPick behaviors (column-picking vs. value-picking) here, so this stays correct however those
-// evolve. Only intercepts Tab while a suggestion box is actually open with items in it -- otherwise
-// Tab keeps its normal browser behavior (move focus to the next control).
+// evolve. Only intercepts these keys while a suggestion box is actually open with items in it --
+// otherwise Tab/Enter/arrows keep their normal browser behavior.
 document.addEventListener('keydown', function (e) {
-  if (e.key !== 'Tab') return;
+  if (e.key !== 'Tab' && e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   var input = e.target.closest ? e.target.closest('.table-filter-input') : null;
   if (!input) return;
   var wrap = input.closest('.table-wrap');
   if (!wrap) return;
   var box = wrap.querySelector('.table-filter-suggest');
   if (!box || box.style.display === 'none') return;
-  var first = box.querySelector('.chat-suggest-item');
-  if (!first) return; // "no matches" state -- nothing to autocomplete into
+  var items = box.querySelectorAll('.chat-suggest-item');
+  if (!items.length) return; // "no matches" state -- nothing to navigate/autocomplete into
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); // stay in the box instead of moving the caret/scrolling the page
+    hululMoveSuggestActive_(box, e.key === 'ArrowDown' ? 1 : -1);
+    return;
+  }
   e.preventDefault();
-  first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  var idx = box._hululActiveIdx >= 0 ? box._hululActiveIdx : 0;
+  (items[idx] || items[0]).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 }, true);
 
 document.addEventListener('click', function (e) {
