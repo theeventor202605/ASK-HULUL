@@ -259,6 +259,18 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .nav-item:hover{ background:var(--sidebar-hover-bg); color:var(--sidebar-text-strong); }
 .nav-item.active{ background:var(--accent); color:#fff; }
 .nav-icon{ width:18px; text-align:center; flex:none; }
+/* Collapsible sub-groups within a sidebar section (NAV_GROUPS_, app.js) -- same purely-visual
+   grouping-on-top-of-a-flat-list idea as EVENT_TAB_GROUPS_'s collapsed parent tab, just vertical
+   instead of a dropdown. .nav-subitem is a plain .nav-item with extra indent so a group's children
+   still read as nested under their header. */
+.nav-group-header{ display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px;
+  color:var(--sidebar-text); font-size:13.5px; font-weight:500; cursor:pointer; user-select:none; }
+.nav-group-header:hover{ background:var(--sidebar-hover-bg); color:var(--sidebar-text-strong); }
+.nav-group-header .icon-svg{ margin-inline-start:auto; width:14px; height:14px; flex:none; opacity:.7; transition:transform .15s ease; }
+.nav-group-header.expanded .icon-svg{ transform:rotate(180deg); }
+.nav-group-items{ display:flex; flex-direction:column; gap:2px; }
+.nav-group-items.collapsed{ display:none; }
+.nav-item.nav-subitem{ padding-inline-start:22px; }
 .sidebar-footer{ padding-top:10px; border-top:1px solid var(--sidebar-border); margin-top:8px; }
 .sidebar-footer .lang-toggle-btn{ color:var(--sidebar-text); border-color:var(--sidebar-border); width:100%; }
 

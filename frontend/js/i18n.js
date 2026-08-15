@@ -43,6 +43,9 @@ window.HULUL_I18N = {
     nav_venues: 'Venues', nav_subevents: 'Sub-Events', nav_meetings: 'Meetings', nav_disciplines: 'Disciplines',
     nav_checklist: 'Checklist Items', nav_qualifications: 'Inspector Qualifications', nav_completed_checklists: 'Completed Checklists',
     nav_template_library: 'Template Library',
+    // Collapsible sidebar sub-group headers (NAV_GROUPS_, app.js) -- purely a label for the
+    // collapsed parent, same as the tab_group_x keys already used for Event-workspace tab groups.
+    nav_group_events: 'Events', nav_group_accounts: 'Accounts', nav_group_inspection_setup: 'Inspection Setup',
     section_main: 'Main', section_admin: 'Administration',
     dashboard_title: 'Dashboard', dashboard_subtitle: "Here's what's happening across your events",
     kpi_total: 'Total Logs', kpi_open: 'Open', kpi_inreview: 'In Review', kpi_resolved: 'Resolved',
@@ -557,6 +560,7 @@ window.HULUL_I18N = {
     nav_venues: 'المواقع', nav_subevents: 'الفعاليات الفرعية', nav_meetings: 'الاجتماعات', nav_disciplines: 'التخصصات',
     nav_checklist: 'عناصر قوائم المراجعة', nav_qualifications: 'تأهيل المفتشين', nav_completed_checklists: 'القوائم المكتملة',
     nav_template_library: 'مكتبة القوالب',
+    nav_group_events: 'الفعاليات', nav_group_accounts: 'الحسابات', nav_group_inspection_setup: 'إعداد التفتيش',
     section_main: 'الرئيسية', section_admin: 'الإدارة',
     dashboard_title: 'لوحة التحكم', dashboard_subtitle: 'ملخص ما يجري في فعالياتك',
     kpi_total: 'إجمالي السجلات', kpi_open: 'مفتوح', kpi_inreview: 'قيد المراجعة', kpi_resolved: 'تم الحل',

@@ -51,6 +51,29 @@ var NAV_ITEMS = [
   { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 
+// REQ: "Can you group the sidebar?" -- collapsible sub-groups within each section (Main/
+// Administration), same purely-visual grouping-on-top-of-a-flat-list idea as EVENT_TAB_GROUPS_
+// (eventDetail.js) already does for a single Event's own tab bar: every path/role/permission still
+// lives on NAV_ITEMS above, this only controls how they're clustered and labeled underneath each
+// section header. A group with only one VISIBLE path (either a deliberately standalone entry here,
+// or a multi-path group reduced to one by role/permission filtering) renders as a plain link, not a
+// redundant one-item dropdown -- same convention as EVENT_TAB_GROUPS_.
+var NAV_GROUPS_ = [
+  { section: 'section_main', paths: ['/dashboard'] },
+  { section: 'section_main', key: 'eventsGroup', labelKey: 'nav_group_events', paths: ['/projects', '/events', '/sub-events', '/meetings'] },
+  { section: 'section_main', paths: ['/completed-checklists'] },
+  { section: 'section_main', paths: ['/notifications'] },
+  { section: 'section_main', paths: ['/reassignment'] },
+  { section: 'section_main', paths: ['/support'] },
+  { section: 'section_admin', key: 'accountsGroup', labelKey: 'nav_group_accounts', paths: ['/users', '/organizations'] },
+  { section: 'section_admin', paths: ['/venues'] },
+  // "Everything the Inspections workflow draws its catalogue/setup from" -- Disciplines, Checklist
+  // Items, Inspector Qualifications, Template Library.
+  { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/inspector-qualifications', '/template-library'] },
+  { section: 'section_admin', paths: ['/audit-log'] },
+  { section: 'section_admin', paths: ['/settings'] }
+];
+
 function showLogin() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('appShell').classList.add('hidden');
@@ -140,30 +163,66 @@ function navItemVisible_(item) {
   return !!(pageId && HululState.pageAccess && HululState.pageAccess[pageId]);
 }
 
+// Persists per-group collapse state across reloads -- one localStorage key per group `key`, same
+// try/catch-private-browsing-safe pattern as applySidebarCollapsed_'s own SIDEBAR_COLLAPSE_KEY_.
+var NAV_GROUP_COLLAPSE_KEY_PREFIX_ = 'hulul_nav_group_collapsed_';
+
 function renderSidebar() {
   var search = document.getElementById('globalSearch');
   if (search) search.placeholder = t('search_placeholder', { events: Term('event_plural').toLowerCase(), findings: Term('finding_plural').toLowerCase() });
   var nav = document.getElementById('sidebarNav');
-  var sections = {};
-  NAV_ITEMS.forEach(function (item) {
-    if (!navItemVisible_(item)) return;
-    sections[item.section] = sections[item.section] || [];
-    sections[item.section].push(item);
-  });
+  var itemsByPath = {};
+  NAV_ITEMS.forEach(function (item) { itemsByPath[item.path] = item; });
+
+  function itemLabel_(item) { return item.entityLabelFn ? item.entityLabelFn() : (item.entityLabel ? Term(item.entityLabel) : t(item.label)); }
+  function itemIcon_(item) { return (HululState.appIcons && HululState.appIcons[item.path]) || item.icon; }
+  function navLinkHtml_(item, extraClass) {
+    return '<a class="nav-item' + (extraClass ? ' ' + extraClass : '') + '" data-path="' + item.path + '" href="#' + item.path + '">' +
+      '<span class="nav-icon">' + itemIcon_(item) + '</span><span class="nav-label">' + esc(itemLabel_(item)) + '</span></a>';
+  }
+
   var html = '';
-  Object.keys(sections).forEach(function (sectionKey) {
-    html += '<div class="nav-section">' + t(sectionKey) + '</div>';
-    sections[sectionKey].forEach(function (item) {
-      var label = item.entityLabelFn ? item.entityLabelFn() : (item.entityLabel ? Term(item.entityLabel) : t(item.label));
-      var icon = (HululState.appIcons && HululState.appIcons[item.path]) || item.icon;
-      html += '<a class="nav-item" data-path="' + item.path + '" href="#' + item.path + '">' +
-        '<span class="nav-icon">' + icon + '</span><span class="nav-label">' + esc(label) + '</span></a>';
-    });
+  var sectionsSeen = {};
+  NAV_GROUPS_.forEach(function (g) {
+    var visiblePaths = g.paths.filter(function (p) { return itemsByPath[p] && navItemVisible_(itemsByPath[p]); });
+    if (!visiblePaths.length) return; // every item in this group is hidden for this role -- contributes nothing, not even the section header
+    if (!sectionsSeen[g.section]) { html += '<div class="nav-section">' + t(g.section) + '</div>'; sectionsSeen[g.section] = true; }
+    if (!g.key || visiblePaths.length === 1) {
+      // Standalone entry, or a multi-path group reduced to one visible item by role/permission
+      // filtering -- render as a plain link, same "collapse to a standalone button" convention
+      // EVENT_TAB_GROUPS_ uses for a single-tab group.
+      visiblePaths.forEach(function (p) { html += navLinkHtml_(itemsByPath[p]); });
+      return;
+    }
+    var collapsed = false;
+    try { collapsed = localStorage.getItem(NAV_GROUP_COLLAPSE_KEY_PREFIX_ + g.key) === '1'; } catch (e) { /* private browsing etc. */ }
+    html += '<div class="nav-group-header' + (collapsed ? '' : ' expanded') + '" data-nav-group="' + g.key + '">' +
+      '<span class="nav-label">' + esc(t(g.labelKey)) + '</span>' + ICON('chevron_down') + '</div>' +
+      '<div class="nav-group-items' + (collapsed ? ' collapsed' : '') + '" data-nav-group-items="' + g.key + '">' +
+      visiblePaths.map(function (p) { return navLinkHtml_(itemsByPath[p], 'nav-subitem'); }).join('') +
+      '</div>';
   });
   html += '<div class="nav-item" id="logoutNavItem" style="margin-top:auto;cursor:pointer;">' +
     '<span class="nav-icon">' + ICON('logout') + '</span><span class="nav-label">' + t('nav_logout') + '</span></div>';
   nav.innerHTML = html;
   document.getElementById('logoutNavItem').onclick = doLogout;
+
+  nav.querySelectorAll('[data-nav-group]').forEach(function (header) {
+    header.onclick = function () {
+      var key = header.getAttribute('data-nav-group');
+      var itemsEl = nav.querySelector('[data-nav-group-items="' + key + '"]');
+      var nowExpanded = !header.classList.contains('expanded');
+      header.classList.toggle('expanded', nowExpanded);
+      if (itemsEl) itemsEl.classList.toggle('collapsed', !nowExpanded);
+      try { localStorage.setItem(NAV_GROUP_COLLAPSE_KEY_PREFIX_ + key, nowExpanded ? '0' : '1'); } catch (e) { /* private browsing etc. */ }
+    };
+  });
+  // The route that's about to resolve right after this (or already active on a fresh page load)
+  // needs its own nav-group auto-expanded even if this device has it stored collapsed -- see
+  // highlightActiveNav (router.js), which runs on every navigation, not just this initial render.
+  if (typeof highlightActiveNav === 'function' && window.HululState && HululState.currentRoute) {
+    highlightActiveNav(HululState.currentRoute.path);
+  }
   // On a phone-width screen the sidebar is an overlay drawer, not a pushed column -- picking a
   // page should close it afterward the same way tapping the backdrop does, so the chosen page
   // isn't left sitting behind it. Desktop's collapse is a deliberate, sticky user choice instead

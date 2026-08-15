@@ -119,6 +119,19 @@ window.renderCurrentView = function () { Router.resolve(); };
 function highlightActiveNav(path) {
   document.querySelectorAll('.nav-item').forEach(function (a) {
     var target = a.getAttribute('data-path');
-    a.classList.toggle('active', target && path.indexOf(target) === 0);
+    var isActive = !!(target && path.indexOf(target) === 0);
+    a.classList.toggle('active', isActive);
+    // REQ: "Can you group the sidebar?" -- a bookmarked/refreshed page whose nav link lives inside a
+    // sidebar group this device has stored collapsed must not disappear from view. Only touches the
+    // current on-screen state (not the stored preference), same one-shot reasoning as the Event tab
+    // bar's own highlight-and-scroll (PENDING_TAB_HIGHLIGHT_KEY_, eventDetail.js).
+    if (isActive) {
+      var groupItems = a.closest('.nav-group-items');
+      if (groupItems && groupItems.classList.contains('collapsed')) {
+        groupItems.classList.remove('collapsed');
+        var header = document.querySelector('[data-nav-group="' + groupItems.getAttribute('data-nav-group-items') + '"]');
+        if (header) header.classList.add('expanded');
+      }
+    }
   });
 }
