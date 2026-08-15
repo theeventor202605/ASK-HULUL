@@ -6,6 +6,24 @@
  */
 var ICON_MANAGE_ROLES = ['SystemAdmin'];
 var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
+// REQ follow-up: "check the tabs within Config, move what's still needed into Settings." The old
+// standalone Config page (frontend/js/views/config.js, now deleted) had 3 tabs: General (a raw
+// Config-sheet key/value editor), Process (readiness-template uploader/reviewer roles), and
+// Escalations (timers + To/Cc roles + lock-screen toggle). General is what's genuinely "no more
+// needed": grepping the whole backend, the ONLY two keys ever written to the Config sheet outside
+// these two friendlier tabs are escalationTier2DelayHours/escalationTier3DelayHours (Setup.gs) --
+// legacy seed defaults that getEscalationConfig_ (Resolutions.gs) only ever reads as a fallback
+// BEFORE the Escalations tab has been saved even once; after that, the real per-risk-level values
+// live in their own JSON blob and those two keys are never consulted again. So General had nothing
+// left to usefully edit -- it's dropped rather than moved. Process and Escalations, which ARE still
+// live and SystemAdmin-only exactly like Roles/Permissions above, move in here as two more tabs.
+var CONFIG_MANAGE_ROLES = ['SystemAdmin'];
+// Tabs that build their own stack of .card blocks (same as Process/Escalations did on the old /config
+// page) render into a plain, un-carded content div instead of the shared one -- otherwise every one
+// of their cards would sit nested inside the shared outer card, doubling the border/padding for no
+// reason. Every other tab (Profile, Terminology, Icons, Roles, Permissions, ...) still gets the
+// shared card, unchanged.
+var SETTINGS_PLAIN_CONTENT_TABS_ = { process: true, escalations: true };
 
 async function renderSettings(params) {
   var root = document.getElementById('viewRoot');
@@ -13,6 +31,7 @@ async function renderSettings(params) {
   var canManageLabels = hasPermission('orgLabels.manage');
   var canManageIcons = ICON_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
+  var canManageConfig = CONFIG_MANAGE_ROLES.indexOf(u.role) !== -1;
 
   var tabs = [
     { key: 'profile', label: t('settings_tab_profile') },
@@ -21,6 +40,8 @@ async function renderSettings(params) {
   ];
   if (canManageLabels) tabs.push({ key: 'terminology', label: t('settings_tab_terminology') });
   if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
+  if (canManageConfig) tabs.push({ key: 'process', label: t('tab_process') });
+  if (canManageConfig) tabs.push({ key: 'escalations', label: t('tab_escalations') });
   if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
   if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
 
@@ -29,7 +50,9 @@ async function renderSettings(params) {
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_settings') + '</div></div></div>' +
     '<div class="tabbar" id="settingsTabbar"></div>' +
-    '<div class="card"><div class="card-body" id="settingsTabContent"></div></div>';
+    (SETTINGS_PLAIN_CONTENT_TABS_[activeTab]
+      ? '<div id="settingsTabContent"></div>'
+      : '<div class="card"><div class="card-body" id="settingsTabContent"></div></div>');
 
   var tabbar = document.getElementById('settingsTabbar');
   tabbar.innerHTML = tabs.map(function (tb) {
@@ -46,6 +69,8 @@ async function renderSettings(params) {
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
+  else if (activeTab === 'process' && canManageConfig) await renderProcessTab_(content);
+  else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
   else renderProfileTab_(content, u);
@@ -366,6 +391,165 @@ function openImportIconLibraryModal_(onDone) {
   }
 }
 
+/* ---------------- Process (per-process settings, starting with Readiness Templates roles) ------
+ * Moved here from the old standalone Config page (frontend/js/views/config.js) -- see the
+ * CONFIG_MANAGE_ROLES comment above for why. getTemplateProcessConfig (SystemAdmin-only,
+ * Templates.gs) returns the currently-configured uploaderRoles/reviewerRoles plus allRoles (every
+ * role code + display label) so this tab never needs its own hardcoded copy of the role list.
+ */
+async function renderProcessTab_(content) {
+  var cfg = await Api.call('getTemplateProcessConfig', {});
+  content.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('readiness_process_title', { term: Term('template_plural') })) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('readiness_process_subtitle')) + '</div></div>' +
+    '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
+      processRoleFieldHtml_(t('upload_submit_docs_title'), t('upload_submit_docs_subtitle'), cfg.allRoles, cfg.uploaderRoles, 'cfgUploader') +
+      processRoleFieldHtml_(t('review_evaluate_docs_title'), t('review_evaluate_docs_subtitle'), cfg.allRoles, cfg.reviewerRoles, 'cfgReviewer') +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+      '<button class="btn btn-primary" id="saveProcessBtn">' + t('save') + '</button>' +
+    '</div></div>';
+
+  document.getElementById('saveProcessBtn').onclick = async function () {
+    try {
+      var uploaderRoles = readCheckedRoles_('cfgUploader');
+      var reviewerRoles = readCheckedRoles_('cfgReviewer');
+      if (!uploaderRoles.length) { UI.toast(t('toast_pick_uploader_role'), 'error'); return; }
+      if (!reviewerRoles.length) { UI.toast(t('toast_pick_reviewer_role'), 'error'); return; }
+      await Api.call('setTemplateProcessConfig', { uploaderRoles: uploaderRoles, reviewerRoles: reviewerRoles });
+      UI.toast(t('toast_process_settings_saved'), 'success');
+      renderSettings({ tab: 'process' });
+    } catch (err) { UI.error(err); }
+  };
+}
+
+function processRoleFieldHtml_(title, subtitle, allRoles, checkedRoles, prefix) {
+  var checkedSet = {}; (checkedRoles || []).forEach(function (r) { checkedSet[r] = true; });
+  return '<div>' +
+    '<div style="font-weight:600;font-size:13.5px;margin-bottom:2px;">' + title + '</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-bottom:8px;">' + esc(subtitle) + '</div>' +
+    '<div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;">' +
+      allRoles.map(function (r) {
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
+          '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checkedSet[r.value] ? ' checked' : '') + ' /> ' + esc(r.label) + '</label>';
+      }).join('') +
+    '</div>' +
+  '</div>';
+}
+
+// readCheckedRoles_ builds a CSS class selector out of whatever prefix it's given ('.' + prefix +
+// '-check') -- shared by every role-chip/checkbox-grid editor in Settings (this tab, Escalations
+// below, and the Permissions/Roles editors above, which slug their own dotted keys first -- see
+// permKeySlug_ -- for exactly this reason).
+function readCheckedRoles_(prefix) {
+  var ids = [];
+  document.querySelectorAll('.' + prefix + '-check:checked').forEach(function (c) { ids.push(c.value); });
+  return ids;
+}
+
+/* ---------------- Escalations (timers, To/Cc roles, lock-screen toggle) ----------------
+ * Moved here from the old standalone Config page -- see the CONFIG_MANAGE_ROLES comment above.
+ * getEscalationConfig (Resolutions.gs) returns tier1/tier2/tier3 + lockScreenEnabled + allRoles (the
+ * picklist) + riskLevels. Tier 1 has no delay editor here on purpose -- each Finding already carries
+ * its own deadline from its checklist item, so only Tier 2 and Tier 3's delays (which fire a
+ * configurable time AFTER the previous tier) are admin-editable, and per risk level.
+ */
+async function renderEscalationsTab_(content) {
+  var cfg = await Api.call('getEscalationConfig', {});
+  content.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('escalation_alerts_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('escalation_alerts_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;">' +
+        '<input type="checkbox" id="cfgLockScreenEnabled"' + (cfg.lockScreenEnabled ? ' checked' : '') + ' /> ' + esc(t('lock_screen_label')) +
+      '</label>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('lock_screen_hint')) + '</div>' +
+    '</div></div>' +
+    // REQ follow-up: "resolution of tier timing, not true real-time" -- the sweep that actually
+    // checks whether a delay has elapsed used to run every 30 minutes no matter how short a delay
+    // was configured below; now editable here too (escalationCheckIntervalMinutes_/
+    // reinstallEscalationTrigger_, Setup.gs). Only the 5 values ScriptApp's ClockTriggerBuilder
+    // actually accepts are offered -- anything else would just get silently snapped server-side.
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('check_interval_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('check_interval_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      UI.field(t('check_interval_field'), '<select id="cfgCheckIntervalMinutes" class="field-input" style="max-width:200px;">' +
+        (cfg.checkIntervalAllowedMinutes || [1, 5, 10, 15, 30]).map(function (m) {
+          return '<option value="' + m + '"' + (m === cfg.checkIntervalMinutes ? ' selected' : '') + '>' + esc(t('x_minutes', { count: m })) + '</option>';
+        }).join('') + '</select>') +
+    '</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tier1_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('tier1_subtitle')) + '</div></div>' +
+    '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
+      processRoleFieldHtml_(esc(t('field_to')), t('field_to_hint'), cfg.allRoles, cfg.tier1.toRoles, 'cfgTier1To') +
+      processRoleFieldHtml_(esc(t('field_cc')), t('field_cc_hint'), cfg.allRoles, cfg.tier1.ccRoles, 'cfgTier1Cc') +
+    '</div></div>' +
+    escalationTierCardHtml_(t('tier2_title'), t('tier2_subtitle'), 2, cfg) +
+    escalationTierCardHtml_(t('tier3_title'), t('tier3_subtitle'), 3, cfg) +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;">' +
+      '<button class="btn btn-primary" id="saveEscalationCfgBtn">' + t('save') + '</button>' +
+    '</div>';
+
+  document.getElementById('saveEscalationCfgBtn').onclick = async function () {
+    try {
+      var tier1ToRoles = readCheckedRoles_('cfgTier1To');
+      var tier2ToRoles = readCheckedRoles_('cfgTier2To');
+      var tier3ToRoles = readCheckedRoles_('cfgTier3To');
+      if (!tier1ToRoles.length || !tier2ToRoles.length || !tier3ToRoles.length) {
+        UI.toast(t('toast_each_tier_needs_to_role'), 'error');
+        return;
+      }
+      await Api.call('setEscalationConfig', {
+        tier1: { toRoles: tier1ToRoles, ccRoles: readCheckedRoles_('cfgTier1Cc') },
+        tier2: { toRoles: tier2ToRoles, ccRoles: readCheckedRoles_('cfgTier2Cc'), delayMinutesByRisk: escalationReadDelayMinutesByRisk_('cfgTier2', cfg.riskLevels) },
+        tier3: { toRoles: tier3ToRoles, ccRoles: readCheckedRoles_('cfgTier3Cc'), delayMinutesByRisk: escalationReadDelayMinutesByRisk_('cfgTier3', cfg.riskLevels) },
+        lockScreenEnabled: document.getElementById('cfgLockScreenEnabled').checked,
+        checkIntervalMinutes: Number(document.getElementById('cfgCheckIntervalMinutes').value)
+      });
+      UI.toast(t('toast_escalation_settings_saved'), 'success');
+      renderSettings({ tab: 'escalations' });
+    } catch (err) { UI.error(err); }
+  };
+}
+
+function escalationTierCardHtml_(title, subtitle, tierNum, cfg) {
+  var tierCfg = cfg['tier' + tierNum];
+  var prefix = 'cfgTier' + tierNum;
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(title) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(subtitle) + '</div></div>' +
+    '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
+      processRoleFieldHtml_(esc(t('field_to')), t('field_to_hint'), cfg.allRoles, tierCfg.toRoles, prefix + 'To') +
+      processRoleFieldHtml_(esc(t('field_cc')), t('field_cc_hint'), cfg.allRoles, tierCfg.ccRoles, prefix + 'Cc') +
+      '<div><div class="field-label" style="margin-top:0;">' + esc(t('delay_by_risk_level')) + '</div>' +
+        escalationDelayRowsHtml_(prefix, tierCfg.delayMinutesByRisk, cfg.riskLevels) +
+      '</div>' +
+    '</div></div>';
+}
+
+function escalationDelayRowsHtml_(prefix, delayMinutesByRisk, riskLevels) {
+  return '<table class="data-table" style="margin-top:8px;"><thead><tr><th>' + esc(t('col_risk_level')) + '</th><th>' + esc(t('col_hours')) + '</th><th>' + esc(t('col_minutes')) + '</th></tr></thead><tbody>' +
+    riskLevels.map(function (level) {
+      var total = Number(delayMinutesByRisk[level]) || 0;
+      var hours = Math.floor(total / 60), minutes = total % 60;
+      return '<tr><td>' + esc(level) + '</td>' +
+        '<td><input type="number" min="0" class="field-input ' + prefix + '-delay-hours" data-level="' + esc(level) + '" value="' + hours + '" style="width:90px;" /></td>' +
+        '<td><input type="number" min="0" max="59" class="field-input ' + prefix + '-delay-minutes" data-level="' + esc(level) + '" value="' + minutes + '" style="width:90px;" /></td></tr>';
+    }).join('') +
+  '</tbody></table>';
+}
+
+function escalationReadDelayMinutesByRisk_(prefix, riskLevels) {
+  var out = {};
+  riskLevels.forEach(function (level) {
+    var hEl = document.querySelector('.' + prefix + '-delay-hours[data-level="' + level + '"]');
+    var mEl = document.querySelector('.' + prefix + '-delay-minutes[data-level="' + level + '"]');
+    var hours = Number(hEl ? hEl.value : 0) || 0;
+    var minutes = Number(mEl ? mEl.value : 0) || 0;
+    out[level] = Math.max(1, hours * 60 + minutes);
+  });
+  return out;
+}
+
 /* ---------------- Roles (RBAC, "create a new role") ----------------
  * REQ: "I need to have the functionality to create a new role." SystemAdmin-only, same gating as
  * Permissions. A custom role is just a role CODE (Roles.gs, backend) -- once created it's usable
@@ -532,7 +716,7 @@ function openEditRoleModal_(role, allRoles) {
  * resetPermission (backend/Permissions.gs) are SystemAdmin-only; allRoles rides along in the same
  * response, same "server hands back its own picklist" convention as getTemplateProcessConfig
  * (Templates.gs)/getEscalationConfig (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_
- * in config.js for the checkbox-grid pattern the role editor below still reuses.
+ * above (Process/Escalations tabs) for the checkbox-grid pattern the role editor below still reuses.
  *
  * REQ follow-up: "control who has Create, Read, Update and Delete for sections or Pages or tabs" ->
  * clarified as: redesign this tab as a Page x CRUD matrix built on TOP OF the existing ~45 permission
@@ -696,9 +880,10 @@ function permFilterItemHtml_(kind, value, label, count, active) {
     '<span>' + esc(label) + '</span><span class="perm-filter-count" style="margin-inline-start:6px;">' + count + '</span></div>';
 }
 
-// readCheckedRoles_ (config.js) builds a CSS class selector out of whatever prefix it's given
-// ('.' + prefix + '-check') -- fine for config.js's own prefixes (cfgUploader, cfgReviewer, no
-// punctuation), but permission keys are dotted (e.g. 'finding.create') and an unescaped '.' inside a
+// readCheckedRoles_ (Process/Escalations tabs above) builds a CSS class selector out of whatever
+// prefix it's given ('.' + prefix + '-check') -- fine for those tabs' own prefixes (cfgUploader,
+// cfgReviewer, no punctuation), but permission keys are dotted (e.g. 'finding.create') and an
+// unescaped '.' inside a
 // CSS class selector starts a NEW class, so the literal class "perm-finding.create-check" would never
 // match ".perm-finding.create-check:checked". Slugging the dot out of the key before it ever becomes
 // part of a class name (both when the checkboxes are rendered below and when they're read back on
