@@ -81,6 +81,10 @@ window.Router = {
     this.add('/dashboard', renderDashboard);
     this.add('/events', renderEventsList);
     this.add('/events/:id', renderEventDetail);
+    // REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup"
+    // (Completed Checklists tab, eventDetail.js) -- renderCompletedChecklistDetail, same tabbed-page-
+    // route pattern as the findings sub-routes just below.
+    this.add('/events/:id/completed-checklist/:inspectionId/:participantId', renderCompletedChecklistDetail);
     this.add('/events/:id/findings/new', renderNewFinding);
     this.add('/events/:id/findings/:findingId/edit', renderEditFinding);
     this.add('/events/:id/findings/:findingId', renderFindingDetail);

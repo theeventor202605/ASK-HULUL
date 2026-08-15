@@ -1247,9 +1247,17 @@ async function tabInspections(content, eventId, detail) {
 // from the list above (status flips to 'Completed'), so this is the only way back into one of those.
 // Plain UI.table (search/sort/export CSV all come free from it, same as any other list page) rather
 // than a bespoke card -- this is a browse/find page, not a workflow like the choose-participant flow
-// above. Opening a row reuses openRecordResultsModal exactly as-is (same view = edit screen the
-// choose-participant flow already opens) -- built from lightweight {id, disciplineName, phase} /
-// {id, name} stand-ins since that's all that function ever actually reads off inspection/participant.
+// above.
+//
+// REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup.
+// Remove Do column." -- the old Actions ("Do") column's icon button opened openRecordResultsModal;
+// that's now a real page (renderCompletedChecklistDetail, routed at #/events/:id/completed-checklist/
+// :inspectionId/:participantId, registered in router.js) reusing that same modal flow's item-listing/
+// editing/print/export/save logic (recordResultRowHtml_/wireRecordResultRows_/saveInspectionResults_/
+// etc.) just rendered into the page instead of a modal box. The entry point moves onto the participant
+// name itself (same hyperlink convention as venues.js's/completedChecklists.js's own name columns) --
+// same canRecordInspection_ gate as the old button had: plain text (no link) for a row this viewer
+// isn't SystemAdmin or the assigned Inspector for, exactly like the button used to just not render.
 async function tabCompletedChecklists(content, eventId, detail) {
   var rows = await Api.call('listCompletedChecklists', { eventId: eventId });
 
@@ -1257,31 +1265,115 @@ async function tabCompletedChecklists(content, eventId, detail) {
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('tab_completed_checklists')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('completed_checklists_hint')) + '</div></div><div class="card-body">' +
     UI.table([
-      { key: 'participantName', label: Term('participant') },
+      { key: 'participantName', label: Term('participant'), render: r =>
+          canRecordInspection_({ inspectorId: r.inspectorId })
+            ? '<a href="#/events/' + esc(eventId) + '/completed-checklist/' + esc(r.inspectionId) + '/' + esc(r.participantId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.participantName) + '</a>'
+            : esc(r.participantName)
+      },
       { key: 'disciplineName', label: Term('discipline') },
       { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'progress', label: t('col_progress'), render: r => t('progress_fraction', { done: r.done, total: r.total, term: Term('checklistItem_plural').toLowerCase() }) },
-      { key: 'lastRecordedAt', label: t('col_last_recorded'), render: r => UI.fmtDate(r.lastRecordedAt) },
-      { key: 'actions', label: t('actions'), exportable: false, sortable: false, render: r => {
-          // Same gate as the Inspections list's own Record-results button (canRecordInspection_) --
-          // SystemAdmin or the assigned Inspector -- so who can reopen/edit a completed checklist
-          // here matches who could have recorded it in the first place.
-          if (!canRecordInspection_({ inspectorId: r.inspectorId })) return '—';
-          return UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_checklist')) + '" data-open-checklist="' + r.inspectionId + '::' + r.participantId + '">' + ICON('record_results') + '</button>');
-        } }
+      { key: 'lastRecordedAt', label: t('col_last_recorded'), render: r => UI.fmtDate(r.lastRecordedAt) }
     ], rows, { emptyText: t('empty_no_completed_checklists') }) + '</div></div>';
+}
 
-  content.querySelectorAll('[data-open-checklist]').forEach(function (btn) {
-    btn.onclick = function () {
-      var parts = btn.getAttribute('data-open-checklist').split('::');
-      var row = rows.filter(function (r) { return r.inspectionId === parts[0] && r.participantId === parts[1]; })[0];
-      if (!row) return;
-      var inspection = { id: row.inspectionId, disciplineName: row.disciplineName, phase: row.phase };
-      var participant = { id: row.participantId, name: row.participantName };
-      openRecordResultsModal(eventId, inspection, participant);
-    };
+// REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup."
+// Full-page counterpart to openRecordResultsModal/openRecordResultsForm_ above -- same items/
+// existing-results fetch, same recordResultRowHtml_ rows grouped by type, same wireRecordResultRows_/
+// updateRecordResultsProgress_/saveInspectionResults_/printInspectionResults_/
+// exportInspectionResultsCsv_ (all already generic over DOM ids, not modal-specific), just rendered
+// into #viewRoot with a page-header/back button instead of UI.openModal. Skips the modal flow's own
+// "choose a checklist type first" step (openChecklistTypeStep_) -- a completed checklist is, by
+// definition, everything for this Inspection+participant already recorded, so "the full checklist"
+// shows every type together rather than asking which slice to look at first. saveInspectionResults_'s
+// own UI.closeModal() is a harmless no-op with no modal open, and its Router.resolve() re-runs this
+// same route handler fresh -- so Save just refreshes this page in place with the just-saved values,
+// same "stay put, see it reflected" pattern as venues.js's own view/edit toggle.
+//
+// eventId/inspectionId/participantId only ever come from a route param here (this can be a fresh page
+// load, not just an in-app navigation), so inspection/participant are rebuilt the same lightweight
+// way tabCompletedChecklists always has -- {id, disciplineName, phase} / {id, name} -- by finding this
+// pair inside listCompletedChecklists' own results rather than assuming anything is already in memory.
+async function renderCompletedChecklistDetail(params) {
+  var root = document.getElementById('viewRoot');
+  var eventId = params.id, inspectionId = params.inspectionId, participantId = params.participantId;
+  root.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+
+  var rows;
+  try { rows = await Api.call('listCompletedChecklists', { eventId: eventId }); }
+  catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; return; }
+  var row = rows.filter(function (r) { return r.inspectionId === inspectionId && r.participantId === participantId; })[0];
+  if (!row) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: t('tab_completed_checklists') })) + '</div>'; return; }
+  // Same permission gate as the list's own name-link (tabCompletedChecklists above) -- guards a
+  // direct/bookmarked URL hit too, not just the link's own visibility.
+  if (!canRecordInspection_({ inspectorId: row.inspectorId })) { root.innerHTML = '<div class="empty-state">' + esc(t('not_permitted_default')) + '</div>'; return; }
+
+  var inspection = { id: row.inspectionId, disciplineName: row.disciplineName, phase: row.phase };
+  var participant = { id: row.participantId, name: row.participantName };
+
+  var [items, existingResults] = await Promise.all([
+    Api.call('listChecklistItems', {}),
+    Api.call('listInspectionResults', { inspectionId: inspection.id, participantId: participant.id })
+  ]);
+  var existingByItemId = {};
+  existingResults.forEach(function (r) {
+    var cur = existingByItemId[r.checklistItemId];
+    if (!cur || new Date(r.recordedAt) > new Date(cur.recordedAt)) existingByItemId[r.checklistItemId] = r;
   });
+  var scope = items.filter(function (i) { return i.status !== 'Deleted' && i.category === inspection.disciplineName && i.phase === inspection.phase; });
+
+  if (!scope.length) {
+    root.innerHTML =
+      '<div class="page-header"><div><div class="page-title">' + esc(participant.name) + '</div></div>' +
+      '<button class="btn btn-secondary" id="backCompletedChecklistBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+      '<div class="empty-state">' + esc(t('no_x_setup_for_discipline_phase', { term: Term('checklistItem_plural').toLowerCase(), discipline: Term('discipline').toLowerCase() })) + '</div>';
+    document.getElementById('backCompletedChecklistBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=completedChecklists'; };
+    return;
+  }
+
+  var pendingFiles = {};
+  scope.forEach(function (it) {
+    var existing = existingByItemId[it.id];
+    // Pre-seed already-saved evidence as "done" entries, same as openRecordResultsForm_ above -- so
+    // editing a Crossed item never looks like it lost its evidence.
+    pendingFiles[it.id] = (existing && existing.evidenceUrls) ? String(existing.evidenceUrls).split(',').filter(Boolean).map(function (url, idx) {
+      return { name: t('word_evidence') + ' ' + (idx + 1), status: 'done', pct: 100, url: url, localId: 'existing_' + it.id + '_' + idx };
+    }) : [];
+  });
+
+  var byType = {};
+  scope.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(participant.name) + '</div>' +
+    '<div class="page-subtitle">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backCompletedChecklistBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+    '<div class="card">' +
+      '<div class="card-body">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
+          '<div id="recordResultsProgress" style="font-weight:600;font-size:12.5px;color:var(--accent);"></div>' +
+          '<div class="muted" style="font-size:11px;">' + esc(t('unset_items_stay_open_hint')) + '</div>' +
+        '</div>' +
+        Object.keys(byType).sort().map(function (typeName) {
+          return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName || '(untyped)') + '</div>' +
+            byType[typeName].map(function (it) { return recordResultRowHtml_(it, existingByItemId[it.id]); }).join('');
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);flex-wrap:wrap;">' +
+        '<button class="btn btn-secondary" id="printChecklistBtn">' + ICON('print') + ' ' + esc(t('print_btn')) + '</button>' +
+        '<button class="btn btn-secondary" id="exportChecklistBtn">' + ICON('export_csv') + ' ' + esc(t('export_csv')) + '</button>' +
+        '<button class="btn btn-primary" id="saveChecklistBtn">' + esc(t('save')) + '</button>' +
+      '</div>' +
+    '</div>';
+
+  document.getElementById('backCompletedChecklistBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=completedChecklists'; };
+  document.getElementById('printChecklistBtn').onclick = function () { printInspectionResults_(participant, inspection, scope); };
+  document.getElementById('exportChecklistBtn').onclick = function () { exportInspectionResultsCsv_(participant, inspection, scope); };
+  document.getElementById('saveChecklistBtn').onclick = function () { saveInspectionResults_(eventId, inspection, participant, scope, pendingFiles, existingByItemId); };
+
+  wireRecordResultRows_(eventId, scope, pendingFiles);
+  updateRecordResultsProgress_();
 }
 
 // Same field set/order as the Schedule card above (Phase, Inspector, Discipline, Scheduled at) so
