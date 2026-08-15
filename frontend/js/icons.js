@@ -51,6 +51,7 @@ window.LUCIDE_ICONS = {
   'check-square-2': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="18" x="3" y="3" rx="2" /> <path d="m9 12 2 2 4-4" /> </svg>',
   'chevron-left': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m15 18-6-6 6-6" /> </svg>',
   'chevron-right': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m9 18 6-6-6-6" /> </svg>',
+  'chevron-down': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m6 9 6 6 6-6" /> </svg>',
   'circle-check': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="m9 12 2 2 4-4" /> </svg>',
   'circle-check-big': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M21.801 10A10 10 0 1 1 17 3.335" /> <path d="m9 11 3 3L22 4" /> </svg>',
   'circle-dot': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <circle cx="12" cy="12" r="1" /> </svg>',
@@ -257,6 +258,7 @@ window.ICON_LIBRARY = [
     { name: 'redo-2', label: 'Redo', svg: LUCIDE_ICONS['redo-2'] },
     { name: 'chevron-left', label: 'Previous', svg: LUCIDE_ICONS['chevron-left'] },
     { name: 'chevron-right', label: 'Next', svg: LUCIDE_ICONS['chevron-right'] },
+    { name: 'chevron-down', label: 'Expand', svg: LUCIDE_ICONS['chevron-down'] },
     { name: 'ellipsis-vertical', label: 'Row actions menu', svg: LUCIDE_ICONS['ellipsis-vertical'] },
   ] },
 ];
@@ -300,6 +302,7 @@ window.ICON_DEFAULTS = {
   detect_places: LUCIDE_ICONS['map-pin-search'],
   page_prev: LUCIDE_ICONS['chevron-left'],
   page_next: LUCIDE_ICONS['chevron-right'],
+  chevron_down: LUCIDE_ICONS['chevron-down'], // Event tab bar's grouped-tab dropdown indicator (EVENT_TAB_GROUPS_, eventDetail.js)
   actions_menu: LUCIDE_ICONS['ellipsis-vertical'],
   mark_read: LUCIDE_ICONS['check'],
   coverage_complete: LUCIDE_ICONS['shield-check'],

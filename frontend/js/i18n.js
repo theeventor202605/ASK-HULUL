@@ -38,6 +38,11 @@ window.HULUL_I18N = {
     tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Disciplines & Inspectors',
     tab_inspections: 'Inspections & Checklists', tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
     tab_escalations: 'Escalations', tab_participants: 'Participants', tab_reports: 'Reports', tab_event_log: 'Logs',
+    // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
+    // (EVENT_TAB_GROUPS_, eventDetail.js). Each parent's own subtab row still uses the individual
+    // tab_x labels above -- these are only for the collapsed top-level button.
+    tab_group_readiness: 'Readiness', tab_group_inspections: 'Inspections', tab_group_findings: 'Findings',
+    tab_group_participants: 'Participants', tab_group_reports: 'Reports',
     save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Do', status: 'Status',
     loading: 'Loading…', no_data: 'Nothing here yet.',
     filter: 'Filter', export_csv: 'Export CSV', no_matches: 'No rows match your filter.',
@@ -506,6 +511,8 @@ window.HULUL_I18N = {
     tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'التخصصات والمفتشون',
     tab_inspections: 'التفتيش وقوائم المراجعة', tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_reports: 'التقارير', tab_event_log: 'السجلات',
+    tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'النتائج',
+    tab_group_participants: 'المشاركون', tab_group_reports: 'التقارير',
     save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'تنفيذ', status: 'الحالة',
     loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.',
     filter: 'تصفية', export_csv: 'تصدير CSV', no_matches: 'لا توجد صفوف مطابقة للتصفية.',

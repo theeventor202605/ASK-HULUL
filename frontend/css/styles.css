@@ -365,6 +365,18 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .tab-btn{ padding:10px 14px; font-size:13px; font-weight:600; color:var(--text-600); border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap; }
 .tab-btn:hover{ color:var(--text-900); }
 .tab-btn.active{ color:var(--accent); border-color:var(--accent); }
+.tab-btn .icon-svg{ width:12px; height:12px; vertical-align:-1px; margin-inline-start:2px; }
+/* REQ: "The Events' tab menu is long. Divide it into tab and subtab." (EVENT_TAB_GROUPS_,
+   eventDetail.js) -- #eventTabbarWrap holds the top-level bar (one button per group, a small
+   chevron on any collapsed multi-tab group) plus a second .tabbar-sub row that only exists while a
+   grouped tab is active, listing that group's own children. Both rows keep the plain .tabbar/
+   .tab-btn look (so nothing about clicking/active-state styling has to be reinvented) -- only the
+   spacing changes here: the wrap carries the bottom margin instead of each row, and the sub row
+   trims to a slightly smaller/tighter button size so the hierarchy (top bar > subtab row) reads at
+   a glance even before noticing which one is indented under an active parent. */
+#eventTabbarWrap{ margin-bottom:18px; }
+#eventTabbarWrap .tabbar{ margin-bottom:0; }
+.tabbar-sub .tab-btn{ font-size:12px; padding:7px 12px; }
 /* REQ report (Settings > Permissions "Go to page" link): flashes the target tab for ~10s the moment
    an event is opened -- see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js), which adds
    this class and removes it via setTimeout(10000) as the actual (guaranteed) cleanup; the animation's

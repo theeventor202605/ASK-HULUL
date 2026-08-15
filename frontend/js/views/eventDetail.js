@@ -37,6 +37,40 @@ var EVENT_TABS = [
   ['log', 'tab_event_log', function () { return t('tab_event_log'); }]
 ];
 
+// REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- 14 flat tabs crowded the
+// bar (wrapped/scrolled on anything but a wide desktop). Groups related tabs under one collapsed
+// top-level button; clicking it reveals a second subtab row for its children. Deliberately a
+// PURELY VISUAL grouping layered on top of EVENT_TABS above, not a replacement for it -- every tab
+// key, its #/events/:id?tab=x URL, its renderer (eventTabRenderers_), and its own permission checks
+// all stay exactly as they were, so nothing that already links to a specific tab (Settings >
+// Permissions' "go to page" flash, Event Chat's #-tab screenshot picker, bookmarks) needs to change.
+// A group with no `key`/`labelKey` (single-tab "groups") renders as a plain standalone top-level
+// button, same as before grouping existed -- lets Overview/Chat/Venue stay first-class without a
+// redundant one-item dropdown.
+var EVENT_TAB_GROUPS_ = [
+  { tabs: ['overview'] },
+  { tabs: ['chat'] },
+  { tabs: ['venue'] },
+  { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
+  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'logPhotos'] },
+  { key: 'findingsGroup', labelKey: 'tab_group_findings', tabs: ['findings', 'escalations'] },
+  { key: 'participantsGroup', labelKey: 'tab_group_participants', tabs: ['participants', 'participantDisciplines'] },
+  { key: 'reportsGroup', labelKey: 'tab_group_reports', tabs: ['reports', 'log'] }
+];
+
+// The group (if any) a given tab key belongs to, filtered to only the tabs actually visible this
+// render (a group whose only "extra" member is hidden -- e.g. logPhotos -- should behave like
+// whatever's left, including collapsing to a plain standalone button if that leaves just one).
+function eventTabGroupFor_(tabKey, visibleTabKeys) {
+  for (var i = 0; i < EVENT_TAB_GROUPS_.length; i++) {
+    var g = EVENT_TAB_GROUPS_[i];
+    if (g.tabs.indexOf(tabKey) === -1) continue;
+    var visibleMembers = g.tabs.filter(function (k) { return visibleTabKeys.indexOf(k) !== -1; });
+    return { key: g.key, labelKey: g.labelKey, tabs: visibleMembers };
+  }
+  return null;
+}
+
 // Module-level (not local to renderEventDetail) so Event Chat's "#" screenshot flow (tabEventChat)
 // can render any other tab off-screen to capture a section from it, without needing to duplicate
 // this dispatch table. tabOverview/tabEventChat/etc. declared further down this same file are safe
@@ -91,22 +125,80 @@ async function renderEventDetail(params) {
     '<div class="page-subtitle">' + esc(UI.fmtDate(detail.event.startDateTime) + ' – ' + UI.fmtDate(detail.event.endDateTime)) + '</div>' +
     '</div>' +
     UI.statusBadge(detail.event.status) + '</div>' +
-    '<div class="tabbar" id="eventTabbar"></div>' +
+    '<div id="eventTabbarWrap">' +
+      '<div class="tabbar" id="eventTabbar"></div>' +
+      '<div class="tabbar tabbar-sub" id="eventSubtabbar" style="display:none;"></div>' +
+    '</div>' +
     '<div id="eventTabContent"></div>';
 
+  var tabLabel_ = function (tb) { return tb[2] ? tb[2]() : t(tb[1]); };
+  var tabsByKey_ = {}; visibleTabs.forEach(function (tb) { tabsByKey_[tb[0]] = tb; });
+  var visibleTabKeys = visibleTabs.map(function (tb) { return tb[0]; });
+  var activeGroup = eventTabGroupFor_(activeTab, visibleTabKeys); // null for a standalone (ungrouped) tab
+
+  var tabbarWrap = document.getElementById('eventTabbarWrap');
   var tabbar = document.getElementById('eventTabbar');
-  tabbar.innerHTML = visibleTabs.map(function (tb) {
-    var label = tb[2] ? tb[2]() : t(tb[1]);
-    return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-tab="' + tb[0] + '">' + esc(label) + '</div>';
+  var subtabbar = document.getElementById('eventSubtabbar');
+
+  // Top-level bar: one button per group. A single-tab group (Overview/Chat/Venue) renders exactly
+  // as a plain tab always has (data-tab, navigates straight to it). A multi-tab group renders as a
+  // collapsed parent (data-group, no data-tab) labeled by its own labelKey, marked .active whenever
+  // the currently-open tab is any of its children -- that's what tells the user which section
+  // they're inside without the subtab row needing to repeat it.
+  var seenGroupKeys = {};
+  tabbar.innerHTML = EVENT_TAB_GROUPS_.map(function (g) {
+    var group = eventTabGroupFor_(g.tabs[0], visibleTabKeys); // re-derive so hidden members (logPhotos) are already filtered out
+    if (!group || !group.tabs.length || (group.key && seenGroupKeys[group.key])) return '';
+    if (group.key) seenGroupKeys[group.key] = true;
+    if (group.tabs.length === 1) {
+      var tb = tabsByKey_[group.tabs[0]];
+      if (!tb) return '';
+      return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-tab="' + tb[0] + '">' + esc(tabLabel_(tb)) + '</div>';
+    }
+    var isActive = group.tabs.indexOf(activeTab) !== -1;
+    return '<div class="tab-btn ' + (isActive ? 'active' : '') + '" data-group="' + group.key + '" data-default-tab="' + group.tabs[0] + '">' +
+      esc(t(group.labelKey)) + ' ' + ICON('chevron_down') + '</div>';
   }).join('');
-  tabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
+  tabbar.querySelectorAll('[data-tab]').forEach(function (btn) {
     btn.onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=' + btn.getAttribute('data-tab'); };
   });
+  tabbar.querySelectorAll('[data-group]').forEach(function (btn) {
+    btn.onclick = function () {
+      // Already inside this group -- the subtab row below already shows exactly where you are;
+      // re-navigating to the group's first child would silently discard your actual position
+      // (e.g. viewing Approval, misclicking the Readiness parent, landing back on Templates).
+      if (btn.classList.contains('active')) return;
+      window.location.hash = '#/events/' + eventId + '?tab=' + btn.getAttribute('data-default-tab');
+    };
+  });
+
+  // Subtab row: only exists while a multi-tab group is the active one.
+  if (activeGroup && activeGroup.tabs.length > 1) {
+    subtabbar.style.display = '';
+    subtabbar.innerHTML = activeGroup.tabs.map(function (key) {
+      var tb = tabsByKey_[key];
+      if (!tb) return '';
+      return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-tab="' + tb[0] + '">' + esc(tabLabel_(tb)) + '</div>';
+    }).join('');
+    subtabbar.querySelectorAll('[data-tab]').forEach(function (btn) {
+      btn.onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=' + btn.getAttribute('data-tab'); };
+    });
+  } else {
+    subtabbar.style.display = 'none';
+    subtabbar.innerHTML = '';
+  }
 
   var pendingHighlightTab = sessionStorage.getItem(PENDING_TAB_HIGHLIGHT_KEY_);
   if (pendingHighlightTab) {
     sessionStorage.removeItem(PENDING_TAB_HIGHLIGHT_KEY_); // one-shot
-    var highlightBtn = tabbar.querySelector('[data-tab="' + pendingHighlightTab + '"]');
+    // The target tab might be collapsed inside a group that isn't the one currently open (e.g. the
+    // user lands on Overview but the flash points at Approval) -- in that case there's no [data-tab]
+    // button for it anywhere yet, only the collapsed parent, so fall back to highlighting that.
+    var highlightBtn = tabbarWrap.querySelector('[data-tab="' + pendingHighlightTab + '"]');
+    if (!highlightBtn) {
+      var hGroup = eventTabGroupFor_(pendingHighlightTab, visibleTabKeys);
+      if (hGroup && hGroup.key) highlightBtn = tabbarWrap.querySelector('[data-group="' + hGroup.key + '"]');
+    }
     if (highlightBtn) {
       highlightBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       highlightBtn.classList.add('tab-btn-highlight');
