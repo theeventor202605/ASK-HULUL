@@ -545,13 +545,18 @@ table.data-table tr:hover td{ background:#fafbff; }
 .hulul-map-fullscreen-extra-controls:empty{ display:none; }
 .hulul-map-fullscreen-btn:hover{ background:var(--surface); }
 
-/* UI.requireClickToActivateMap (ui.js) -- shown until the map's first click re-enables its
-   interactions; centered so it reads clearly over the tiles regardless of map size, and ignores
-   pointer events itself so it can't intercept the very click meant to dismiss it. */
+/* UI.requireClickToActivateMap (ui.js) -- shown while the map is locked (before the first click, and
+   again any time focus moves outside the map after that -- see hululMapLocks_ in ui.js). REQ: "Move
+   it to the side and make it blink to catch user attention" -- was dead-centered over the tiles,
+   which sat right on top of whatever the user most wanted to look at; inset-inline-start (not left)
+   so it moves to the correct side in RTL too. Ignores pointer events itself so it can't intercept the
+   very click meant to dismiss it. Reuses supportPulse (below) -- same blink every other "needs
+   attention" indicator in this app already uses (support ticket rec dot, escalation alert icon). */
 .hulul-map-click-hint{
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:999;
+  position:absolute; top:50%; inset-inline-start:12px; transform:translateY(-50%); z-index:999;
   background:rgba(17,24,39,.72); color:#fff; font-size:12px; font-weight:600; padding:6px 14px;
   border-radius:999px; pointer-events:none; white-space:nowrap;
+  animation:supportPulse 1.2s ease-in-out infinite;
 }
 
 /* ---------- Toasts ---------- */

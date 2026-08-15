@@ -464,27 +464,31 @@ window.UI = {
   // read-only zone thumbnail, which already has every interaction permanently off on purpose) starts
   // fully inert: dragging, scroll-wheel zoom, double-click zoom, box zoom, keyboard panning, and
   // touch zoom are all disabled right after creation, so a page scroll that happens to pass over the
-  // map behaves like a normal page scroll instead of hijacking it into a map zoom. The first click
-  // anywhere on the map re-enables all of them for the rest of that map instance's life; a small
-  // corner hint makes that discoverable and removes itself once activated.
+  // map behaves like a normal page scroll instead of hijacking it into a map zoom. Clicking anywhere
+  // on the map re-enables all of them; a small side hint makes that discoverable.
+  //
+  // REQ: "After clicking on map and interacting, if focus is set outside map, then map locks again.
+  // This rule applies to all maps." -- registers with hululMapLocks_ (below) instead of wiring its
+  // own one-shot listener per map, so the single delegated document click handler down there can
+  // re-lock ANY registered map the instant a click lands outside it, and unlock it again the instant
+  // a click lands back inside -- one shared mechanism for every map this is called on, not something
+  // each call site has to remember to re-implement (or every existing call site to be updated for).
+  // No cleanup function needed either: that same delegated handler drops an entry itself the first
+  // time it notices mapEl is no longer in the document (the view that owned it was re-rendered/torn
+  // down), so callers don't need to unregister on destroy.
   requireClickToActivateMap(map, mapEl) {
     if (!map || !mapEl) return;
     var handlers = ['dragging', 'scrollWheelZoom', 'doubleClickZoom', 'boxZoom', 'keyboard', 'touchZoom', 'tap']
       .map(function (name) { return map[name]; })
       .filter(function (h) { return h && typeof h.disable === 'function'; });
-    handlers.forEach(function (h) { h.disable(); });
 
     var hint = document.createElement('div');
     hint.className = 'hulul-map-click-hint';
     hint.textContent = t('click_to_interact_map');
-    mapEl.appendChild(hint);
 
-    function activate() {
-      handlers.forEach(function (h) { h.enable(); });
-      hint.remove();
-      mapEl.removeEventListener('click', activate);
-    }
-    mapEl.addEventListener('click', activate);
+    var entry = { mapEl: mapEl, handlers: handlers, hint: hint, locked: true };
+    hululLockMap_(entry); // starting state: inert, hint shown
+    hululMapLocks_.push(entry);
   },
 
   // REQ: "Move the Use my location / Satellite buttons inside map canvas. This applies to all maps."
@@ -647,6 +651,34 @@ window.UI = {
     };
   }
 };
+
+// Backing state + delegated listener for UI.requireClickToActivateMap above -- one shared mechanism
+// so every map registered through it (venue/place/zone/participant-discipline/live-inspection, etc.)
+// gets both halves of the same rule: a click inside unlocks it, a click anywhere else re-locks it.
+// Capture phase, same as the other delegated listeners in this file, so it sees every click
+// regardless of what else on the page might stop propagation.
+var hululMapLocks_ = [];
+function hululLockMap_(entry) {
+  entry.locked = true;
+  entry.handlers.forEach(function (h) { h.disable(); });
+  if (!entry.hint.parentNode) entry.mapEl.appendChild(entry.hint);
+}
+function hululUnlockMap_(entry) {
+  entry.locked = false;
+  entry.handlers.forEach(function (h) { h.enable(); });
+  entry.hint.remove();
+}
+document.addEventListener('click', function (e) {
+  if (!hululMapLocks_.length) return;
+  // Drop any entry whose mapEl is no longer in the document -- the view that owned it was
+  // re-rendered/torn down (e.g. innerHTML replaced on tab switch), so there's nothing left to
+  // lock/unlock and no listener to leak by leaving it registered forever.
+  hululMapLocks_ = hululMapLocks_.filter(function (entry) { return document.body.contains(entry.mapEl); });
+  hululMapLocks_.forEach(function (entry) {
+    if (entry.mapEl.contains(e.target)) { if (entry.locked) hululUnlockMap_(entry); }
+    else if (!entry.locked) hululLockMap_(entry);
+  });
+}, true);
 
 // App-wide click guard: the instant ANY .btn is clicked, disable it and mark it visibly clicked
 // (see .btn-clicked / :disabled in styles.css) for 10s. Delegated once here on document, in the
