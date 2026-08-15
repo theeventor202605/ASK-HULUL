@@ -314,6 +314,11 @@ window.ICON_DEFAULTS = {
   active_selected: LUCIDE_ICONS['check'],
   checklist_done: LUCIDE_ICONS['check-square-2'],
   checklist_pending: LUCIDE_ICONS['square'],
+  // REQ: "Instead of dropdown menu for Ticked, Crossed and N/A, convert to icons." -- the 3-way
+  // toggle in a Checklist item's Record Results row (recordResultRowHtml_, eventDetail.js).
+  result_ticked: LUCIDE_ICONS['circle-check-big'],
+  result_crossed: LUCIDE_ICONS['circle-x'],
+  result_na: LUCIDE_ICONS['ban'],
   kpi_total: LUCIDE_ICONS['bar-chart-3'],
   kpi_open: LUCIDE_ICONS['circle-dot'],
   kpi_inreview: LUCIDE_ICONS['eye'],
@@ -367,7 +372,9 @@ window.ICON_KEY_GROUPS = [
     { key: 'locked_indicator', label: 'Locked / already assigned' }, { key: 'gps_locating', label: 'GPS locating' },
     { key: 'warning_banner', label: 'Warning banner' }, { key: 'file_upload_done', label: 'File upload done' },
     { key: 'file_upload_failed', label: 'File upload failed' }, { key: 'active_selected', label: 'Active selection mark' },
-    { key: 'checklist_done', label: 'Checklist item done' }, { key: 'checklist_pending', label: 'Checklist item pending' }
+    { key: 'checklist_done', label: 'Checklist item done' }, { key: 'checklist_pending', label: 'Checklist item pending' },
+    { key: 'result_ticked', label: 'Record result: Ticked' }, { key: 'result_crossed', label: 'Record result: Crossed' },
+    { key: 'result_na', label: 'Record result: N/A' }
   ] },
   { group: 'Dashboard KPI icons', keys: [
     { key: 'kpi_total', label: 'Total' }, { key: 'kpi_open', label: 'Open' }, { key: 'kpi_inreview', label: 'In Review' },

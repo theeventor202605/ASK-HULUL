@@ -2215,12 +2215,37 @@ function openRecordResultsForm_(eventId, inspection, participant, filteredItems,
   wireRecordResultRows_(eventId, filteredItems, pendingFiles);
 }
 
+// REQ: "Default Risk and Window are just default recommendation, Inspector can input value." --
+// defaultRisk/defaultWindowHours (ChecklistItems.gs) now pre-fill real, editable fields instead of a
+// read-only muted line; whatever the Inspector leaves/changes here is sent as this result's own
+// riskLevel/resolutionWindowHours (saveInspectionResults_ below), which recordInspectionResults
+// (Inspections.gs) already accepted as an override -- `r.riskLevel || item.defaultRisk` -- it just
+// never had a frontend field to actually send one. REQ follow-up: "convert [Ticked/Crossed/N/A] to
+// icons" -- a 3-button icon toggle (.result-state-group) replaces the old <select>; the currently
+// picked one is tracked in the group's own data-state attribute (wireRecordResultRows_ below), not a
+// form control's .value, since none of the three buttons is an <input>.
 function recordResultRowHtml_(it) {
+  var riskOptions = ['Critical', 'High', 'Medium', 'Low'].map(function (r) {
+    return '<option value="' + r + '"' + (r === it.defaultRisk ? ' selected' : '') + '>' + esc(t('risk_' + r.toLowerCase())) + '</option>';
+  }).join('');
   return '<div class="result-row" data-row="' + it.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
-    '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
-    '<div class="muted" style="font-size:11.5px;margin-bottom:6px;">' + esc(t('risk_window_meta', { risk: it.defaultRisk, hours: it.defaultWindowHours })) + '</div>' +
-    '<select class="field-input result-state" data-item="' + it.id + '" style="display:inline-block;width:auto;">' +
-    '<option value="Ticked">Ticked</option><option value="Crossed">Crossed</option><option value="N/A">N/A</option></select>' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+      '<div style="flex:1 1 260px;">' +
+        '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;">' +
+          '<span class="muted" style="font-size:11px;">' + esc(t('col_risk_level')) + '</span>' +
+          '<select class="field-input result-risk" data-item="' + it.id + '" style="display:inline-block;width:auto;font-size:12px;padding:3px 6px;">' + riskOptions + '</select>' +
+          '<span class="muted" style="font-size:11px;margin-inline-start:6px;">' + esc(t('field_window_hours')) + '</span>' +
+          '<input type="number" min="1" class="field-input result-window" data-item="' + it.id + '" value="' + esc(it.defaultWindowHours) + '" style="display:inline-block;width:60px;font-size:12px;padding:3px 6px;" />' +
+        '</div>' +
+        '<div class="muted" style="font-size:10.5px;margin-top:3px;">' + esc(t('risk_window_editable_hint')) + '</div>' +
+      '</div>' +
+      '<div class="result-state-group" data-item="' + it.id + '" data-state="Ticked" style="display:flex;gap:4px;flex:none;">' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-ticked active" data-item="' + it.id + '" data-state="Ticked" title="' + esc(t('title_result_ticked')) + '">' + ICON('result_ticked') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-crossed" data-item="' + it.id + '" data-state="Crossed" title="' + esc(t('title_result_crossed')) + '">' + ICON('result_crossed') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-na" data-item="' + it.id + '" data-state="N/A" title="' + esc(t('title_result_na')) + '">' + ICON('result_na') + '</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="crossed-extra" data-extra="' + it.id + '" style="display:none;margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;">' +
       '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_notes_found')) + '</div>' +
       '<textarea class="field-input result-notes" data-item="' + it.id + '" rows="3" style="margin-bottom:6px;"></textarea>' +
@@ -2241,10 +2266,17 @@ function recordResultRowHtml_(it) {
 }
 
 function wireRecordResultRows_(eventId, openItems, pendingFiles) {
-  document.querySelectorAll('.result-state').forEach(function (sel) {
-    sel.onchange = function () {
-      var extra = document.querySelector('[data-extra="' + sel.getAttribute('data-item') + '"]');
-      if (extra) extra.style.display = sel.value === 'Crossed' ? 'block' : 'none';
+  document.querySelectorAll('.result-state-btn').forEach(function (btn) {
+    btn.onclick = function () {
+      var itemId = btn.getAttribute('data-item');
+      var state = btn.getAttribute('data-state');
+      var group = document.querySelector('.result-state-group[data-item="' + itemId + '"]');
+      if (group) {
+        group.setAttribute('data-state', state);
+        group.querySelectorAll('.result-state-btn').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      }
+      var extra = document.querySelector('[data-extra="' + itemId + '"]');
+      if (extra) extra.style.display = state === 'Crossed' ? 'block' : 'none';
     };
   });
   document.querySelectorAll('.result-evidence').forEach(function (input) {
@@ -2360,8 +2392,16 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
     var it = openItems[i];
     var row = document.querySelector('[data-row="' + it.id + '"]');
     if (!row) continue;
-    var state = row.querySelector('.result-state').value;
+    var state = row.querySelector('.result-state-group').getAttribute('data-state');
     var entry = { checklistItemId: it.id, state: state };
+    // Inspector-editable Risk/Window (defaults from the checklist item, see recordResultRowHtml_) --
+    // sent for every state, not just Crossed, since InspectionResults (Inspections.gs) records both
+    // regardless; they only actually shape anything downstream (the auto-created Finding) when this
+    // item is Crossed.
+    var riskSel = row.querySelector('.result-risk');
+    var windowInput = row.querySelector('.result-window');
+    if (riskSel) entry.riskLevel = riskSel.value;
+    if (windowInput && windowInput.value !== '') entry.resolutionWindowHours = Number(windowInput.value);
     if (state === 'Crossed') {
       var files = pendingFiles[it.id] || [];
       if (files.some(function (f) { return f.status === 'uploading'; })) {

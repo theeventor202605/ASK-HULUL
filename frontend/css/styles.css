@@ -128,6 +128,16 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .btn-icon.btn-danger{ background:transparent; color:var(--danger); border-color:transparent; }
 .btn-icon.btn-danger:hover{ background:var(--danger-soft); }
 .btn-icon.btn-ghost:hover{ background:var(--surface); }
+/* Record Results row's Ticked/Crossed/N-A 3-way icon toggle (recordResultRowHtml_, eventDetail.js) --
+   replaces what used to be a plain <select>. Unselected buttons stay low-contrast (same idle look as
+   any other .btn-icon.btn-secondary); the currently-picked one gets a solid soft-color fill so the
+   row's state reads at a glance without needing to open a dropdown. */
+.result-state-btn{ opacity:.5; }
+.result-state-btn:hover{ opacity:.85; }
+.result-state-btn.active{ opacity:1; }
+.result-state-btn.state-ticked.active{ background:var(--success-soft); color:var(--success); }
+.result-state-btn.state-crossed.active{ background:var(--danger-soft); color:var(--danger); }
+.result-state-btn.state-na.active{ background:var(--surface); color:var(--text-600); }
 .w-full{ width:100%; }
 
 /* Click guard (app-wide, wired once in ui.js): every .btn gets disabled + this look for 10s right
