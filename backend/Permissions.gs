@@ -36,58 +36,66 @@
 // here would throw at load time before ROLES exists (same bug class fixed earlier for a top-level
 // ROLES reference elsewhere). Auth.gs's ACCOUNT_CREATION_MATRIX has the same load-order constraint
 // (A also loads before U) and uses the same plain-string convention for the same reason.
+// REQ: "control who has Create, Read, Update and Delete for sections or Pages or tabs" -- each entry
+// now also carries `page` (a stable id -- see PERMISSION_PAGES_ in settings.js for the real
+// translated nav/tab label + "go to page" link each one maps to) and `crud` (one or more of
+// create/read/update/delete). Most backend actions were never split into 3 separate create/update/
+// delete role-checks in the first place -- a single function/role-check often already covers all
+// three (e.g. manageVenue's create-or-edit-or-delete) -- so `crud` legitimately lists more than one
+// letter for those; the Settings > Permissions matrix (settings.js) shows the SAME key/role-editor
+// under every column it's tagged with and says so, rather than pretending independent control exists
+// where the backend doesn't actually have it. `read` is sparse on purpose: most page/tab VISIBILITY
+// (who even sees a nav item or Event-workspace tab) is still hardcoded role arrays in app.js
+// (NAV_ITEMS) / eventDetail.js (EVENT_TABS), not wired into this registry -- a separate, larger
+// follow-up (turning those into their own admin-configurable 'X.view' keys) if ever needed.
 var PERMISSION_REGISTRY_ = {
   'finding.create': {
-    module: 'Risk Logging', label: 'Log a new finding',
+    module: 'Risk Logging', label: 'Log a new finding', page: 'findings', crud: ['create'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
   'finding.edit': {
-    module: 'Risk Logging', label: 'Edit a finding (before it\'s submitted)',
+    module: 'Risk Logging', label: 'Edit a finding (before it\'s submitted)', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
   'finding.delete': {
-    module: 'Risk Logging', label: 'Delete a finding (before it\'s submitted)',
+    module: 'Risk Logging', label: 'Delete a finding (before it\'s submitted)', page: 'findings', crud: ['delete'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
   'finding.addEvidence': {
-    module: 'Risk Logging', label: 'Attach evidence photos to a finding',
+    module: 'Risk Logging', label: 'Attach evidence photos to a finding', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
   'finding.resolve': {
-    module: 'Risk Logging', label: 'Submit a resolution to a finding',
+    module: 'Risk Logging', label: 'Submit a resolution to a finding', page: 'findings', crud: ['update'],
     defaultRoles: ['Vendor', 'Operator', 'Exhibitor']
   },
   'finding.review': {
-    module: 'Risk Logging', label: 'Accept/reject a submitted resolution',
+    module: 'Risk Logging', label: 'Accept/reject a submitted resolution', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
-  'participant.create': {
-    module: 'Participants', label: 'Create a participant (vendor/operator/exhibitor)',
-    defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
-  },
+  // participant.create/participant.edit (the old venue-wide Participants.gs create/update API) were
+  // removed from here -- Places.gs's createPlace/updatePlace (place.create/place.manage below) fully
+  // superseded them and these two keys had no requirePermission() call site left anywhere (confirmed
+  // by grep), same dead-code cleanup as the functions themselves.
   'place.create': {
     module: 'Participants', label: 'Add a temporary participant to an event (Participants tab map + form)',
+    page: 'participants', crud: ['create'],
     // Same five roles Places.gs's EVENT_PLACE_MANAGE_ROLES already allowed (SystemAdmin/EMCAdmin/
     // EMCManager/EventManager), plus Inspector -- REQ: "Inspector ... ability to add a temporary
-    // participant." A separate key from participant.create (not a shared one) because that key also
-    // gates the unrelated venue-wide createParticipant (Participants.gs); overriding its role list
-    // here would have silently changed that other feature too.
+    // participant."
     defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager', 'Inspector']
   },
-  'participant.edit': {
-    module: 'Participants', label: 'Edit a participant',
-    defaultRoles: ['EventManager', 'Inspector', 'SystemAdmin']
-  },
   'participant.assignDisciplines': {
-    module: 'Participants', label: 'Assign disciplines to participants (bulk)',
+    module: 'Participants', label: 'Assign disciplines to participants (bulk)', page: 'participantDisciplines', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'participant.dedupe': {
-    module: 'Participants', label: 'Remove duplicate participants',
+    module: 'Participants', label: 'Remove duplicate participants', page: 'participants', crud: ['delete'],
     defaultRoles: ['SystemAdmin', 'EventManager']
   },
   'place.manage': {
     module: 'Participants', label: 'Manage an event\'s participants (add account/edit/delete/view credentials)',
+    page: 'participants', crud: ['create', 'update', 'delete'],
     // Exactly Places.gs's old hardcoded EVENT_PLACE_MANAGE_ROLES -- migrating this call site is a
     // no-op for behavior until a SystemAdmin actually changes it in Settings > Permissions, same as
     // every other pilot migration.
@@ -95,46 +103,48 @@ var PERMISSION_REGISTRY_ = {
   },
   'venuePlace.manage': {
     module: 'Venues', label: 'Manage places within a venue\'s permanent catalog (add/edit/delete/view credentials)',
+    page: 'venues', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager']
   },
   'venue.manage': {
-    module: 'Venues', label: 'Create, edit, or delete a venue',
+    module: 'Venues', label: 'Create, edit, or delete a venue', page: 'venues', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager']
   },
   'zone.manage': {
-    module: 'Venues', label: 'Create, edit, or delete a zone',
+    module: 'Venues', label: 'Create, edit, or delete a zone', page: 'venues', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager']
   },
   'event.manage': {
-    module: 'Events', label: 'Create or edit an event',
+    module: 'Events', label: 'Create or edit an event', page: 'events', crud: ['create', 'update'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser']
   },
   'event.delete': {
-    module: 'Events', label: 'Delete an event (Planning status only)',
+    module: 'Events', label: 'Delete an event (Planning status only)', page: 'events', crud: ['delete'],
     defaultRoles: ['SystemAdmin', 'GAAdmin']
   },
   'subEvent.create': {
-    module: 'Events', label: 'Create a sub-event',
+    module: 'Events', label: 'Create a sub-event', page: 'subEvents', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager']
   },
   'event.assignManager': {
-    module: 'Events', label: 'Assign an Event Manager to an event',
+    module: 'Events', label: 'Assign an Event Manager to an event', page: 'venueTab', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'EMCManager', 'EMCAdmin']
   },
   'templateLibrary.manage': {
     module: 'Templates', label: 'Add or replace a library template (Inspection Company master documents)',
+    page: 'templateLibrary', crud: ['create', 'update'],
     defaultRoles: ['InspectionAdmin', 'SystemAdmin']
   },
   'template.send': {
-    module: 'Templates', label: 'Send readiness templates to an event',
+    module: 'Templates', label: 'Send readiness templates to an event', page: 'templates', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'template.setDeadline': {
-    module: 'Templates', label: 'Set an event\'s documents deadline',
+    module: 'Templates', label: 'Set an event\'s documents deadline', page: 'templates', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'meeting.manage': {
-    module: 'Meetings', label: 'Schedule, edit, or delete a meeting',
+    module: 'Meetings', label: 'Schedule, edit, or delete a meeting', page: 'meetings', crud: ['create', 'update', 'delete'],
     // NOTE: uploadEventTemplateFile/submitEventTemplate/reviewEventTemplate/openEventTemplate
     // (Templates.gs) are deliberately NOT migrated here -- those already have their own dedicated,
     // purpose-built admin surface (Settings > Configuration > Process tab, templateUploaderRoles_/
@@ -143,70 +153,70 @@ var PERMISSION_REGISTRY_ = {
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager']
   },
   'checklistItem.manage': {
-    module: 'Inspections', label: 'Create, edit, or delete a checklist catalogue item',
+    module: 'Inspections', label: 'Create, edit, or delete a checklist catalogue item', page: 'checklistItems', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
   },
   'checklistItem.dedupe': {
-    module: 'Inspections', label: 'Remove duplicate checklist catalogue items',
+    module: 'Inspections', label: 'Remove duplicate checklist catalogue items', page: 'checklistItems', crud: ['delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin']
   },
   'inspection.manage': {
-    module: 'Inspections', label: 'Schedule, edit, or delete an inspection visit',
+    module: 'Inspections', label: 'Schedule, edit, or delete an inspection visit', page: 'inspectionsTab', crud: ['create', 'update', 'delete'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'inspection.recordResults': {
-    module: 'Inspections', label: 'Record checklist results for an inspection',
+    module: 'Inspections', label: 'Record checklist results for an inspection', page: 'inspectionsTab', crud: ['update'],
     defaultRoles: ['Inspector', 'SystemAdmin']
   },
   'discipline.manage': {
-    module: 'Disciplines', label: 'Add a discipline to the catalogue',
+    module: 'Disciplines', label: 'Add a discipline to the catalogue', page: 'disciplinesCatalog', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin']
   },
   'discipline.identify': {
-    module: 'Disciplines', label: 'Identify which disciplines apply to an event',
+    module: 'Disciplines', label: 'Identify which disciplines apply to an event', page: 'disciplinesTab', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'inspectorQualification.manage': {
-    module: 'Disciplines', label: 'Set an inspector\'s qualification profile',
+    module: 'Disciplines', label: 'Set an inspector\'s qualification profile', page: 'inspectorQualifications', crud: ['create', 'update'],
     defaultRoles: ['InspectionAdmin', 'SystemAdmin', 'ProjectManager']
   },
   'inspectorAssignment.manage': {
-    module: 'Disciplines', label: 'Assign or remove an inspector on a discipline',
+    module: 'Disciplines', label: 'Assign or remove an inspector on a discipline', page: 'disciplinesTab', crud: ['create', 'update', 'delete'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'escalation.create': {
-    module: 'Risk Logging', label: 'Manually trigger an escalation for a finding',
+    module: 'Risk Logging', label: 'Manually trigger an escalation for a finding', page: 'escalations', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
   },
   'escalation.runCheck': {
-    module: 'Risk Logging', label: 'Manually run the escalation sweep',
+    module: 'Risk Logging', label: 'Manually run the escalation sweep', page: 'escalations', crud: ['update'],
     // Same default roles as escalation.create today (kept as a separate key since they're different
-    // actions) -- the automated 30-min trigger (Setup.gs) calls runEscalationCheck with no user at
+    // actions) -- the automated interval trigger (Setup.gs) calls runEscalationCheck with no user at
     // all and is unaffected by this; this key only gates a signed-in caller manually running it.
     defaultRoles: ['SystemAdmin', 'ProjectManager', 'InspectionAdmin']
   },
   'project.manage': {
-    module: 'Projects', label: 'Create or edit a project',
+    module: 'Projects', label: 'Create or edit a project', page: 'projects', crud: ['create', 'update'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser']
   },
   'project.delete': {
-    module: 'Projects', label: 'Delete a project',
+    module: 'Projects', label: 'Delete a project', page: 'projects', crud: ['delete'],
     defaultRoles: ['SystemAdmin', 'GAAdmin']
   },
   'venueApproval.recommend': {
-    module: 'Venue Approval', label: 'Record a venue evaluation recommendation',
+    module: 'Venue Approval', label: 'Record a venue evaluation recommendation', page: 'approval', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'venueApproval.decide': {
-    module: 'Venue Approval', label: 'Record the GA venue decision or reassign the venue',
+    module: 'Venue Approval', label: 'Record the GA venue decision or reassign the venue', page: 'approval', crud: ['update'],
     defaultRoles: ['GAAdmin', 'GAUser', 'SystemAdmin']
   },
   'reassignment.manage': {
-    module: 'Reassignment', label: 'Mark a user unavailable/available and reassign their work',
+    module: 'Reassignment', label: 'Mark a user unavailable/available and reassign their work', page: 'reassignment', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
   },
   'evidence.upload': {
-    module: 'Risk Logging', label: 'Upload evidence (photo/video) for a finding or resolution',
+    module: 'Risk Logging', label: 'Upload evidence (photo/video) for a finding or resolution', page: 'findings', crud: ['update'],
     // Shared by two different moments: an Inspector attaching evidence while logging a finding, and
     // a Vendor/Operator/Exhibitor attaching a required photo/video when submitting a resolution (see
     // resolveFinding, Findings.gs). Kept separate from finding.addEvidence (also Risk Logging) --
@@ -215,35 +225,35 @@ var PERMISSION_REGISTRY_ = {
     defaultRoles: ['Inspector', 'SystemAdmin', 'Vendor', 'Operator', 'Exhibitor']
   },
   'user.list': {
-    module: 'Accounts', label: 'View the user directory',
+    module: 'Accounts', label: 'View the user directory', page: 'accounts', crud: ['read'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
   },
   'organization.list': {
-    module: 'Accounts', label: 'View the organization directory',
+    module: 'Accounts', label: 'View the organization directory', page: 'organizations', crud: ['read'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EMCAdmin', 'InspectionAdmin', 'ProjectManager', 'EventManager', 'EMCManager']
   },
   'orgLabels.manage': {
-    module: 'Accounts', label: 'Change an organization\'s custom terminology labels',
+    module: 'Accounts', label: 'Change an organization\'s custom terminology labels', page: 'settings', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
   },
   'auditLog.view': {
-    module: 'Accounts', label: 'View the audit log',
+    module: 'Accounts', label: 'View the audit log', page: 'auditLog', crud: ['read'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
   },
   'user.resetPassword': {
-    module: 'Accounts', label: 'Reset another user\'s password',
+    module: 'Accounts', label: 'Reset another user\'s password', page: 'accounts', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
   },
   'notification.send': {
-    module: 'Notifications', label: 'Manually send a notification',
+    module: 'Notifications', label: 'Manually send a notification', page: 'notifications', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
   },
   'report.generate': {
-    module: 'Reports', label: 'Generate an opening/operational report',
+    module: 'Reports', label: 'Generate an opening/operational report', page: 'reports', crud: ['create'],
     defaultRoles: ['ProjectManager', 'SystemAdmin', 'InspectionAdmin']
   },
   'ticket.resolve': {
-    module: 'Support', label: 'Mark a support ticket resolved',
+    module: 'Support', label: 'Mark a support ticket resolved', page: 'support', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'SupportAgent']
   }
 };
@@ -293,6 +303,7 @@ function listPermissions(user, p) {
     var override = overrides[key];
     return {
       key: key, module: entry.module, label: entry.label,
+      page: entry.page || null, crud: entry.crud || [],
       defaultRoles: entry.defaultRoles,
       roles: (override && override.length) ? override : entry.defaultRoles,
       isOverridden: !!(override && override.length)

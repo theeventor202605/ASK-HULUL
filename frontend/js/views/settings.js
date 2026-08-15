@@ -370,125 +370,133 @@ function openImportIconLibraryModal_(onDone) {
  * resetPermission (backend/Permissions.gs) are SystemAdmin-only; allRoles rides along in the same
  * response, same "server hands back its own picklist" convention as getTemplateProcessConfig
  * (Templates.gs)/getEscalationConfig (Resolutions.gs) -- see processRoleFieldHtml_/readCheckedRoles_
- * in config.js for the checkbox-grid pattern this reuses.
+ * in config.js for the checkbox-grid pattern the role editor below still reuses.
  *
- * Foundation + pilot module rollout (explicit decision): Risk Logging (Findings) and Participants
- * are wired through requirePermission on the backend so far -- this tab will simply grow one more
- * module group as later passes migrate more of the app's other hardcoded requireRole call sites.
- * The left-hand Module/Role filters (perm-filters below) exist for exactly that growth -- with one
- * module this list is a formality, but it keeps the page navigable once there are six.
+ * REQ follow-up: "control who has Create, Read, Update and Delete for sections or Pages or tabs" ->
+ * clarified as: redesign this tab as a Page x CRUD matrix built on TOP OF the existing ~45 permission
+ * keys (each already tagged with a `page` and a `crud` array in PERMISSION_REGISTRY_, backend/
+ * Permissions.gs) -- NOT independent Read/visibility control (page/tab NAV access stays hardcoded in
+ * NAV_ITEMS/EVENT_TABS, unchanged) and not a backend split of the combined "manage" keys into 4
+ * separate ones (several keys legitimately cover Create+Update+Delete together as one action; the
+ * matrix shows that honestly by repeating the same chip in every column it applies to, rather than
+ * pretending those actions are independently controllable when they aren't).
  */
-// Maps a Permissions module name to the real Event-workspace tab it lives under (EVENT_TABS,
-// eventDetail.js -- 'participants'/'findings' are that array's own tab keys). Returns null for a
-// module with no known tab (future modules that migrate to requirePermission but don't map to a
-// single tab can just be left out here -- the "found in / go to page" line simply won't render).
-function moduleTabInfo_(moduleName) {
-  var MODULE_TAB_MAP_ = {
-    'Risk Logging': { tabKey: 'findings', tabLabel: t('tab_findings') },
-    'Participants': { tabKey: 'participants', tabLabel: Term('participant_plural') }
-  };
-  return MODULE_TAB_MAP_[moduleName] || null;
+// Every row the matrix can show, in a fixed reading order (roughly: Events workspace top-to-bottom,
+// then standalone admin pages). `eventTab` = a tab key inside EVENT_TABS (eventDetail.js) -- the
+// "go to page" link stashes it and sends the admin to Events, same highlight-on-open mechanism the
+// old per-module link used. `navPath` = a real top-level route the link can jump to directly. Every
+// id here must match a `page` value used in backend/Permissions.gs (PERMISSION_REGISTRY_) or that
+// row will just never gain any chips -- there's no other link between the two lists.
+function permissionPages_() {
+  return [
+    { id: 'events', label: Term('event_plural'), navPath: '/events' },
+    { id: 'subEvents', label: Term('subEvent_plural'), navPath: '/sub-events' },
+    { id: 'venueTab', label: t('tab_venue'), eventTab: 'venue' },
+    { id: 'venues', label: Term('venue_plural'), navPath: '/venues' },
+    { id: 'templates', label: t('tab_templates'), eventTab: 'templates' },
+    { id: 'templateLibrary', label: t('template_library_title', { term: Term('template_plural') }), navPath: '/template-library' },
+    { id: 'approval', label: t('tab_approval'), eventTab: 'approval' },
+    { id: 'disciplinesTab', label: t('tab_disciplines'), eventTab: 'disciplines' },
+    { id: 'disciplinesCatalog', label: Term('discipline_plural'), navPath: '/disciplines' },
+    { id: 'inspectorQualifications', label: t('qualifications_page_title', { term: Term('inspector_plural') }), navPath: '/inspector-qualifications' },
+    { id: 'inspectionsTab', label: t('tab_inspections'), eventTab: 'inspections' },
+    { id: 'checklistItems', label: Term('checklistItem_plural'), navPath: '/checklist-items' },
+    { id: 'findings', label: t('tab_findings'), eventTab: 'findings' },
+    { id: 'escalations', label: Term('escalation_plural'), eventTab: 'escalations' },
+    { id: 'participants', label: Term('participant_plural'), eventTab: 'participants' },
+    { id: 'participantDisciplines', label: Term('participant') + '’s ' + Term('discipline'), eventTab: 'participantDisciplines' },
+    { id: 'reports', label: Term('report_plural'), eventTab: 'reports' },
+    { id: 'meetings', label: Term('meeting_plural'), navPath: '/meetings' },
+    { id: 'projects', label: Term('project_plural'), navPath: '/projects' },
+    { id: 'reassignment', label: t('nav_reassignment'), navPath: '/reassignment' },
+    { id: 'notifications', label: t('nav_notifications'), navPath: '/notifications' },
+    { id: 'accounts', label: t('nav_users'), navPath: '/users' },
+    { id: 'organizations', label: t('nav_orgs'), navPath: '/organizations' },
+    { id: 'auditLog', label: t('nav_audit_log'), navPath: '/audit-log' },
+    { id: 'settings', label: t('nav_settings'), navPath: '/settings' },
+    { id: 'support', label: t('nav_support'), navPath: '/support' }
+  ];
 }
+
+var PERM_CRUD_COLUMNS_ = ['create', 'read', 'update', 'delete'];
 
 async function renderPermissionsTab_(content) {
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
   var data = await Api.call('listPermissions', {});
-  renderPermissionsTabBody_(content, data, '', '');
+  renderPermissionsTabBody_(content, data, '');
 }
 
-// activeModule/activeRole ('' = "All") are threaded through every re-render (including the ones
-// triggered by Save/Reset below) so picking a filter and then saving a row doesn't silently reset it.
-function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
-  activeModule = activeModule || '';
+// activeRole ('' = "All") is threaded through every re-render (including the ones triggered by a
+// modal Save/Reset below) so picking a filter and then editing a chip doesn't silently reset it.
+function renderPermissionsTabBody_(content, data, activeRole) {
   activeRole = activeRole || '';
 
-  // Module/role facet counts -- always computed off the FULL unfiltered set (not the currently
-  // visible subset), so the counts in the sidebar stay stable reference points ("Inspector has 4
-  // permissions total") rather than shifting as you filter, which reads as more predictable.
-  var moduleNames = [];
-  var moduleCounts = {};
-  data.permissions.forEach(function (perm) {
-    if (moduleCounts[perm.module] === undefined) { moduleCounts[perm.module] = 0; moduleNames.push(perm.module); }
-    moduleCounts[perm.module]++;
-  });
   var roleCounts = {};
   data.allRoles.forEach(function (r) { roleCounts[r.value] = 0; });
   data.permissions.forEach(function (perm) {
     perm.roles.forEach(function (r) { if (roleCounts[r] !== undefined) roleCounts[r]++; });
   });
-
-  // Role filter = "what can this role currently do" (an audit view), not just a column-hider --
-  // narrows to permissions the selected role is currently allowed for.
-  var visible = data.permissions.filter(function (perm) {
-    if (activeModule && perm.module !== activeModule) return false;
-    if (activeRole && perm.roles.indexOf(activeRole) === -1) return false;
-    return true;
-  });
-  var groups = {};
-  var groupOrder = [];
-  visible.forEach(function (perm) {
-    if (groups[perm.module] === undefined) { groups[perm.module] = []; groupOrder.push(perm.module); }
-    groups[perm.module].push(perm);
-  });
-
-  var moduleFilterHtml =
-    permFilterItemHtml_('module', '', t('all_modules'), data.permissions.length, activeModule === '') +
-    moduleNames.map(function (m) { return permFilterItemHtml_('module', m, m, moduleCounts[m], activeModule === m); }).join('');
   var roleFilterHtml =
     permFilterItemHtml_('role', '', t('all_roles'), data.permissions.length, activeRole === '') +
     data.allRoles.map(function (r) { return permFilterItemHtml_('role', r.value, r.label, roleCounts[r.value], activeRole === r.value); }).join('');
 
-  var groupsHtml = groupOrder.length
-    ? groupOrder.map(function (moduleName) {
-        var rows = groups[moduleName].map(function (perm) { return permissionRowHtml_(perm, data.allRoles); }).join('');
-        // REQ report: "Which module is this? ... refer to the specific page and tabs as it is more
-        // familiar, and easier to reach ... link to that page when clicked will highlight relevant
-        // sections for 10 seconds." Every module so far is a tab inside a specific Event's workspace
-        // (not a standalone top-level page), so there's no single event to deep-link into --
-        // moduleTabInfo_ below resolves the module name to the real tab it lives under; the link
-        // sends the user to the Events list with a one-shot "highlight this tab" flag, which
-        // renderEventDetail (eventDetail.js) picks up and flashes the moment ANY event is opened.
-        var tabInfo = moduleTabInfo_(moduleName);
-        return '<div class="icon-settings-group">' +
-          '<div class="icon-settings-group-title-row">' +
-            '<div class="icon-settings-group-title">' + esc(moduleName) + '</div>' +
-            (tabInfo
-              ? '<div class="perm-module-found-in">' +
-                  esc(t('module_found_in_event_tab', { term: Term('event').toLowerCase(), tab: tabInfo.tabLabel })) +
-                  ' <a href="#" class="perm-module-goto-link" data-goto-tab="' + esc(tabInfo.tabKey) + '">' + esc(t('go_to_page_link')) + '</a>' +
-                '</div>'
-              : '') +
-          '</div>' +
-          rows +
-          '</div>';
-      }).join('')
-    : '<div class="empty-state">' + esc(t('no_permissions_match_filter')) + '</div>';
+  // Bucket every permission key under its page, once per CRUD letter it covers -- a "manage" key
+  // with crud:['create','update','delete'] ends up in all three of those buckets for its page, which
+  // is exactly the "shown honestly in every column it applies to" behavior described above.
+  var byPage = {};
+  data.permissions.forEach(function (perm) {
+    if (!perm.page) return;
+    if (!byPage[perm.page]) byPage[perm.page] = { create: [], read: [], update: [], delete: [] };
+    (perm.crud || []).forEach(function (c) { if (byPage[perm.page][c]) byPage[perm.page][c].push(perm); });
+  });
+
+  var rowsHtml = permissionPages_().map(function (page) {
+    var bucket = byPage[page.id] || { create: [], read: [], update: [], delete: [] };
+    var gotoLink = page.eventTab
+      ? '<a href="#" class="perm-matrix-goto-link" data-goto-tab="' + esc(page.eventTab) + '">' + esc(t('go_to_page_link')) + '</a>'
+      : (page.navPath ? '<a href="#' + esc(page.navPath) + '" class="perm-matrix-goto-link">' + esc(t('go_to_page_link')) + '</a>' : '');
+
+    var cellsHtml = PERM_CRUD_COLUMNS_.map(function (crud) {
+      var perms = bucket[crud].filter(function (perm) { return !activeRole || perm.roles.indexOf(activeRole) !== -1; });
+      if (!perms.length) return '<td class="perm-matrix-crud-cell"><span class="perm-cell-empty">—</span></td>';
+      var chips = perms.map(function (perm) {
+        var shared = (perm.crud || []).length > 1;
+        return '<button type="button" class="perm-cell-chip' + (perm.isOverridden ? ' perm-cell-chip-overridden' : '') +
+          (shared ? ' perm-cell-chip-shared' : '') + '" data-perm-cell-key="' + esc(perm.key) +
+          '" title="' + esc(shared ? t('permission_shared_hint') : perm.label) + '">' +
+          esc(t('x_roles_count', { count: perm.roles.length })) + '</button>';
+      }).join('');
+      return '<td class="perm-matrix-crud-cell">' + chips + '</td>';
+    }).join('');
+
+    return '<tr>' +
+      '<td class="perm-matrix-page-cell"><div class="perm-matrix-page-name">' + esc(page.label) + '</div>' +
+      (gotoLink ? '<div>' + gotoLink + '</div>' : '') + '</td>' +
+      cellsHtml +
+      '</tr>';
+  }).join('');
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(t('permissions_intro')) + '</div>' +
-    '<div class="perm-layout">' +
-      '<div class="perm-filters">' +
-        '<div class="perm-filter-group"><div class="perm-filter-title">' + esc(t('modules_label')) + '</div>' + moduleFilterHtml + '</div>' +
-        '<div class="perm-filter-group"><div class="perm-filter-title">' + esc(t('roles_label')) + '</div>' + roleFilterHtml + '</div>' +
-      '</div>' +
-      '<div class="perm-main">' + groupsHtml + '</div>' +
-    '</div>';
+    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(t('permissions_matrix_intro')) + '</div>' +
+    '<div class="perm-filter-group" style="margin-bottom:16px;">' +
+      '<div class="perm-filter-title">' + esc(t('roles_label')) + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + roleFilterHtml + '</div>' +
+    '</div>' +
+    '<div class="perm-matrix-wrap"><table class="perm-matrix"><thead><tr>' +
+      '<th>' + esc(t('col_page')) + '</th>' +
+      '<th class="perm-matrix-crud-col">' + esc(t('crud_create')) + '</th>' +
+      '<th class="perm-matrix-crud-col">' + esc(t('crud_read')) + '</th>' +
+      '<th class="perm-matrix-crud-col">' + esc(t('crud_update')) + '</th>' +
+      '<th class="perm-matrix-crud-col">' + esc(t('crud_delete')) + '</th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 
-  content.querySelectorAll('[data-filter-module]').forEach(function (el) {
-    el.onclick = function () { renderPermissionsTabBody_(content, data, el.getAttribute('data-filter-module'), activeRole); };
-  });
   content.querySelectorAll('[data-filter-role]').forEach(function (el) {
-    el.onclick = function () { renderPermissionsTabBody_(content, data, activeModule, el.getAttribute('data-filter-role')); };
-  });
-  // Role chips are real (visually-hidden) checkboxes wrapped in a <label> -- clicking the chip
-  // toggles the checkbox natively, this just keeps the chip's own "active" look in sync with it.
-  content.querySelectorAll('.perm-role-chip input').forEach(function (cb) {
-    cb.onchange = function () { cb.closest('.perm-role-chip').classList.toggle('active', cb.checked); };
+    el.onclick = function () { renderPermissionsTabBody_(content, data, el.getAttribute('data-filter-role')); };
   });
 
-  // "Go to page" link (icon-settings-group-title-row above) -- stashes which tab to flash, then
-  // hands off to the Events list; see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js)
-  // for the highlight itself, which fires the moment any event is actually opened.
+  // "Go to page" link -- eventTab rows stash which tab to flash, then hand off to the Events list;
+  // see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js) for the highlight itself, which
+  // fires the moment any event is actually opened. navPath rows are a plain hash link, no JS needed.
   content.querySelectorAll('[data-goto-tab]').forEach(function (link) {
     link.onclick = function (e) {
       e.preventDefault();
@@ -498,37 +506,18 @@ function renderPermissionsTabBody_(content, data, activeModule, activeRole) {
     };
   });
 
-  content.querySelectorAll('[data-perm-save]').forEach(function (btn) {
-    btn.onclick = async function () {
-      var key = btn.getAttribute('data-perm-save');
-      var roles = readCheckedRoles_('perm-' + permKeySlug_(key));
-      if (!roles.length) { UI.toast(t('toast_at_least_one_role'), 'error'); return; }
-      try {
-        await Api.call('updatePermission', { key: key, roles: roles });
-        UI.toast(t('toast_permission_saved'), 'success');
-        await loadPermissions_force_();
-        var refreshed = await Api.call('listPermissions', {});
-        renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
-      } catch (err) { UI.error(err); }
-    };
-  });
-  content.querySelectorAll('[data-perm-reset]').forEach(function (btn) {
-    btn.onclick = async function () {
-      var key = btn.getAttribute('data-perm-reset');
-      try {
-        await Api.call('resetPermission', { key: key });
-        UI.toast(t('toast_reverted_default'), 'success');
-        await loadPermissions_force_();
-        var refreshed = await Api.call('listPermissions', {});
-        renderPermissionsTabBody_(content, refreshed, activeModule, activeRole);
-      } catch (err) { UI.error(err); }
+  content.querySelectorAll('[data-perm-cell-key]').forEach(function (chip) {
+    chip.onclick = function () {
+      var key = chip.getAttribute('data-perm-cell-key');
+      var perm = data.permissions.filter(function (p) { return p.key === key; })[0];
+      if (perm) openPermissionEditorModal_(perm, data.allRoles, content, data, activeRole);
     };
   });
 }
 
 function permFilterItemHtml_(kind, value, label, count, active) {
-  return '<div class="perm-filter-item' + (active ? ' active' : '') + '" data-filter-' + kind + '="' + esc(value) + '">' +
-    '<span>' + esc(label) + '</span><span class="perm-filter-count">' + count + '</span></div>';
+  return '<div class="perm-filter-item' + (active ? ' active' : '') + '" data-filter-' + kind + '="' + esc(value) + '" style="display:inline-flex;">' +
+    '<span>' + esc(label) + '</span><span class="perm-filter-count" style="margin-inline-start:6px;">' + count + '</span></div>';
 }
 
 // readCheckedRoles_ (config.js) builds a CSS class selector out of whatever prefix it's given
@@ -540,19 +529,20 @@ function permFilterItemHtml_(kind, value, label, count, active) {
 // Save) keeps the class name a single valid selector.
 function permKeySlug_(key) { return String(key).replace(/\./g, '-'); }
 
-function permissionRowHtml_(perm, allRoles) {
+// A chip's modal: same role-chip editor the old flat list used inline, now opened on demand from a
+// matrix cell via UI.openModal instead of always being on screen. Save/Reset live in the modal's own
+// footer (UI.openModal's buttons param) since the delegated listeners on `content` above don't reach
+// into #modalRoot.
+function openPermissionEditorModal_(perm, allRoles, content, data, activeRole) {
   var checkedSet = {}; perm.roles.forEach(function (r) { checkedSet[r] = true; });
   var prefix = 'perm-' + permKeySlug_(perm.key);
-  return '<div class="perm-row">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">' +
-      '<div><div style="font-weight:600;font-size:13px;">' + esc(perm.label) + '</div>' +
-        (perm.isOverridden ? '<div class="muted" style="font-size:10.5px;margin-top:2px;">' + esc(t('customized_default_is', { roles: perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ') })) + '</div>' : '') +
-      '</div>' +
-      '<div style="display:flex;gap:6px;flex:none;">' +
-        (perm.isOverridden ? '<button type="button" class="btn btn-secondary btn-sm" data-perm-reset="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + esc(t('reset_to_default')) + '</button>' : '') +
-        '<button type="button" class="btn btn-primary btn-sm" data-perm-save="' + esc(perm.key) + '" style="font-size:11px;padding:3px 10px;">' + t('save') + '</button>' +
-      '</div>' +
-    '</div>' +
+  var body =
+    '<div style="font-size:12.5px;line-height:1.5;margin-bottom:6px;">' + esc(perm.label) + '</div>' +
+    ((perm.crud || []).length > 1
+      ? '<div class="muted" style="font-size:11px;margin-bottom:12px;">' + esc(t('permission_shared_hint')) + '</div>' : '') +
+    (perm.isOverridden
+      ? '<div class="muted" style="font-size:10.5px;margin-bottom:10px;">' + esc(t('customized_default_is', { roles: perm.defaultRoles.map(roleLabelFromAllRoles_.bind(null, allRoles)).join(', ') })) + '</div>'
+      : '') +
     '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
       allRoles.map(function (r) {
         var checked = !!checkedSet[r.value];
@@ -560,8 +550,39 @@ function permissionRowHtml_(perm, allRoles) {
           '<input type="checkbox" class="' + prefix + '-check" value="' + esc(r.value) + '"' + (checked ? ' checked' : '') + ' />' +
           '<span>' + esc(r.label) + '</span></label>';
       }).join('') +
-    '</div>' +
-  '</div>';
+    '</div>';
+
+  var footerButtons = [];
+  if (perm.isOverridden) {
+    footerButtons.push({ label: t('reset_to_default'), className: 'btn-secondary', onClick: async function () {
+      try {
+        await Api.call('resetPermission', { key: perm.key });
+        UI.closeModal(); UI.toast(t('toast_reverted_default'), 'success');
+        await loadPermissions_force_();
+        var refreshed = await Api.call('listPermissions', {});
+        renderPermissionsTabBody_(content, refreshed, activeRole);
+      } catch (err) { UI.error(err); }
+    } });
+  }
+  footerButtons.push({ label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal });
+  footerButtons.push({ label: t('save'), className: 'btn-primary', onClick: async function () {
+    var roles = readCheckedRoles_(prefix);
+    if (!roles.length) { UI.toast(t('toast_at_least_one_role'), 'error'); return; }
+    try {
+      await Api.call('updatePermission', { key: perm.key, roles: roles });
+      UI.closeModal(); UI.toast(t('toast_permission_saved'), 'success');
+      await loadPermissions_force_();
+      var refreshed = await Api.call('listPermissions', {});
+      renderPermissionsTabBody_(content, refreshed, activeRole);
+    } catch (err) { UI.error(err); }
+  } });
+
+  UI.openModal(perm.label, body, footerButtons);
+  // Role chips are real (visually-hidden) checkboxes wrapped in a <label> -- clicking the chip
+  // toggles the checkbox natively, this just keeps the chip's own "active" look in sync with it.
+  document.querySelectorAll('#modalRoot .perm-role-chip input').forEach(function (cb) {
+    cb.onchange = function () { cb.closest('.perm-role-chip').classList.toggle('active', cb.checked); };
+  });
 }
 
 function roleLabelFromAllRoles_(allRoles, roleValue) {

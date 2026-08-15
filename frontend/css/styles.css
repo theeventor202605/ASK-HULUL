@@ -670,6 +670,30 @@ table.data-table tr:hover td{ background:#fafbff; }
 .perm-role-chip input{ display:none; }
 .perm-role-chip:hover{ border-color:var(--text-400); }
 .perm-role-chip.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-600); }
+/* REQ: "control who has Create, Read, Update and Delete for sections or Pages or tabs" -- Page x
+   CRUD matrix (replaces the old flat per-key list above). Each row is a Page/Tab; each of the 4
+   columns holds one clickable chip per permission key that covers that page+action; a key spanning
+   multiple columns (e.g. one "manage" key covering Create+Update+Delete) simply repeats its own chip
+   in each column it applies to -- .perm-cell-chip-shared marks that repetition so it doesn't read as
+   4 independent controls when it's really one. */
+.perm-matrix-wrap{ overflow-x:auto; }
+.perm-matrix{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.perm-matrix th{ text-align:start; font-size:10.5px; font-weight:700; color:var(--text-600); text-transform:uppercase;
+  letter-spacing:.04em; padding:8px 10px; border-bottom:2px solid var(--border); white-space:nowrap; }
+.perm-matrix th.perm-matrix-crud-col{ text-align:center; width:110px; }
+.perm-matrix td{ padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.perm-matrix tr:hover td{ background:var(--surface); }
+.perm-matrix-page-cell{ min-width:180px; }
+.perm-matrix-page-name{ font-weight:700; font-size:12.5px; }
+.perm-matrix-goto-link{ color:var(--accent); font-weight:700; text-decoration:none; font-size:11px; }
+.perm-matrix-goto-link:hover{ text-decoration:underline; }
+.perm-matrix-crud-cell{ text-align:center; }
+.perm-cell-chip{ display:inline-flex; align-items:center; gap:4px; padding:4px 9px; margin:2px; border:1px solid var(--border);
+  border-radius:999px; font-size:11px; font-weight:700; color:var(--text-600); background:var(--card); cursor:pointer; transition:.12s; }
+.perm-cell-chip:hover{ border-color:var(--accent); color:var(--accent-600); }
+.perm-cell-chip.perm-cell-chip-overridden{ border-color:var(--accent); background:var(--accent-soft); color:var(--accent-600); }
+.perm-cell-chip-shared{ opacity:.85; }
+.perm-cell-empty{ color:var(--text-400); font-size:12px; }
 .icon-swatch{ width:44px; height:44px; border-radius:10px; border:1px solid var(--border); background:transparent;
   display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer; transition:.12s; }
 .icon-swatch:hover{ border-color:var(--accent); background:transparent; transform:translateY(-1px); }
