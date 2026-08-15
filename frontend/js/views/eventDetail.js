@@ -631,6 +631,7 @@ var zoneDrawnItems_ = null;         // the zone's own boundary being drawn
 var zoneMapGen_ = 0; // same map-container-reuse race guard as venues.js's venueMapGen_ -- see its comment
 var zoneMapFullscreenCleanup_ = null;
 var zoneMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initZoneMap_
+var zoneMapFilterSyncCleanup_ = null; // UI.syncMapDotsToTableFilter cleanup, see initZoneMap_
 
 function addZoneCardHtml_(existingZone) {
   var isEdit = !!existingZone;
@@ -745,7 +746,14 @@ function initZoneMap_(venue, existingZone, siblingZones, places, eventId) {
     // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
     // maps." (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
     UI.drawZoneBoundaries(zoneMapInstance_, siblingZones);
-    UI.drawPlaceDots(zoneMapInstance_, places);
+    // BUG FIX (audit, this session): this map shares `places` with the Places table above
+    // (#eventPlacesListWrap) but had its own separate dots, un-synced with the table's own filter --
+    // wireEventPlacesFilterSync_ above only tracks the OTHER map's (eventPlacesMap) markers. Same
+    // gap, same generalized fix (UI.syncMapDotsToTableFilter, ui.js) -- a second independent watcher
+    // on the same table wrap, since this map is created/destroyed on its own lifecycle (only while
+    // the Add/Edit Zone card is open).
+    var zoneMapMarkers_ = UI.drawPlaceDots(zoneMapInstance_, places);
+    zoneMapFilterSyncCleanup_ = UI.syncMapDotsToTableFilter('eventPlacesListWrap', zoneMapInstance_, zoneMapMarkers_);
     // REQ: "Inspectors live location as they start inspections. This applies to all maps."
     if (eventId) zoneMapInspectorPollStop_ = UI.startInspectorLocationPolling(zoneMapInstance_, { eventId: eventId }, 20000);
     setTimeout(function () { if (zoneMapInstance_) zoneMapInstance_.invalidateSize(); }, 150);
@@ -772,6 +780,7 @@ function destroyZoneMap_() {
   zoneMapGen_++; // invalidate any still-pending initZoneMap_ setTimeout from an earlier render
   if (zoneMapFullscreenCleanup_) { zoneMapFullscreenCleanup_(); zoneMapFullscreenCleanup_ = null; }
   if (zoneMapInspectorPollStop_) { zoneMapInspectorPollStop_(); zoneMapInspectorPollStop_ = null; }
+  if (zoneMapFilterSyncCleanup_) { zoneMapFilterSyncCleanup_(); zoneMapFilterSyncCleanup_ = null; }
   if (zoneMapInstance_) { zoneMapInstance_.remove(); zoneMapInstance_ = null; zoneVenueBoundaryLayer_ = null; zoneDrawnItems_ = null; }
 }
 

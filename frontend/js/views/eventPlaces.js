@@ -26,6 +26,7 @@ var eventPlaceMapInstance_ = null;
 var eventPlaceMapMarker_ = null;
 var eventPlaceMapBoundaryLayer_ = null;
 var eventPlaceMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initEventPlaceMap_
+var eventPlaceMapFilterSyncCleanup_ = null; // UI.syncMapDotsToTableFilter cleanup, see initEventPlaceMap_
 
 async function tabParticipants(content, eventId, detail) {
   destroyEventPlaceMap_(); // in case a previous visit to this tab left one behind
@@ -84,7 +85,7 @@ async function tabParticipants(content, eventId, detail) {
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('participant_plural')) + '</div>' +
     (canDedupe ? '<button class="btn btn-secondary btn-sm" id="dedupeParticipantsBtn">' + esc(t('remove_duplicates_btn')) + '</button>' : '') +
-    '</div><div class="card-body">' + UI.table([
+    '</div><div class="card-body"><div id="eventPlaceParticipantsListWrap">' + UI.table([
       { key: 'name', label: t('col_name') },
       { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
@@ -105,7 +106,7 @@ async function tabParticipants(content, eventId, detail) {
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
         ) }] : []),
-      places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div>';
+      places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div></div>';
 
   if (canAddParticipant) {
     wireEventPlaceForm_(eventId, venue, zones, places);
@@ -513,7 +514,10 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
     // maps." (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
     UI.drawZoneBoundaries(eventPlaceMapInstance_, zones);
-    UI.drawPlaceDots(eventPlaceMapInstance_, places);
+    // BUG FIX (audit, this session): same "list filters, map dots don't" gap the Venue & Zones
+    // Places tab was originally reported for -- see UI.syncMapDotsToTableFilter's comment (ui.js).
+    var eventPlaceMapMarkers_ = UI.drawPlaceDots(eventPlaceMapInstance_, places);
+    eventPlaceMapFilterSyncCleanup_ = UI.syncMapDotsToTableFilter('eventPlaceParticipantsListWrap', eventPlaceMapInstance_, eventPlaceMapMarkers_);
     // REQ: "Inspectors live location as they start inspections. This applies to all maps." -- scoped
     // to this one event (not the whole venue) since that's what this tab is about.
     if (eventId) eventPlaceMapInspectorPollStop_ = UI.startInspectorLocationPolling(eventPlaceMapInstance_, { eventId: eventId }, 20000);
@@ -563,6 +567,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
 
 function destroyEventPlaceMap_() {
   if (eventPlaceMapInspectorPollStop_) { eventPlaceMapInspectorPollStop_(); eventPlaceMapInspectorPollStop_ = null; }
+  if (eventPlaceMapFilterSyncCleanup_) { eventPlaceMapFilterSyncCleanup_(); eventPlaceMapFilterSyncCleanup_ = null; }
   if (eventPlaceMapInstance_) { eventPlaceMapInstance_.remove(); eventPlaceMapInstance_ = null; eventPlaceMapMarker_ = null; eventPlaceMapBoundaryLayer_ = null; }
 }
 

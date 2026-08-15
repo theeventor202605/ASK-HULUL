@@ -487,6 +487,7 @@ var placeMapMarker_ = null;
 var placeMapBoundaryLayer_ = null;
 var placeMapFullscreenCleanup_ = null;
 var placeMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initPlaceMap_
+var placeMapFilterSyncCleanup_ = null; // UI.syncMapDotsToTableFilter cleanup, see initPlaceMap_
 var placeMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_ above -- see its comment
 
 async function renderVenuePlaces(params) {
@@ -540,7 +541,7 @@ async function renderVenuePlaces(params) {
       '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button>' +
     '</div></div>' +
     (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
-    '<div class="card"><div class="card-body">' + UI.table([
+    '<div class="card"><div class="card-body"><div id="venuePlacesListWrap">' + UI.table([
       { key: 'name', label: t('col_name') },
       { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
@@ -562,7 +563,7 @@ async function renderVenuePlaces(params) {
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
         ) }] : []),
-      places, { emptyText: t('empty_places') }) + '</div></div>';
+      places, { emptyText: t('empty_places') }) + '</div></div></div>';
 
   document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
   var detectPlacesBtn = document.getElementById('detectPlacesBtn');
@@ -989,7 +990,12 @@ function initPlaceMap_(venue, zones, places) {
     // maps." -- context for where the new place will land, same as the Event > Venue & Zones "Places
     // map" already showed (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
     UI.drawZoneBoundaries(placeMapInstance_, zones);
-    UI.drawPlaceDots(placeMapInstance_, places);
+    // BUG FIX (audit, this session): the Places table below has its own live filter box (built into
+    // UI.table) but nothing told these dots to follow it, so filtering the list left every dot
+    // showing regardless -- same gap Event > Venue & Zones' Places tab was originally reported for.
+    // UI.syncMapDotsToTableFilter (ui.js) is that fix generalized to any table+map pairing.
+    var placeMapMarkers_ = UI.drawPlaceDots(placeMapInstance_, places);
+    placeMapFilterSyncCleanup_ = UI.syncMapDotsToTableFilter('venuePlacesListWrap', placeMapInstance_, placeMapMarkers_);
     // REQ: "Inspectors live location as they start inspections. This applies to all maps."
     placeMapInspectorPollStop_ = UI.startInspectorLocationPolling(placeMapInstance_, { venueId: venue.id }, 20000);
     placeMapMarker_ = HululLeaflet.marker(center, { draggable: true }).addTo(placeMapInstance_);
@@ -1044,6 +1050,7 @@ function destroyPlaceMap_() {
   placeMapGen_++; // invalidate any still-pending initPlaceMap_ setTimeout from an earlier render
   if (placeMapFullscreenCleanup_) { placeMapFullscreenCleanup_(); placeMapFullscreenCleanup_ = null; }
   if (placeMapInspectorPollStop_) { placeMapInspectorPollStop_(); placeMapInspectorPollStop_ = null; }
+  if (placeMapFilterSyncCleanup_) { placeMapFilterSyncCleanup_(); placeMapFilterSyncCleanup_ = null; }
   if (placeMapInstance_) { placeMapInstance_.remove(); placeMapInstance_ = null; placeMapMarker_ = null; placeMapBoundaryLayer_ = null; }
 }
 

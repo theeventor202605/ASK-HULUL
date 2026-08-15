@@ -181,6 +181,7 @@ window.UI = {
     var body = rows.length
       ? rows.map(function (row) {
           var trAttrs = [];
+          if (row && row.id != null) trAttrs.push('data-row-id="' + esc(String(row.id)) + '"'); // generic row->data hook, e.g. UI.syncMapDotsToTableFilter below
           var searchParts = [];
           var cellsHtml = columns.map(function (c, i) {
             var html = typeof c.render === 'function' ? c.render(row) : esc(row[c.key] != null ? row[c.key] : '—');
@@ -598,6 +599,36 @@ window.UI = {
       markers[pl.id] = marker;
     });
     return markers;
+  },
+
+  // BUG FIX (audit, this session): every list page that pairs a UI.table of places/participants
+  // with a Leaflet map of the same rows (drawPlaceDots' markers, keyed by id) had the same gap the
+  // Venue & Zones Places tab was originally reported for -- the table's own built-in filter box
+  // hides non-matching rows, but nothing told the map's dots to follow, so a filtered list still
+  // showed every dot. Rather than re-copy that tab's bespoke MutationObserver into every other view
+  // (venues.js's Places catalog, eventPlaces.js's Participants tab, eventDetail.js's zone-drawing
+  // map), this is that same fix generalized: wrapId is the table's wrapping element id (its rows
+  // must have gone through UI.table so they carry data-row-id, added above -- requires each row
+  // object to have an `id` field, true for every Place/Participant), map is the Leaflet instance the
+  // markers were added to, and markers is exactly what drawPlaceDots returned ({id: marker}).
+  // Returns a cleanup() function the caller's destroy*Map_() MUST call (disconnects the observer),
+  // same convention as wireMapFullscreen/startInspectorLocationPolling above.
+  syncMapDotsToTableFilter(wrapId, map, markers) {
+    var wrap = document.getElementById(wrapId);
+    if (!wrap || !map || !markers) return function () {};
+    function sync() {
+      wrap.querySelectorAll('tbody tr[data-row-id]').forEach(function (tr) {
+        var marker = markers[tr.dataset.rowId];
+        if (!marker) return;
+        var show = tr.dataset.hululFilteredOut !== '1';
+        if (show) { if (!map.hasLayer(marker)) marker.addTo(map); }
+        else if (map.hasLayer(marker)) map.removeLayer(marker);
+      });
+    }
+    var observer = new MutationObserver(sync);
+    observer.observe(wrap, { attributes: true, attributeFilter: ['data-hulul-filtered-out'], subtree: true });
+    sync();
+    return function () { observer.disconnect(); };
   },
 
   // REQ: "Inspectors live location as they start inspections. This applies to all maps." Polls
