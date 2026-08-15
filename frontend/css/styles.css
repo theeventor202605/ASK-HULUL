@@ -358,6 +358,31 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    every other dot here, this one is always-visible text, not just a hover title. */
 .tl-nearest-label{ position:absolute; bottom:100%; margin-bottom:6px; transform:translateX(-50%);
   font-size:10.5px; font-weight:700; line-height:1.3; text-align:center; white-space:nowrap; }
+/* Extra .tl-dot colors used only by the Event Roadmap tab (eventDetail.js, tabRoadmap) -- the
+   Projects timeline above only ever needed green/red. */
+.tl-dot-gray{ background:var(--text-400); }
+.tl-dot-teal{ background:#0d9488; }
+.tl-dot-purple{ background:var(--purple); }
+.tl-dot-blue{ background:var(--info); }
+.tl-dot-amber{ background:var(--warning); }
+
+/* Event Roadmap tab (eventDetail.js, tabRoadmap/eventRoadmapHtml_) -- one horizontal line like
+   .project-timeline above, but plotting every scheduling milestone within a single event instead of
+   just per-event start/end dots. Two deliberate differences from .project-timeline: (1) every
+   milestone gets a date label along the bottom, not just "start days"; (2) every milestone gets its
+   own detail label above its dot too, not just the one nearest "now" -- crowded ones get pushed to a
+   taller "level" with a thin leader line (.rm-leader) tracing back down to their dot, worked out by
+   wireEventRoadmap_ once the browser has actually laid out the real label widths. margin-top starts
+   generous enough for a couple of stacked levels; wireEventRoadmap_ grows it further if needed. */
+.roadmap-timeline{ position:relative; height:16px; margin:70px 4px 40px; }
+.roadmap-track{ position:absolute; top:50%; left:0; right:0; height:3px; background:var(--border); border-radius:2px; transform:translateY(-50%); }
+.rm-leader{ position:absolute; bottom:50%; width:1px; background:var(--border); transform:translateX(-50%); z-index:1; }
+/* Fixed max-width + ellipsis is the "shorten long lines with three dots" ask -- the element's own
+   `title` attribute (set in eventRoadmapHtml_) carries the full untruncated text for a hover. */
+.rm-label{ position:absolute; transform:translateX(-50%); max-width:120px; font-size:10.5px;
+  font-weight:600; color:var(--text-900); text-align:center; line-height:1.25; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; cursor:default; z-index:2; }
+.roadmap-legend{ display:flex; gap:14px; font-size:10.5px; color:var(--text-600); margin-top:10px; flex-wrap:wrap; align-items:center; }
 .card-body{ padding:18px 20px; }
 
 /* ---------- Tabs ---------- */

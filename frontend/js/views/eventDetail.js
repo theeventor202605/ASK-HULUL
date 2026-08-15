@@ -11,6 +11,11 @@
 // is a UX nicety on top of a real enforcement, not a substitute for it.
 var EVENT_TABS = [
   ['overview', 'tab_overview'],
+  // REQ: "Roadmap tab ... reveals every single schedule in an event." A single line, oldest to
+  // newest, rolling up every scheduling milestone this Event has -- see tabRoadmap below (end of
+  // this file) and eventRoadmapMilestones_ for exactly which ones. Placed right after Overview since
+  // it's a big-picture summary like Overview is, just date-oriented instead of KPI-oriented.
+  ['roadmap', 'tab_roadmap'],
   // REQ: "Add an event chat page after overview tab." FINDING_ROLE_PARTICIPANT_ (findings.js) is
   // the existing Vendor/Operator/Exhibitor list -- reused here rather than redeclared.
   ['chat', 'tab_chat', function () { return t('tab_chat'); }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
@@ -64,6 +69,7 @@ var EVENT_TABS = [
 // redundant one-item dropdown.
 var EVENT_TAB_GROUPS_ = [
   { tabs: ['overview'] },
+  { tabs: ['roadmap'] },
   { tabs: ['chat'] },
   { tabs: ['venue'] },
   { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
@@ -104,7 +110,7 @@ var EVENT_TAB_RENDERERS_ = null;
 function eventTabRenderers_() {
   if (!EVENT_TAB_RENDERERS_) {
     EVENT_TAB_RENDERERS_ = {
-      overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
+      overview: tabOverview, roadmap: tabRoadmap, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
       disciplines: tabDisciplines, inspections: tabInspections, logPhotos: tabLogPhotos, findings: tabFindings,
       escalations: tabEscalations, findingPhotos: tabFindingPhotos, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
@@ -3055,4 +3061,183 @@ function eventLogRowHtml_(l) {
     '<span class="muted" style="white-space:nowrap;">' + esc(UI.fmtDate(l.timestamp)) + '</span></div>' +
     (l.targetType ? '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(l.targetType) + (detailsText ? ' — ' + esc(detailsText) : '') + '</div>' : '') +
     '</div>';
+}
+
+/* ---------------- Roadmap ---------------- */
+// REQ: "similar [to the Projects timeline] as road map. It reveals every single schedule in an
+// event ... starting from Event initiation, meetings, templates sent, then templates evaluated or
+// missed, then every scheduled inspection, Then Event start then sub events start, then sub events
+// end and event ended." One horizontal line (same visual language as projectTimelineHtml_,
+// projects.js) plotting every one of those, oldest to newest. Differs from that Project-level
+// timeline in the two ways specifically asked for here: (1) every milestone's date shows along the
+// bottom, not just a start day; (2) every milestone's own detail label shows permanently above its
+// dot too, not just the single one nearest "now" -- crowded labels get bumped to a higher "level"
+// with a leader line back down to their dot instead of overlapping (wireEventRoadmap_ below, run
+// after the browser has actually laid out the real, already-ellipsis-truncated label widths).
+var ROADMAP_LEVEL_BASE_PX_ = 14, ROADMAP_LEVEL_STEP_PX_ = 26, ROADMAP_LABEL_HALF_PX_ = 64;
+
+async function tabRoadmap(content, eventId, detail) {
+  var results = await Promise.all([
+    Api.call('getEventTemplates', { eventId: eventId }),
+    Api.call('listMeetings', { eventId: eventId }),
+    Api.call('listInspections', { eventId: eventId })
+  ]);
+  var templates = results[0], meetings = results[1], inspections = results[2];
+  var milestones = eventRoadmapMilestones_(detail, templates, meetings, inspections);
+
+  content.innerHTML =
+    '<div class="card" style="padding:16px 20px;">' +
+    '<div class="card-title">' + esc(t('tab_roadmap')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;margin-top:2px;">' + esc(t('roadmap_subtitle')) + '</div>' +
+    eventRoadmapHtml_(milestones) +
+    '</div>';
+
+  wireEventRoadmap_(content);
+}
+
+// Every scheduling milestone this Event has, unsorted-in/sorted-out oldest to newest. Each entry:
+// {ms, colorClass, big, type, label}. `type` is the semantic kind (used for the legend's "only show
+// what's actually present" filter, roadmapLegendHtml_ below) -- distinct from `colorClass` since a
+// couple of types deliberately share a color (Template Evaluated reuses the same green as Event
+// Start, Template Missed reuses the same red as Event End -- "good outcome" / "bad outcome" reads the
+// same way at a glance either way). Anything without a usable date on record (a Sub-Event never given
+// dates, a Template never sent, etc.) is simply skipped -- same "no date, no dot" rule
+// projectTimelineHtml_ (projects.js) already applies at the Project level.
+function eventRoadmapMilestones_(detail, templates, meetings, inspections) {
+  var out = [];
+  function add(iso, colorClass, big, type, label) {
+    var ms = new Date(iso).getTime();
+    if (isNaN(ms)) return;
+    out.push({ ms: ms, colorClass: colorClass, big: !!big, type: type, label: label });
+  }
+
+  add(detail.event.createdAt, 'tl-dot-gray', false, 'init', t('roadmap_ms_event_initiated', { term: Term('event') }));
+  add(detail.event.startDateTime, 'tl-dot-green', true, 'eventStart', t('roadmap_ms_event_start', { term: Term('event') }));
+  add(detail.event.endDateTime, 'tl-dot-red', true, 'eventEnd', t('roadmap_ms_event_end', { term: Term('event') }));
+
+  (detail.subEvents || []).forEach(function (s) {
+    add(s.startDateTime, 'tl-dot-teal', false, 'subEvent', t('roadmap_ms_subevent_start', { name: s.name }));
+    add(s.endDateTime, 'tl-dot-teal', false, 'subEvent', t('roadmap_ms_subevent_end', { name: s.name }));
+  });
+
+  (meetings || []).forEach(function (m) {
+    add(m.scheduledAt, 'tl-dot-purple', false, 'meeting', m.type || Term('meeting'));
+  });
+
+  (templates || []).forEach(function (tpl) {
+    if (tpl.sentAt) add(tpl.sentAt, 'tl-dot-blue', false, 'templateSent', t('roadmap_ms_template_status', { name: tpl.name, status: t('status_sent') }));
+    if (tpl.reviewedAt && tpl.status === 'Evaluated') add(tpl.reviewedAt, 'tl-dot-green', false, 'templateEvaluated', t('roadmap_ms_template_status', { name: tpl.name, status: t('status_evaluated') }));
+    if (tpl.reviewedAt && tpl.status === 'Missed') add(tpl.reviewedAt, 'tl-dot-red', false, 'templateMissed', t('roadmap_ms_template_status', { name: tpl.name, status: t('status_missed') }));
+  });
+
+  (inspections || []).forEach(function (insp) {
+    add(insp.scheduledAt, 'tl-dot-amber', false, 'inspection', t('roadmap_ms_inspection', { discipline: insp.disciplineName, term: Term('inspection') }));
+  });
+
+  return out.sort(function (a, b) { return a.ms - b.ms; });
+}
+
+// The line itself: track, one dot/leader/label/date group per milestone, positioned by pct only --
+// the label/leader's actual height (level) is worked out afterwards in wireEventRoadmap_, once real
+// (already CSS-ellipsis-truncated) label widths exist to measure. `title` on both the dot and the
+// label carries the FULL untruncated text + date, same "shorten visually, keep it one hover away"
+// pattern as the Projects timeline's own dot tooltips.
+function eventRoadmapHtml_(milestones) {
+  if (!milestones.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_data')) + '</div>';
+
+  var lo = milestones[0].ms, hi = milestones[milestones.length - 1].ms;
+  var span = Math.max(hi - lo, 1);
+  var pad = Math.max(span * 0.06, 60 * 60 * 1000); // at least an hour of lead-in/out on a very short event
+  var axisLo = lo - pad, axisSpan = (hi + pad) - (lo - pad);
+  function pct(ms) { return ((ms - axisLo) / axisSpan) * 100; }
+  function dateTimeText(ms) {
+    var d = new Date(ms);
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) + ', ' +
+      d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  var seenDayKeys = {};
+  var leadersHtml = '', dotsHtml = '', labelsHtml = '', datesHtml = '';
+  milestones.forEach(function (m, i) {
+    var p = pct(m.ms).toFixed(3);
+    var fullTitle = esc(m.label + ' — ' + dateTimeText(m.ms));
+    leadersHtml += '<div class="rm-leader" data-for="' + i + '" style="left:' + p + '%;height:' + ROADMAP_LEVEL_BASE_PX_ + 'px;"></div>';
+    dotsHtml += '<div class="tl-dot ' + m.colorClass + (m.big ? ' tl-dot-big' : '') + '" style="left:' + p + '%;" title="' + fullTitle + '"></div>';
+    labelsHtml += '<div class="rm-label" data-idx="' + i + '" data-pct="' + p + '" style="left:' + p + '%;bottom:' + (13 + ROADMAP_LEVEL_BASE_PX_) + 'px;" title="' + fullTitle + '">' + esc(m.label) + '</div>';
+    // Dates are day-granularity only (like projectTimelineHtml_'s own date labels) -- several
+    // same-day milestones (a morning meeting, an afternoon inspection) collapse into the one date
+    // label so the bottom row doesn't just repeat the same day over and over.
+    var d = new Date(m.ms);
+    var dayKey = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    if (!seenDayKeys[dayKey]) {
+      seenDayKeys[dayKey] = true;
+      datesHtml += '<div class="tl-date-label" style="right:calc(' + (100 - p) + '% + 6px);">' +
+        esc(d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })) + '</div>';
+    }
+  });
+
+  return '<div class="roadmap-timeline">' +
+    '<div class="roadmap-track"></div>' + leadersHtml + dotsHtml + labelsHtml + datesHtml +
+    '</div>' + roadmapLegendHtml_(milestones);
+}
+
+// One legend chip per milestone TYPE actually present on this Event's line (not one per milestone) --
+// same "only show what's actually on the line" principle projectStatsChipsHtml_ (projects.js) uses.
+var ROADMAP_LEGEND_TYPES_ = [
+  ['init', 'tl-dot-gray', 'legend_rm_init'],
+  ['eventStart', 'tl-dot-green', 'legend_event_start'], ['eventEnd', 'tl-dot-red', 'legend_event_end'],
+  ['subEvent', 'tl-dot-teal', 'legend_rm_subevent'], ['meeting', 'tl-dot-purple', 'legend_rm_meeting'],
+  ['templateSent', 'tl-dot-blue', 'legend_rm_template_sent'],
+  ['templateEvaluated', 'tl-dot-green', 'legend_rm_template_evaluated'],
+  ['templateMissed', 'tl-dot-red', 'legend_rm_template_missed'],
+  ['inspection', 'tl-dot-amber', 'legend_rm_inspection']
+];
+function roadmapLegendHtml_(milestones) {
+  var present = {}; milestones.forEach(function (m) { present[m.type] = true; });
+  return '<div class="roadmap-legend">' +
+    ROADMAP_LEGEND_TYPES_.filter(function (row) { return present[row[0]]; }).map(function (row) {
+      var vars = row[0] === 'eventStart' || row[0] === 'eventEnd' ? { term: Term('event') } :
+        row[0] === 'subEvent' ? { term: Term('subEvent') } : row[0] === 'meeting' ? { term: Term('meeting') } :
+        row[0] === 'inspection' ? { term: Term('inspection').toLowerCase() } :
+        (row[0] === 'templateSent' || row[0] === 'templateEvaluated' || row[0] === 'templateMissed') ? { term: Term('template') } : {};
+      return '<span><span class="tl-legend-dot ' + row[1] + '"></span>' + esc(t(row[2], vars)) + '</span>';
+    }).join('') +
+  '</div>';
+}
+
+// Post-layout pass: now that the browser has actually rendered each (already CSS-ellipsis-truncated)
+// .rm-label at its default level-0 height, work out which ones would visually collide and bump the
+// later one up to a higher level -- each level taller than the last -- extending that milestone's own
+// leader line to match, so it still visibly traces back down to its dot instead of floating free.
+// Pure geometry (fixed label half-width + measured container pixel width), not a real per-label text
+// measurement, since every label already shares the same fixed max-width (styles.css, .rm-label) --
+// good enough to keep them legible without a slower measure/reflow loop per label.
+function wireEventRoadmap_(content) {
+  var timelineEl = content.querySelector('.roadmap-timeline');
+  if (!timelineEl) return;
+  var width = timelineEl.getBoundingClientRect().width;
+  if (!width) return;
+  var labels = Array.prototype.slice.call(content.querySelectorAll('.rm-label'))
+    .sort(function (a, b) { return parseFloat(a.getAttribute('data-pct')) - parseFloat(b.getAttribute('data-pct')); });
+
+  var levelRightEdgePx = [];
+  var maxLevel = 0;
+  labels.forEach(function (el) {
+    var pct = parseFloat(el.getAttribute('data-pct'));
+    var x = (pct / 100) * width;
+    var left = x - ROADMAP_LABEL_HALF_PX_;
+    var level = 0;
+    while (levelRightEdgePx[level] !== undefined && left < levelRightEdgePx[level]) level++;
+    levelRightEdgePx[level] = x + ROADMAP_LABEL_HALF_PX_;
+    if (level > maxLevel) maxLevel = level;
+    var leaderPx = ROADMAP_LEVEL_BASE_PX_ + level * ROADMAP_LEVEL_STEP_PX_;
+    el.style.bottom = (13 + leaderPx) + 'px';
+    var leader = content.querySelector('.rm-leader[data-for="' + el.getAttribute('data-idx') + '"]');
+    if (leader) leader.style.height = leaderPx + 'px';
+  });
+
+  // Crowded milestones pushed labels above the container's default reserved space (styles.css'
+  // .roadmap-timeline margin-top) -- grow it so the tallest level's labels don't get visually clipped
+  // by whatever sits above this card.
+  if (maxLevel > 0) timelineEl.style.marginTop = (70 + maxLevel * ROADMAP_LEVEL_STEP_PX_) + 'px';
 }
