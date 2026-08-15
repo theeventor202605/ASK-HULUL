@@ -28,6 +28,11 @@ var EVENT_TABS = [
   // see tab_disciplines/tab_inspections in i18n.js).
   ['disciplines', 'tab_disciplines'],
   ['inspections', 'tab_inspections'],
+  // REQ: "Develop a completed checklists page under Inspections tab." Once every relevant participant
+  // on an Inspection is done, that Inspection's own Record-results action disappears from the
+  // Inspections list above (its status flips to 'Completed') -- this is the way back into one of
+  // those, still fully viewable/editable/printable/exportable (see tabCompletedChecklists below).
+  ['completedChecklists', 'tab_completed_checklists'],
   ['findings', 'tab_findings'],
   // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
   // cool. Only relevant to the same roles who can create a Finding at all (FINDING_ROLE_REVIEWER_,
@@ -73,7 +78,7 @@ var EVENT_TAB_GROUPS_ = [
   { tabs: ['chat'] },
   { tabs: ['venue'] },
   { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
-  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections'] },
+  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists'] },
   // REQ follow-up: "Move Log Photos to Findings tab" + explicit subtab order (Log Photos, Risk
   // Logging, Photo Timeline, Escalations) -- logPhotos moved out of inspectionsGroup above into here,
   // first; findings/findingPhotos/escalations reordered to match ('findings' tab's own display label
@@ -111,7 +116,7 @@ function eventTabRenderers_() {
   if (!EVENT_TAB_RENDERERS_) {
     EVENT_TAB_RENDERERS_ = {
       overview: tabOverview, roadmap: tabRoadmap, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
-      disciplines: tabDisciplines, inspections: tabInspections, logPhotos: tabLogPhotos, findings: tabFindings,
+      disciplines: tabDisciplines, inspections: tabInspections, completedChecklists: tabCompletedChecklists, logPhotos: tabLogPhotos, findings: tabFindings,
       escalations: tabEscalations, findingPhotos: tabFindingPhotos, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
     };
@@ -1823,6 +1828,49 @@ async function tabInspections(content, eventId, detail) {
       },
       { confirmLabel: t('delete') }
     );
+  });
+}
+
+// REQ: "Develop a completed checklists page under Inspections tab." One row per (Inspection,
+// participant) pair across the whole event whose checklist is fully recorded (listCompletedChecklists,
+// Inspections.gs) -- an Inspection whose own participants are ALL done drops its Record-results action
+// from the list above (status flips to 'Completed'), so this is the only way back into one of those.
+// Plain UI.table (search/sort/export CSV all come free from it, same as any other list page) rather
+// than a bespoke card -- this is a browse/find page, not a workflow like the choose-participant flow
+// above. Opening a row reuses openRecordResultsModal exactly as-is (same view = edit screen the
+// choose-participant flow already opens) -- built from lightweight {id, disciplineName, phase} /
+// {id, name} stand-ins since that's all that function ever actually reads off inspection/participant.
+async function tabCompletedChecklists(content, eventId, detail) {
+  var rows = await Api.call('listCompletedChecklists', { eventId: eventId });
+
+  content.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('tab_completed_checklists')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('completed_checklists_hint')) + '</div></div><div class="card-body">' +
+    UI.table([
+      { key: 'participantName', label: Term('participant') },
+      { key: 'disciplineName', label: Term('discipline') },
+      { key: 'phase', label: t('col_phase') },
+      { key: 'inspectorName', label: Term('inspector') },
+      { key: 'progress', label: t('col_progress'), render: r => t('progress_fraction', { done: r.done, total: r.total, term: Term('checklistItem_plural').toLowerCase() }) },
+      { key: 'lastRecordedAt', label: t('col_last_recorded'), render: r => UI.fmtDate(r.lastRecordedAt) },
+      { key: 'actions', label: t('actions'), exportable: false, sortable: false, render: r => {
+          // Same gate as the Inspections list's own Record-results button (canRecordInspection_) --
+          // SystemAdmin or the assigned Inspector -- so who can reopen/edit a completed checklist
+          // here matches who could have recorded it in the first place.
+          if (!canRecordInspection_({ inspectorId: r.inspectorId })) return '—';
+          return UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_checklist')) + '" data-open-checklist="' + r.inspectionId + '::' + r.participantId + '">' + ICON('record_results') + '</button>');
+        } }
+    ], rows, { emptyText: t('empty_no_completed_checklists') }) + '</div></div>';
+
+  content.querySelectorAll('[data-open-checklist]').forEach(function (btn) {
+    btn.onclick = function () {
+      var parts = btn.getAttribute('data-open-checklist').split('::');
+      var row = rows.filter(function (r) { return r.inspectionId === parts[0] && r.participantId === parts[1]; })[0];
+      if (!row) return;
+      var inspection = { id: row.inspectionId, disciplineName: row.disciplineName, phase: row.phase };
+      var participant = { id: row.participantId, name: row.participantName };
+      openRecordResultsModal(eventId, inspection, participant);
+    };
   });
 }
 

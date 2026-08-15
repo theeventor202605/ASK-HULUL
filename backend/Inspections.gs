@@ -458,6 +458,38 @@ function listInspections(user, p) {
     });
 }
 
+// REQ: "Develop a completed checklists page under Inspections tab." Once every relevant participant
+// on an Inspection is done, that Inspection's own "Record results" action disappears from the
+// Inspections list (tabInspections, eventDetail.js -- r.status !== 'Completed' gate), so there was no
+// way back into a checklist that had already been finished. One row per (Inspection, relevant
+// participant) pair across the WHOLE event whose OWN checklist is fully recorded --
+// inspectionCoverage_ already computes exactly that per Inspection; this just loops every Inspection
+// under the event and flattens the completed pairs into one list. lastRecordedAt is the most recent
+// InspectionResults.recordedAt among that pair's own rows -- results trickle in one item at a time,
+// so there's no single "completedAt" field to read off any one row; the latest one is the effective
+// "done on" date. Same Inspector-only-sees-their-own filtering as listInspections, via that function.
+function listCompletedChecklists(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var inspections = listInspections(user, { eventId: p.eventId });
+  var out = [];
+  inspections.forEach(function (insp) {
+    var coverage = inspectionCoverage_(insp);
+    coverage.perParticipant.forEach(function (pc) {
+      if (!pc.completed) return;
+      var accountIds = participantAccountIds_(pc.participantId);
+      var rows = findWhere('InspectionResults', function (r) { return r.inspectionId === insp.id && accountIds.indexOf(r.participantId) !== -1; });
+      var lastRecordedAt = rows.reduce(function (max, r) { return (!max || new Date(r.recordedAt) > new Date(max)) ? r.recordedAt : max; }, '');
+      out.push({
+        inspectionId: insp.id, disciplineName: insp.disciplineName, phase: insp.phase,
+        inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
+        participantId: pc.participantId, participantName: pc.participantName,
+        done: pc.done, total: pc.total, lastRecordedAt: lastRecordedAt
+      });
+    });
+  });
+  return out.sort(function (a, b) { return new Date(b.lastRecordedAt) - new Date(a.lastRecordedAt); });
+}
+
 // Already-recorded items for one inspection — lets the Record Results UI show what's left open.
 // participantId narrows to just what's been recorded for one participant so far (the modal opens
 // scoped to a single participant now — see recordInspectionResults).
