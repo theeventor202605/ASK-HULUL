@@ -138,7 +138,10 @@ async function renderVenueDetail(params) {
   // Only one of the three tabs' maps is ever live in the DOM at once, but a fresh render (including
   // switching tabs, which fully re-renders this page) should always start from a clean slate -- same
   // reasoning as tabVenue's own destroyEventPlacesMap_()/destroyZoneMap_() calls used to have.
-  destroyVenueMap_(); destroyZoneMap_(); destroyPlaceMap_();
+  // destroyZoneOverviewMap_ covers the Zones tab's always-visible read-only map (REQ follow-up: "Make
+  // zones map visible in view mode"), a separate Leaflet instance from zoneMapInstance_ (the +Add/
+  // Edit zone card's own interactive map) since the two can be on screen at once.
+  destroyVenueMap_(); destroyZoneMap_(); destroyZoneOverviewMap_(); destroyPlaceMap_();
   var root = document.getElementById('viewRoot');
   var venues = await Api.call('listVenues', { includeDeleted: true });
   var venue = venues.filter(function (v) { return v.id === params.id; })[0];
@@ -185,31 +188,54 @@ async function venueTabMain_(content, venue) {
   // "Create, edit, or delete a venue" -- same permission the Venues list page's own Edit/Delete
   // buttons are already gated by (renderVenues above).
   var canManage = hasPermission('venue.manage');
-  venueViewMode_(content, venue, canManage);
+  // REQ follow-up: "In venue tab: Make map visible in view mode. To the right side of the list." --
+  // fetched once here (not inside venueViewMode_ itself) so Cancelling back out of edit mode can
+  // just re-pass the same already-fetched arrays via closure instead of re-fetching (see
+  // venueViewMode_'s onCancel below); nothing changed if the edit was cancelled, so no staleness risk.
+  var placesWithCoords = [];
+  var zonesForMap = [];
+  try {
+    var vPlaces = await Api.call('listPlaces', { venueId: venue.id });
+    placesWithCoords = vPlaces.filter(function (p) { return p.lat !== '' && p.lat != null && p.lng !== '' && p.lng != null; });
+  } catch (e) { /* map still works without them */ }
+  try { zonesForMap = await Api.call('listZones', { venueId: venue.id }); } catch (e) { /* map still works without them */ }
+  venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap);
 }
 
-function venueViewMode_(content, venue, canManage) {
-  destroyVenueMap_(); // view mode has no map of its own -- in case Cancel is returning here from edit mode
+function venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap) {
+  destroyVenueMap_(); // in case Cancel is returning here from edit mode, or a previous visit left one behind
   content.innerHTML =
-    '<div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:2px;max-width:640px;">' +
-      venueInfoRow_(t('col_name'), esc(venue.name || '—')) +
-      venueInfoRow_(t('col_address'), esc(venue.address || '—')) +
-      venueInfoRow_(t('col_city'), esc(venue.city || '—')) +
-      venueInfoRow_(t('col_coordinates'), (venue.lat !== '' && venue.lat != null && venue.lng !== '' && venue.lng != null)
-        ? esc(Number(venue.lat).toFixed(5) + ', ' + Number(venue.lng).toFixed(5)) : '—') +
-      venueInfoRow_(t('field_boundary_color'), venueColorSwatchHtml_(venue.color)) +
-    '</div>' +
-    (canManage
-      ? '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-          '<button class="btn btn-primary" id="editVenueBtn">' + ICON('edit') + ' ' + esc(t('action_edit')) + '</button>' +
-        '</div>'
-      : '') +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">' +
+      '<div class="card" style="flex:1;min-width:320px;">' +
+        '<div class="card-body" style="display:flex;flex-direction:column;gap:2px;">' +
+          venueInfoRow_(t('col_name'), esc(venue.name || '—')) +
+          venueInfoRow_(t('col_address'), esc(venue.address || '—')) +
+          venueInfoRow_(t('col_city'), esc(venue.city || '—')) +
+          venueInfoRow_(t('col_coordinates'), (venue.lat !== '' && venue.lat != null && venue.lng !== '' && venue.lng != null)
+            ? esc(Number(venue.lat).toFixed(5) + ', ' + Number(venue.lng).toFixed(5)) : '—') +
+          venueInfoRow_(t('field_boundary_color'), venueColorSwatchHtml_(venue.color)) +
+        '</div>' +
+        (canManage
+          ? '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+              '<button class="btn btn-primary" id="editVenueBtn">' + ICON('edit') + ' ' + esc(t('action_edit')) + '</button>' +
+            '</div>'
+          : '') +
+      '</div>' +
+      // REQ follow-up: "Make map visible in view mode. To the right side of the list." -- read-only
+      // (initVenueViewMap_ below): pin + boundary + this venue's zones/places for context, no drag/
+      // draw affordances (those only exist in edit mode's own map, initVenueMap_).
+      '<div class="card" style="flex:1.3;min-width:320px;">' +
+        '<div class="card-body">' +
+          '<div id="venueViewMap" style="height:360px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
+  initVenueViewMap_(venue, placesWithCoords, zonesForMap);
   if (canManage) {
     document.getElementById('editVenueBtn').onclick = function () {
       renderVenueForm_(venue, {
         container: content,
-        onCancel: function () { venueViewMode_(content, venue, canManage); },
+        onCancel: function () { venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap); },
         onSaved: function () { Router.resolve(); }
       });
     };
@@ -226,6 +252,71 @@ function venueColorSwatchHtml_(color) {
   return '<span style="display:inline-flex;align-items:center;gap:6px;">' +
     '<span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--border);background:' + esc(c) + ';display:inline-block;"></span>' +
     esc(c) + '</span>';
+}
+
+// Read-only overview map for the Venue tab's view mode (REQ follow-up: "Make map visible in view
+// mode. To the right side of the list.") -- same pin/boundary/zones/places-for-context visuals as
+// the editable map (initVenueMap_) but with none of its editing affordances (no draggable marker, no
+// click-to-set-lat-lng, no boundary-drawing toolbar, no satellite/search wiring beyond the toggle).
+// Shares venueMapInstance_/venueMapMarker_/venueBoundaryLayer_/venueMapGen_/venueMapFullscreenCleanup_/
+// venueMapInspectorPollStop_ with initVenueMap_ -- view and edit mode are never both on screen at
+// once (venueViewMode_ swaps the whole container over to renderVenueForm_'s markup and back), so
+// there's only ever one "slot" for a venue map to live in, same as every other per-tab map singleton
+// in this file.
+function initVenueViewMap_(venue, placesWithCoords, zones) {
+  var el = document.getElementById('venueViewMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = t('venue_map_unavailable');
+    return;
+  }
+  var hasCoords = venue.lat !== '' && venue.lat != null && venue.lng !== '' && venue.lng != null;
+  var center = hasCoords ? [Number(venue.lat), Number(venue.lng)] : VENUE_DEFAULT_CENTER;
+  var existingBoundary = parseBoundaryClient_(venue.boundary);
+  var myGen = ++venueMapGen_;
+  setTimeout(function () {
+    if (myGen !== venueMapGen_) return; // superseded by a newer render before this tick fired
+    var mapEl = document.getElementById('venueViewMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    venueMapInstance_ = HululLeaflet.map('venueViewMap', { preferCanvas: true }).setView(center, hasCoords ? 15 : 6);
+    UI.requireClickToActivateMap(venueMapInstance_, mapEl);
+    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(venueMapInstance_);
+    var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
+    });
+    var showingSatellite = false;
+    var venueSatBtn = UI.mapToggleButton('toggleVenueViewSatelliteBtn', 'satellite_toggle', t('map_satellite'));
+    UI.mapControls(mapEl, [venueSatBtn]);
+    venueSatBtn.onclick = function () {
+      showingSatellite = !showingSatellite;
+      if (showingSatellite) { venueMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { venueMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(venueMapInstance_); venueSatBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
+    };
+    venueMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, venueMapInstance_);
+
+    if (hasCoords) venueMapMarker_ = HululLeaflet.marker(center).addTo(venueMapInstance_);
+    if (existingBoundary && existingBoundary.length >= 3) {
+      venueBoundaryLayer_ = HululLeaflet.featureGroup().addTo(venueMapInstance_);
+      venueBoundaryLayer_.addLayer(HululLeaflet.polygon(existingBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_, fillColor: venue.color || VENUE_BOUNDARY_DEFAULT_COLOR_, interactive: false
+      }));
+      venueMapInstance_.fitBounds(venueBoundaryLayer_.getBounds(), { padding: [20, 20] });
+      applyBoundaryPanLimit_(venueMapInstance_, venueBoundaryLayer_.getBounds());
+    }
+
+    // REQ: "Zone boundaries to be visible" / "no vendors showing on the [venue] map" -- context only,
+    // same as initVenueMap_'s own use of these two.
+    UI.drawZoneBoundaries(venueMapInstance_, zones);
+    UI.drawPlaceDots(venueMapInstance_, placesWithCoords);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    if (venue.id) venueMapInspectorPollStop_ = UI.startInspectorLocationPolling(venueMapInstance_, { venueId: venue.id }, 20000);
+
+    setTimeout(function () { if (venueMapInstance_) venueMapInstance_.invalidateSize(); }, 150);
+  }, 0);
 }
 
 // Shared by New Venue (existingVenue === null) and Edit Venue (existingVenue is the row being
@@ -625,11 +716,22 @@ var zoneMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_/plac
 var zoneMapFullscreenCleanup_ = null;
 var zoneMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initZoneMap_
 
+// REQ follow-up: "Make zones map visible in view mode. To the right side of the list." -- a second,
+// read-only, always-visible map distinct from zoneMapInstance_ above (that one only exists while the
+// +Add/Edit zone card is open, and can be open AT THE SAME TIME as this always-on overview, so the
+// two need separate Leaflet instances -- same "can't share one slot" reasoning as venueMapInstance_
+// vs placeMapInstance_ elsewhere in this file).
+var zoneOverviewMapInstance_ = null;
+var zoneOverviewMapGen_ = 0;
+var zoneOverviewMapFullscreenCleanup_ = null;
+var zoneOverviewMapInspectorPollStop_ = null;
+
 async function venueTabZones_(content, venue) {
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venues >
   // "Create, edit, or delete a zone".
   var canManage = hasPermission('zone.manage');
   destroyZoneMap_(); // in case a previous visit to this tab left one behind
+  destroyZoneOverviewMap_(); // same, for the always-visible read-only map below
 
   var results = await Promise.all([
     Api.call('listPlaces', { venueId: venue.id }),
@@ -665,29 +767,41 @@ async function venueTabZones_(content, venue) {
   var zonesTableRows = [{ id: 'ALL', name: t('all_zones_option'), createdAt: '' }].concat(zones);
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + '</div>' +
-    (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">' + esc(t('add_x_btn', { term: Term('zone').toLowerCase() })) + '</button>' : '') + '</div>' +
-    '<div class="card-body">' + UI.table([
-      // REQ: "any zero value in Zones list should be blank" -- a bare "0" reads as data (and clutters
-      // every zone row with mostly-zero columns); blank reads as "none" without drawing the eye.
-      { key: 'name', label: Term('zone') },
-      { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) || '' },
-      { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) || '' },
-      { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) || '' },
-      { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) || '' },
-      { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || '' },
-      { key: 'createdAt', label: t('col_created'), render: r => r.id === 'ALL' ? '' : UI.fmtDate(r.createdAt) }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-      r.id === 'ALL' ? '' :
-      UI.actionsCell(
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
-        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>'
-      ) }] : []),
-      zonesTableRows, {}) +
-    '</div></div>' +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">' +
+      '<div class="card" style="flex:1.4;min-width:340px;margin-bottom:0;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + '</div>' +
+      (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">' + esc(t('add_x_btn', { term: Term('zone').toLowerCase() })) + '</button>' : '') + '</div>' +
+      '<div class="card-body">' + UI.table([
+        // REQ: "any zero value in Zones list should be blank" -- a bare "0" reads as data (and
+        // clutters every zone row with mostly-zero columns); blank reads as "none" without drawing
+        // the eye.
+        { key: 'name', label: Term('zone') },
+        { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) || '' },
+        { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) || '' },
+        { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) || '' },
+        { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) || '' },
+        { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || '' },
+        { key: 'createdAt', label: t('col_created'), render: r => r.id === 'ALL' ? '' : UI.fmtDate(r.createdAt) }
+      ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+        r.id === 'ALL' ? '' :
+        UI.actionsCell(
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>'
+        ) }] : []),
+        zonesTableRows, {}) +
+      '</div></div>' +
+      // REQ follow-up: "Make zones map visible in view mode. To the right side of the list." --
+      // read-only (initZoneOverviewMap_ below): every zone's boundary + the venue's own boundary for
+      // reference + place dots, always visible -- distinct from the +Add/Edit zone card's own
+      // interactive draw-a-boundary map below, which only appears once opened.
+      '<div class="card" style="flex:1;min-width:300px;margin-bottom:0;">' +
+        '<div class="card-body"><div id="zoneOverviewMap" style="height:400px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div></div>' +
+      '</div>' +
+    '</div>' +
     // Populated/cleared by newZoneBtn below -- an inline card (map + polygon-draw tool), not a
     // modal, since "the map needs real room to be usable" (same reasoning as the Add-a-place form).
     '<div id="addZoneCardWrap"></div>';
+
+  initZoneOverviewMap_(venue, zones, places);
 
   if (canManage) document.getElementById('newZoneBtn').onclick = function () {
     var wrap = document.getElementById('addZoneCardWrap');
@@ -853,6 +967,83 @@ function destroyZoneMap_() {
   if (zoneMapFullscreenCleanup_) { zoneMapFullscreenCleanup_(); zoneMapFullscreenCleanup_ = null; }
   if (zoneMapInspectorPollStop_) { zoneMapInspectorPollStop_(); zoneMapInspectorPollStop_ = null; }
   if (zoneMapInstance_) { zoneMapInstance_.remove(); zoneMapInstance_ = null; zoneVenueBoundaryLayer_ = null; zoneDrawnItems_ = null; }
+}
+
+// REQ follow-up: "Make zones map visible in view mode. To the right side of the list." -- read-only:
+// every zone's boundary (UI.drawZoneBoundaries), the venue's own boundary for reference (dashed,
+// same treatment as initZoneMap_'s own zoneVenueBoundaryLayer_), and place dots for context. No
+// drawing/editing tools -- that's what the separate +Add/Edit zone card's own map (initZoneMap_,
+// zoneMapInstance_) is for, and the two can be open at the same time, hence the fully separate
+// Leaflet instance/gen-counter/cleanup vars declared above.
+function initZoneOverviewMap_(venue, zones, places) {
+  var el = document.getElementById('zoneOverviewMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = t('map_unavailable_zone_ok');
+    return;
+  }
+  var venueBoundary = venue ? parseBoundaryClient_(venue.boundary) : null;
+  var hasVenueCoords = !!(venue && venue.lat && venue.lng);
+  var center = hasVenueCoords ? [Number(venue.lat), Number(venue.lng)] : VENUE_DEFAULT_CENTER;
+  var myGen = ++zoneOverviewMapGen_;
+  setTimeout(function () {
+    if (myGen !== zoneOverviewMapGen_) return; // superseded by a newer render before this tick fired
+    var mapEl = document.getElementById('zoneOverviewMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    zoneOverviewMapInstance_ = HululLeaflet.map('zoneOverviewMap', { preferCanvas: true }).setView(center, hasVenueCoords ? 16 : 6);
+    UI.requireClickToActivateMap(zoneOverviewMapInstance_, mapEl);
+    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(zoneOverviewMapInstance_);
+    var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
+    });
+    var showingSatellite = false;
+    var satBtn = UI.mapToggleButton('toggleZoneOverviewSatelliteBtn', 'satellite_toggle', t('map_satellite'));
+    UI.mapControls(mapEl, [satBtn]);
+    satBtn.onclick = function () {
+      showingSatellite = !showingSatellite;
+      if (showingSatellite) { zoneOverviewMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(zoneOverviewMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { zoneOverviewMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(zoneOverviewMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
+    };
+    zoneOverviewMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, zoneOverviewMapInstance_);
+
+    var venueBoundaryLayer = null;
+    if (venueBoundary) {
+      venueBoundaryLayer = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+        color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.04, weight: 1.5, dashArray: '4,4', interactive: false
+      }).addTo(zoneOverviewMapInstance_);
+      applyBoundaryPanLimit_(zoneOverviewMapInstance_, venueBoundaryLayer.getBounds());
+    }
+    // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
+    // maps." (drawZoneBoundaries returns the layers it added, used below to fit the view to them.)
+    var zoneLayers = UI.drawZoneBoundaries(zoneOverviewMapInstance_, zones);
+    UI.drawPlaceDots(zoneOverviewMapInstance_, places);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    if (venue && venue.id) zoneOverviewMapInspectorPollStop_ = UI.startInspectorLocationPolling(zoneOverviewMapInstance_, { venueId: venue.id }, 20000);
+
+    // Fit to whatever's actually meaningful here -- every zone boundary together (the point of this
+    // map) when there are any, falling back to the venue boundary, else just the default center/zoom
+    // set above. Best-effort: a fitBounds edge case must never take the base map down.
+    try {
+      if (zoneLayers.length) {
+        zoneOverviewMapInstance_.fitBounds(HululLeaflet.featureGroup(zoneLayers).getBounds(), { padding: [20, 20] });
+      } else if (venueBoundaryLayer) {
+        zoneOverviewMapInstance_.fitBounds(venueBoundaryLayer.getBounds(), { padding: [20, 20] });
+      }
+    } catch (e) { /* fit is best-effort; the map still works at its default center/zoom */ }
+
+    setTimeout(function () { if (zoneOverviewMapInstance_) zoneOverviewMapInstance_.invalidateSize(); }, 150);
+  }, 0);
+}
+
+function destroyZoneOverviewMap_() {
+  zoneOverviewMapGen_++; // invalidate any still-pending initZoneOverviewMap_ setTimeout from an earlier render
+  if (zoneOverviewMapFullscreenCleanup_) { zoneOverviewMapFullscreenCleanup_(); zoneOverviewMapFullscreenCleanup_ = null; }
+  if (zoneOverviewMapInspectorPollStop_) { zoneOverviewMapInspectorPollStop_(); zoneOverviewMapInspectorPollStop_ = null; }
+  if (zoneOverviewMapInstance_) { zoneOverviewMapInstance_.remove(); zoneOverviewMapInstance_ = null; }
 }
 
 // Reads the currently-drawn zone boundary polygon (if any) back into a plain {lat,lng}[] array for
