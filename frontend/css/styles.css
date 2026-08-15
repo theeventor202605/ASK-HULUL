@@ -203,6 +203,13 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    permanently instead of only while full screen. */
 .hulul-map-controls{ position:absolute; left:10px; bottom:10px; z-index:1000; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 20px); }
 
+/* UI.mapLegend (ui.js) -- key for a map's dot colors (e.g. Places' Operator/Vendor/Exhibitor/Other).
+   Bottom-right, same z-index ceiling as the other map-overlay controls above; opposite corner from
+   .hulul-map-controls (bottom-left) so the two never overlap. */
+.hulul-map-legend{ position:absolute; right:10px; bottom:10px; z-index:1000; display:flex; flex-direction:column;
+  gap:5px; background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md);
+  padding:8px 10px; font-size:11.5px; color:var(--text-600); }
+
 /* REQ: "Inspectors live location as they start inspections." (UI.startInspectorLocationPolling,
    ui.js) -- a distinct amber pulsing dot so an inspector's live position never reads as just another
    participant (place-marker-dot) or as this device's own "my location" (my-location-dot, blue). */

@@ -343,12 +343,14 @@ async function tabVenue(content, eventId, detail) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + '</div>' +
     (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">' + esc(t('add_x_btn', { term: Term('zone').toLowerCase() })) + '</button>' : '') + '</div>' +
     '<div class="card-body">' + UI.table([
+      // REQ: "any zero value in Zones list should be blank" -- a bare "0" reads as data (and clutters
+      // every zone row with mostly-zero columns); blank reads as "none" without drawing the eye.
       { key: 'name', label: Term('zone') },
-      { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) },
-      { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) },
-      { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) },
-      { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) },
-      { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || 0 },
+      { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) || '' },
+      { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) || '' },
+      { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) || '' },
+      { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) || '' },
+      { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || '' },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
       UI.actionsCell(
@@ -374,21 +376,27 @@ async function tabVenue(content, eventId, detail) {
       '</div></div>'
       : '') +
 
-    // Places list -- below the zones list; a type filter to the left narrows both this list and
-    // the map's dots; clicking a (visible) row focuses the map above on that place
+    // Places list -- below the zones list. REQ: "Remove Filter by type from Places list and make
+    // sure filter works properly" -- the removed checklist panel (placeTypeFilterHtml_/
+    // applyPlaceTypeFilter_) matched rows to `places` by DOM position, which silently broke the
+    // moment a column got sorted: UI.table's sort reorders the actual <tr> nodes in place (see
+    // ui.js's own comment on hululTableRows_/the th-sortable click handler), so "row i" no longer
+    // meant "places[i]" once a user sorted the table. The table's own built-in filter box/column
+    // facets read data-tx-N/data-search attributes stamped onto each row at render time instead, so
+    // they stay correct regardless of sort order -- that's what now does the type filtering, nothing
+    // custom needed. Clicking a (visible) row still focuses the map above on that place -- that part
+    // was already sort-safe (each row's click handler below closes over its own `pl` at wiring time,
+    // not by re-deriving it from position).
     (detail.venue ?
       '<div class="card"><div class="card-header"><div class="card-title">Places</div></div>' +
-      '<div class="card-body" style="display:flex;gap:20px;">' +
-        placeTypeFilterHtml_() +
-        '<div style="flex:1;min-width:0;">' +
-          (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(t('click_place_to_locate_hint')) + '</div>' : '') +
-          '<div id="eventPlacesListWrap">' + UI.table([
-            { key: 'name', label: t('col_name') },
-            { key: 'type', label: t('col_type') },
-            { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
-            { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' }
-          ], places, { emptyText: t('no_places_recorded_hint', { venue: Term('venue').toLowerCase() }) }) + '</div>' +
-        '</div>' +
+      '<div class="card-body">' +
+        (places.length ? '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(t('click_place_to_locate_hint')) + '</div>' : '') +
+        '<div id="eventPlacesListWrap">' + UI.table([
+          { key: 'name', label: t('col_name') },
+          { key: 'type', label: t('col_type') },
+          { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
+          { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' }
+        ], places, { emptyText: t('no_places_recorded_hint', { venue: Term('venue').toLowerCase() }) }) + '</div>' +
       '</div></div>'
       : '');
 
@@ -408,9 +416,6 @@ async function tabVenue(content, eventId, detail) {
         tr.onclick = function () { focusEventPlace_(pl); };
       });
     }
-    content.querySelectorAll('.place-type-filter').forEach(function (cb) {
-      cb.onchange = function () { applyPlaceTypeFilter_(places); };
-    });
   }
 
   if (!canManage) return;
@@ -490,6 +495,11 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
       if (showingSatellite) { eventPlacesMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('map_toggle') + ' Map'; }
       else { eventPlacesMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
     };
+    // REQ: "Add legend to the map" -- stood in previously (incidentally) by the color swatch next to
+    // each checkbox in the now-removed type filter panel; now that that's gone, this is the only key
+    // to what each dot color means. Bottom-right, clear of mapControls (bottom-left) and the
+    // fullscreen toggle (top-right).
+    UI.mapLegend(el, EVENT_PLACE_TYPE_OPTIONS_.map(function (ty) { return { color: EVENT_PLACE_TYPE_COLORS_[ty], label: ty }; }));
     // REQ: "Inspectors live location as they start inspections. This applies to all maps."
     if (eventId) eventPlacesMapInspectorPollStop_ = UI.startInspectorLocationPolling(eventPlacesMapInstance_, { eventId: eventId }, 20000);
 
@@ -540,7 +550,17 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
       marker.on('click', function () { focusEventPlace_(pl); });
       eventPlacesMarkers_[pl.id] = marker;
     });
-    if (bounds.length) eventPlacesMapInstance_.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+    // REQ: "At least two opposite sides of the venue boundaries should be touching the edge of the
+    // Places map canvas." Fitting to the combined bounds (boundary + zones + dots) with padding, as
+    // before, left the boundary floating with a margin on every side. Leaflet's fitBounds picks the
+    // largest zoom at which the given bounds still fit entirely inside the container -- with zero
+    // padding, that means the limiting dimension (whichever the boundary is relatively wider/taller
+    // on versus the canvas) ends up flush against both of its edges by construction, i.e. at least
+    // one pair of opposite sides always touches. Anchored on the venue boundary specifically (not the
+    // wider bounds array) so it's the boundary that touches, regardless of where zones/dots happen to
+    // sit; falls back to the old dots/zones fit when there's no boundary to anchor to at all.
+    if (eventPlacesBoundaryLayer_) eventPlacesMapInstance_.fitBounds(eventPlacesBoundaryLayer_.getBounds(), { padding: [0, 0], maxZoom: 19 });
+    else if (bounds.length) eventPlacesMapInstance_.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
     setTimeout(function () { if (eventPlacesMapInstance_) eventPlacesMapInstance_.invalidateSize(); }, 150);
   }, 0);
 }
@@ -721,62 +741,20 @@ function getZoneBoundaryValue_() {
   return ring.map(function (ll) { return { lat: ll.lat, lng: ll.lng }; });
 }
 
-// Filter panel to the left of the Places list -- Operator/Vendor/Exhibitor/Other, all on by
-// default. Matches Places' own `type` field (PLACE_TYPES in venues.js/Places.gs). Each type also
-// gets its own map pin color (a swatch next to its checkbox doubles as the legend) -- red is
-// reserved for is-focused (see the CSS !important override) so it's never a type's own color.
+// Place-type -> map pin color (EVENT_PLACE_TYPE_OPTIONS_ order also drives the map legend, see
+// UI.mapLegend call in initEventPlacesMap_ above). Matches Places' own `type` field (PLACE_TYPES in
+// venues.js/Places.gs). Red is reserved for is-focused (see the CSS !important override) so it's
+// never a type's own color.
+//
+// REQ: "Remove Filter by type from Places list and make sure filter works properly" -- this used to
+// also drive a checkbox filter panel (placeTypeFilterHtml_/applyPlaceTypeFilter_) that matched table
+// rows to the `places` array by DOM position. That broke silently the moment a column got sorted
+// (UI.table's sort reorders the actual <tr> nodes -- see ui.js), so "row i" stopped meaning
+// "places[i]". Removed in favor of the table's own built-in filter box/column facets, which read
+// data-tx-N/data-search attributes stamped onto each row at render time and so stay correct
+// regardless of sort order.
 var EVENT_PLACE_TYPE_OPTIONS_ = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
 var EVENT_PLACE_TYPE_COLORS_ = { Operator: '#4f46e5', Vendor: '#16a34a', Exhibitor: '#d97706', Other: '#2563eb' };
-function placeTypeFilterHtml_() {
-  return '<div style="min-width:120px;flex:none;">' +
-    '<div class="field-label" style="margin-top:0;">' + esc(t('filter_by_type_label')) + '</div>' +
-    EVENT_PLACE_TYPE_OPTIONS_.map(function (ty) {
-      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:8px 0;cursor:pointer;">' +
-        '<input type="checkbox" class="place-type-filter" value="' + ty + '" checked /> ' +
-        '<span class="place-type-swatch" style="background:' + EVENT_PLACE_TYPE_COLORS_[ty] + ';"></span> ' + esc(ty) + '</label>';
-    }).join('') +
-  '</div>';
-}
-
-// Hides/shows both the matching table rows and their map dots together, so the list and the map
-// stay in sync -- checking/unchecking a type here is the only thing that changes what's plotted.
-//
-// BUG (REQ report): "When Filtered by type and user clicks on next page, next page loads with
-// filter not considered." This used to set tr.style.display directly. UI.table's own pager
-// (hululApplyPagination_, ui.js) re-derives style.display for EVERY row on every page change from
-// its own data-hulul-filtered-out marker (set by the table's built-in search box) -- it has no idea
-// this type checklist exists, so clicking Next/Prev blindly overwrote whatever this function had
-// just hidden, and the "new page" showed every type again. Marking the same data-hulul-filtered-out
-// attribute the pager already respects, then re-running its pagination pass (hululTableRows_ /
-// hululApplyPagination_, both plain globals in ui.js, loaded well before this file), keeps the two
-// filters in sync instead of one clobbering the other -- exactly what ui.js's own filter-input
-// handler does when its text box changes.
-function applyPlaceTypeFilter_(places) {
-  var enabled = {};
-  document.querySelectorAll('.place-type-filter:checked').forEach(function (cb) { enabled[cb.value] = true; });
-  var wrap = document.querySelector('#eventPlacesListWrap .table-wrap');
-  var tbody = wrap ? wrap.querySelector('tbody') : null;
-  var rows = tbody ? hululTableRows_(tbody) : [];
-  rows.forEach(function (tr, i) {
-    var pl = places[i];
-    if (!pl) return; // the table's own empty-state row when there are no places at all
-    var show = !!enabled[pl.type];
-    tr.dataset.hululFilteredOut = show ? '' : '1';
-    var marker = eventPlacesMarkers_[pl.id];
-    if (marker && eventPlacesMapInstance_) {
-      var hasCoords = pl.lat !== '' && pl.lat != null && pl.lng !== '' && pl.lng != null;
-      if (show && hasCoords) { if (!eventPlacesMapInstance_.hasLayer(marker)) marker.addTo(eventPlacesMapInstance_); }
-      else if (eventPlacesMapInstance_.hasLayer(marker)) { eventPlacesMapInstance_.removeLayer(marker); }
-    }
-  });
-  if (!wrap) return;
-  if (wrap.querySelector('.table-pager')) {
-    wrap.dataset.hululPage = '1'; // the matching set changed -- back to page 1, same as the search box
-    hululApplyPagination_(wrap);
-  } else {
-    rows.forEach(function (r) { r.style.display = r.dataset.hululFilteredOut === '1' ? 'none' : ''; });
-  }
-}
 
 // Called from a places-list row click (and from clicking a dot itself) -- pans/zooms the map onto
 // that place, highlights its dot, and forces its name tooltip open (closing any other forced-open
@@ -787,7 +765,10 @@ function focusEventPlace_(place) {
     return;
   }
   if (!eventPlacesMapInstance_ || !document.getElementById('eventPlacesMap')) return;
-  eventPlacesMapInstance_.flyTo([Number(place.lat), Number(place.lng)], 17, { duration: 0.6 });
+  // REQ: "when clicking on a row map ... filters accordingly with max zoom" -- 19 matches both tile
+  // layers' own maxZoom (osmLayer/satelliteLayer, initEventPlacesMap_ above), i.e. as far in as this
+  // map ever goes.
+  eventPlacesMapInstance_.flyTo([Number(place.lat), Number(place.lng)], 19, { duration: 0.6 });
   Object.keys(eventPlacesMarkers_).forEach(function (id) {
     var marker = eventPlacesMarkers_[id];
     var isFocused = id === place.id;

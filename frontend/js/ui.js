@@ -514,6 +514,23 @@ window.UI = {
     return btn;
   },
 
+  // Small always-visible key for what a map's dot colors mean (e.g. Places' Operator/Vendor/
+  // Exhibitor/Other -- EVENT_PLACE_TYPE_COLORS_, eventDetail.js). Appended directly into mapEl, same
+  // appendChild-after-map-creation technique as wireMapFullscreen's own button and mapControls above
+  // -- living inside mapEl from the start means it survives going full screen without needing
+  // extraControls' reparenting trick. Bottom-right corner: clear of mapControls (bottom-left) and the
+  // fullscreen toggle (top-right). Re-callable (replaces its own contents) so a caller can refresh it
+  // if the item set ever changes without leaving a stale duplicate legend behind.
+  mapLegend(mapEl, items) {
+    if (!mapEl) return null;
+    var wrap = mapEl.querySelector('.hulul-map-legend');
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'hulul-map-legend'; mapEl.appendChild(wrap); }
+    wrap.innerHTML = (items || []).map(function (it) {
+      return '<span style="display:flex;align-items:center;gap:5px;"><span class="place-type-swatch" style="background:' + it.color + ';"></span>' + esc(it.label) + '</span>';
+    }).join('');
+    return wrap;
+  },
+
   // REQ: "Zone boundaries to be visible. This applies to all maps." Draws every zone's own boundary
   // polygon (its own picked color, falling back to the auto-cycled ZONE_BOUNDARY_COLORS_ palette --
   // eventDetail.js, loaded app-wide -- for zones predating the color field) with a permanent centered

@@ -203,9 +203,9 @@ async function renderProjects() {
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('project_plural')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('projects_subtitle', { term: Term('event_plural').toLowerCase() })) + '</div></div>' +
-    '<div style="display:flex;align-items:center;gap:16px;">' +
-      projectsEndDotsToggleHtml_(showEndDots) +
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">' +
       (canManage ? '<button class="btn btn-primary" id="newProjectBtn">' + esc(t('new_x', { term: Term('project').toLowerCase() })) + '</button>' : '') +
+      projectsEndDotsToggleHtml_(showEndDots) +
     '</div>' +
     '</div>' +
     (projects.length
