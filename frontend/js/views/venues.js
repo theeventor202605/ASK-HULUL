@@ -54,27 +54,25 @@ async function renderVenues() {
     '<div class="page-subtitle">' + esc(t('venues_subtitle', { term: Term('venue_plural'), eventTerm: Term('event_plural') })) + '</div></div>' +
     '<button class="btn btn-primary" id="newVenueBtn">' + esc(t('new_x', { term: Term('venue').toLowerCase() })) + '</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'name', label: t('col_name') }, { key: 'address', label: t('col_address') }, { key: 'city', label: t('col_city') },
+      // REQ follow-up: "Make the venue name a hyperlink and remove the Places icon" -- the name
+      // itself is now the single entry point into the tabbed venue detail page (renderVenueDetail
+      // below), landing on its Venue tab; Zones/Places are just tabs on that same page now, not
+      // separate destinations that need their own row-action icon.
+      { key: 'name', label: t('col_name'), render: r => '<a href="#/venues/' + esc(r.id) + '">' + esc(r.name) + '</a>' },
+      { key: 'address', label: t('col_address') }, { key: 'city', label: t('col_city') },
       { key: 'lat', label: t('col_coordinates'), render: r => (r.lat && r.lng) ? (Number(r.lat).toFixed(4) + ', ' + Number(r.lng).toFixed(4)) : '—' },
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'actions', label: t('actions'), render: r =>
-          UI.actionsCell(
-            '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('places_label')) + '" data-manage-places="' + esc(r.id) + '">' + ICON('location_pin') + '</button>' +
-            (canManage
-              ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
+          canManage
+            ? UI.actionsCell(
+                '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-venue="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
                 '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-venue="' + esc(r.id) + '">' + ICON('delete') + '</button>'
-              : '')
-          )
+              )
+            : '—'
       }
     ], venues, {}) + '</div></div>';
 
   document.getElementById('newVenueBtn').onclick = function () { window.location.hash = '#/venues/new'; };
-  // REQ follow-up: "Venue main page to become a tab and Places to become the third tab" -- both
-  // actions now land on the single tabbed venue detail page (renderVenueDetail below), just opened
-  // to a different starting tab.
-  document.querySelectorAll('[data-manage-places]').forEach(function (btn) {
-    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-manage-places') + '?tab=places'; };
-  });
   document.querySelectorAll('[data-edit-venue]').forEach(function (btn) {
     btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-edit-venue'); };
   });
