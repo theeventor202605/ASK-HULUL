@@ -188,21 +188,10 @@ async function venueTabMain_(content, venue) {
   // "Create, edit, or delete a venue" -- same permission the Venues list page's own Edit/Delete
   // buttons are already gated by (renderVenues above).
   var canManage = hasPermission('venue.manage');
-  // REQ follow-up: "In venue tab: Make map visible in view mode. To the right side of the list." --
-  // fetched once here (not inside venueViewMode_ itself) so Cancelling back out of edit mode can
-  // just re-pass the same already-fetched arrays via closure instead of re-fetching (see
-  // venueViewMode_'s onCancel below); nothing changed if the edit was cancelled, so no staleness risk.
-  var placesWithCoords = [];
-  var zonesForMap = [];
-  try {
-    var vPlaces = await Api.call('listPlaces', { venueId: venue.id });
-    placesWithCoords = vPlaces.filter(function (p) { return p.lat !== '' && p.lat != null && p.lng !== '' && p.lng != null; });
-  } catch (e) { /* map still works without them */ }
-  try { zonesForMap = await Api.call('listZones', { venueId: venue.id }); } catch (e) { /* map still works without them */ }
-  venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap);
+  venueViewMode_(content, venue, canManage);
 }
 
-function venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap) {
+function venueViewMode_(content, venue, canManage) {
   destroyVenueMap_(); // in case Cancel is returning here from edit mode, or a previous visit left one behind
   content.innerHTML =
     '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">' +
@@ -221,21 +210,23 @@ function venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap
             '</div>'
           : '') +
       '</div>' +
-      // REQ follow-up: "Make map visible in view mode. To the right side of the list." -- read-only
-      // (initVenueViewMap_ below): pin + boundary + this venue's zones/places for context, no drag/
-      // draw affordances (those only exist in edit mode's own map, initVenueMap_).
+      // REQ follow-up: "Make map visible in view mode. To the right side of the list" then "In venue
+      // map only show boundaries of the venue" -- read-only (initVenueViewMap_ below): just this
+      // venue's own pin + its own boundary, no zones/places/inspector-location context overlays (those
+      // belong on the Zones tab's own map) and no drag/draw affordances (those only exist in edit
+      // mode's own map, initVenueMap_).
       '<div class="card" style="flex:1.3;min-width:320px;">' +
         '<div class="card-body">' +
           '<div id="venueViewMap" style="height:360px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
         '</div>' +
       '</div>' +
     '</div>';
-  initVenueViewMap_(venue, placesWithCoords, zonesForMap);
+  initVenueViewMap_(venue);
   if (canManage) {
     document.getElementById('editVenueBtn').onclick = function () {
       renderVenueForm_(venue, {
         container: content,
-        onCancel: function () { venueViewMode_(content, venue, canManage, placesWithCoords, zonesForMap); },
+        onCancel: function () { venueViewMode_(content, venue, canManage); },
         onSaved: function () { Router.resolve(); }
       });
     };
@@ -254,16 +245,18 @@ function venueColorSwatchHtml_(color) {
     esc(c) + '</span>';
 }
 
-// Read-only overview map for the Venue tab's view mode (REQ follow-up: "Make map visible in view
-// mode. To the right side of the list.") -- same pin/boundary/zones/places-for-context visuals as
-// the editable map (initVenueMap_) but with none of its editing affordances (no draggable marker, no
-// click-to-set-lat-lng, no boundary-drawing toolbar, no satellite/search wiring beyond the toggle).
-// Shares venueMapInstance_/venueMapMarker_/venueBoundaryLayer_/venueMapGen_/venueMapFullscreenCleanup_/
-// venueMapInspectorPollStop_ with initVenueMap_ -- view and edit mode are never both on screen at
+// Read-only overview map for the Venue tab's view mode. REQ follow-up: "Make map visible in view
+// mode. To the right side of the list," then "In venue map only show boundaries of the venue" --
+// just this venue's own pin + its own boundary polygon, nothing else (no zone boundaries, no place
+// dots, no inspector-location polling -- those are context for OTHER entities and belong on the
+// Zones tab's own overview map, initZoneOverviewMap_, not here). No editing affordances either (no
+// draggable marker, no click-to-set-lat-lng, no boundary-drawing toolbar) -- that's edit mode's own
+// map, initVenueMap_. Shares venueMapInstance_/venueMapMarker_/venueBoundaryLayer_/venueMapGen_/
+// venueMapFullscreenCleanup_ with initVenueMap_ -- view and edit mode are never both on screen at
 // once (venueViewMode_ swaps the whole container over to renderVenueForm_'s markup and back), so
 // there's only ever one "slot" for a venue map to live in, same as every other per-tab map singleton
 // in this file.
-function initVenueViewMap_(venue, placesWithCoords, zones) {
+function initVenueViewMap_(venue) {
   var el = document.getElementById('venueViewMap');
   if (!el) return;
   if (typeof HululLeaflet === 'undefined') {
@@ -307,13 +300,6 @@ function initVenueViewMap_(venue, placesWithCoords, zones) {
       venueMapInstance_.fitBounds(venueBoundaryLayer_.getBounds(), { padding: [20, 20] });
       applyBoundaryPanLimit_(venueMapInstance_, venueBoundaryLayer_.getBounds());
     }
-
-    // REQ: "Zone boundaries to be visible" / "no vendors showing on the [venue] map" -- context only,
-    // same as initVenueMap_'s own use of these two.
-    UI.drawZoneBoundaries(venueMapInstance_, zones);
-    UI.drawPlaceDots(venueMapInstance_, placesWithCoords);
-    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
-    if (venue.id) venueMapInspectorPollStop_ = UI.startInspectorLocationPolling(venueMapInstance_, { venueId: venue.id }, 20000);
 
     setTimeout(function () { if (venueMapInstance_) venueMapInstance_.invalidateSize(); }, 150);
   }, 0);
@@ -528,6 +514,12 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, v
       }
       if (existingBoundary && existingBoundary.length >= 3) {
         venueBoundaryLayer_.addLayer(HululLeaflet.polygon(existingBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
+        // REQ follow-up: "Make all maps fill map canvas like the zones map" -- fit the initial view to
+        // the already-drawn boundary instead of leaving it at the fixed marker-centered zoom, same as
+        // initZoneMap_/initPlaceMap_/initZoneOverviewMap_/initVenueViewMap_ already do. Only on initial
+        // load, not on every fresh CREATED draw below -- refitting mid-draw would be a jarring surprise
+        // right after the user places their own polygon.
+        venueMapInstance_.fitBounds(venueBoundaryLayer_.getBounds(), { padding: [20, 20] });
       }
       restyleVenueBoundaryLayer_();
       reapplyVenueBoundaryPanLimit_();
