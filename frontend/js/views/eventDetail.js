@@ -1278,18 +1278,15 @@ async function tabCompletedChecklists(content, eventId, detail) {
     ], rows, { emptyText: t('empty_no_completed_checklists') }) + '</div></div>';
 }
 
-// REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup."
-// Full-page counterpart to openRecordResultsModal/openRecordResultsForm_ above -- same items/
-// existing-results fetch, same recordResultRowHtml_ rows grouped by type, same wireRecordResultRows_/
-// updateRecordResultsProgress_/saveInspectionResults_/printInspectionResults_/
-// exportInspectionResultsCsv_ (all already generic over DOM ids, not modal-specific), just rendered
-// into #viewRoot with a page-header/back button instead of UI.openModal. Skips the modal flow's own
-// "choose a checklist type first" step (openChecklistTypeStep_) -- a completed checklist is, by
-// definition, everything for this Inspection+participant already recorded, so "the full checklist"
-// shows every type together rather than asking which slice to look at first. saveInspectionResults_'s
-// own UI.closeModal() is a harmless no-op with no modal open, and its Router.resolve() re-runs this
-// same route handler fresh -- so Save just refreshes this page in place with the just-saved values,
-// same "stay put, see it reflected" pattern as venues.js's own view/edit toggle.
+// REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup,"
+// then "When clicking on participant hyperlink open view mode." -- read-only by default
+// (completedChecklistViewMode_ below), same view/edit-toggle convention this session already
+// established for the Venue tab (venues.js's venueViewMode_/renderVenueForm_'s onCancel): a gated
+// Edit button swaps the SAME container over to the full editable form (completedChecklistEditMode_)
+// in place; Cancel swaps back to view mode locally without saving; Save re-resolves the whole route
+// (Router.resolve(), inside saveInspectionResults_, whose own UI.closeModal() is a harmless no-op
+// with no modal open) -- landing back on this exact route, which is this view mode again, showing the
+// just-saved values.
 //
 // eventId/inspectionId/participantId only ever come from a route param here (this can be a fresh page
 // load, not just an in-app navigation), so inspection/participant are rebuilt the same lightweight
@@ -1306,8 +1303,10 @@ async function renderCompletedChecklistDetail(params) {
   var row = rows.filter(function (r) { return r.inspectionId === inspectionId && r.participantId === participantId; })[0];
   if (!row) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: t('tab_completed_checklists') })) + '</div>'; return; }
   // Same permission gate as the list's own name-link (tabCompletedChecklists above) -- guards a
-  // direct/bookmarked URL hit too, not just the link's own visibility.
-  if (!canRecordInspection_({ inspectorId: row.inspectorId })) { root.innerHTML = '<div class="empty-state">' + esc(t('not_permitted_default')) + '</div>'; return; }
+  // direct/bookmarked URL hit too, not just the link's own visibility. Threaded through as canManage
+  // below to gate the Edit button the same way venueViewMode_'s own canManage gates its Edit button.
+  var canManage = canRecordInspection_({ inspectorId: row.inspectorId });
+  if (!canManage) { root.innerHTML = '<div class="empty-state">' + esc(t('not_permitted_default')) + '</div>'; return; }
 
   var inspection = { id: row.inspectionId, disciplineName: row.disciplineName, phase: row.phase };
   var participant = { id: row.participantId, name: row.participantName };
@@ -1332,6 +1331,81 @@ async function renderCompletedChecklistDetail(params) {
     return;
   }
 
+  var byType = {};
+  scope.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
+
+  completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage);
+}
+
+// Read-only rows: description, state, risk/window, and (Crossed only) notes + evidence links -- no
+// inputs, nothing to wire beyond the Back/Edit buttons below. Evidence is just a row of plain links
+// (opens the original upload in a new tab) rather than the editable form's camera-capture control.
+function completedChecklistViewRowHtml_(it, existing) {
+  var state = existing ? existing.state : '';
+  var stateIcon = state === 'Ticked' ? ICON('result_ticked') : state === 'Crossed' ? ICON('result_crossed') : state === 'N/A' ? ICON('result_na') : '';
+  var stateLabel = state === 'Ticked' ? t('title_result_ticked') : state === 'Crossed' ? t('title_result_crossed') : state === 'N/A' ? t('title_result_na') : t('word_pending');
+  var evidenceUrls = (existing && existing.evidenceUrls) ? String(existing.evidenceUrls).split(',').filter(Boolean) : [];
+  return '<div style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+      '<div style="flex:1 1 260px;">' +
+        '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:11px;" class="muted">' +
+          '<span>' + esc(t('col_risk_level')) + ': ' + esc(existing && existing.riskLevel ? t('risk_' + existing.riskLevel.toLowerCase()) : '—') + '</span>' +
+          '<span>' + esc(t('field_window_hours')) + ': ' + esc((existing && existing.resolutionWindowHours != null && existing.resolutionWindowHours !== '') ? existing.resolutionWindowHours : '—') + '</span>' +
+          (existing ? '<span>' + esc(t('recorded_on_label', { date: UI.fmtDate(existing.recordedAt) })) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex:none;font-size:12px;font-weight:600;">' + stateIcon + ' ' + esc(stateLabel) + '</div>' +
+    '</div>' +
+    (state === 'Crossed'
+      ? '<div style="margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;font-size:12.5px;">' +
+          ((existing && existing.notes) ? '<div><span class="muted">' + esc(t('field_notes_found')) + ':</span> ' + esc(existing.notes) + '</div>' : '') +
+          (evidenceUrls.length ? '<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;">' + evidenceUrls.map(function (url, idx) {
+            return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;font-size:11.5px;">' + esc(t('word_evidence')) + ' ' + (idx + 1) + '</a>';
+          }).join('') + '</div>' : '') +
+        '</div>'
+      : '') +
+  '</div>';
+}
+
+function completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage) {
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(participant.name) + '</div>' +
+    '<div class="page-subtitle">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backCompletedChecklistBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+    '<div class="card">' +
+      '<div class="card-body">' +
+        Object.keys(byType).sort().map(function (typeName) {
+          return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName || '(untyped)') + '</div>' +
+            byType[typeName].map(function (it) { return completedChecklistViewRowHtml_(it, existingByItemId[it.id]); }).join('');
+        }).join('') +
+      '</div>' +
+      (canManage
+        ? '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+            '<button class="btn btn-primary" id="editChecklistBtn">' + ICON('edit') + ' ' + esc(t('action_edit')) + '</button>' +
+          '</div>'
+        : '') +
+    '</div>';
+
+  document.getElementById('backCompletedChecklistBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=completedChecklists'; };
+  if (canManage) {
+    document.getElementById('editChecklistBtn').onclick = function () {
+      completedChecklistEditMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, function () {
+        completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage);
+      });
+    };
+  }
+}
+
+// The full editable form -- same recordResultRowHtml_/wireRecordResultRows_/
+// updateRecordResultsProgress_/saveInspectionResults_/printInspectionResults_/
+// exportInspectionResultsCsv_ the old modal flow (openRecordResultsForm_ above) already used, just
+// rendered into the page instead of a modal box, with a Cancel button (onCancel, from
+// completedChecklistViewMode_) added since there's no "close the modal" affordance to fall back on
+// here. Skips the modal flow's own "choose a checklist type first" step (openChecklistTypeStep_) --
+// this is "the full checklist," so every type is shown together rather than asking which slice to
+// look at first.
+function completedChecklistEditMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, onCancel) {
   var pendingFiles = {};
   scope.forEach(function (it) {
     var existing = existingByItemId[it.id];
@@ -1341,9 +1415,6 @@ async function renderCompletedChecklistDetail(params) {
       return { name: t('word_evidence') + ' ' + (idx + 1), status: 'done', pct: 100, url: url, localId: 'existing_' + it.id + '_' + idx };
     }) : [];
   });
-
-  var byType = {};
-  scope.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(participant.name) + '</div>' +
@@ -1363,6 +1434,7 @@ async function renderCompletedChecklistDetail(params) {
       '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);flex-wrap:wrap;">' +
         '<button class="btn btn-secondary" id="printChecklistBtn">' + ICON('print') + ' ' + esc(t('print_btn')) + '</button>' +
         '<button class="btn btn-secondary" id="exportChecklistBtn">' + ICON('export_csv') + ' ' + esc(t('export_csv')) + '</button>' +
+        '<button class="btn btn-secondary" id="cancelChecklistBtn">' + esc(t('cancel')) + '</button>' +
         '<button class="btn btn-primary" id="saveChecklistBtn">' + esc(t('save')) + '</button>' +
       '</div>' +
     '</div>';
@@ -1370,6 +1442,7 @@ async function renderCompletedChecklistDetail(params) {
   document.getElementById('backCompletedChecklistBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=completedChecklists'; };
   document.getElementById('printChecklistBtn').onclick = function () { printInspectionResults_(participant, inspection, scope); };
   document.getElementById('exportChecklistBtn').onclick = function () { exportInspectionResultsCsv_(participant, inspection, scope); };
+  document.getElementById('cancelChecklistBtn').onclick = onCancel;
   document.getElementById('saveChecklistBtn').onclick = function () { saveInspectionResults_(eventId, inspection, participant, scope, pendingFiles, existingByItemId); };
 
   wireRecordResultRows_(eventId, scope, pendingFiles);
