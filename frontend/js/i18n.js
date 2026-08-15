@@ -31,7 +31,7 @@ window.HULUL_I18N = {
     status_resubmitted: 'Resubmitted', status_resolved: 'Resolved', status_reopen: 'Re-open', status_rejected: 'Rejected',
     status_approved: 'Approved', status_not_approved: 'Not Approved', status_evaluated: 'Evaluated', status_missed: 'Missed',
     status_pending: 'Pending', status_scheduled: 'Scheduled', status_completed: 'Completed', status_planning: 'Planning',
-    status_venue_approved: 'Venue Approved', status_venue_rejected: 'Venue Rejected', status_inprogress: 'In Progress',
+    status_venue_approved: 'Opening Approved', status_venue_rejected: 'Opening Rejected', status_inprogress: 'In Progress',
     // Readiness Templates' own statuses not already covered above (Submitted/Evaluated/Missed are
     // shared with Findings/Venue Approval; 'In Progress' reuses status_inprogress).
     status_not_sent: 'Not Sent', status_sent: 'Sent', status_under_review: 'Under Review',
@@ -534,7 +534,7 @@ window.HULUL_I18N = {
     status_resubmitted: 'أُعيد التقديم', status_resolved: 'تم الحل', status_reopen: 'إعادة فتح', status_rejected: 'مرفوض',
     status_approved: 'معتمد', status_not_approved: 'غير معتمد', status_evaluated: 'تم التقييم', status_missed: 'فائت',
     status_pending: 'قيد الانتظار', status_scheduled: 'مجدول', status_completed: 'مكتمل', status_planning: 'التخطيط',
-    status_venue_approved: 'المكان معتمد', status_venue_rejected: 'المكان مرفوض', status_inprogress: 'قيد التنفيذ',
+    status_venue_approved: 'الافتتاح معتمد', status_venue_rejected: 'الافتتاح مرفوض', status_inprogress: 'قيد التنفيذ',
     // Readiness Templates' own statuses (see the matching EN comment).
     status_not_sent: 'لم يُرسل', status_sent: 'تم الإرسال', status_under_review: 'قيد المراجعة',
     nav_dashboard: 'لوحة التحكم', nav_events: 'الفعاليات', nav_projects: 'المشاريع', nav_users: 'المستخدمون والأدوار', nav_orgs: 'الجهات',
