@@ -100,7 +100,11 @@ window.UI = {
     (footerButtons || []).forEach(function (b) {
       var btn = document.createElement('button');
       btn.className = 'btn ' + (b.className || 'btn-secondary');
-      btn.textContent = b.label;
+      // innerHTML (not textContent) so a label built from ICON('x') + ' ' + t('y') (e.g. venues.js's
+      // Print/Share buttons, eventDetail.js's Record Results Print/Export CSV) actually renders the
+      // icon instead of printing its raw <svg> markup as text -- every b.label in the app is
+      // developer-authored (t()/ICON()/static strings), never raw user input, so this is safe.
+      btn.innerHTML = b.label;
       btn.onclick = b.onClick;
       footer.appendChild(btn);
     });
