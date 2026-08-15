@@ -50,12 +50,28 @@ function evidenceThumbsHtml_(urls, size) {
     return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
       'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
       (thumb
-        ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" ' +
-          'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'' + ICON('capture_photo') + '\',style:\'font-size:28px;\'}));" />'
+        ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" class="evidence-thumb-img" />'
         : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
     '</a>';
   }).join('') + '</div>';
 }
+// evidenceThumbsHtml_'s <img> used to carry an inline onerror="..." attribute whose fallback markup
+// embedded ICON('capture_photo') -- raw SVG containing its own double-quoted attributes (viewBox="...",
+// d="...") -- directly inside that double-quoted HTML attribute string. The browser's parser closed the
+// onerror="..." attribute (and then the <img> tag itself) at the SVG's first unescaped quote, corrupting
+// the surrounding DOM at parse time (not just when onerror actually fired): shrunken thumbnails plus
+// literal leftover markup spilling out as text. Fixed by dropping the inline handler entirely and using
+// one delegated capture-phase listener instead -- 'error' on <img> doesn't bubble, but capture-phase
+// delegation still catches it -- which replaces the failed image via real DOM APIs, no string-into-
+// attribute escaping involved.
+document.addEventListener('error', function (e) {
+  var img = e.target;
+  if (!img || !img.classList || !img.classList.contains('evidence-thumb-img')) return;
+  var span = document.createElement('span');
+  span.style.fontSize = '28px';
+  span.innerHTML = ICON('capture_photo');
+  img.replaceWith(span);
+}, true);
 
 // Fills as much of the viewport as sensibly possible (92vw/88vh, object-fit:contain) rather than
 // reusing UI.openModal's modal-box -- that's capped at 520px with header/footer chrome, which is
