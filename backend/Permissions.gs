@@ -130,7 +130,11 @@ var PERMISSION_REGISTRY_ = {
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager']
   },
   'event.assignManager': {
-    module: 'Events', label: 'Assign an Event Manager to an event', page: 'venueTab', crud: ['update'],
+    // REQ follow-up: "Move Venue & Zones to venue sidebar page" removed the Event workspace's own
+    // 'venue' tab (and settings.js's now-orphaned 'venueTab' permissionPages_ entry) -- this
+    // permission's actual UI home was always the standalone Reassign Venue page (reassignment.js),
+    // not that tab, so it repoints there instead.
+    module: 'Events', label: 'Assign an Event Manager to an event', page: 'reassignment', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'EMCManager', 'EMCAdmin']
   },
   'templateLibrary.manage': {

@@ -715,7 +715,10 @@ function permissionPages_() {
   return [
     { id: 'events', label: Term('event_plural'), navPath: '/events' },
     { id: 'subEvents', label: Term('subEvent_plural'), navPath: '/sub-events' },
-    { id: 'venueTab', label: t('tab_venue'), eventTab: 'venue' },
+    // REQ follow-up: "Move Venue & Zones to venue sidebar page" removed the Event workspace's own
+    // 'venue' tab entirely -- its permissionPages_ entry ('venueTab') is gone with it; every
+    // permission that used to point there (just event.assignManager, Permissions.gs) now points at
+    // 'reassignment' below instead, since that was always its real UI home.
     { id: 'venues', label: Term('venue_plural'), navPath: '/venues' },
     { id: 'templates', label: t('tab_templates'), eventTab: 'templates' },
     { id: 'templateLibrary', label: t('template_library_title', { term: Term('template_plural') }), navPath: '/template-library' },

@@ -47,7 +47,7 @@ window.HULUL_I18N = {
     dashboard_title: 'Dashboard', dashboard_subtitle: "Here's what's happening across your events",
     kpi_total: 'Total Logs', kpi_open: 'Open', kpi_inreview: 'In Review', kpi_resolved: 'Resolved',
     kpi_reopen: 'Re-open', kpi_rejected: 'Rejected', kpi_events: 'Active Events',
-    events_title: 'Events', new_event: 'New Event', tab_overview: 'Overview', tab_chat: 'Chat', tab_venue: 'Venue & Zones',
+    events_title: 'Events', new_event: 'New Event', tab_overview: 'Overview', tab_chat: 'Chat', tab_venue: 'Venue',
     tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Assignments',
     tab_inspections: 'Checklists', tab_completed_checklists: 'Completed Checklists',
     tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
@@ -55,7 +55,7 @@ window.HULUL_I18N = {
     // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
     // (EVENT_TAB_GROUPS_, eventDetail.js). Each parent's own subtab row still uses the individual
     // tab_x labels above -- these are only for the collapsed top-level button.
-    tab_group_readiness: 'Readiness', tab_group_inspections: 'Inspections', tab_group_findings: 'Findings',
+    tab_group_general: 'General', tab_group_readiness: 'Readiness', tab_group_inspections: 'Inspections', tab_group_findings: 'Findings',
     tab_group_participants: 'Participants', tab_group_reports: 'Reports',
     save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Do', status: 'Status',
     loading: 'Loading…', no_data: 'Nothing here yet.',
@@ -561,12 +561,12 @@ window.HULUL_I18N = {
     dashboard_title: 'لوحة التحكم', dashboard_subtitle: 'ملخص ما يجري في فعالياتك',
     kpi_total: 'إجمالي السجلات', kpi_open: 'مفتوح', kpi_inreview: 'قيد المراجعة', kpi_resolved: 'تم الحل',
     kpi_reopen: 'إعادة فتح', kpi_rejected: 'مرفوض', kpi_events: 'فعاليات نشطة',
-    events_title: 'الفعاليات', new_event: 'فعالية جديدة', tab_overview: 'نظرة عامة', tab_chat: 'المحادثة', tab_venue: 'الموقع والمناطق',
+    events_title: 'الفعاليات', new_event: 'فعالية جديدة', tab_overview: 'نظرة عامة', tab_chat: 'المحادثة', tab_venue: 'الموقع',
     tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'المهام',
     tab_inspections: 'قوائم المراجعة', tab_completed_checklists: 'القوائم المكتملة',
     tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_participants_new: 'جديد', tab_reports: 'التقارير', tab_event_log: 'السجلات',
-    tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'النتائج',
+    tab_group_general: 'عام', tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'النتائج',
     tab_group_participants: 'المشاركون', tab_group_reports: 'التقارير',
     save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'تنفيذ', status: 'الحالة',
     loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.',

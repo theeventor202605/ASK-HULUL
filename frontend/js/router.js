@@ -88,8 +88,11 @@ window.Router = {
     this.add('/projects/:id', renderProjectDetail);
     this.add('/venues', renderVenues);
     this.add('/venues/new', renderNewVenue);
-    this.add('/venues/:id/edit', renderEditVenue);
-    this.add('/venues/:id/places', renderVenuePlaces);
+    this.add('/venues/:id', renderVenueDetail);
+    // REQ follow-up: "Venue main page to become a tab and Places to become the third tab" -- both
+    // old standalone routes now just redirect onto the new tabbed page (renderVenueDetail, venues.js).
+    this.add('/venues/:id/edit', renderEditVenueRedirect_);
+    this.add('/venues/:id/places', renderVenuePlacesRedirect_);
     this.add('/sub-events', renderSubEvents);
     this.add('/meetings', renderMeetings);
     this.add('/meetings/new', renderNewMeeting);

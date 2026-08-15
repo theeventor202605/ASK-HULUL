@@ -4,7 +4,8 @@
  * REQ: "Should be a replicant of the Places page but participant accounts are registered under
  * events not venues, as they may be just attending this season of events. When an event ends all
  * participant accounts registered under events will be deactivated." So this mirrors venues.js's
- * Places page (renderVenuePlaces) almost exactly -- same add-a-place-with-map form, same
+ * Places page (venues.js's venueTabPlaces_, the venue detail page's Places tab) almost exactly --
+ * same add-a-place-with-map form, same
  * auto-provisioned login/QR-credentials/multi-account table -- except every Place created here
  * carries this Event's id (createPlace({eventId, ...}), see Places.gs) instead of being permanent
  * venue-wide infrastructure. Server-side, Places.gs's deactivateEndedEventPlaceAccounts (piggybacking

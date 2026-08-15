@@ -69,11 +69,14 @@ async function renderVenues() {
     ], venues, {}) + '</div></div>';
 
   document.getElementById('newVenueBtn').onclick = function () { window.location.hash = '#/venues/new'; };
+  // REQ follow-up: "Venue main page to become a tab and Places to become the third tab" -- both
+  // actions now land on the single tabbed venue detail page (renderVenueDetail below), just opened
+  // to a different starting tab.
   document.querySelectorAll('[data-manage-places]').forEach(function (btn) {
-    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-manage-places') + '/places'; };
+    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-manage-places') + '?tab=places'; };
   });
   document.querySelectorAll('[data-edit-venue]').forEach(function (btn) {
-    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-edit-venue') + '/edit'; };
+    btn.onclick = function () { window.location.hash = '#/venues/' + btn.getAttribute('data-edit-venue'); };
   });
   document.querySelectorAll('[data-delete-venue]').forEach(function (btn) {
     btn.onclick = function () { confirmDeleteVenue_(btn.getAttribute('data-delete-venue')); };
@@ -101,19 +104,94 @@ async function confirmDeleteVenue_(venueId) {
 
 async function renderNewVenue() { await renderVenueForm_(null); }
 
-async function renderEditVenue(params) {
+// REQ follow-up: "Venue main page to become a tab" -- Edit Venue is no longer its own standalone
+// page/route; #/venues/:id/edit stays registered (router.js) only as a redirect for old
+// links/bookmarks, landing on the new tabbed detail page's Venue tab (renderVenueDetail below).
+function renderEditVenueRedirect_(params) { window.location.hash = '#/venues/' + params.id; }
+// Same redirect treatment for the old standalone Places page -- REQ follow-up: "Places to become the
+// third tab."
+function renderVenuePlacesRedirect_(params) { window.location.hash = '#/venues/' + params.id + '?tab=places'; }
+
+/* ---------------- Venue detail (tabbed: Venue / Zones / Places) ----------------
+ * REQ follow-up: "Move Venue & Zones to venue sidebar page under Zones tab. Venue main page to
+ * become a tab and Places to become the third tab." Replaces three previously-separate destinations
+ * (Edit Venue page, the Event workspace's own "Venue & Zones" tab, and the standalone Places page)
+ * with one tabbed page at #/venues/:id, mirroring the Event workspace's own tabbar pattern
+ * (eventDetail.js's renderEventDetail/.tabbar/.tab-btn) so the two feel consistent. Zones are venue-
+ * scoped, not event-scoped data (Participants.gs) -- the same set applies to every Event held here --
+ * which is why Zones management belongs on this page now, not inside each Event's own workspace.
+ */
+var VENUE_DETAIL_TABS_ = [
+  ['main', 'tab_venue'],
+  ['zones', null, function () { return Term('zone_plural'); }],
+  ['places', 'places_label']
+];
+var VENUE_DETAIL_RENDERERS_ = null;
+function venueDetailRenderers_() {
+  if (!VENUE_DETAIL_RENDERERS_) VENUE_DETAIL_RENDERERS_ = { main: venueTabMain_, zones: venueTabZones_, places: venueTabPlaces_ };
+  return VENUE_DETAIL_RENDERERS_;
+}
+
+async function renderVenueDetail(params) {
+  // Only one of the three tabs' maps is ever live in the DOM at once, but a fresh render (including
+  // switching tabs, which fully re-renders this page) should always start from a clean slate -- same
+  // reasoning as tabVenue's own destroyEventPlacesMap_()/destroyZoneMap_() calls used to have.
+  destroyVenueMap_(); destroyZoneMap_(); destroyPlaceMap_();
+  var root = document.getElementById('viewRoot');
   var venues = await Api.call('listVenues', { includeDeleted: true });
   var venue = venues.filter(function (v) { return v.id === params.id; })[0];
-  if (!venue) { document.getElementById('viewRoot').innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
-  await renderVenueForm_(venue);
+  if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
+
+  var activeTab = params.tab || 'main';
+  if (!VENUE_DETAIL_TABS_.some(function (tb) { return tb[0] === activeTab; })) activeTab = 'main';
+
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(venue.name) + '</div>' +
+    '<div class="page-subtitle">' + esc([venue.address, venue.city].filter(Boolean).join(' · ')) + '</div></div>' +
+    '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+    '<div class="tabbar" id="venueDetailTabbar"></div>' +
+    '<div id="venueTabContent"></div>';
+
+  document.getElementById('backVenuesBtn').onclick = goBackToVenues_;
+
+  var tabbar = document.getElementById('venueDetailTabbar');
+  tabbar.innerHTML = VENUE_DETAIL_TABS_.map(function (tb) {
+    var label = tb[2] ? tb[2]() : t(tb[1]);
+    return '<div class="tab-btn ' + (tb[0] === activeTab ? 'active' : '') + '" data-venue-tab="' + tb[0] + '">' + esc(label) + '</div>';
+  }).join('');
+  tabbar.querySelectorAll('[data-venue-tab]').forEach(function (btn) {
+    btn.onclick = function () {
+      var key = btn.getAttribute('data-venue-tab');
+      window.location.hash = '#/venues/' + venue.id + (key === 'main' ? '' : '?tab=' + key);
+    };
+  });
+
+  var content = document.getElementById('venueTabContent');
+  content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+  try { await (venueDetailRenderers_()[activeTab] || venueTabMain_)(content, venue); }
+  catch (err) { UI.error(err); content.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; }
+}
+
+// Tab 1: today's Edit Venue form, embedded (no page-header/back button of its own -- the tabbed
+// page's own chrome already provides those). Saving re-resolves the current route instead of
+// navigating away, so the header (venue name) and Zones/Places tabs immediately reflect any change.
+async function venueTabMain_(content, venue) {
+  await renderVenueForm_(venue, { container: content, onSaved: function () { Router.resolve(); } });
 }
 
 // Shared by New Venue (existingVenue === null) and Edit Venue (existingVenue is the row being
 // edited). No EMC organization field here -- a Venue isn't connected to one (see file header
 // comment); which EMC rents it is chosen per-Event instead (events.js's New Event form).
-async function renderVenueForm_(existingVenue) {
+// opts (optional): { container, onSaved } -- REQ follow-up: "Venue main page to become a tab". When
+// container is given, this renders just the form/map card into it (no page-header/back/cancel --
+// the caller, renderVenueDetail's own tabbed chrome, already provides those) and calls onSaved()
+// instead of navigating to #/venues after a successful create/update. Plain #/venues/new still calls
+// this with no opts at all, so its own full-page behavior is completely unchanged.
+async function renderVenueForm_(existingVenue, opts) {
+  opts = opts || {};
+  var embedded = !!opts.container;
   destroyVenueMap_(); // in case a previous visit to this page left one behind (e.g. browser back)
-  var root = document.getElementById('viewRoot');
+  var root = opts.container || document.getElementById('viewRoot');
   var isEdit = !!existingVenue;
 
   // REQ: "no vendors showing on the [venue] map" -- when editing an existing venue, show its
@@ -132,9 +210,10 @@ async function renderVenueForm_(existingVenue) {
   }
 
   root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + esc(isEdit ? t('edit_x', { term: Term('venue') }) : t('new_x_title', { term: Term('venue') })) + '</div>' +
-    '<div class="page-subtitle">' + esc(isEdit ? t('venue_edit_subtitle', { term: Term('venue').toLowerCase() }) : t('venue_new_subtitle', { term: Term('venue').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() })) + '</div></div>' +
-    '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
+    (embedded ? '' :
+      '<div class="page-header"><div><div class="page-title">' + esc(isEdit ? t('edit_x', { term: Term('venue') }) : t('new_x_title', { term: Term('venue') })) + '</div>' +
+      '<div class="page-subtitle">' + esc(isEdit ? t('venue_edit_subtitle', { term: Term('venue').toLowerCase() }) : t('venue_new_subtitle', { term: Term('venue').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() })) + '</div></div>' +
+      '<button class="btn btn-secondary" id="backVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>') +
     '<div class="card">' +
       '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;max-width:640px;">' +
         UI.field(t('col_name'), '<input id="fVName" class="field-input" value="' + (isEdit ? esc(existingVenue.name) : '') + '" />') +
@@ -158,13 +237,15 @@ async function renderVenueForm_(existingVenue) {
         '</div>' +
       '</div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-        '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>' +
+        (embedded ? '' : '<button class="btn btn-secondary" id="cancelVenueBtn">' + t('cancel') + '</button>') +
         '<button class="btn btn-primary" id="createVenueBtn">' + (isEdit ? esc(t('save_changes')) : t('create')) + '</button>' +
       '</div>' +
     '</div>';
 
-  document.getElementById('backVenuesBtn').onclick = goBackToVenues_;
-  document.getElementById('cancelVenueBtn').onclick = goBackToVenues_;
+  if (!embedded) {
+    document.getElementById('backVenuesBtn').onclick = goBackToVenues_;
+    document.getElementById('cancelVenueBtn').onclick = goBackToVenues_;
+  }
   document.getElementById('createVenueBtn').onclick = async function () {
     try {
       var name = document.getElementById('fVName').value.trim();
@@ -186,7 +267,7 @@ async function renderVenueForm_(existingVenue) {
       }
       destroyVenueMap_();
       UI.toast(isEdit ? t('x_updated', { term: Term('venue') }) : t('x_created', { term: Term('venue') }), 'success');
-      window.location.hash = '#/venues';
+      if (opts.onSaved) opts.onSaved(); else window.location.hash = '#/venues';
     } catch (err) { UI.error(err); }
   };
 
@@ -473,8 +554,304 @@ function applyVenueSearchResult_(place) {
   }
 }
 
-/* ---------------- Places (a Venue's reusable catalog of physical spots) ----------------
- * Route: #/venues/:id/places. Distinct from Participants (event-scoped Vendors/Operators/
+/* ---------------- Zones (Tab 2 of the venue detail page) ----------------
+ * Ported from eventDetail.js's old "Venue & Zones" Event-workspace tab (tabVenue/openZoneCard_/
+ * initZoneMap_/etc.) -- REQ follow-up: "Move Venue & Zones to venue sidebar page under Zones tab."
+ * Zones are venue-scoped, not event-scoped (the same set applies to every Event held at this venue --
+ * see Participants.gs), so this is the correct home for managing them now. Only real change from the
+ * ported version: no `eventId` anywhere (there isn't one here) -- inspector live-location polling
+ * uses { venueId } instead, same convention as this file's own venueMap/placeMap.
+ */
+var zoneMapInstance_ = null;
+var zoneVenueBoundaryLayer_ = null; // the venue's boundary, shown for reference only
+var zoneDrawnItems_ = null;         // the zone's own boundary being drawn
+var zoneMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_/placeMapGen_ above -- see their comments
+var zoneMapFullscreenCleanup_ = null;
+var zoneMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initZoneMap_
+
+async function venueTabZones_(content, venue) {
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venues >
+  // "Create, edit, or delete a zone".
+  var canManage = hasPermission('zone.manage');
+  destroyZoneMap_(); // in case a previous visit to this tab left one behind
+
+  var results = await Promise.all([
+    Api.call('listPlaces', { venueId: venue.id }),
+    Api.call('listParticipants', { venueId: venue.id }),
+    // includeDeleted: true -- see the same reasoning as venueTabPlaces_'s zonesAll below; the active-
+    // only `zones` (used for the table/map here) stays separate.
+    Api.call('listZones', { venueId: venue.id, includeDeleted: true })
+  ]);
+  var places = results[0], participants = results[1], zonesAll = results[2];
+  var zones = zonesAll.filter(function (z) { return z.status !== 'Deleted'; });
+
+  // Per-zone counts for the table's calculated columns -- place type counts (Places' reusable
+  // catalog: Operator/Vendor/Exhibitor/Other) plus a total Participants count (event-scoped
+  // Vendors/Operators/Exhibitors actually assigned to that zone -- a different set from Places).
+  var placeCountsByZone = {};
+  places.forEach(function (pl) {
+    if (!pl.zoneId) return;
+    if (!placeCountsByZone[pl.zoneId]) placeCountsByZone[pl.zoneId] = { Operator: 0, Vendor: 0, Exhibitor: 0, Other: 0 };
+    if (placeCountsByZone[pl.zoneId][pl.type] !== undefined) placeCountsByZone[pl.zoneId][pl.type]++;
+  });
+  // A Participant with no zoneId is documented/treated as covering every zone for inspection
+  // purposes (Participants can never literally hold zoneId 'ALL' -- backend validates zoneId against
+  // a real Zones record -- so blank is their equivalent of a Place's 'ALL'). Fold both into the same
+  // 'ALL' bucket so the synthetic "All Zones" row below reflects both cases.
+  var participantCountByZone = {};
+  participants.forEach(function (pt) {
+    var zk = pt.zoneId || 'ALL';
+    participantCountByZone[zk] = (participantCountByZone[zk] || 0) + 1;
+  });
+
+  // Synthetic "All Zones" row -- represents Places explicitly assigned 'ALL' plus zoneless
+  // Participants (see above).
+  var zonesTableRows = [{ id: 'ALL', name: t('all_zones_option'), createdAt: '' }].concat(zones);
+
+  content.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('zone_plural')) + '</div>' +
+    (canManage ? '<button class="btn btn-primary btn-sm" id="newZoneBtn">' + esc(t('add_x_btn', { term: Term('zone').toLowerCase() })) + '</button>' : '') + '</div>' +
+    '<div class="card-body">' + UI.table([
+      // REQ: "any zero value in Zones list should be blank" -- a bare "0" reads as data (and clutters
+      // every zone row with mostly-zero columns); blank reads as "none" without drawing the eye.
+      { key: 'name', label: Term('zone') },
+      { key: 'operators', label: t('col_operators'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Operator : 0) || '' },
+      { key: 'vendors', label: t('col_vendors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Vendor : 0) || '' },
+      { key: 'exhibitors', label: t('col_exhibitors'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Exhibitor : 0) || '' },
+      { key: 'others', label: t('col_others'), render: r => (placeCountsByZone[r.id] ? placeCountsByZone[r.id].Other : 0) || '' },
+      { key: 'participants', label: t('col_participants'), render: r => participantCountByZone[r.id] || '' },
+      { key: 'createdAt', label: t('col_created'), render: r => r.id === 'ALL' ? '' : UI.fmtDate(r.createdAt) }
+    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+      r.id === 'ALL' ? '' :
+      UI.actionsCell(
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-zone="' + r.id + '">' + ICON('edit') + '</button> ' +
+        '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-zone="' + r.id + '">' + ICON('delete') + '</button>'
+      ) }] : []),
+      zonesTableRows, {}) +
+    '</div></div>' +
+    // Populated/cleared by newZoneBtn below -- an inline card (map + polygon-draw tool), not a
+    // modal, since "the map needs real room to be usable" (same reasoning as the Add-a-place form).
+    '<div id="addZoneCardWrap"></div>';
+
+  if (canManage) document.getElementById('newZoneBtn').onclick = function () {
+    var wrap = document.getElementById('addZoneCardWrap');
+    if (wrap.innerHTML) { destroyZoneMap_(); wrap.innerHTML = ''; return; } // toggle closed if already open
+    openZoneCard_(venue, wrap, null, places, zones);
+  };
+
+  if (!canManage) return;
+  content.querySelectorAll('[data-del-zone]').forEach(function (b) {
+    b.onclick = function () { openDeleteZoneModal_(b.getAttribute('data-del-zone'), zones); };
+  });
+  content.querySelectorAll('[data-edit-zone]').forEach(function (b) {
+    b.onclick = function () {
+      var zone = zones.filter(function (z) { return z.id === b.getAttribute('data-edit-zone'); })[0];
+      if (!zone) return;
+      var wrap = document.getElementById('addZoneCardWrap');
+      destroyZoneMap_();
+      openZoneCard_(venue, wrap, zone, places, zones);
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+  });
+}
+
+// Shared by both the "+ Add zone" button and each row's Edit-zone button above -- existingZone is
+// null for create, the zone row being edited otherwise. Keeps the card HTML/map-init/save-handler
+// logic in exactly one place instead of duplicating it per mode.
+function openZoneCard_(venue, wrap, existingZone, places, allZones) {
+  wrap.innerHTML = addZoneCardHtml_(existingZone);
+  // REQ: "Zone boundaries to be visible" -- every OTHER zone at this venue, for reference, so a new
+  // one can be drawn without overlapping. Excludes the zone being edited itself: its own boundary is
+  // already shown as the editable zoneDrawnItems_ layer below, so repeating it here would be redundant.
+  var siblingZones = (allZones || []).filter(function (z) { return !existingZone || z.id !== existingZone.id; });
+  initZoneMap_(venue, existingZone, siblingZones, places);
+  document.getElementById('cancelZoneBtn').onclick = function () { destroyZoneMap_(); wrap.innerHTML = ''; };
+  document.getElementById('saveZoneBtn').onclick = async function () {
+    try {
+      var name = document.getElementById('fZoneName').value.trim();
+      if (!name) { UI.toast(t('toast_x_name_required', { term: Term('zone') }), 'error'); return; }
+      var payload = { name: name, color: getZoneColorValue_(), boundary: getZoneBoundaryValue_() };
+      if (existingZone) {
+        payload.zoneId = existingZone.id;
+        await Api.call('updateZone', payload);
+      } else {
+        payload.venueId = venue.id;
+        await Api.call('createZone', payload);
+      }
+      destroyZoneMap_();
+      UI.toast(existingZone ? t('x_updated', { term: Term('zone') }) : t('x_added', { term: Term('zone') }), 'success');
+      Router.resolve();
+    } catch (err) { UI.error(err); }
+  };
+}
+
+function addZoneCardHtml_(existingZone) {
+  var isEdit = !!existingZone;
+  var defaultColor = (existingZone && existingZone.color) ? existingZone.color : ZONE_BOUNDARY_COLORS_[0];
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(isEdit ? t('edit_x', { term: Term('zone') }) : t('add_x_title', { term: Term('zone') })) + '</div></div>' +
+    '<div class="card-body" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;max-width:640px;">' +
+        '<div style="flex:1;min-width:220px;">' + UI.field(Term('zone') + ' ' + t('field_name').toLowerCase(), '<input id="fZoneName" class="field-input" value="' + (isEdit ? esc(existingZone.name) : '') + '" />') + '</div>' +
+        '<div>' + UI.field(t('field_boundary_color'), '<input id="fZoneColor" type="color" class="field-input" style="width:64px;height:36px;padding:2px;" value="' + esc(defaultColor) + '" />') + '</div>' +
+      '</div>' +
+      '<div id="zoneMap" style="height:360px;width:100%;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--border);"></div>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('zone_boundary_hint', { zone: Term('zone').toLowerCase(), venue: Term('venue').toLowerCase() })) + '</div>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+      '<button class="btn btn-secondary" id="cancelZoneBtn">' + t('cancel') + '</button>' +
+      '<button class="btn btn-primary" id="saveZoneBtn">' + (isEdit ? t('save') : t('create')) + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function initZoneMap_(venue, existingZone, siblingZones, places) {
+  var el = document.getElementById('zoneMap');
+  if (!el) return;
+  if (typeof HululLeaflet === 'undefined') {
+    el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+    el.style.color = 'var(--text-600)'; el.style.fontSize = '12px'; el.style.textAlign = 'center'; el.style.padding = '12px';
+    el.textContent = t('map_unavailable_zone_ok');
+    return;
+  }
+  var venueBoundary = venue ? parseBoundaryClient_(venue.boundary) : null;
+  var zoneBoundary = existingZone ? parseBoundaryClient_(existingZone.boundary) : null;
+  var hasVenueCoords = !!(venue && venue.lat && venue.lng);
+  var center = hasVenueCoords ? [Number(venue.lat), Number(venue.lng)] : VENUE_DEFAULT_CENTER;
+  var myGen = ++zoneMapGen_;
+  setTimeout(function () {
+    if (myGen !== zoneMapGen_) return; // superseded by a newer render before this tick fired
+    var mapEl = document.getElementById('zoneMap');
+    if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
+    zoneMapInstance_ = HululLeaflet.map('zoneMap', { preferCanvas: true }).setView(center, hasVenueCoords ? 16 : 6); // see venues.js's own initVenueMap_'s preferCanvas comment
+    UI.requireClickToActivateMap(zoneMapInstance_, mapEl);
+    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+    }).addTo(zoneMapInstance_);
+    zoneMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, zoneMapInstance_);
+    // Wrapped in try/catch -- Leaflet.draw is a third-party plugin (CDN can fail to load, or throw
+    // on a Leaflet version it doesn't fully support) and a failure here must never take down the
+    // base map (tiles/pan/zoom), which is the part that actually matters for saving a zone at all.
+    try {
+      if (venueBoundary) {
+        zoneVenueBoundaryLayer_ = HululLeaflet.polygon(venueBoundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
+          color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.04, weight: 1.5, dashArray: '4,4', interactive: false
+        }).addTo(zoneMapInstance_);
+        zoneMapInstance_.fitBounds(zoneVenueBoundaryLayer_.getBounds(), { padding: [20, 20] });
+        applyBoundaryPanLimit_(zoneMapInstance_, zoneVenueBoundaryLayer_.getBounds());
+      }
+      zoneDrawnItems_ = HululLeaflet.featureGroup().addTo(zoneMapInstance_);
+      // Edit mode: pre-populate the zone's own already-saved boundary (if any) so it shows up
+      // drawn and editable from the start, same as this file's own initVenueMap_ does for a venue.
+      if (zoneBoundary && zoneBoundary.length >= 3) {
+        zoneDrawnItems_.addLayer(HululLeaflet.polygon(zoneBoundary.map(function (pt) { return [pt.lat, pt.lng]; })));
+        zoneMapInstance_.fitBounds(zoneDrawnItems_.getBounds(), { padding: [20, 20] });
+      }
+      if (HululLeaflet.Control && HululLeaflet.Control.Draw) {
+        var drawControl = new HululLeaflet.Control.Draw({
+          draw: { polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: getZoneColorValue_() } }, polyline: false, rectangle: false, circle: false, circlemarker: false, marker: false },
+          edit: { featureGroup: zoneDrawnItems_ }
+        });
+        zoneMapInstance_.addControl(drawControl);
+        // Only one zone-boundary polygon is meaningful, so a freshly-drawn one replaces any previous one.
+        zoneMapInstance_.on(HululLeaflet.Draw.Event.CREATED, function (e) {
+          zoneDrawnItems_.clearLayers();
+          zoneDrawnItems_.addLayer(e.layer);
+          restyleZoneDrawnItems_();
+        });
+      }
+      restyleZoneDrawnItems_();
+      var zoneColorInput = document.getElementById('fZoneColor');
+      if (zoneColorInput) zoneColorInput.oninput = function () { restyleZoneDrawnItems_(); };
+    } catch (e) {
+      console.error('Boundary-drawing tool failed to initialize; the map itself still works.', e);
+    }
+    // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
+    // maps." (UI.drawZoneBoundaries/drawPlaceDots, ui.js). Just context here (no nearby filterable
+    // table on this tab to sync these dots to, unlike venueTabPlaces_'s own placeMap).
+    UI.drawZoneBoundaries(zoneMapInstance_, siblingZones);
+    UI.drawPlaceDots(zoneMapInstance_, places);
+    // REQ: "Inspectors live location as they start inspections. This applies to all maps."
+    if (venue && venue.id) zoneMapInspectorPollStop_ = UI.startInspectorLocationPolling(zoneMapInstance_, { venueId: venue.id }, 20000);
+    setTimeout(function () { if (zoneMapInstance_) zoneMapInstance_.invalidateSize(); }, 150);
+  }, 0);
+}
+
+// Same pattern as this file's own getVenueColorValue_/restyleVenueBoundaryLayer_ -- reads the zone
+// card's own color picker (falling back to the first palette color if it's somehow not on the page)
+// and live-applies it to whatever's currently drawn.
+function getZoneColorValue_() {
+  var el = document.getElementById('fZoneColor');
+  return (el && el.value) || ZONE_BOUNDARY_COLORS_[0];
+}
+
+function restyleZoneDrawnItems_() {
+  if (!zoneDrawnItems_) return;
+  var color = getZoneColorValue_();
+  zoneDrawnItems_.eachLayer(function (layer) {
+    if (layer.setStyle) layer.setStyle({ color: color, fillColor: color });
+  });
+}
+
+function destroyZoneMap_() {
+  zoneMapGen_++; // invalidate any still-pending initZoneMap_ setTimeout from an earlier render
+  if (zoneMapFullscreenCleanup_) { zoneMapFullscreenCleanup_(); zoneMapFullscreenCleanup_ = null; }
+  if (zoneMapInspectorPollStop_) { zoneMapInspectorPollStop_(); zoneMapInspectorPollStop_ = null; }
+  if (zoneMapInstance_) { zoneMapInstance_.remove(); zoneMapInstance_ = null; zoneVenueBoundaryLayer_ = null; zoneDrawnItems_ = null; }
+}
+
+// Reads the currently-drawn zone boundary polygon (if any) back into a plain {lat,lng}[] array for
+// the createZone payload -- null when nothing's been drawn (zone is created boundary-less).
+function getZoneBoundaryValue_() {
+  if (!zoneDrawnItems_) return null;
+  var layers = zoneDrawnItems_.getLayers();
+  if (!layers.length) return null;
+  var ring = layers[0].getLatLngs()[0];
+  return ring.map(function (ll) { return { lat: ll.lat, lng: ll.lng }; });
+}
+
+// Deleting a zone soft-deletes it (hidden everywhere, but old records still resolve its name).
+// If it has assignments/logs tied to it, offer -- but don't require -- moving that work to another
+// active zone in the same venue first.
+async function openDeleteZoneModal_(zoneId, allZones) {
+  var zone = allZones.filter(function (z) { return z.id === zoneId; })[0];
+  var impact;
+  try { impact = await Api.call('listZoneImpact', { zoneId: zoneId }); } catch (err) { UI.error(err); return; }
+
+  var otherZones = allZones.filter(function (z) { return z.id !== zoneId; });
+  var body = '<div style="font-size:13.5px;line-height:1.6;">';
+  if (impact.hasImpact) {
+    var parts = [];
+    if (impact.assignmentsCount) parts.push(t('count_x_assignments', { count: impact.assignmentsCount, term: Term('inspector').toLowerCase() }));
+    if (impact.logsCount) parts.push(t('count_x_s', { count: impact.logsCount, term: Term('finding').toLowerCase() }));
+    if (impact.participantsCount) parts.push(t('count_x_s', { count: impact.participantsCount, term: Term('participant').toLowerCase() }));
+    body += '<div>' + esc(t('x_has_parts_tied', { name: zone ? zone.name : zoneId, parts: parts.join(', ') })) + '</div>' +
+      '<div class="muted" style="margin-top:6px;">' + esc(t('move_to_other_x_hint', { term: Term('zone').toLowerCase() })) + '</div>';
+    if (otherZones.length) {
+      body += '<div style="margin-top:12px;">' + UI.field(t('field_move_to_x_optional', { term: Term('zone').toLowerCase() }),
+        '<select id="fReassignZone" class="field-input"><option value="">' + esc(t('dont_reassign_option')) + '</option>' +
+        otherZones.map(function (z) { return '<option value="' + z.id + '">' + esc(z.name) + '</option>'; }).join('') + '</select>'
+      ) + '</div>';
+    }
+  } else {
+    body += '<div>' + esc(t('delete_x_no_impact_confirm', { name: zone ? zone.name : zoneId, term: Term('zone').toLowerCase() })) + '</div>';
+  }
+  body += '</div>';
+
+  UI.openModal(t('delete_modal_title', { term: Term('zone') }), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('delete'), className: 'btn-danger', onClick: async function () {
+        try {
+          var reassignSelect = document.getElementById('fReassignZone');
+          await Api.call('deleteZone', { zoneId: zoneId, reassignToZoneId: reassignSelect ? reassignSelect.value : '' });
+          UI.closeModal(); UI.toast(t('x_deleted', { term: Term('zone') }), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+}
+
+/* ---------------- Places (Tab 3 of the venue detail page) ----------------
+ * Route (legacy, now redirects): #/venues/:id/places -- see renderVenuePlacesRedirect_ above.
+ * Distinct from Participants (event-scoped Vendors/Operators/
  * Exhibitors) -- a Place lives on the Venue itself so it can be reused across every Event held
  * there. Location must land inside the Venue's drawn boundary polygon (see initVenueMap_ above) --
  * enforced here for immediate feedback, and again (authoritatively) server-side in createPlace. A
@@ -490,13 +867,11 @@ var placeMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling clean
 var placeMapFilterSyncCleanup_ = null; // UI.syncMapDotsToTableFilter cleanup, see initPlaceMap_
 var placeMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_ above -- see its comment
 
-async function renderVenuePlaces(params) {
+// Tab 3: embedded (no page-header/back button of its own -- the tabbed page's own chrome already
+// provides those, same reasoning as venueTabMain_ above). Takes the already-fetched `venue` instead
+// of re-fetching it, unlike the old standalone renderVenuePlaces this replaces.
+async function venueTabPlaces_(content, venue) {
   destroyPlaceMap_();
-  var root = document.getElementById('viewRoot');
-  var venueId = params.id;
-  var venues = await Api.call('listVenues', {});
-  var venue = venues.filter(function (v) { return v.id === venueId; })[0];
-  if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
 
   // A Venue isn't org-scoped (see file header comment) -- any role the admin-configurable
   // venuePlace.manage permission allows can manage any venue's Places catalog (RBAC pilot: Settings >
@@ -511,7 +886,7 @@ async function renderVenuePlaces(params) {
     // `zones` (active-only) is what actually gets offered as choices -- the Add-a-place zone picker
     // and the boundary map's auto-detect both stay deleted-zone-free, only the table's name lookup
     // needs the full history.
-    Api.call('listZones', { venueId: venueId, includeDeleted: true }), Api.call('listPlaces', { venueId: venueId })
+    Api.call('listZones', { venueId: venue.id, includeDeleted: true }), Api.call('listPlaces', { venueId: venue.id })
   ]);
   var zones = zonesAll.filter(function (z) { return z.status !== 'Deleted'; });
   var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
@@ -527,19 +902,14 @@ async function renderVenuePlaces(params) {
     } catch (e) { /* read-only viewer without listUsers permission -- creator just shows as an id */ }
   }
 
-  root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + esc(t('places_title', { venueName: venue.name })) + '</div>' +
-    '<div class="page-subtitle">' + esc(t('places_subtitle', { term: Term('venue').toLowerCase() })) + '</div></div>' +
-    '<div style="display:flex;gap:8px;">' +
-      // REQ: "Add a helper button to identify all places within the venue boundary and add them
-      // automatically." Needs a drawn boundary to search within (see openDetectPlacesModal_) --
-      // hidden rather than shown-disabled when there isn't one, same convention as the rest of this
-      // page (e.g. the Add-a-place map's own boundary-dependent hint text).
-      (canManage && hasBoundary
-        ? '<button class="btn btn-secondary" id="detectPlacesBtn">' + ICON('detect_places') + ' ' + esc(t('detect_places_btn')) + '</button>'
-        : '') +
-      '<button class="btn btn-secondary" id="backToVenuesBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button>' +
-    '</div></div>' +
+  content.innerHTML =
+    // REQ: "Add a helper button to identify all places within the venue boundary and add them
+    // automatically." Needs a drawn boundary to search within (see openDetectPlacesModal_) --
+    // hidden rather than shown-disabled when there isn't one, same convention as the rest of this
+    // page (e.g. the Add-a-place map's own boundary-dependent hint text).
+    (canManage && hasBoundary
+      ? '<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-secondary" id="detectPlacesBtn">' + ICON('detect_places') + ' ' + esc(t('detect_places_btn')) + '</button></div>'
+      : '') +
     (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
     '<div class="card"><div class="card-body"><div id="venuePlacesListWrap">' + UI.table([
       { key: 'name', label: t('col_name') },
@@ -565,7 +935,6 @@ async function renderVenuePlaces(params) {
         ) }] : []),
       places, { emptyText: t('empty_places') }) + '</div></div></div>';
 
-  document.getElementById('backToVenuesBtn').onclick = function () { destroyPlaceMap_(); window.location.hash = '#/venues'; };
   var detectPlacesBtn = document.getElementById('detectPlacesBtn');
   if (detectPlacesBtn) detectPlacesBtn.onclick = function () { openDetectPlacesModal_(venue, zones, places); };
 
