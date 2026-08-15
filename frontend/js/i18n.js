@@ -55,7 +55,7 @@ window.HULUL_I18N = {
     // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
     // (EVENT_TAB_GROUPS_, eventDetail.js). Each parent's own subtab row still uses the individual
     // tab_x labels above -- these are only for the collapsed top-level button.
-    tab_group_general: 'General', tab_group_readiness: 'Readiness', tab_group_inspections: 'Inspections', tab_group_findings: 'Findings',
+    tab_group_general: 'General', tab_group_readiness: 'Readiness', tab_group_inspections: 'Inspections', tab_group_findings: 'Risk Logs',
     tab_group_participants: 'Participants', tab_group_reports: 'Reports',
     save: 'Save', cancel: 'Cancel', create: 'Create', close: 'Close', actions: 'Do', status: 'Status',
     loading: 'Loading…', no_data: 'Nothing here yet.',
@@ -307,7 +307,7 @@ window.HULUL_I18N = {
     check_interval_subtitle: 'How often the server checks whether an escalation, template deadline, or ended-event account cleanup is due. Tier delays above still control WHEN something is due — this controls how quickly the system notices.',
     x_minutes: '{{count}} minutes',
     tier1_title: 'Tier 1',
-    tier1_subtitle: 'Fires once a Finding\'s own resolution deadline (set per checklist item) passes. That timing isn\'t changed here — only who it notifies.',
+    tier1_subtitle: 'Fires once a Risk Log\'s own resolution deadline (set per checklist item) passes. That timing isn\'t changed here — only who it notifies.',
     tier2_title: 'Tier 2', tier2_subtitle: 'Fires this long after Tier 1, if the finding is still unresolved.',
     tier3_title: 'Tier 3', tier3_subtitle: 'Fires this long after Tier 2, if the finding is still unresolved.',
     field_to: 'To', field_to_hint: 'Gets the full-screen alert (if enabled above).',
@@ -566,7 +566,7 @@ window.HULUL_I18N = {
     tab_inspections: 'قوائم المراجعة', tab_completed_checklists: 'القوائم المكتملة',
     tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_participants_new: 'جديد', tab_reports: 'التقارير', tab_event_log: 'السجلات',
-    tab_group_general: 'عام', tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'النتائج',
+    tab_group_general: 'عام', tab_group_readiness: 'الجاهزية', tab_group_inspections: 'التفتيش', tab_group_findings: 'سجلات المخاطر',
     tab_group_participants: 'المشاركون', tab_group_reports: 'التقارير',
     save: 'حفظ', cancel: 'إلغاء', create: 'إنشاء', close: 'إغلاق', actions: 'تنفيذ', status: 'الحالة',
     loading: 'جارٍ التحميل…', no_data: 'لا توجد بيانات بعد.',
@@ -814,7 +814,7 @@ window.HULUL_I18N = {
     check_interval_subtitle: 'عدد مرات فحص الخادم لما إذا كان هناك تصعيد أو موعد نهائي لنموذج أو تنظيف حساب فعالية منتهية مستحق. المهل الزمنية للمستويات أعلاه لا تزال تحدد متى يستحق الأمر — هذا يحدد سرعة ملاحظة النظام لذلك.',
     x_minutes: '{{count}} دقيقة',
     tier1_title: 'المستوى 1',
-    tier1_subtitle: 'يُفعَّل بمجرد انقضاء الموعد النهائي لحل الملاحظة (المحدد لكل بند فحص). هذا التوقيت لا يُعدَّل هنا — فقط من يتم إشعاره.',
+    tier1_subtitle: 'يُفعَّل بمجرد انقضاء الموعد النهائي لحل سجل المخاطر (المحدد لكل بند فحص). هذا التوقيت لا يُعدَّل هنا — فقط من يتم إشعاره.',
     tier2_title: 'المستوى 2', tier2_subtitle: 'يُفعَّل بعد المستوى 1 بهذه المدة، إذا ظلت الملاحظة غير محلولة.',
     tier3_title: 'المستوى 3', tier3_subtitle: 'يُفعَّل بعد المستوى 2 بهذه المدة، إذا ظلت الملاحظة غير محلولة.',
     field_to: 'إلى', field_to_hint: 'يحصل على التنبيه الكامل للشاشة (إذا كان مُفعَّلاً أعلاه).',
