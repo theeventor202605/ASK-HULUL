@@ -5,8 +5,6 @@
  * GA Admin/User (and SystemAdmin) can create/edit/delete/link events, matching createEvent's own
  * role gate.
  */
-var PROJECT_MANAGE_ROLES_ = ['SystemAdmin', 'GAAdmin', 'GAUser'];
-
 // Whether to plot the (often numerous, per-event) red end-date dots on the timeline -- off by
 // default to keep the line uncluttered; persisted so the choice survives a page reload. The big
 // green/red anchor dots for the project's own overall start/end always show regardless.
@@ -194,7 +192,9 @@ function projectStatsHtml_(evs, subEventCount) {
 
 async function renderProjects() {
   var root = document.getElementById('viewRoot');
-  var canManage = PROJECT_MANAGE_ROLES_.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Projects.
+  var canManage = hasPermission('project.manage');
+  var canDelete = hasPermission('project.delete');
   var [projects, events, subEvents] = await Promise.all([Api.call('listProjects', {}), Api.call('listEvents', {}), Api.call('listSubEvents', {})]);
   var showEndDots = projectsShowEndDots_();
   var subEventCountByEvent = {};
@@ -219,7 +219,7 @@ async function renderProjects() {
                 '<a href="#/projects/' + pr.id + '" style="font-weight:700;font-size:14.5px;color:var(--text-900);text-decoration:none;">' + esc(pr.name) + '</a>' +
                 (pr.description ? '<div class="muted" style="font-size:12px;margin-top:4px;">' + esc(pr.description) + '</div>' : '') +
               '</div>' +
-              (canManage ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete')) + '" data-del-project="' + pr.id + '">' + ICON('delete') + '</button>' : '') +
+              (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete')) + '" data-del-project="' + pr.id + '">' + ICON('delete') + '</button>' : '') +
             '</div>' +
             projectTimelineHtml_(evs, showEndDots, subCount) +
           '</div>';
@@ -228,38 +228,42 @@ async function renderProjects() {
           (canManage ? esc(t('create_one_then_add_hint', { term: Term('event_plural').toLowerCase() })) : '') + '</div></div></div>');
 
   wireEndDotsToggle_();
-  if (!canManage) return;
 
-  document.getElementById('newProjectBtn').onclick = function () {
-    var body = UI.field(t('field_project_name', { term: Term('project') }), '<input id="fProjName" class="field-input" />') +
-      UI.field(t('field_description_optional'), '<textarea id="fProjDesc" class="field-input" rows="2"></textarea>');
-    UI.openModal(t('new_x_title', { term: Term('project') }), body, [
-      { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-      { label: t('create'), className: 'btn-primary', onClick: async function () {
-          try {
-            var created = await Api.call('createProject', {
-              name: document.getElementById('fProjName').value, description: document.getElementById('fProjDesc').value
-            });
-            UI.closeModal(); UI.toast(t('x_created', { term: Term('project') }), 'success');
-            window.location.hash = '#/projects/' + created.id;
-          } catch (err) { UI.error(err); }
-        } }
-    ]);
-  };
-  root.querySelectorAll('[data-del-project]').forEach(function (btn) {
-    btn.onclick = function () {
-      UI.confirmModal(t('delete_confirm_project', { term: Term('project').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() }), async function () {
-        try { await Api.call('deleteProject', { projectId: btn.getAttribute('data-del-project') }); UI.toast(t('x_deleted', { term: Term('project') }), 'success'); Router.resolve(); }
-        catch (err) { UI.error(err); }
-      }, { title: t('delete_modal_title', { term: Term('project').toLowerCase() }), confirmLabel: t('delete') });
+  if (canManage) {
+    document.getElementById('newProjectBtn').onclick = function () {
+      var body = UI.field(t('field_project_name', { term: Term('project') }), '<input id="fProjName" class="field-input" />') +
+        UI.field(t('field_description_optional'), '<textarea id="fProjDesc" class="field-input" rows="2"></textarea>');
+      UI.openModal(t('new_x_title', { term: Term('project') }), body, [
+        { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+        { label: t('create'), className: 'btn-primary', onClick: async function () {
+            try {
+              var created = await Api.call('createProject', {
+                name: document.getElementById('fProjName').value, description: document.getElementById('fProjDesc').value
+              });
+              UI.closeModal(); UI.toast(t('x_created', { term: Term('project') }), 'success');
+              window.location.hash = '#/projects/' + created.id;
+            } catch (err) { UI.error(err); }
+          } }
+      ]);
     };
-  });
+  }
+  if (canDelete) {
+    root.querySelectorAll('[data-del-project]').forEach(function (btn) {
+      btn.onclick = function () {
+        UI.confirmModal(t('delete_confirm_project', { term: Term('project').toLowerCase(), eventTerm: Term('event_plural').toLowerCase() }), async function () {
+          try { await Api.call('deleteProject', { projectId: btn.getAttribute('data-del-project') }); UI.toast(t('x_deleted', { term: Term('project') }), 'success'); Router.resolve(); }
+          catch (err) { UI.error(err); }
+        }, { title: t('delete_modal_title', { term: Term('project').toLowerCase() }), confirmLabel: t('delete') });
+      };
+    });
+  }
 }
 
 async function renderProjectDetail(params) {
   var root = document.getElementById('viewRoot');
   var projectId = params.id;
-  var canManage = PROJECT_MANAGE_ROLES_.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Projects.
+  var canManage = hasPermission('project.manage');
   var [projects, events, venues, orgs, subEvents] = await Promise.all([
     Api.call('listProjects', {}), Api.call('listEvents', {}), Api.call('listVenues', {}),
     canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]), Api.call('listSubEvents', {})

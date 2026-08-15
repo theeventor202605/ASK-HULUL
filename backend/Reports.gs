@@ -6,7 +6,7 @@
  */
 
 function generateReport(user, p) {
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN]);
+  requirePermission(user, 'report.generate'); // RBAC pilot -- same default roles as before, no behavior change
   if (['Opening', 'Operational'].indexOf(p.type) === -1) {
     throw new HululError('BAD_REQUEST', 'type must be "Opening" or "Operational"');
   }

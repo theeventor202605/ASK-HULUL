@@ -85,6 +85,166 @@ var PERMISSION_REGISTRY_ = {
   'participant.dedupe': {
     module: 'Participants', label: 'Remove duplicate participants',
     defaultRoles: ['SystemAdmin', 'EventManager']
+  },
+  'place.manage': {
+    module: 'Participants', label: 'Manage an event\'s participants (add account/edit/delete/view credentials)',
+    // Exactly Places.gs's old hardcoded EVENT_PLACE_MANAGE_ROLES -- migrating this call site is a
+    // no-op for behavior until a SystemAdmin actually changes it in Settings > Permissions, same as
+    // every other pilot migration.
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager']
+  },
+  'venuePlace.manage': {
+    module: 'Venues', label: 'Manage places within a venue\'s permanent catalog (add/edit/delete/view credentials)',
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager']
+  },
+  'venue.manage': {
+    module: 'Venues', label: 'Create, edit, or delete a venue',
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager']
+  },
+  'zone.manage': {
+    module: 'Venues', label: 'Create, edit, or delete a zone',
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager']
+  },
+  'event.manage': {
+    module: 'Events', label: 'Create or edit an event',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser']
+  },
+  'event.delete': {
+    module: 'Events', label: 'Delete an event (Planning status only)',
+    defaultRoles: ['SystemAdmin', 'GAAdmin']
+  },
+  'subEvent.create': {
+    module: 'Events', label: 'Create a sub-event',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager']
+  },
+  'event.assignManager': {
+    module: 'Events', label: 'Assign an Event Manager to an event',
+    defaultRoles: ['SystemAdmin', 'EMCManager', 'EMCAdmin']
+  },
+  'templateLibrary.manage': {
+    module: 'Templates', label: 'Add or replace a library template (Inspection Company master documents)',
+    defaultRoles: ['InspectionAdmin', 'SystemAdmin']
+  },
+  'template.send': {
+    module: 'Templates', label: 'Send readiness templates to an event',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'template.setDeadline': {
+    module: 'Templates', label: 'Set an event\'s documents deadline',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'meeting.manage': {
+    module: 'Meetings', label: 'Schedule, edit, or delete a meeting',
+    // NOTE: uploadEventTemplateFile/submitEventTemplate/reviewEventTemplate/openEventTemplate
+    // (Templates.gs) are deliberately NOT migrated here -- those already have their own dedicated,
+    // purpose-built admin surface (Settings > Configuration > Process tab, templateUploaderRoles_/
+    // templateReviewerRoles_, backed by the Config sheet) predating this Permissions module. Adding a
+    // second, parallel "who can do this" control for the same actions would just be confusing.
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager']
+  },
+  'checklistItem.manage': {
+    module: 'Inspections', label: 'Create, edit, or delete a checklist catalogue item',
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
+  },
+  'checklistItem.dedupe': {
+    module: 'Inspections', label: 'Remove duplicate checklist catalogue items',
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin']
+  },
+  'inspection.manage': {
+    module: 'Inspections', label: 'Schedule, edit, or delete an inspection visit',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'inspection.recordResults': {
+    module: 'Inspections', label: 'Record checklist results for an inspection',
+    defaultRoles: ['Inspector', 'SystemAdmin']
+  },
+  'discipline.manage': {
+    module: 'Disciplines', label: 'Add a discipline to the catalogue',
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin']
+  },
+  'discipline.identify': {
+    module: 'Disciplines', label: 'Identify which disciplines apply to an event',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'inspectorQualification.manage': {
+    module: 'Disciplines', label: 'Set an inspector\'s qualification profile',
+    defaultRoles: ['InspectionAdmin', 'SystemAdmin', 'ProjectManager']
+  },
+  'inspectorAssignment.manage': {
+    module: 'Disciplines', label: 'Assign or remove an inspector on a discipline',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'escalation.create': {
+    module: 'Risk Logging', label: 'Manually trigger an escalation for a finding',
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
+  },
+  'escalation.runCheck': {
+    module: 'Risk Logging', label: 'Manually run the escalation sweep',
+    // Same default roles as escalation.create today (kept as a separate key since they're different
+    // actions) -- the automated 30-min trigger (Setup.gs) calls runEscalationCheck with no user at
+    // all and is unaffected by this; this key only gates a signed-in caller manually running it.
+    defaultRoles: ['SystemAdmin', 'ProjectManager', 'InspectionAdmin']
+  },
+  'project.manage': {
+    module: 'Projects', label: 'Create or edit a project',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser']
+  },
+  'project.delete': {
+    module: 'Projects', label: 'Delete a project',
+    defaultRoles: ['SystemAdmin', 'GAAdmin']
+  },
+  'venueApproval.recommend': {
+    module: 'Venue Approval', label: 'Record a venue evaluation recommendation',
+    defaultRoles: ['ProjectManager', 'SystemAdmin']
+  },
+  'venueApproval.decide': {
+    module: 'Venue Approval', label: 'Record the GA venue decision or reassign the venue',
+    defaultRoles: ['GAAdmin', 'GAUser', 'SystemAdmin']
+  },
+  'reassignment.manage': {
+    module: 'Reassignment', label: 'Mark a user unavailable/available and reassign their work',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
+  },
+  'evidence.upload': {
+    module: 'Risk Logging', label: 'Upload evidence (photo/video) for a finding or resolution',
+    // Shared by two different moments: an Inspector attaching evidence while logging a finding, and
+    // a Vendor/Operator/Exhibitor attaching a required photo/video when submitting a resolution (see
+    // resolveFinding, Findings.gs). Kept separate from finding.addEvidence (also Risk Logging) --
+    // that key gates a narrower, Inspector/PM-only action elsewhere; this one is the shared
+    // file-upload primitive both flows call, so its role set has to include the resolver roles too.
+    defaultRoles: ['Inspector', 'SystemAdmin', 'Vendor', 'Operator', 'Exhibitor']
+  },
+  'user.list': {
+    module: 'Accounts', label: 'View the user directory',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
+  },
+  'organization.list': {
+    module: 'Accounts', label: 'View the organization directory',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EMCAdmin', 'InspectionAdmin', 'ProjectManager', 'EventManager', 'EMCManager']
+  },
+  'orgLabels.manage': {
+    module: 'Accounts', label: 'Change an organization\'s custom terminology labels',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
+  },
+  'auditLog.view': {
+    module: 'Accounts', label: 'View the audit log',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
+  },
+  'user.resetPassword': {
+    module: 'Accounts', label: 'Reset another user\'s password',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin']
+  },
+  'notification.send': {
+    module: 'Notifications', label: 'Manually send a notification',
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager']
+  },
+  'report.generate': {
+    module: 'Reports', label: 'Generate an opening/operational report',
+    defaultRoles: ['ProjectManager', 'SystemAdmin', 'InspectionAdmin']
+  },
+  'ticket.resolve': {
+    module: 'Support', label: 'Mark a support ticket resolved',
+    defaultRoles: ['SystemAdmin', 'SupportAgent']
   }
 };
 

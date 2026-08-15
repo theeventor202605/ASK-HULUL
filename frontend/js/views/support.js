@@ -351,7 +351,7 @@ function wireSupportDetailActions_(body, ticket, manager, isRaiser) {
       '</div>';
   }
 
-  if (manager && ['Open', 'InProgress'].indexOf(ticket.status) !== -1) {
+  if (hasPermission('ticket.resolve') && ['Open', 'InProgress'].indexOf(ticket.status) !== -1) {
     html += '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
       '<button type="button" class="btn btn-primary" id="tcResolveBtn">' + ICON('resolve_ticket') + ' ' + esc(t('mark_resolved_btn')) + '</button></div>';
   }

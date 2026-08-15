@@ -5,10 +5,10 @@
  * here is per-event — see the Templates tab on an event for how a Project Manager sends these out
  * and tracks each event's own copy.
  */
-var TEMPLATE_LIBRARY_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin'];
-
 async function renderTemplateLibrary() {
-  var canManage = TEMPLATE_LIBRARY_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
+  // "Add or replace a library template".
+  var canManage = hasPermission('templateLibrary.manage');
   var isSystemAdmin = HululState.user.role === 'SystemAdmin';
   var orgs = [];
   var orgId = HululState.user.orgId;

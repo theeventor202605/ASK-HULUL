@@ -14,14 +14,9 @@
  * `unavailable*` columns' comment in Utils.gs SCHEMA.
  */
 
-// Plain string literals, not ROLES.X -- Reassignment.gs also loads before Utils.gs alphabetically
-// (R < U), so a top-level ROLES reference here would break the whole script the same way it did in
-// EventChat.gs (see that file's comment on this exact mistake).
-var REASSIGNMENT_MANAGER_ROLES_ = ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager'];
-
 // REQ: "If a user is absent then he will be added to list in this page as unavailable."
 function setUserUnavailable(user, p) {
-  requireRole(user, REASSIGNMENT_MANAGER_ROLES_);
+  requirePermission(user, 'reassignment.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p || !p.userId) throw new HululError('BAD_REQUEST', 'userId is required');
   var target = getById('Users', p.userId);
   if (!target) throw new HululError('NOT_FOUND', 'User not found');
@@ -34,17 +29,18 @@ function setUserUnavailable(user, p) {
 }
 
 function setUserAvailable(user, p) {
-  requireRole(user, REASSIGNMENT_MANAGER_ROLES_);
+  requirePermission(user, 'reassignment.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p || !p.userId) throw new HululError('BAD_REQUEST', 'userId is required');
   var target = getById('Users', p.userId);
   if (!target) throw new HululError('NOT_FOUND', 'User not found');
   var updated = updateRow('Users', p.userId, { unavailable: false, unavailableReason: '', unavailableSince: '' });
   audit(user.id, 'SET_USER_AVAILABLE', 'Users', p.userId, {});
+  notify_(p.userId, 'MARKED_AVAILABLE', 'You were marked available again.', 'Users', p.userId, '');
   return stripSecrets_(updated);
 }
 
 function listUnavailableUsers(user) {
-  requireRole(user, REASSIGNMENT_MANAGER_ROLES_);
+  requirePermission(user, 'reassignment.manage'); // RBAC pilot -- same default roles as before, no behavior change
   return getAll('Users').filter(function (u) { return u.unavailable === true || u.unavailable === 'true'; }).map(stripSecrets_);
 }
 
@@ -54,7 +50,7 @@ function listUnavailableUsers(user) {
 // enriched the same way listInspectorAssignments (Disciplines.gs) does its own event-scoped list,
 // plus event name/dates since this list spans multiple events.
 function listUserAssignments(user, p) {
-  requireRole(user, REASSIGNMENT_MANAGER_ROLES_);
+  requirePermission(user, 'reassignment.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p || !p.userId) throw new HululError('BAD_REQUEST', 'userId is required');
 
   var inspectorAssignments = findWhere('InspectorAssignments', function (a) { return a.inspectorId === p.userId; }).map(function (a) {
@@ -84,7 +80,7 @@ function listUserAssignments(user, p) {
 // only qualified option, in which case the page offers Reschedule instead of a clean swap. Excludes
 // other unavailable inspectors too -- no point suggesting someone else who's also out.
 function listReplacementSuggestions(user, p) {
-  requireRole(user, REASSIGNMENT_MANAGER_ROLES_);
+  requirePermission(user, 'reassignment.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p || !p.eventId || !p.disciplineId) throw new HululError('BAD_REQUEST', 'eventId and disciplineId are required');
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');

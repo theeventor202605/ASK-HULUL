@@ -114,6 +114,11 @@
 
   <!-- ===== App shell ===== -->
   <div id="appShell" class="app-shell hidden">
+    <!-- Mobile-only dimmed backdrop behind the open sidebar drawer -- tapping it closes the
+         sidebar, same as tapping the sidebar's own collapse button. Shown/hidden by
+         applySidebarCollapsed_ (app.js); irrelevant on desktop, where collapsing shrinks the
+         sidebar's own width instead of overlaying it on top of content. -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden"></div>
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
         <div class="brand-mark">H</div>
@@ -128,7 +133,9 @@
 
     <div class="app-main">
       <header class="topbar">
-        <button id="mobileNavBtn" class="icon-btn lg-hidden">☰</button>
+        <!-- Shown only while the sidebar is collapsed -- see app.js's applySidebarCollapsed_, which
+             toggles this button's .hidden class in lockstep with #sidebar's .collapsed class. -->
+        <button id="mobileNavBtn" class="icon-btn hidden" aria-label="Open menu" title="Open menu">☰</button>
         <div class="topbar-search">
           <input id="globalSearch" type="text" placeholder="Search events, findings, users…" />
         </div>

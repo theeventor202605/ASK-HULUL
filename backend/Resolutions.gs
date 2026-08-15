@@ -114,7 +114,7 @@ function setEscalationConfig(user, p) {
 // roles), rather than picking one person by hand -- keeps manual and automatic escalations
 // consistent with each other and with whatever the admin has configured in Settings.
 function createEscalation(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'escalation.create'); // RBAC pilot -- same default roles as before, no behavior change
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
   if (['1', '2', '3'].indexOf(String(p.tier)) === -1) throw new HululError('BAD_REQUEST', 'tier must be 1, 2, or 3');
@@ -212,7 +212,7 @@ function acknowledgeEscalation(user, p) {
 // (risk-level-scoped) after Tier 2 triggers, if still unresolved.
 // Tiers strictly sequential: a later tier can never fire before the earlier tier's own trigger time (Section 2.5).
 function runEscalationCheck(user) {
-  if (user) requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.PROJECT_MANAGER, ROLES.INSPECTION_ADMIN]);
+  if (user) requirePermission(user, 'escalation.runCheck'); // RBAC pilot -- same default roles as before, no behavior change
   var openFindings = findWhere('Findings', function (f) { return FINDING_OPEN_STATUSES.indexOf(f.status) !== -1; });
   // Read once per run, not once per finding -- getConfigJson_ hits the Config sheet, and this can
   // scan a lot of open findings on a busy event.

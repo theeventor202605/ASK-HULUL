@@ -13,16 +13,11 @@
  * the actual discipline name, which inspectionScopeItems_ (Inspections.gs) matches on exactly, so a
  * mismatch meant those items would never show up for any inspection at all.
  */
-// Matches createChecklistItem/updateChecklistItem/deleteChecklistItem's backend requireRole — only
-// these roles get New/Edit/Delete/Import controls.
-var CHECKLIST_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'];
-// dedupeChecklistItems is a narrower, more destructive action — matches its own backend requireRole.
-var CHECKLIST_DEDUPE_ROLES = ['SystemAdmin', 'InspectionAdmin'];
-
 async function renderChecklistItems() {
   var root = document.getElementById('viewRoot');
-  var canManage = CHECKLIST_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
-  var canDedupe = CHECKLIST_DEDUPE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Inspections.
+  var canManage = hasPermission('checklistItem.manage');
+  var canDedupe = hasPermission('checklistItem.dedupe');
   var [items, disciplines] = await Promise.all([Api.call('listChecklistItems', {}), Api.call('listDisciplines', {})]);
   var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
   var view = { phase: phases[0] || '', category: '', checklistType: '' };

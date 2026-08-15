@@ -26,7 +26,6 @@ var VENUE_DEFAULT_CENTER = [24.7136, 46.6753]; // Riyadh -- a sensible default u
 // on eventDetail.js's Places map and venues.js's own Add-a-Place map, so nothing already saved
 // visually changes until an owner actually picks a new color.
 var VENUE_BOUNDARY_DEFAULT_COLOR_ = '#4f46e5';
-var EMC_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager']; // who can create/edit/delete Venues and Places
 var venueMapInstance_ = null;
 var venueMapMarker_ = null;
 var venueMapFullscreenCleanup_ = null;
@@ -45,7 +44,9 @@ var venueMapGen_ = 0;
 
 async function renderVenues() {
   var root = document.getElementById('viewRoot');
-  var canManage = EMC_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venues >
+  // "Create, edit, or delete a venue".
+  var canManage = hasPermission('venue.manage');
   var venues = await Api.call('listVenues', {});
 
   root.innerHTML =
@@ -496,10 +497,10 @@ async function renderVenuePlaces(params) {
   var venue = venues.filter(function (v) { return v.id === venueId; })[0];
   if (!venue) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('venue') })) + '</div>'; return; }
 
-  var role = HululState.user.role;
-  // A Venue isn't org-scoped (see file header comment) -- any EMC_MANAGE_ROLES member can manage
-  // any venue's Places catalog.
-  var canManage = EMC_MANAGE_ROLES.indexOf(role) !== -1;
+  // A Venue isn't org-scoped (see file header comment) -- any role the admin-configurable
+  // venuePlace.manage permission allows can manage any venue's Places catalog (RBAC pilot: Settings >
+  // Permissions > Venues > "Manage places within a venue's permanent catalog").
+  var canManage = hasPermission('venuePlace.manage');
   var hasBoundary = !!parseBoundaryClient_(venue.boundary);
 
   var [zonesAll, places] = await Promise.all([

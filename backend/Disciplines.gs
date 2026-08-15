@@ -9,7 +9,7 @@ function listDisciplines() {
 
 // Admin-maintained reference data: compliance disciplines catalogue (Setup.gs seeds the defaults).
 function createDiscipline(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN]);
+  requirePermission(user, 'discipline.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name || !p.code) throw new HululError('BAD_REQUEST', 'name and code are required');
   var row = { id: newId('Disciplines'), name: p.name, code: p.code };
   insertRow('Disciplines', row);
@@ -24,7 +24,7 @@ function createDiscipline(user, p) {
 function identifyDisciplines(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'discipline.identify', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var wantedIds = p.disciplineIds || [];
   var existing = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId; });
   var existingIds = existing.map(function (ed) { return ed.disciplineId; });
@@ -59,7 +59,7 @@ function listEventDisciplines(eventId) {
 
 // REQ-DIS-02: qualification profile per Inspector.
 function setInspectorQualifications(user, p) {
-  requireRole(user, [ROLES.INSPECTION_ADMIN, ROLES.SYSTEM_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'inspectorQualification.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var inspector = getById('Users', p.inspectorId);
   if (!inspector || inspector.role !== ROLES.INSPECTOR) throw new HululError('BAD_REQUEST', 'Target user is not an Inspector');
   // Replace the full set.
@@ -108,7 +108,7 @@ function listQualifiedInspectors(user, p) {
 function assignInspector(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'inspectorAssignment.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var quals = inspectorQualifications_(p.inspectorId);
   if (quals.indexOf(p.disciplineId) === -1) {
     throw new HululError('FORBIDDEN', 'Inspector is not qualified in this discipline');
@@ -151,13 +151,16 @@ function assignInspector(user, p) {
 function removeInspectorAssignment(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'inspectorAssignment.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var assignment = getById('InspectorAssignments', p.assignmentId);
   if (!assignment || assignment.eventId !== p.eventId) throw new HululError('NOT_FOUND', 'Assignment not found');
   var hasLogs = findWhere('Findings', function (f) { return f.eventId === p.eventId && f.createdBy === assignment.inspectorId; }).length > 0;
   if (hasLogs) throw new HululError('FORBIDDEN', 'This inspector has already logged findings for this event — the assignment can no longer be removed.');
   deleteRow('InspectorAssignments', p.assignmentId);
   audit(user.id, 'REMOVE_INSPECTOR_ASSIGNMENT', 'InspectorAssignments', p.assignmentId, {});
+  // assignInspector notifies the inspector when added (see below); removal deserves the same --
+  // also covers reassignInspector, which calls this then assignInspector for the replacement.
+  notify_(assignment.inspectorId, 'UNASSIGNMENT', 'You were removed from a discipline assignment for ' + event.name, 'InspectorAssignments', p.assignmentId, p.eventId);
   return { ok: true };
 }
 

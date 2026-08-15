@@ -212,9 +212,14 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 /* ---------- App shell ---------- */
 .app-shell{ display:flex; min-height:100vh; }
 .sidebar{ width:248px; flex:none; background:var(--sidebar-bg); color:var(--sidebar-text-strong); display:flex; flex-direction:column;
-  padding:18px 14px; position:sticky; top:0; height:100vh; transition:width .18s, background .15s; border-inline-end:1px solid var(--sidebar-border); }
-.sidebar.collapsed{ width:76px; }
-.sidebar.collapsed .brand-name, .sidebar.collapsed .nav-label, .sidebar.collapsed .lang-toggle-btn{ display:none; }
+  padding:18px 14px; position:sticky; top:0; height:100vh; overflow:hidden;
+  transition:width .18s, transform .2s, background .15s; border-inline-end:1px solid var(--sidebar-border); }
+/* Collapsed = fully hidden (not a narrow icon rail) -- the topbar hamburger (#mobileNavBtn,
+   shown/hidden in lockstep with this class, see app.js's applySidebarCollapsed_) is what brings it
+   back. Same class/mechanism at every screen width; only the "how" differs (see the <=900px
+   override below, which swaps the collapse from width->0 to a slide-off-screen transform, since a
+   248px sidebar pushing content on a phone-width screen would leave almost nothing to work with). */
+.sidebar.collapsed{ width:0; padding:0; border-inline-end-width:0; }
 .sidebar-brand{ display:flex; align-items:center; gap:10px; padding:6px 6px 18px; }
 .sidebar-collapse-btn{ margin-inline-start:auto; background:none; border:none; color:var(--sidebar-muted); cursor:pointer; font-size:16px; }
 .sidebar-nav{ display:flex; flex-direction:column; gap:2px; overflow-y:auto; flex:1; }
@@ -226,6 +231,13 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .nav-icon{ width:18px; text-align:center; flex:none; }
 .sidebar-footer{ padding-top:10px; border-top:1px solid var(--sidebar-border); margin-top:8px; }
 .sidebar-footer .lang-toggle-btn{ color:var(--sidebar-text); border-color:var(--sidebar-border); width:100%; }
+
+/* Mobile-only tap-to-close scrim behind the open sidebar drawer -- shown/hidden via app.js's
+   applySidebarCollapsed_ (adds/removes .hidden), never shown on desktop since collapsing there
+   shrinks the sidebar's own width instead of overlaying it. z-index 45: above ordinary page
+   content and the topbar (20), below the sidebar itself (50) so the drawer stays on top of its
+   own backdrop. */
+.sidebar-backdrop{ position:fixed; inset:0; z-index:45; background:rgba(15,23,42,.4); }
 
 .app-main{ flex:1; min-width:0; display:flex; flex-direction:column; }
 .topbar{ position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px; padding:12px 24px;
@@ -573,12 +585,16 @@ table.data-table tr:hover td{ background:#fafbff; }
 /* ---------- Misc ---------- */
 .muted{ color:var(--text-600); }
 .empty-state{ text-align:center; padding:40px 20px; color:var(--text-400); font-size:13.5px; }
-.lg-hidden{ display:none; }
 @media (max-width: 900px){
-  .sidebar{ position:fixed; inset-inline-start:0; z-index:50; transform:translateX(-110%); transition:transform .2s; }
-  html[dir="rtl"] .sidebar{ transform:translateX(110%); }
-  .sidebar.mobile-open{ transform:translateX(0); }
-  .lg-hidden{ display:inline-flex; }
+  /* On a narrow screen the sidebar overlays content (fixed + slide) instead of pushing it, and
+     starts collapsed by default (see app.js's initSidebarCollapse_) -- collapsing here means
+     sliding off-screen, not shrinking to width:0, so these re-assert the full box the base
+     .sidebar.collapsed rule above just zeroed out. */
+  .sidebar{ position:fixed; inset-inline-start:0; z-index:50; width:248px; padding:18px 14px;
+    border-inline-end:1px solid var(--sidebar-border); transform:translateX(0); transition:transform .2s; }
+  html[dir="rtl"] .sidebar{ transform:translateX(0); }
+  .sidebar.collapsed{ width:248px; padding:18px 14px; border-inline-end:1px solid var(--sidebar-border); transform:translateX(-110%); }
+  html[dir="rtl"] .sidebar.collapsed{ transform:translateX(110%); }
   .form-row{ grid-template-columns:1fr; }
 }
 

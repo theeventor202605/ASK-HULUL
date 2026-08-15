@@ -8,7 +8,7 @@
 // current venue evaluation -- reassignVenue starts a fresh 'current' row (empty recommendation)
 // after a rejection, so this doesn't block recommending again on a newly assigned venue.
 function recordRecommendation(user, p) {
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'venueApproval.recommend'); // RBAC pilot -- same default roles as before, no behavior change
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   if (!p.recommendation || !String(p.recommendation).trim()) throw new HululError('BAD_REQUEST', 'Recommendation is required');
@@ -30,7 +30,7 @@ function recordRecommendation(user, p) {
 
 // REQ-VAP-03: GA records Approved / Not Approved.
 function recordVenueDecision(user, p) {
-  requireRole(user, [ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'venueApproval.decide'); // RBAC pilot -- same default roles as before, no behavior change
   var event = getById('Events', p.eventId);
   var current = currentVenueEvaluation_(p.eventId);
   if (!current) throw new HululError('NOT_FOUND', 'No venue evaluation on record for this event');
@@ -55,7 +55,7 @@ function recordVenueDecision(user, p) {
 // different p.emcId. If the renting EMC actually changes, the previously assigned Event Manager
 // (who belonged to the old EMC) is cleared -- same safeguard as updateEvent's emcId patch.
 function reassignVenue(user, p) {
-  requireRole(user, [ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'venueApproval.decide'); // RBAC pilot -- same default roles as before, no behavior change
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   var venue = getById('Venues', p.venueId);
@@ -85,6 +85,9 @@ function reassignVenue(user, p) {
   });
 
   audit(user.id, 'REASSIGN_VENUE', 'Events', p.eventId, { newVenueId: p.venueId });
+  // recordRecommendation/recordVenueDecision both notify stakeholders; this restarts the whole
+  // readiness workflow on a new venue (clears templates, resets status) and deserves the same.
+  notifyEventStakeholders_(p.eventId, 'VENUE_REASSIGNED', 'Venue reassigned to ' + venue.name + ' for ' + event.name, 'Events', p.eventId);
   return getEventDetail(user, p.eventId);
 }
 

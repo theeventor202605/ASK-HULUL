@@ -15,11 +15,12 @@
 // scoped to them by listEvents. Fetching listOrganizations unconditionally used to break the
 // whole page for those roles: it 403s for anyone outside its allow-list, and since it was in the
 // same Promise.all as listEvents/listVenues, that one rejection failed the entire page load.
-var EVENT_MANAGE_ROLES = ['SystemAdmin', 'GAAdmin', 'GAUser'];
 
 async function renderEventsList() {
   var root = document.getElementById('viewRoot');
-  var canManage = EVENT_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Events >
+  // "Create or edit an event".
+  var canManage = hasPermission('event.manage');
   var [events, venues, orgs, projects] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}),
     canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]),
@@ -160,9 +161,9 @@ async function renderEventsList() {
         { key: 'actions', label: t('actions'), render: function (r) {
             var html = '<div style="display:inline-flex;gap:6px;white-space:nowrap;">' +
               '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
-            var canEdit = ['SystemAdmin', 'GAAdmin', 'GAUser'].indexOf(HululState.user.role) !== -1;
+            var canEdit = hasPermission('event.manage');
             if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
-            var canDelete = r.status === 'Planning' && ['SystemAdmin', 'GAAdmin'].indexOf(HululState.user.role) !== -1;
+            var canDelete = r.status === 'Planning' && hasPermission('event.delete');
             if (canDelete) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-del-event="' + r.id + '">' + ICON('delete') + '</button>';
             return html + '</div>';
           } }

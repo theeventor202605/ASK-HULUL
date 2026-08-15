@@ -31,21 +31,18 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
-// Mirrored verbatim from Templates.gs's own MEETING_MANAGE_ROLES -- who may schedule/edit/delete a
-// meeting (matches scheduleKickoff/updateMeeting/deleteMeeting's own requireRole).
-var MEETING_MANAGE_ROLES = ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'];
-
 // REQ: "Do not include participants in To:/Cc:" -- Vendor/Operator/Exhibitor accounts are event
 // Participants with app-login access (see Accounts.gs's own "org users -> participants" account
 // hierarchy comment), not internal staff. Meetings' To/Cc is an internal-staff coordination tool,
 // so these three roles are filtered out of the picker entirely -- mirrors ROLES.VENDOR/OPERATOR/
-// EXHIBITOR (Utils.gs) as literal strings, same mirroring convention as MEETING_TYPES/
-// MEETING_MANAGE_ROLES above.
+// EXHIBITOR (Utils.gs) as literal strings, same mirroring convention as MEETING_TYPES above.
 var PARTICIPANT_ROLES = ['Vendor', 'Operator', 'Exhibitor'];
 
 async function renderMeetings(params) {
   var root = document.getElementById('viewRoot');
-  var canManage = MEETING_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Meetings >
+  // "Schedule, edit, or delete a meeting".
+  var canManage = hasPermission('meeting.manage');
   var [events, venues, projects, subEvents, meetings] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}), Api.call('listProjects', {}),
     Api.call('listSubEvents', {}), Api.call('listMeetings', {})
@@ -578,7 +575,9 @@ function richTextPreview_(html, maxLen) {
 async function renderMeetingFormPage_(mode, params) {
   var root = document.getElementById('viewRoot');
   var isEdit = mode === 'edit';
-  var canManage = MEETING_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Meetings >
+  // "Schedule, edit, or delete a meeting".
+  var canManage = hasPermission('meeting.manage');
   if (!canManage) { window.location.hash = '#/meetings'; return; }
 
   var results = await Promise.all([

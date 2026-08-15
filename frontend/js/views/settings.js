@@ -4,14 +4,13 @@
  * present; Terminology and Icons are role-gated tabs that only appear (and only fetch their data)
  * for a user who can actually manage them, and only once that tab is opened.
  */
-var TERMINOLOGY_MANAGE_ROLES = ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'];
 var ICON_MANAGE_ROLES = ['SystemAdmin'];
 var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
 
 async function renderSettings(params) {
   var root = document.getElementById('viewRoot');
   var u = HululState.user;
-  var canManageLabels = TERMINOLOGY_MANAGE_ROLES.indexOf(u.role) !== -1;
+  var canManageLabels = hasPermission('orgLabels.manage');
   var canManageIcons = ICON_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
 

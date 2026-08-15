@@ -24,7 +24,7 @@ function listVenues(user, p) {
 // SystemAdmin/EMCAdmin/EMCManager can add one, and which EMC ends up renting it for a given Event is
 // chosen independently at Event creation (createEvent's required p.emcId).
 function createVenue(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
+  requirePermission(user, 'venue.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
   // p.boundary arrives as an array of {lat,lng} points (drawn on the map, see venues.js) or is
   // omitted entirely -- stringifyBoundary_ handles both that and a malformed/too-short array by
@@ -46,7 +46,7 @@ function createVenue(user, p) {
 // always sends a well-formed value; a malformed one would just fail to parse as a CSS color
 // client-side, same non-issue as a free-text field anywhere else in this app).
 function updateVenue(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
+  requirePermission(user, 'venue.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   var patch = {};
@@ -84,7 +84,7 @@ function listVenueImpact(user, p) {
 // Events, or Venue Evaluations) -- unlike Zones, there's no "reassign and delete anyway" option
 // here, since a Venue is the root of that whole tree and there's nowhere to reassign it to.
 function deleteVenue(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
+  requirePermission(user, 'venue.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var venue = getById('Venues', p.venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   if (venue.status === 'Deleted') throw new HululError('BAD_REQUEST', 'Venue is already deleted');
@@ -116,7 +116,7 @@ function listZones(user, p) {
 // Add Zone card the boundary is drawn in (eventDetail.js); blank falls back to the auto-cycled
 // palette client-side (ZONE_BOUNDARY_COLORS_), so this is optional, not required.
 function createZone(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
+  requirePermission(user, 'zone.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name || !p.venueId) throw new HululError('BAD_REQUEST', 'name and venueId are required');
   var zone = {
     id: newId('Zones'), venueId: p.venueId, name: p.name, createdAt: nowIso_(), status: 'Active',
@@ -132,7 +132,7 @@ function createZone(user, p) {
 // (or redraw a boundary) was only ever possible during creation. Same manage-roles as createZone;
 // boundary, like updateVenue's, is redrawn/cleared as a whole array, never patched piecemeal.
 function updateZone(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
+  requirePermission(user, 'zone.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var zone = getById('Zones', p.zoneId);
   if (!zone) throw new HululError('NOT_FOUND', 'Zone not found');
   var patch = {};
@@ -173,7 +173,7 @@ function listZoneImpact(user, p) {
 // tied to it and the caller supplied reassignToZoneId, that work is moved to the alternative zone
 // first — but per REQ, this is offered, not required: deletion proceeds either way.
 function deleteZone(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
+  requirePermission(user, 'zone.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var zone = getById('Zones', p.zoneId);
   if (!zone) throw new HululError('NOT_FOUND', 'Zone not found');
   if (zone.status === 'Deleted') throw new HululError('BAD_REQUEST', 'Zone is already deleted');
@@ -221,7 +221,7 @@ function assertEmcOrg_(emcId) {
 // governs which EMC's users (EMC Manager/Event Manager/etc.) can see and act on this Event (see
 // listEvents' orgType==='EMC' branch and every requireRole(..., event.emcId)-style check downstream).
 function createEvent(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER]);
+  requirePermission(user, 'event.manage'); // RBAC pilot -- same default roles as before, no behavior change
   ['name', 'venueId', 'address', 'city', 'startDateTime', 'endDateTime', 'inspectionCoId', 'emcId'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
@@ -248,7 +248,7 @@ function createEvent(user, p) {
 function updateEvent(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER]);
+  requirePermission(user, 'event.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (p.projectId && !getById('Projects', p.projectId)) throw new HululError('NOT_FOUND', 'Project not found');
   var patch = {};
   ['name', 'address', 'city', 'startDateTime', 'endDateTime', 'status', 'eventManagerId', 'project', 'projectId'].forEach(function (f) {
@@ -264,13 +264,20 @@ function updateEvent(user, p) {
   }
   var updated = updateRow('Events', p.eventId, patch);
   audit(user.id, 'UPDATE_EVENT', 'Events', p.eventId, patch);
+  // createEvent notifies stakeholders on creation; a material edit afterward (dates/venue/manager/
+  // etc.) deserves the same. Internal status-only transitions elsewhere (venue decisions, template
+  // reviews...) call updateRow('Events', ...) directly rather than going through this function, so
+  // they already have their own more specific notification and this doesn't double up on those.
+  if (Object.keys(patch).length) {
+    notifyEventStakeholders_(p.eventId, 'EVENT_UPDATED', 'Event details updated for ' + updated.name, 'Events', p.eventId);
+  }
   return updated;
 }
 
 // GA Admin (and SystemAdmin) may remove an Event only while it's still in Planning —
 // before venue approval, disciplines, inspections, or findings have started against it.
 function deleteEvent(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN]);
+  requirePermission(user, 'event.delete'); // RBAC pilot -- same default roles as before, no behavior change
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   if (event.status !== 'Planning') throw new HululError('FORBIDDEN', 'Only events still in Planning status can be deleted');
@@ -285,7 +292,7 @@ function deleteEvent(user, p) {
 function createSubEvent(user, p) {
   var parent = getById('Events', p.eventId);
   if (!parent) throw new HululError('NOT_FOUND', 'Parent event not found');
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.EVENT_MANAGER]);
+  requirePermission(user, 'subEvent.create'); // RBAC pilot -- same default roles as before, no behavior change
   if (new Date(p.startDateTime) < new Date(parent.startDateTime) || new Date(p.endDateTime) > new Date(parent.endDateTime)) {
     throw new HululError('BAD_REQUEST', 'Sub-event must fall within the parent event window');
   }
@@ -363,7 +370,7 @@ function getEventDetail(user, eventId) {
 
 // REQ-EVT-11: EMC Manager assigns an Event Manager to a Venue (recorded on the Event).
 function assignEventManagerToVenue(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_MANAGER, ROLES.EMC_ADMIN]);
+  requirePermission(user, 'event.assignManager'); // RBAC pilot -- same default roles as before, no behavior change
   var updated = updateRow('Events', p.eventId, { eventManagerId: p.eventManagerId });
   audit(user.id, 'ASSIGN_EVENT_MANAGER', 'Events', p.eventId, { eventManagerId: p.eventManagerId });
   var event = getById('Events', p.eventId);

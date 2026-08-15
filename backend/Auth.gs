@@ -83,10 +83,15 @@ function changePassword(userId, oldPassword, newPassword) {
 }
 
 function adminResetPassword(actingUser, targetUserId, newPassword) {
-  requireRole(actingUser, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN]);
+  requirePermission(actingUser, 'user.resetPassword'); // RBAC pilot -- same default roles as before, no behavior change
   var salt = randomToken_(16);
   updateRow('Users', targetUserId, { passwordSalt: salt, passwordHash: hashPassword_(newPassword, salt) });
   audit(actingUser.id, 'RESET_PASSWORD', 'Users', targetUserId, {});
+  // Security-sensitive: the affected user should always know their password was changed, even
+  // though they didn't do it themselves -- notify_ is defined in Notifications.gs, which loads
+  // after Auth.gs alphabetically, but this only runs inside a function body (not at file-load
+  // time), so the load-order restriction that applies to top-level code doesn't apply here.
+  notify_(targetUserId, 'PASSWORD_RESET', 'Your password was reset by an administrator. If this wasn\'t you, contact your organization admin.', 'Users', targetUserId, '');
   return { ok: true };
 }
 

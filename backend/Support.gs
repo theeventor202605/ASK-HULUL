@@ -140,7 +140,13 @@ function addTicketComment(user, p) {
 // remarks are required and land as a comment on the thread (so the "why" is always visible in the
 // same place as everything else), then the raiser is notified to review.
 function resolveTicket(user, p) {
-  requireRole(user, SUPPORT_MANAGE_ROLES);
+  // Deliberately a separate permission key from SUPPORT_MANAGE_ROLES (not requirePermission(user,
+  // 'someSharedKey') reusing that array) -- SUPPORT_MANAGE_ROLES also drives queue visibility,
+  // recording-attach rights, and notification routing throughout this file (isSupportManager_,
+  // supportRecipientIds_); making it admin-configurable here would silently change all of those too.
+  // Same reasoning as place.create vs EVENT_PLACE_MANAGE_ROLES in Places.gs. Same default roles as
+  // before, no behavior change.
+  requirePermission(user, 'ticket.resolve');
   if (!p || !p.ticketId) throw new HululError('BAD_REQUEST', 'ticketId is required');
   var ticket = getById('SupportTickets', p.ticketId);
   if (!ticket) throw new HululError('NOT_FOUND', 'Ticket not found');

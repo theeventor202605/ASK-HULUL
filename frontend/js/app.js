@@ -13,9 +13,10 @@ var NAV_ITEMS = [
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
-  // assigned to temporary another user." Same manager-ish roles as listUsers/Reassignment.gs's own
-  // REASSIGNMENT_MANAGER_ROLES_ -- kept in sync manually since nav gating is frontend-only (the
-  // backend enforces its own copy regardless of what this list shows).
+  // assigned to temporary another user." Same manager-ish roles as the reassignment.manage
+  // permission's default roles (Reassignment.gs, backend/Permissions.gs) -- kept in sync manually
+  // since nav gating is frontend-only (the backend enforces its own, admin-configurable copy
+  // regardless of what this list shows).
   { path: '/reassignment', icon: LUCIDE_ICONS['repeat'], label: 'nav_reassignment', section: 'section_main',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'EMCManager', 'ProjectManager'] },
   // Support/SystemAdmin see the whole shared queue here (support.js's renderSupport branches on
@@ -133,6 +134,38 @@ function renderSidebar() {
     '<span class="nav-icon">' + ICON('logout') + '</span><span class="nav-label">' + t('nav_logout') + '</span></div>';
   nav.innerHTML = html;
   document.getElementById('logoutNavItem').onclick = doLogout;
+  // On a phone-width screen the sidebar is an overlay drawer, not a pushed column -- picking a
+  // page should close it afterward the same way tapping the backdrop does, so the chosen page
+  // isn't left sitting behind it. Desktop's collapse is a deliberate, sticky user choice instead
+  // (a click on the page shouldn't undo it), so this only fires under the mobile breakpoint.
+  nav.querySelectorAll('.nav-item').forEach(function (a) {
+    a.addEventListener('click', function () {
+      if (window.innerWidth <= 900) applySidebarCollapsed_(true);
+    });
+  });
+}
+
+// ---- Sidebar collapse/expand (mobile-friendly: fully collapses, not just narrows) -------------
+// One class (#sidebar.collapsed) and one mechanism drives both the desktop and mobile look --
+// see styles.css for how the same class means "width:0" on desktop vs "slide off-screen" under
+// the <=900px breakpoint. #mobileNavBtn (topbar hamburger) and #sidebarBackdrop (mobile scrim)
+// are kept in sync with it here rather than via CSS alone, since their visibility depends on both
+// the collapsed state AND (for the backdrop) the current viewport width.
+var SIDEBAR_COLLAPSE_KEY_ = 'hulul_sidebar_collapsed';
+function applySidebarCollapsed_(collapsed) {
+  document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  document.getElementById('mobileNavBtn').classList.toggle('hidden', !collapsed);
+  document.getElementById('sidebarBackdrop').classList.toggle('hidden', collapsed || window.innerWidth > 900);
+  try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY_, collapsed ? '1' : '0'); } catch (e) { /* private browsing etc. -- just skip persisting */ }
+}
+// Respects an explicit prior choice (either button) across reloads; otherwise defaults to
+// collapsed on a phone-width screen (so it doesn't eat the whole viewport on first load) and
+// expanded everywhere else, matching the old desktop default.
+function initSidebarCollapse_() {
+  var stored = null;
+  try { stored = localStorage.getItem(SIDEBAR_COLLAPSE_KEY_); } catch (e) { /* ignore */ }
+  var collapsed = stored !== null ? stored === '1' : window.innerWidth <= 900;
+  applySidebarCollapsed_(collapsed);
 }
 
 function renderUserChip() {
@@ -266,12 +299,17 @@ function wireChrome() {
 
   document.getElementById('langToggleLogin').onclick = toggleLanguage;
   document.getElementById('langToggleApp').onclick = toggleLanguage;
-  document.getElementById('sidebarCollapseBtn').onclick = function () {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-  };
-  document.getElementById('mobileNavBtn').onclick = function () {
-    document.getElementById('sidebar').classList.toggle('mobile-open');
-  };
+  initSidebarCollapse_();
+  document.getElementById('sidebarCollapseBtn').onclick = function () { applySidebarCollapsed_(true); };
+  document.getElementById('mobileNavBtn').onclick = function () { applySidebarCollapsed_(false); };
+  document.getElementById('sidebarBackdrop').onclick = function () { applySidebarCollapsed_(true); };
+  // If the window crosses the mobile breakpoint while the sidebar happens to be open, the
+  // backdrop's own relevance changes with it (desktop collapse never shows one) -- keep it in
+  // sync without forcing the sidebar itself open/closed, which stays the user's own choice.
+  window.addEventListener('resize', function () {
+    var sidebar = document.getElementById('sidebar');
+    document.getElementById('sidebarBackdrop').classList.toggle('hidden', sidebar.classList.contains('collapsed') || window.innerWidth > 900);
+  });
   // openSupportCapture lives in js/views/support.js (loaded before this file, see index.html) --
   // takes a DOM screenshot of whatever page is currently open behind it (REQ: report an issue from
   // anywhere in the app) and walks the user through annotate -> voice note -> remarks -> submit.

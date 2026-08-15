@@ -26,7 +26,7 @@ function checklistItemDupKey_(c) {
 // check only looks at active items -- recreating an item with the same key as a previously
 // soft-deleted one is allowed.
 function createChecklistItem(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'checklistItem.manage'); // RBAC pilot -- same default roles as before, no behavior change
   ['checklistType', 'category', 'description'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
@@ -53,7 +53,7 @@ function createChecklistItem(user, p) {
 // carry a `row` (the CSV line number) purely so failures can be reported back per-row, same as the
 // old per-row loop did.
 function bulkCreateChecklistItems(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'checklistItem.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var items = (p && p.items) || [];
   if (!items.length) return { created: [], createdCount: 0, failed: [] };
 
@@ -103,7 +103,7 @@ function bulkCreateChecklistItems(user, p) {
 // Edits an existing item -- same dup check as create (Description+Phase+Checklist Type+Discipline),
 // excluding the item being edited itself so saving it unchanged never trips the check.
 function updateChecklistItem(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'checklistItem.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var item = getById('ChecklistItems', p.itemId);
   if (!item) throw new HululError('NOT_FOUND', 'Checklist item not found');
   var patch = {};
@@ -126,7 +126,7 @@ function updateChecklistItem(user, p) {
 // real description) but it's marked Deleted and filtered out of listChecklistItems and
 // inspectionScopeItems_ going forward -- same pattern as deleteVenue/deleteZone.
 function deleteChecklistItem(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'checklistItem.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var item = getById('ChecklistItems', p.itemId);
   if (!item) throw new HululError('NOT_FOUND', 'Checklist item not found');
   if (item.status === 'Deleted') throw new HululError('BAD_REQUEST', 'Checklist item is already deleted');
@@ -141,7 +141,7 @@ function deleteChecklistItem(user, p) {
 // still-active items -- a soft-deleted row should never get hard-deleted here, nor count as a
 // "duplicate" that causes an active row to be removed instead.
 function dedupeChecklistItems(user) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN]);
+  requirePermission(user, 'checklistItem.dedupe'); // RBAC pilot -- same default roles as before, no behavior change
   var seen = {};
   var toDelete = [];
   getAll('ChecklistItems').filter(function (c) { return c.status !== 'Deleted'; }).forEach(function (c) {
@@ -161,7 +161,7 @@ function dedupeChecklistItems(user) {
 function scheduleInspection(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'inspection.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   ['eventId', 'disciplineId', 'inspectorId', 'scheduledAt', 'phase'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
@@ -189,7 +189,7 @@ function scheduleInspection(user, p) {
 function updateInspection(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'inspection.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var inspection = getById('Inspections', p.inspectionId);
   if (!inspection || inspection.eventId !== p.eventId) throw new HululError('NOT_FOUND', 'Inspection not found');
   if (inspection.status !== 'Scheduled') {
@@ -209,6 +209,16 @@ function updateInspection(user, p) {
   var patch = { disciplineId: disciplineId, inspectorId: inspectorId, phase: phase, scheduledAt: scheduledAt };
   var updated = updateRow('Inspections', p.inspectionId, patch);
   audit(user.id, 'UPDATE_INSPECTION', 'Inspections', p.inspectionId, patch);
+  // scheduleInspection notifies the inspector when it's first created; a reschedule or reassignment
+  // deserves the same. If the inspector actually changed, tell both the outgoing and incoming one
+  // instead of just the (new) assignee, same reasoning as removeInspectorAssignment/assignInspector.
+  var disciplineObj = getById('Disciplines', disciplineId);
+  if (inspection.inspectorId !== inspectorId) {
+    notify_(inspection.inspectorId, 'INSPECTION_REASSIGNED', 'You are no longer assigned to inspect ' + (disciplineObj ? disciplineObj.name : '') + ' (' + phase + ') for ' + event.name, 'Inspections', p.inspectionId, p.eventId);
+    notify_(inspectorId, 'INSPECTION_SCHEDULED', 'New inspection scheduled: ' + (disciplineObj ? disciplineObj.name : '') + ' (' + phase + ')', 'Inspections', p.inspectionId, p.eventId);
+  } else {
+    notify_(inspectorId, 'INSPECTION_UPDATED', 'Inspection updated: ' + (disciplineObj ? disciplineObj.name : '') + ' (' + phase + ')', 'Inspections', p.inspectionId, p.eventId);
+  }
   return updated;
 }
 
@@ -217,7 +227,7 @@ function updateInspection(user, p) {
 function deleteInspection(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'inspection.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var inspection = getById('Inspections', p.inspectionId);
   if (!inspection || inspection.eventId !== p.eventId) throw new HululError('NOT_FOUND', 'Inspection not found');
   if (inspection.status !== 'Scheduled') {
@@ -227,6 +237,8 @@ function deleteInspection(user, p) {
   if (hasResults) throw new HululError('FORBIDDEN', 'This inspection already has results recorded against it and can no longer be deleted.');
   deleteRow('Inspections', p.inspectionId);
   audit(user.id, 'DELETE_INSPECTION', 'Inspections', p.inspectionId, {});
+  var discipline = getById('Disciplines', inspection.disciplineId);
+  notify_(inspection.inspectorId, 'INSPECTION_CANCELLED', 'Inspection cancelled: ' + (discipline ? discipline.name : '') + ' (' + inspection.phase + ') for ' + event.name, 'Inspections', p.inspectionId, p.eventId);
   return { ok: true };
 }
 
@@ -466,7 +478,7 @@ function listInspectionResults(user, p) {
 // Crossed items REQUIRE a Risk Logging (Finding) with at least one photo/video piece of evidence —
 // enforced here as well as client-side, since evidenceUrls arrives from the client.
 function recordInspectionResults(user, p) {
-  requireRole(user, [ROLES.INSPECTOR, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'inspection.recordResults'); // RBAC pilot -- same default roles as before, no behavior change
   var inspection = getById('Inspections', p.inspectionId);
   if (!inspection) throw new HululError('NOT_FOUND', 'Inspection not found');
   if (user.role === ROLES.INSPECTOR && inspection.inspectorId !== user.id) {
@@ -538,7 +550,7 @@ function uploadEvidence(user, p) {
   // resolveFinding now also requires a camera photo/video from the Participant (Vendor/Operator/
   // Exhibitor) when submitting a resolution -- same generic evidence-upload endpoint, so it needs
   // to accept those roles too.
-  requireRole(user, [ROLES.INSPECTOR, ROLES.SYSTEM_ADMIN, ROLES.VENDOR, ROLES.OPERATOR, ROLES.EXHIBITOR]);
+  requirePermission(user, 'evidence.upload'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
   var folder = getOrCreateFolder_('HULUL Evidence - ' + (p.eventId || 'General'));
   var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), p.mimeType || 'application/octet-stream', p.fileName || 'evidence');

@@ -88,7 +88,7 @@ function notifyFindingStatusChange_(finding, status) {
 
 // Manual notification send (admin/ops tool) — most notifications are system-generated via notify_().
 function sendNotification(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.EMC_MANAGER, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'notification.send'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.targetUserId || !p.message) throw new HululError('BAD_REQUEST', 'targetUserId and message are required');
   notify_(p.targetUserId, p.type || 'MANUAL', p.message, p.relatedType || '', p.relatedId || '', p.eventId || '');
   audit(user.id, 'SEND_NOTIFICATION', 'Users', p.targetUserId, { type: p.type || 'MANUAL' });

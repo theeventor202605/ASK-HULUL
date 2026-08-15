@@ -86,7 +86,7 @@ function listTemplateLibrary(user, p) {
 }
 
 function createLibraryTemplate(user, p) {
-  requireRole(user, [ROLES.INSPECTION_ADMIN, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
   var orgId = user.role === ROLES.SYSTEM_ADMIN ? (p.orgId || user.orgId) : user.orgId;
   if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
@@ -107,7 +107,7 @@ function createLibraryTemplate(user, p) {
 // current file per library entry, and uploading a newer one overwrites it. Events already sent the
 // previous version keep their own locked copy (see Templates row snapshot, above).
 function uploadLibraryTemplateVersion(user, p) {
-  requireRole(user, [ROLES.INSPECTION_ADMIN, ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var lib = getById('TemplateLibrary', p.templateLibraryId);
   if (!lib) throw new HululError('NOT_FOUND', 'Template not found');
   if (user.role !== ROLES.SYSTEM_ADMIN && lib.orgId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s template');
@@ -168,7 +168,7 @@ function getEventTemplates(user, p) {
 function sendTemplates(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'template.send', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.libraryTemplateIds || !p.libraryTemplateIds.length) throw new HululError('BAD_REQUEST', 'Select at least one template to send');
   // REQ: "No Template can be sent unless Deadline date time is set." -- mirrors the frontend's own
   // disabled-Send-button guard (see templateActionsHtml_ in eventDetail.js) so this can't be bypassed
@@ -281,12 +281,17 @@ function reviewEventTemplate(user, p) {
 function setTemplatesDeadline(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  requireRole(user, [ROLES.PROJECT_MANAGER, ROLES.SYSTEM_ADMIN], event.inspectionCoId);
+  requirePermission(user, 'template.setDeadline', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.deadlineAt) throw new HululError('BAD_REQUEST', 'deadlineAt is required');
   var d = new Date(p.deadlineAt);
   if (isNaN(d)) throw new HululError('BAD_REQUEST', 'deadlineAt is not a valid date');
   var updated = updateRow('Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
   audit(user.id, 'SET_TEMPLATES_DEADLINE', 'Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
+  // checkTemplateDeadlines notifies once the deadline is blown (TEMPLATE_MISSED below); setting it
+  // in the first place was silent, so an Event Manager could miss it with no warning at all.
+  notifyEventStakeholders_(p.eventId, 'TEMPLATES_DEADLINE_SET',
+    'Documents deadline set for ' + event.name + ': ' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm'),
+    'Events', p.eventId);
   return updated;
 }
 
@@ -344,16 +349,11 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
-// Same 4 roles that may schedule/edit/delete a meeting -- kept as one function instead of repeating
-// the array at every requireRole call site below. MUST stay a function (not a top-level var): Apps
-// Script executes every file's top-level statements in filename order (T before U), so a top-level
-// `var ... = ROLES.X` here would run before Utils.gs has defined ROLES and crash the entire backend
-// on load (exact bug class fixed once already -- see "Fix: top-level ROLES reference crashing entire
-// backend"). Wrapping in a function defers the ROLES lookup until requireRole() actually calls it,
-// by which point every file has finished loading.
-function meetingManageRoles_() {
-  return [ROLES.SYSTEM_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EMC_MANAGER];
-}
+// Who may schedule/edit/delete a meeting -- RBAC pilot: admin-configurable via 'meeting.manage'
+// (Settings > Permissions > Meetings), same default 4 roles this used to hardcode. (Superseded the
+// old meetingManageRoles_() helper, which existed only to defer a ROLES.X lookup past Apps Script's
+// alphabetical file-load order -- requirePermission's registry entry uses the same plain-string
+// convention PERMISSION_REGISTRY_ already requires, so that workaround is no longer needed here.)
 
 // Cleans a raw To/Cc payload (array of Users.id) down to real, de-duplicated user ids -- silently
 // drops anything blank, duplicated, or not an actual user instead of hard-failing the whole request,
@@ -385,7 +385,7 @@ function notifyMeetingRecipients_(meeting, to, cc, verb) {
 // meeting's Subject line -- MEETING_TYPES is offered as a picklist on the frontend, but any non-empty
 // free text is accepted here too (REQ: "Meeting type as Subject & allow free text as well").
 function scheduleKickoff(user, p) {
-  requireRole(user, meetingManageRoles_());
+  requirePermission(user, 'meeting.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var subject = String(p.type || '').trim();
   if (!subject) throw new HululError('BAD_REQUEST', 'type/subject is required');
   if (p.subEventId) {
@@ -409,7 +409,7 @@ function scheduleKickoff(user, p) {
 // changed needs to be sent); anything omitted keeps its current value, same "patch, don't replace"
 // convention updateRow itself already follows one level down.
 function updateMeeting(user, p) {
-  requireRole(user, meetingManageRoles_());
+  requirePermission(user, 'meeting.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var existing = getById('Meetings', p.meetingId);
   if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
   var eventId = p.eventId !== undefined ? p.eventId : existing.eventId;
@@ -439,7 +439,7 @@ function updateMeeting(user, p) {
 // Soft delete (status:'Deleted') -- same pattern as deleteChecklistItem: the row stays (so nothing
 // that ever referenced it breaks), it's just excluded from listMeetings going forward.
 function deleteMeeting(user, p) {
-  requireRole(user, meetingManageRoles_());
+  requirePermission(user, 'meeting.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var existing = getById('Meetings', p.meetingId);
   if (!existing || existing.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
   updateRow('Meetings', p.meetingId, { status: 'Deleted', updatedBy: user.id, updatedAt: nowIso_() });

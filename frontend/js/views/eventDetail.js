@@ -278,7 +278,6 @@ function infoRow(label, val) {
 
 /* ---------------- Venue & Zones ---------------- */
 // Matches createZone/deleteZone's backend requireRole — only these roles get zone controls.
-var ZONE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
 var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if neither the venue nor any of its places has coordinates
 var eventPlacesMapInstance_ = null;
 var eventPlacesMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initEventPlacesMap_
@@ -291,7 +290,9 @@ var eventPlacesZoneLayers_ = []; // each zone's own drawn boundary (read-only) -
 var ZONE_BOUNDARY_COLORS_ = ['#0d9488', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#65a30d'];
 
 async function tabVenue(content, eventId, detail) {
-  var canManage = ZONE_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venues >
+  // "Create, edit, or delete a zone".
+  var canManage = hasPermission('zone.manage');
   destroyEventPlacesMap_(); // in case a previous visit to this tab left one behind
   destroyZoneMap_(); // same, for the inline "Add zone" form's own map
 
@@ -840,10 +841,6 @@ var TEMPLATE_BOARD_BORDER = {
   'Not Sent': 'var(--border)', 'Sent': 'var(--info)', 'In Progress': 'var(--accent)', 'Submitted': 'var(--info)',
   'Under Review': 'var(--warning)', 'Evaluated': 'var(--success)', 'Missed': 'var(--danger)'
 };
-// Matches setTemplatesDeadline's backend requireRole — who can set/change the event's one Readiness
-// Templates deadline (see tabTemplates below).
-var TEMPLATE_DEADLINE_MANAGE_ROLES = ['ProjectManager', 'SystemAdmin'];
-
 // Who can do what to a per-event template, by current status:
 //   Not Sent      -> Project Manager sends it
 //   Sent / In Progress / Missed -> the configured uploader role(s) upload a completed file and/or
@@ -859,7 +856,9 @@ var TEMPLATE_DEADLINE_MANAGE_ROLES = ['ProjectManager', 'SystemAdmin'];
 // change them and allow one or multiple role assignment" (Configuration > Process).
 function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
   var role = HululState.user.role;
-  var isPM = role === 'ProjectManager' || role === 'SystemAdmin';
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
+  // "Send readiness templates to an event".
+  var isPM = hasPermission('template.send');
   var isEM = role === 'SystemAdmin' || uploaderRoles.indexOf(role) !== -1;
   var isAnalyst = role === 'SystemAdmin' || reviewerRoles.indexOf(role) !== -1;
   var parts = [];
@@ -888,7 +887,9 @@ async function tabTemplates(content, eventId, detail) {
     Api.call('getTemplateProcessRoles', {})
   ]);
   var templates = results[0], processRoles = results[1];
-  var canManageDeadline = TEMPLATE_DEADLINE_MANAGE_ROLES.indexOf(HululState.user.role) !== -1;
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
+  // "Set an event's documents deadline".
+  var canManageDeadline = hasPermission('template.setDeadline');
 
   var boardColumns = TEMPLATE_BOARD_COLUMNS.map(function (status) {
     return {
@@ -1073,16 +1074,23 @@ async function tabApproval(content, eventId) {
   // shown here anymore.
   var current = evals.filter(function (e) { return e.status === 'current'; })[0] || null;
   var hasRecommendation = !!(current && current.recommendation);
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Venue
+  // Approval -- hides controls a viewer can't actually use, same "avoid the dead-end click" reasoning
+  // as the Disciplines & Inspectors tab above.
+  var canRecommend = hasPermission('venueApproval.recommend');
+  var canDecide = hasPermission('venueApproval.decide');
 
   // Once a recommendation is on record for this evaluation it's locked -- shown read-only instead
   // of the form, matching recordRecommendation's own one-per-evaluation check server-side.
   var recBody = hasRecommendation
     ? '<div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;">' + esc(current.recommendation) + '</div>' +
       '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('submitted_once_note', { date: UI.fmtDate(current.recommendationAt) })) + '</div>'
-    : '<div style="display:flex;flex-direction:column;gap:6px;">' +
-        UI.field(t('field_recommendation'), '<textarea id="fRecommendation" class="field-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
-      '</div>' +
-      '<button class="btn btn-primary btn-sm" id="submitRecBtn" style="margin-top:12px;">' + esc(t('submit_recommendation_btn')) + '</button>';
+    : (canRecommend
+      ? '<div style="display:flex;flex-direction:column;gap:6px;">' +
+          UI.field(t('field_recommendation'), '<textarea id="fRecommendation" class="field-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>') +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm" id="submitRecBtn" style="margin-top:12px;">' + esc(t('submit_recommendation_btn')) + '</button>'
+      : '<div class="muted" style="font-size:12.5px;">' + esc(t('no_recommendation_yet')) + '</div>');
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('record_recommendation_title')) + '</div></div>' +
@@ -1094,12 +1102,14 @@ async function tabApproval(content, eventId) {
         '<div style="margin-top:6px;">' + (current && current.decision ? UI.statusBadge(current.decision) : '<span class="kpi-value" style="font-size:16px;">—</span>') + '</div></div>' +
       '<div class="kpi-card" style="min-width:150px;"><div class="kpi-label">' + esc(t('label_decided_on')) + '</div>' +
         '<div class="kpi-value" style="font-size:16px;">' + (current && current.decisionAt ? UI.fmtDate(current.decisionAt) : '—') + '</div></div>' +
-      '<div class="card" style="flex:1;min-width:260px;"><div class="card-header"><div class="card-title">' + esc(t('x_decision_ga_label', { term: Term('venue') })) + '</div></div>' +
-      '<div class="card-body"><button class="btn btn-secondary btn-sm" id="approveBtn">' + esc(t('approve_btn')) + '</button> ' +
-      '<button class="btn btn-danger btn-sm" id="rejectBtn">' + esc(t('not_approved_btn')) + '</button></div></div>' +
+      (canDecide
+        ? '<div class="card" style="flex:1;min-width:260px;"><div class="card-header"><div class="card-title">' + esc(t('x_decision_ga_label', { term: Term('venue') })) + '</div></div>' +
+          '<div class="card-body"><button class="btn btn-secondary btn-sm" id="approveBtn">' + esc(t('approve_btn')) + '</button> ' +
+          '<button class="btn btn-danger btn-sm" id="rejectBtn">' + esc(t('not_approved_btn')) + '</button></div></div>'
+        : '') +
     '</div>';
 
-  if (!hasRecommendation) {
+  if (canRecommend && !hasRecommendation) {
     document.getElementById('submitRecBtn').onclick = async function () {
       var val = document.getElementById('fRecommendation').value.trim();
       if (!val) { UI.toast(t('toast_recommendation_required'), 'error'); return; }
@@ -1109,8 +1119,10 @@ async function tabApproval(content, eventId) {
       } catch (err) { UI.error(err); }
     };
   }
-  document.getElementById('approveBtn').onclick = () => decide('Approved');
-  document.getElementById('rejectBtn').onclick = () => decide('Not Approved');
+  if (canDecide) {
+    document.getElementById('approveBtn').onclick = () => decide('Approved');
+    document.getElementById('rejectBtn').onclick = () => decide('Not Approved');
+  }
   async function decide(decision) {
     try { await Api.call('recordVenueDecision', { eventId: eventId, decision: decision }); UI.toast(t('toast_decision_recorded'), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
@@ -1121,10 +1133,14 @@ async function tabApproval(content, eventId) {
 // Only Project Managers (and SystemAdmin) can identify disciplines / assign / unassign
 // inspectors — everyone else viewing this tab gets a read-only view of the same data instead
 // of controls that would just come back "Not permitted" when clicked.
-var DISCIPLINE_MANAGER_ROLES = ['ProjectManager', 'SystemAdmin'];
+// RBAC pilot (backend/Permissions.gs): these were one shared role check, but they're two
+// separately admin-configurable permissions (Settings > Permissions > Disciplines) that just
+// happen to share the same default roles today -- kept split so Settings can diverge them later
+// without a frontend code change.
 
 async function tabDisciplines(content, eventId, detail) {
-  var canManage = DISCIPLINE_MANAGER_ROLES.indexOf(HululState.user.role) !== -1;
+  var canIdentify = hasPermission('discipline.identify');
+  var canAssign = hasPermission('inspectorAssignment.manage');
   var zones = (detail && detail.zones) || [];
   var zonesRequired = zones.length > 1;
   var [disciplines, assignments, eventDisciplines, gaps] = await Promise.all([
@@ -1140,21 +1156,21 @@ async function tabDisciplines(content, eventId, detail) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('identify_applicable_x', { term: Term('discipline_plural').toLowerCase() })) + '</div></div>' +
     '<div class="card-body">' + disciplines.map(function (d) {
       var checked = identifiedIds.indexOf(d.id) !== -1;
-      var locked = !canManage || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
-      var lockReason = !canManage ? t('only_pm_admin_hint') : t('x_assigned_remove_first_hint', { inspector: Term('inspector').toLowerCase(), discipline: Term('discipline').toLowerCase() });
+      var locked = !canIdentify || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
+      var lockReason = !canIdentify ? t('only_pm_admin_hint') : t('x_assigned_remove_first_hint', { inspector: Term('inspector').toLowerCase(), discipline: Term('discipline').toLowerCase() });
       return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;' + (locked ? 'opacity:0.65;' : '') + '"' +
         (locked ? ' title="' + lockReason + '"' : '') + '>' +
         '<input type="checkbox" class="disc-check" value="' + d.id + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + ' /> ' +
         esc(d.name) + (checked && assignedDisciplineIds.indexOf(d.id) !== -1 ? ' ' + ICON('locked_indicator') : '') + '</label>';
     }).join('') +
-    (canManage
+    (canIdentify
       ? '<div><button class="btn btn-primary btn-sm" id="saveDiscBtn" style="margin-top:12px;">' + esc(t('save')) + '</button></div>' +
         (assignedDisciplineIds.length ? '<div class="muted" style="font-size:11.5px;margin-top:8px;">' + ICON('locked_indicator') + ' ' + esc(t('x_assigned_remove_hint', { term: Term('inspector').toLowerCase() })) + '</div>' : '')
       : '<div class="muted" style="font-size:11.5px;margin-top:10px;">' + esc(t('readonly_pm_admin_hint')) + '</div>') +
     '</div></div>' +
-    renderConflictsCard_(gaps.conflicts, canManage) +
-    renderCoverageGapsCard_(gaps, canManage) +
-    (canManage
+    renderConflictsCard_(gaps.conflicts, canAssign) +
+    renderCoverageGapsCard_(gaps, canAssign) +
+    (canAssign
       ? '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('assign_x_title', { term: Term('inspector').toLowerCase() })) + '</div></div>' +
         '<div class="card-body form-row">' +
           UI.field(Term('discipline'), '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">' + esc(t('no_x_identified_yet', { term: Term('discipline_plural').toLowerCase() })) + '</option>') + '</select>') +
@@ -1173,19 +1189,21 @@ async function tabDisciplines(content, eventId, detail) {
       { key: 'disciplineName', label: Term('discipline') }, { key: 'inspectorName', label: Term('inspector') },
       { key: 'zoneNames', label: Term('zone_plural'), render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
       { key: 'assignedAt', label: t('col_assigned'), render: r => UI.fmtDate(r.assignedAt) }
-    ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
+    ].concat(canAssign ? [{ key: 'actions', label: t('actions'), render: r => '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>' }] : []),
       assignments, {}) +
     '</div></div>';
 
-  if (!canManage) return;
+  if (canIdentify) {
+    document.getElementById('saveDiscBtn').onclick = async function () {
+      var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
+      try {
+        await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids });
+        UI.toast(t('x_saved', { term: Term('discipline_plural') }), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  }
 
-  document.getElementById('saveDiscBtn').onclick = async function () {
-    var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
-    try {
-      await Api.call('identifyDisciplines', { eventId: eventId, disciplineIds: ids });
-      UI.toast(t('x_saved', { term: Term('discipline_plural') }), 'success'); Router.resolve();
-    } catch (err) { UI.error(err); }
-  };
+  if (!canAssign) return;
 
   var discSelect = document.getElementById('fAssignDisc');
   var inspSelect = document.getElementById('fAssignInsp');
@@ -1347,9 +1365,13 @@ function renderConflictsCard_(conflicts, canManage) {
 // Inspector's (or SystemAdmin's) alone. Hiding what a viewer can't actually use avoids the
 // "click it, get told Not permitted" dead end — e.g. a GAAdmin/EMCManager browsing this tab
 // would otherwise see every inspection's Record results button even though none are theirs.
-var INSPECTION_SCHEDULER_ROLES = ['ProjectManager', 'SystemAdmin'];
+// RBAC pilot (backend/Permissions.gs): the role-list half of each check is admin-configurable
+// (Settings > Permissions > Inspections); the ownership half ("is this MY inspection") isn't a
+// permission and stays a plain condition, same reasoning as Places.gs's org-ownership check.
+function canScheduleInspection_() { return hasPermission('inspection.manage'); }
 function canRecordInspection_(r) {
-  return HululState.user.role === 'SystemAdmin' || (HululState.user.role === 'Inspector' && r.inspectorId === HululState.user.id);
+  return hasPermission('inspection.recordResults') &&
+    (HululState.user.role === 'SystemAdmin' || r.inspectorId === HululState.user.id);
 }
 
 // A discipline+inspector assignment (Disciplines & Inspectors tab) is only fully "covered" here
@@ -1409,7 +1431,7 @@ async function tabInspections(content, eventId, detail) {
       if (n) UI.toast(n + ' evidence file(s) saved earlier finished uploading', 'success');
     });
   }
-  var canSchedule = INSPECTION_SCHEDULER_ROLES.indexOf(HululState.user.role) !== -1;
+  var canSchedule = canScheduleInspection_();
   var [inspections, assignments, checklistItems] = await Promise.all([
     Api.call('listInspections', { eventId: eventId }),
     Api.call('listInspectorAssignments', { eventId: eventId }),
@@ -2338,10 +2360,13 @@ function escalationPeopleHtml_(people) {
 /* ---------------- Reports ---------------- */
 async function tabReports(content, eventId) {
   var reports = await Api.call('listReports', { eventId: eventId });
+  var canGenerate = hasPermission('report.generate');
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;gap:10px;">' +
-    '<button class="btn btn-primary btn-sm" id="genReadinessBtn">' + esc(t('generate_x_report_btn', { phase: 'Opening' })) + '</button>' +
-    '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">' + esc(t('generate_x_report_btn', { phase: 'Operational' })) + '</button></div></div>' +
+    (canGenerate ?
+      '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;gap:10px;">' +
+      '<button class="btn btn-primary btn-sm" id="genReadinessBtn">' + esc(t('generate_x_report_btn', { phase: 'Opening' })) + '</button>' +
+      '<button class="btn btn-secondary btn-sm" id="genInspectionBtn">' + esc(t('generate_x_report_btn', { phase: 'Operational' })) + '</button></div></div>'
+      : '') +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('report_plural')) + '</div></div><div class="card-body">' +
     reports.map(r =>
       '<div style="border-bottom:1px solid #f0f1f6;padding:12px 0;">' +
@@ -2350,8 +2375,10 @@ async function tabReports(content, eventId) {
     ).join('') + (reports.length ? '' : '<div class="empty-state">' + t('no_data') + '</div>') +
     '</div></div>';
 
-  document.getElementById('genReadinessBtn').onclick = () => gen('Opening');
-  document.getElementById('genInspectionBtn').onclick = () => gen('Operational');
+  if (canGenerate) {
+    document.getElementById('genReadinessBtn').onclick = () => gen('Opening');
+    document.getElementById('genInspectionBtn').onclick = () => gen('Operational');
+  }
   async function gen(type) {
     try { await Api.call('generateReport', { eventId: eventId, type: type }); UI.toast(t('x_generated_toast', { term: Term('report') }), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }

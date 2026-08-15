@@ -82,14 +82,21 @@ function listPlaces(user, p) {
 // manage list can act on any venue's permanent Places. Event Places key off the Event's own renting
 // EMC (event.emcId), not the Venue, since that's the org relationship that's actually authoritative
 // for an Event (see createEvent/updateEvent).
+// RBAC pilot (backend/Permissions.gs): 'place.manage' (Event Places) / 'venuePlace.manage' (permanent
+// Venue Places) -- both default to exactly EVENT_PLACE_MANAGE_ROLES / the old inline
+// [SYSTEM_ADMIN, EMC_ADMIN, EMC_MANAGER] array respectively, so this migration is a no-op for
+// behavior until a SystemAdmin actually changes either in Settings > Permissions. The org-ownership
+// check for Event Places stays a plain requireRole-adjacent condition, not part of the permission
+// itself -- "is this admin-configured role allowed to manage places at all" and "is this actually
+// YOUR event" are two different questions, and only the first should be admin-configurable.
 function assertCanManagePlace_(user, venue, event) {
   if (event) {
-    requireRole(user, EVENT_PLACE_MANAGE_ROLES);
+    requirePermission(user, 'place.manage');
     if (user.role !== ROLES.SYSTEM_ADMIN && event.emcId !== user.orgId && event.eventManagerId !== user.id) {
       throw new HululError('FORBIDDEN', 'Not your event');
     }
   } else {
-    requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
+    requirePermission(user, 'venuePlace.manage');
   }
 }
 
@@ -220,8 +227,8 @@ function getPlaceAccountCredentials(user, p) {
     assertCanManagePlace_(user, venue, event);
   } else {
     // Fallback for an account whose originating Place row is gone (deletePlace never deletes the
-    // account) -- same org-ownership check as before, EMC-admin roles only.
-    requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER]);
+    // account) -- same org-ownership check as before, EMC-admin roles only (RBAC pilot: venuePlace.manage).
+    requirePermission(user, 'venuePlace.manage');
     if (user.role !== ROLES.SYSTEM_ADMIN && account.orgId !== user.orgId) {
       throw new HululError('FORBIDDEN', 'Not your organization\'s account');
     }
@@ -300,7 +307,7 @@ function deletePlace(user, p) {
   var venue = getById('Venues', place.venueId);
   var event = place.eventId ? getById('Events', place.eventId) : null;
   if (venue) assertCanManagePlace_(user, venue, event);
-  else requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.EMC_ADMIN, ROLES.EMC_MANAGER, ROLES.EVENT_MANAGER]);
+  else requirePermission(user, 'place.manage'); // orphaned place (venue itself gone) -- RBAC pilot
   // Deliberately does not touch the accounts/participants this place provisioned -- they may have
   // Findings/Resolutions history attached, and stay valid logins independent of the catalog entry
   // that originally created them.

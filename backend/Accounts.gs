@@ -4,7 +4,7 @@
  */
 
 function listUsers(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.EMC_MANAGER, ROLES.PROJECT_MANAGER]);
+  requirePermission(user, 'user.list'); // RBAC pilot -- same default roles as before, no behavior change
   var all = getAll('Users').map(stripSecrets_);
   if (p && p.orgId) all = all.filter(function (u) { return String(u.orgId) === String(p.orgId); });
   if (p && p.role) all = all.filter(function (u) { return u.role === p.role; });
@@ -55,6 +55,9 @@ function deactivateUser(actingUser, targetUserId) {
   assertCanManage_(actingUser, target);
   var updated = updateRow('Users', targetUserId, { status: 'Inactive' });
   audit(actingUser.id, 'DEACTIVATE_USER', 'Users', targetUserId, {});
+  // notify_ still emails a deactivated user even though they can no longer log in to see the
+  // in-app copy (getUserByToken requires status === 'Active') -- MailApp doesn't check that.
+  notify_(targetUserId, 'ACCOUNT_DEACTIVATED', 'Your account has been deactivated.', 'Users', targetUserId, '');
   return stripSecrets_(updated);
 }
 
@@ -64,6 +67,7 @@ function activateUser(actingUser, targetUserId) {
   assertCanManage_(actingUser, target);
   var updated = updateRow('Users', targetUserId, { status: 'Active' });
   audit(actingUser.id, 'ACTIVATE_USER', 'Users', targetUserId, {});
+  notify_(targetUserId, 'ACCOUNT_ACTIVATED', 'Your account has been reactivated. You can log in again.', 'Users', targetUserId, '');
   return stripSecrets_(updated);
 }
 
@@ -77,7 +81,7 @@ function assertCanManage_(actingUser, target) {
 }
 
 function listOrganizations(user) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.GA_USER, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN, ROLES.PROJECT_MANAGER, ROLES.EVENT_MANAGER, ROLES.EMC_MANAGER]);
+  requirePermission(user, 'organization.list'); // RBAC pilot -- same default roles as before, no behavior change
   return getAll('Organizations');
 }
 
@@ -175,13 +179,6 @@ function uploadOrgLogo(user, p) {
 // only ever sees the labels their own org set (or the built-in defaults if their org hasn't set
 // any), so an Inspection Company working across multiple GA clients isn't affected by any one
 // client's relabeling.
-// String literals (not ROLES.X) deliberately: this runs at file-load time, before Utils.gs's
-// top-level `var ROLES = {...}` has necessarily executed yet (Apps Script evaluates every file's
-// top-level statements in filename order — Accounts.gs sorts before Utils.gs — so referencing
-// ROLES.X here throws "Cannot read properties of undefined"). Matches ACCOUNT_CREATION_MATRIX
-// above, which uses the same string-literal convention for the same reason.
-var ORG_LABEL_MANAGER_ROLES = ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'];
-
 // Any authenticated user can read their own org's labels (needed to render the UI); no separate
 // permission check beyond being logged in, mirroring getMyOrg's reasoning above. SystemAdmin may
 // pass p.orgId to look up a specific org's labels (e.g. to prefill the Terminology editor for an
@@ -197,7 +194,7 @@ function getOrgLabels(user, p) {
 // Only the org's own admin-type role (or SystemAdmin) may change its labels; always scoped to the
 // acting user's own org (SystemAdmin must pass p.orgId explicitly since they may not belong to one).
 function setOrgLabels(user, p) {
-  requireRole(user, ORG_LABEL_MANAGER_ROLES);
+  requirePermission(user, 'orgLabels.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var orgId = user.role === ROLES.SYSTEM_ADMIN ? (p.orgId || user.orgId) : user.orgId;
   if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
   if (!p.labels || typeof p.labels !== 'object') throw new HululError('BAD_REQUEST', 'labels object is required');
@@ -300,7 +297,7 @@ function deleteCustomIconLibrary(user, p) {
 
 // REQ-ACC-10: immutable audit trail.
 function listAuditLog(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN, ROLES.GA_ADMIN, ROLES.EMC_ADMIN, ROLES.INSPECTION_ADMIN]);
+  requirePermission(user, 'auditLog.view'); // RBAC pilot -- same default roles as before, no behavior change
   var all = getAll('AuditLog').sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
   if (p && p.targetType) all = all.filter(function (a) { return a.targetType === p.targetType; });
   return all.slice(0, (p && p.limit) || 200);

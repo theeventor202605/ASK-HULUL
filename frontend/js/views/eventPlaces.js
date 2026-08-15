@@ -22,7 +22,6 @@
  * driven by listParticipants (which merges permanent venue-wide participants with this Event's own
  * temporary ones -- see the eventId filter added to Participants.gs's listParticipants).
  */
-var EVENT_PLACE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager'];
 var eventPlaceMapInstance_ = null;
 var eventPlaceMapMarker_ = null;
 var eventPlaceMapBoundaryLayer_ = null;
@@ -35,8 +34,10 @@ async function tabParticipants(content, eventId, detail) {
   var role = HululState.user.role;
   // Event Places key off the Event's own renting EMC (event.emcId), not the Venue -- a Venue isn't
   // connected to any one EMC (see Events.gs file header comment), so that's the authoritative org
-  // relationship here, matching assertCanManagePlace_ in Places.gs.
-  var canManage = !!venue && EVENT_PLACE_MANAGE_ROLES.indexOf(role) !== -1 &&
+  // relationship here, matching assertCanManagePlace_ in Places.gs. RBAC pilot: the role-list half of
+  // that check is now admin-configurable (Settings > Permissions > Participants > "Manage an event's
+  // participants") -- the org-ownership half stays a plain condition, same reasoning as the backend.
+  var canManage = !!venue && hasPermission('place.manage') &&
     (role === 'SystemAdmin' || (event && event.emcId === HululState.user.orgId) || (event && event.eventManagerId === HululState.user.id));
   // RBAC pilot (backend/Permissions.gs): matches assertCanCreatePlace_'s own requirePermission
   // fallback in Places.gs -- lets a non-manager role (e.g. Inspector) see the map and add a new
