@@ -248,7 +248,7 @@ async function tabOverview(content, eventId, detail) {
           // getEventDetail (Events.gs); event.project (free-text) is kept as a fallback only for events
           // that predate the structured projectId link (see Utils.gs SCHEMA comment on Events.project).
           infoRow(t('col_project'), detail.project ? detail.project.name : detail.event.project) +
-          infoRow('EMC', detail.emc ? detail.emc.name : detail.event.emcId) +
+          infoRow(t('org_type_emc'), detail.emc ? detail.emc.name : detail.event.emcId) +
           infoRow(t('field_inspection_company'), detail.inspectionCo ? detail.inspectionCo.name : detail.event.inspectionCoId) +
           infoRow(t('label_event_manager'), detail.eventManager ? detail.eventManager.name : '') +
           // REQ report: "Sub-Events / Zones showing as number" -- a bare count wasn't useful; listing

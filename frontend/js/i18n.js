@@ -72,13 +72,13 @@ window.HULUL_I18N = {
     // ---- Events list + New/Edit Event modal (events.js) ----
     events_subtitle: 'All {{term}} across your organisation',
     import_csv: 'Import CSV', field_x_name: '{{term}} name', field_venue: 'Venue', field_address_city_hint: 'Address & city are pulled from the selected {{term}}.',
-    field_renting_emc: 'Renting EMC', field_inspection_co: 'Inspection Company', field_project_optional: '{{term}} (optional)',
-    toast_emc_required: 'Renting EMC is required', label_no_project: 'No {{term}}',
+    field_renting_emc: 'Renting Event Management Company', field_inspection_co: 'Inspection Company', field_project_optional: '{{term}} (optional)',
+    toast_emc_required: 'Renting Event Management Company is required', label_no_project: 'No {{term}}',
     venue_edit_hint: '{{venueTerm}}: {{venueName}} — not editable here (fixed at creation)',
     import_results_title: 'Import results', import_created_count: '{{count}} {{term}} created successfully.',
     import_failed_count: '{{count}} row(s) failed:', importing_events: 'Importing events…',
     empty_csv: 'Empty CSV file', csv_columns_required: 'CSV needs at least: Event Name, Venue, Start, End columns',
-    no_inspection_cos_found: 'No inspection companies found', no_emc_orgs_found: 'No EMC organizations found',
+    no_inspection_cos_found: 'No inspection companies found', no_emc_orgs_found: 'No Event Management Company organizations found',
     back: 'Back',
 
     // ---- Findings / Risk Logging (findings.js) ----
@@ -261,10 +261,10 @@ window.HULUL_I18N = {
     toast_password_reset: 'Password reset',
     nav_audit_log: 'Audit Log', audit_log_subtitle: 'Immutable record of account and system actions',
     col_timestamp: 'Time', col_actor: 'Actor', col_action: 'Action', col_target_type: 'Target type', col_target_id: 'Target ID', col_details: 'Details',
-    orgs_subtitle: 'Government Authorities, EMCs, and Inspection Companies', new_org_btn: '+ New organization',
+    orgs_subtitle: 'Government Authorities, Event Management Companies, and Inspection Companies', new_org_btn: '+ New organization',
     col_logo: 'Logo', col_domain: 'Domain', edit_domain_title: 'Edit domain', upload_logo_title: 'Upload logo',
     new_org_title: 'New organization', field_name: 'Name', field_type: 'Type', field_domain_optional: 'Domain (optional)',
-    org_type_ga: 'Government Authority', org_type_emc: 'EMC', org_type_inspection: 'Inspection Company',
+    org_type_ga: 'Government Authority', org_type_emc: 'Event Management Company', org_type_inspection: 'Inspection Company',
     toast_org_created: 'Organization created',
     domain_hint: 'Used to build auto-generated Place-account login emails, e.g. "vendor001@yawad.sa". Leave blank to fall back to a slugified version of the organization\'s name.',
     field_domain: 'Domain', domain_modal_title_prefix: 'Domain — {{name}}', toast_domain_saved: 'Domain saved',
@@ -568,13 +568,13 @@ window.HULUL_I18N = {
     // ---- Events list + New/Edit Event modal (events.js) ----
     events_subtitle: 'كل {{term}} في مؤسستك',
     import_csv: 'استيراد CSV', field_x_name: 'اسم {{term}}', field_venue: 'الموقع', field_address_city_hint: 'العنوان والمدينة مأخوذان من {{term}} المحدد.',
-    field_renting_emc: 'الجهة المنظمة المستأجرة', field_inspection_co: 'شركة التفتيش', field_project_optional: '{{term}} (اختياري)',
-    toast_emc_required: 'الجهة المنظمة المستأجرة مطلوبة', label_no_project: 'بدون {{term}}',
+    field_renting_emc: 'شركة إدارة الفعاليات المستأجرة', field_inspection_co: 'شركة التفتيش', field_project_optional: '{{term}} (اختياري)',
+    toast_emc_required: 'شركة إدارة الفعاليات المستأجرة مطلوبة', label_no_project: 'بدون {{term}}',
     venue_edit_hint: '{{venueTerm}}: {{venueName}} — غير قابل للتعديل هنا (يُحدَّد عند الإنشاء)',
     import_results_title: 'نتائج الاستيراد', import_created_count: 'تم إنشاء {{count}} {{term}} بنجاح.',
     import_failed_count: 'فشل {{count}} من الصفوف:', importing_events: 'جارٍ استيراد الفعاليات…',
     empty_csv: 'ملف CSV فارغ', csv_columns_required: 'يجب أن يحتوي ملف CSV على الأعمدة التالية على الأقل: اسم الفعالية، الموقع، البداية، النهاية',
-    no_inspection_cos_found: 'لا توجد شركات تفتيش', no_emc_orgs_found: 'لا توجد جهات منظمة',
+    no_inspection_cos_found: 'لا توجد شركات تفتيش', no_emc_orgs_found: 'لا توجد شركات إدارة فعاليات',
     back: 'رجوع',
 
     // ---- Findings / Risk Logging (findings.js) ----

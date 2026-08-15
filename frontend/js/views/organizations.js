@@ -10,7 +10,11 @@ async function renderOrganizations() {
     '<button class="btn btn-primary" id="newOrgBtn">' + esc(t('new_org_btn')) + '</button></div>' +
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'logoUrl', label: t('col_logo'), render: r => r.logoUrl ? '<img src="' + esc(r.logoUrl) + '" alt="" width="28" height="28" style="height:28px;width:auto;max-width:100px;object-fit:contain;border-radius:6px;" onerror="this.style.display=\'none\'" />' : '<span class="muted">—</span>' },
-      { key: 'name', label: t('col_name') }, { key: 'type', label: t('col_type') },
+      { key: 'name', label: t('col_name') },
+      // REQ follow-up: this showed the raw org.type code (GA/EMC/INSPECTION) untranslated -- same
+      // org_type_ga/org_type_emc/org_type_inspection keys the New Organization form's own Type
+      // dropdown already uses (openNewOrgModal below), just not previously reused here for display.
+      { key: 'type', label: t('col_type'), render: r => esc(r.type === 'GA' ? t('org_type_ga') : r.type === 'EMC' ? t('org_type_emc') : r.type === 'INSPECTION' ? t('org_type_inspection') : (r.type || '—')) },
       // Used to build auto-generated Place-account login emails, e.g. 'vendor001@yawad.sa' -- see
       // placeAccountDomain_ in Places.gs. Falls back to a slugified org name when left blank.
       { key: 'domain', label: t('col_domain'), render: r => r.domain ? esc(r.domain) : '<span class="muted">—</span>' },

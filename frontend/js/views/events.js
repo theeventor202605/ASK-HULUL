@@ -323,7 +323,7 @@ function csvEscape_(v) {
 }
 
 function exportEventsCsv(rows, venueById, emcOrgById) {
-  var headers = ['Event Name', 'Venue', 'Address', 'City', 'Start', 'End', 'EMC', 'Status', 'Code', 'Project'];
+  var headers = ['Event Name', 'Venue', 'Address', 'City', 'Start', 'End', 'Event Management Company', 'Status', 'Code', 'Project'];
   var lines = [headers.map(csvEscape_).join(',')];
   rows.forEach(function (r) {
     var venue = venueById[r.venueId];
@@ -389,7 +389,11 @@ async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
   var idxCity = col('city');
   var idxStart = col('start');
   var idxEnd = col('end');
-  var idxEmc = col('emc') !== -1 ? col('emc') : col('renting emc');
+  // Accepts the current export header ('Event Management Company') plus the older 'EMC'/'Renting EMC'
+  // headers this column used to export as, so a CSV exported before that rename (or hand-typed with
+  // the old header) still imports correctly.
+  var idxEmc = col('event management company') !== -1 ? col('event management company')
+    : (col('emc') !== -1 ? col('emc') : col('renting emc'));
   var idxInsp = col('inspection company') !== -1 ? col('inspection company') : col('inspection co');
   var idxCode = col('code');
   var idxProject = col('project');
@@ -421,7 +425,7 @@ async function importEventsCsv(file, venues, inspectionCos, emcOrgs) {
     var emcOrg = emcName
       ? (emcOrgs || []).filter(function (o) { return o.name.toLowerCase() === emcName.toLowerCase(); })[0]
       : (emcOrgs && emcOrgs.length === 1 ? emcOrgs[0] : undefined);
-    if (!emcOrg) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'EMC "' + emcName + '" not found (or ambiguous with no EMC column)' }); continue; }
+    if (!emcOrg) { results.failed.push({ row: r + 1, name: name || '(unnamed)', reason: 'Event Management Company "' + emcName + '" not found (or ambiguous with no Event Management Company column)' }); continue; }
     var inspName = idxInsp !== -1 ? (row[idxInsp] || '').trim() : '';
     var inspCo = inspName
       ? inspectionCos.filter(function (o) { return o.name.toLowerCase() === inspName.toLowerCase(); })[0]
