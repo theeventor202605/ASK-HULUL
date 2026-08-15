@@ -98,6 +98,111 @@ function findingRiskMeta_(risk) {
   return map[risk] || { label: risk || '—', color: 'var(--text-600)', soft: '#f1f3f9' };
 }
 
+// REQ: "Create a Log photos timeline for every photo under an event with details like Baskin
+// Robbins High Risk Open, in modern design. This also applies to participants level and project
+// level." One shared renderer for both call sites -- eventDetail.js's own Photo Timeline subtab
+// (tabFindingPhotos, under the Findings group) and projects.js's Project detail page (rolled up
+// across every linked event) -- so the actual timeline markup/behavior/filtering lives in exactly
+// one place instead of being copy-pasted per level. "Participant level" is a filter within this same
+// timeline (pick one participant from the dropdown) rather than a separate page, per how this was
+// scoped -- there's no standalone participant detail page in the app to hang a dedicated view off of.
+//
+// `findings` should already be enriched the way listFindings returns them (participantName resolved,
+// evidenceUrls as a real array, newest-first) -- this function only groups/filters/renders, it never
+// fetches. Findings with no evidence photos are dropped entirely (nothing to show in a PHOTO
+// timeline) rather than appearing as an empty card.
+//
+// opts: { usersById (createdBy -> user row, for the "Logged by" credit line -- omitted/blank credit
+// if not supplied, e.g. a caller without user.list permission), emptyText (empty-state override) }
+function renderFindingPhotoTimeline_(container, findings, opts) {
+  opts = opts || {};
+  var usersById = opts.usersById || {};
+  var withPhotos = (findings || []).filter(function (f) { return f.evidenceUrls && f.evidenceUrls.length; });
+
+  if (!withPhotos.length) {
+    container.innerHTML = '<div class="empty-state">' + esc(opts.emptyText || t('empty_no_finding_photos')) + '</div>';
+    return;
+  }
+
+  var participantNames = Array.from(new Set(withPhotos.map(function (f) { return f.participantName; }).filter(Boolean))).sort();
+  var riskLevels = Array.from(new Set(withPhotos.map(function (f) { return f.riskLevel; }).filter(Boolean)));
+  var statuses = Array.from(new Set(withPhotos.map(function (f) { return f.status; }).filter(Boolean)));
+  var state = { participant: '', risk: '', status: '' };
+
+  function optionsHtml_(values, allLabel, renderLabel) {
+    return '<option value="">' + esc(allLabel) + '</option>' +
+      values.map(function (v) { return '<option value="' + esc(v) + '">' + esc(renderLabel ? renderLabel(v) : v) + '</option>'; }).join('');
+  }
+
+  container.innerHTML =
+    '<div class="photo-timeline-filters">' +
+      '<select class="field-input" id="ptFilterParticipant">' + optionsHtml_(participantNames, t('photo_timeline_all_participants')) + '</select>' +
+      '<select class="field-input" id="ptFilterRisk">' + optionsHtml_(riskLevels, t('photo_timeline_all_risk'), function (v) { return findingRiskMeta_(v).label; }) + '</select>' +
+      '<select class="field-input" id="ptFilterStatus">' + optionsHtml_(statuses, t('photo_timeline_all_status')) + '</select>' +
+    '</div>' +
+    '<div id="photoTimelineBody"></div>';
+
+  ['ptFilterParticipant', 'ptFilterRisk', 'ptFilterStatus'].forEach(function (id) {
+    container.querySelector('#' + id).onchange = function (e) {
+      state.participant = container.querySelector('#ptFilterParticipant').value;
+      state.risk = container.querySelector('#ptFilterRisk').value;
+      state.status = container.querySelector('#ptFilterStatus').value;
+      renderPhotoTimelineBody_();
+    };
+  });
+
+  function dayKey_(iso) { var d = new Date(iso); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+  function dayLabel_(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString(undefined, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  }
+  function timeLabel_(iso) {
+    return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderPhotoTimelineBody_() {
+    var bodyEl = container.querySelector('#photoTimelineBody');
+    var visible = withPhotos.filter(function (f) {
+      return (!state.participant || f.participantName === state.participant) &&
+        (!state.risk || f.riskLevel === state.risk) &&
+        (!state.status || f.status === state.status);
+    });
+    if (!visible.length) { bodyEl.innerHTML = '<div class="empty-state">' + esc(t('no_matches')) + '</div>'; return; }
+
+    // withPhotos is already newest-first (listFindings' own sort) -- grouping preserves that order,
+    // so days AND findings within a day both come out newest-first with no extra sort needed here.
+    var groups = [], byKey = {};
+    visible.forEach(function (f) {
+      var k = dayKey_(f.createdAt);
+      if (!byKey[k]) { byKey[k] = { label: dayLabel_(f.createdAt), items: [] }; groups.push(byKey[k]); }
+      byKey[k].items.push(f);
+    });
+
+    bodyEl.innerHTML = '<div class="photo-timeline">' + groups.map(function (g) {
+      return '<div class="photo-timeline-day-label">' + esc(g.label) + '</div>' +
+        g.items.map(function (f) {
+          var rm = findingRiskMeta_(f.riskLevel);
+          var creator = usersById[f.createdBy];
+          return '<div class="photo-timeline-item">' +
+            '<span class="photo-timeline-dot" style="background:' + rm.color + ';"></span>' +
+            '<div class="photo-timeline-card" style="border-inline-start-color:' + rm.color + ';">' +
+              '<div class="photo-timeline-meta">' +
+                '<span class="photo-timeline-time">' + esc(timeLabel_(f.createdAt)) + '</span>' +
+                '<strong>' + esc(f.participantName || '—') + '</strong>' +
+                UI.riskBadge(f.riskLevel) + UI.statusBadge(f.status) +
+              '</div>' +
+              (f.description ? '<div class="photo-timeline-desc">' + esc(f.description) + '</div>' : '') +
+              '<div style="margin-top:10px;">' + evidenceThumbsHtml_(f.evidenceUrls, 140) + '</div>' +
+              (creator ? '<div class="photo-timeline-credit">' + ICON('capture_photo') + ' ' + esc(t('photo_timeline_logged_by', { name: creator.name })) + '</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+    }).join('') + '</div>';
+  }
+
+  renderPhotoTimelineBody_();
+}
+
 function findingHeroStripHtml_(finding) {
   var rm = findingRiskMeta_(finding.riskLevel);
   return '<div class="finding-hero-strip" style="background:' + rm.soft + ';border-bottom:1px solid var(--border);' +

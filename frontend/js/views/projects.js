@@ -264,9 +264,14 @@ async function renderProjectDetail(params) {
   var projectId = params.id;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Projects.
   var canManage = hasPermission('project.manage');
-  var [projects, events, venues, orgs, subEvents] = await Promise.all([
+  var [projects, events, venues, orgs, subEvents, allFindings] = await Promise.all([
     Api.call('listProjects', {}), Api.call('listEvents', {}), Api.call('listVenues', {}),
-    canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]), Api.call('listSubEvents', {})
+    canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]), Api.call('listSubEvents', {}),
+    // REQ: "Create a Log photos timeline ... applies to ... project level." No eventId filter --
+    // listFindings with no filter already returns everything this user can see (same "no filter =
+    // every org-visible row, filtered client-side" pattern this page already uses for events/venues
+    // above); filtered down to this project's own linked events below once `linked` exists.
+    Api.call('listFindings', {})
   ]);
   var project = projects.filter(function (pr) { return pr.id === projectId; })[0];
   if (!project) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('project') })) + '</div>'; return; }
@@ -279,6 +284,14 @@ async function renderProjectDetail(params) {
   subEvents.forEach(function (s) { subEventCountByEvent[s.eventId] = (subEventCountByEvent[s.eventId] || 0) + 1; });
   var linkedSubCount = linked.reduce(function (sum, e) { return sum + (subEventCountByEvent[e.id] || 0); }, 0);
   var showEndDots = projectsShowEndDots_();
+  var linkedEventIds = {}; linked.forEach(function (e) { linkedEventIds[e.id] = true; });
+  var projectFindings = allFindings.filter(function (f) { return linkedEventIds[f.eventId]; });
+  var usersById = {};
+  try {
+    // Best-effort, same pattern as tabFindingPhotos (eventDetail.js) -- a role without user.list
+    // permission still gets the timeline, just without "Logged by" credit lines.
+    (await Api.call('listUsers', {})).forEach(function (u) { usersById[u.id] = u; });
+  } catch (e) { /* no user.list permission */ }
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/projects">' + esc(Term('project_plural')) + '</a> / ' + esc(project.name) + '</div>' +
@@ -305,7 +318,16 @@ async function renderProjectDetail(params) {
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
         UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_from_x_title', { term: Term('project').toLowerCase() })) + '" data-remove-event="' + r.id + '">' + ICON('remove_from_project') + '</button>') }] : []),
-      linked, { emptyText: esc(t('empty_no_events_in_project', { eventTerm: Term('event_plural').toLowerCase(), term: Term('project').toLowerCase() })) }) + '</div></div>';
+      linked, { emptyText: esc(t('empty_no_events_in_project', { eventTerm: Term('event_plural').toLowerCase(), term: Term('project').toLowerCase() })) }) + '</div></div>' +
+
+    // REQ: "Create a Log photos timeline for every photo under an event ... applies to ... project
+    // level." Every Finding evidence photo across every event linked to this project, rolled into
+    // one timeline -- same shared renderer eventDetail.js's own Photo Timeline tab uses (see
+    // renderFindingPhotoTimeline_, findings.js) so both levels look and behave identically.
+    '<div class="card" style="margin-top:16px;"><div class="card-header"><div class="card-title">' + esc(t('tab_finding_photos')) + '</div></div>' +
+    '<div class="card-body" id="projectPhotoTimelineWrap"></div></div>';
+
+  renderFindingPhotoTimeline_(document.getElementById('projectPhotoTimelineWrap'), projectFindings, { usersById: usersById });
 
   wireEndDotsToggle_();
   if (!canManage) return;

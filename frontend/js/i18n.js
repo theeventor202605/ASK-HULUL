@@ -85,6 +85,12 @@ window.HULUL_I18N = {
     could_not_load_x: 'Could not load this {{term}}.', x_already_submitted: 'This {{term}} has already been submitted and can no longer be edited',
     edit_x_title: 'Edit {{term}}', edit_finding_subtitle: 'Update this {{term}} before it\'s submitted', save_changes: 'Save changes',
     no_evidence_attached: 'No evidence attached.', click_to_expand: 'Click to expand', open_original: 'Open original',
+    // REQ: "Create a Log photos timeline for every photo under an event... modern design. Applies to
+    // participants level and project level." Shared timeline (renderFindingPhotoTimeline_,
+    // findings.js) used by both the event tab and the Project detail page.
+    tab_finding_photos: 'Photo Timeline', photo_timeline_all_participants: 'All participants',
+    photo_timeline_all_risk: 'All risk levels', photo_timeline_all_status: 'All statuses',
+    photo_timeline_logged_by: 'Logged by {{name}}', empty_no_finding_photos: 'No finding photos yet.',
     sub_x: 'Sub-{{term}}', category: 'Category', logged: 'Logged', resolution_window: 'Resolution window', location: 'Location',
     risk_logging_evidence: 'Risk Logging evidence', rejected_by_inspector: 'Rejected by inspector',
     rejected_final: ' — final', rejected_fix_resubmit: ' — please fix and resubmit',
@@ -555,6 +561,9 @@ window.HULUL_I18N = {
     could_not_load_x: 'تعذّر تحميل {{term}}.', x_already_submitted: 'تم تقديم هذا العنصر ({{term}}) بالفعل ولم يعد قابلاً للتعديل',
     edit_x_title: 'تعديل {{term}}', edit_finding_subtitle: 'تحديث {{term}} قبل تقديمه', save_changes: 'حفظ التغييرات',
     no_evidence_attached: 'لا يوجد دليل مرفق.', click_to_expand: 'اضغط للتكبير', open_original: 'فتح الأصل',
+    tab_finding_photos: 'الجدول الزمني للصور', photo_timeline_all_participants: 'كل المشاركين',
+    photo_timeline_all_risk: 'كل مستويات الخطورة', photo_timeline_all_status: 'كل الحالات',
+    photo_timeline_logged_by: 'سجّلها {{name}}', empty_no_finding_photos: 'لا توجد صور نتائج بعد.',
     sub_x: 'منطقة فرعية ({{term}})', category: 'الفئة', logged: 'تاريخ التسجيل', resolution_window: 'مهلة الحل', location: 'الموقع',
     risk_logging_evidence: 'دليل سجل المخاطر', rejected_by_inspector: 'مرفوض من قِبل المفتش',
     rejected_final: ' — نهائي', rejected_fix_resubmit: ' — يرجى الإصلاح وإعادة التقديم',

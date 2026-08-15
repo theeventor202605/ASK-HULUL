@@ -26,6 +26,11 @@ var EVENT_TABS = [
   ['logPhotos', 'tab_log_photos', function () { return t('tab_log_photos'); }, function () { return FINDING_ROLE_REVIEWER_.indexOf(HululState.user.role) !== -1; }],
   ['findings', 'tab_findings'],
   ['escalations', 'tab_escalations', function () { return Term('escalation_plural'); }],
+  // REQ: "Create a Log photos timeline for every photo under an event... modern design." Every
+  // Finding's evidence photo(s), newest first, grouped by day -- see tabFindingPhotos below and the
+  // shared renderFindingPhotoTimeline_ (findings.js), which also backs the Project detail page's own
+  // rolled-up timeline.
+  ['findingPhotos', 'tab_finding_photos'],
   ['participants', 'tab_participants', function () { return Term('participant_plural'); }],
   // REQ: "Move Disciplines list to a new tab name it Participant's Discipline." -- split out of the
   // Participants tab (was a second section below the participants table) into its own tab.
@@ -53,7 +58,7 @@ var EVENT_TAB_GROUPS_ = [
   { tabs: ['venue'] },
   { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
   { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'logPhotos'] },
-  { key: 'findingsGroup', labelKey: 'tab_group_findings', tabs: ['findings', 'escalations'] },
+  { key: 'findingsGroup', labelKey: 'tab_group_findings', tabs: ['findings', 'escalations', 'findingPhotos'] },
   { key: 'participantsGroup', labelKey: 'tab_group_participants', tabs: ['participants', 'participantDisciplines'] },
   { key: 'reportsGroup', labelKey: 'tab_group_reports', tabs: ['reports', 'log'] }
 ];
@@ -87,7 +92,7 @@ function eventTabRenderers_() {
     EVENT_TAB_RENDERERS_ = {
       overview: tabOverview, chat: tabEventChat, venue: tabVenue, templates: tabTemplates, approval: tabApproval,
       disciplines: tabDisciplines, inspections: tabInspections, logPhotos: tabLogPhotos, findings: tabFindings,
-      escalations: tabEscalations, participants: tabParticipants,
+      escalations: tabEscalations, findingPhotos: tabFindingPhotos, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
     };
   }
@@ -2428,6 +2433,24 @@ async function tabFindings(content, eventId) {
       }, { title: t('delete_modal_title', { term: Term('finding').toLowerCase() }), confirmLabel: t('delete'), confirmClass: 'btn-danger' });
     };
   });
+}
+
+/* ---------------- Finding Photo Timeline ---------------- */
+// REQ: "Create a Log photos timeline for every photo under an event with details like Baskin
+// Robbins High Risk Open, in modern design." Every Finding's evidence photo(s) for this event,
+// newest first, grouped by day, with a participant/risk/status filter -- see the shared renderer
+// (renderFindingPhotoTimeline_, findings.js), which also backs the Project detail page's rolled-up
+// version across every linked event.
+async function tabFindingPhotos(content, eventId) {
+  var findings = await Api.call('listFindings', { eventId: eventId });
+  var usersById = {};
+  try {
+    // Best-effort -- a role without user.list permission (e.g. a Participant account, per the
+    // existing pattern in venues.js/eventPlaces.js) just sees the timeline without "Logged by" credit
+    // lines instead of the whole tab failing.
+    (await Api.call('listUsers', {})).forEach(function (u) { usersById[u.id] = u; });
+  } catch (e) { /* no user.list permission -- timeline still works, just without the credit line */ }
+  renderFindingPhotoTimeline_(content, findings, { usersById: usersById });
 }
 
 /* ---------------- Escalations ---------------- */
