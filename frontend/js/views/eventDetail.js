@@ -3196,7 +3196,7 @@ function roadmapLegendHtml_(milestones) {
   var present = {}; milestones.forEach(function (m) { present[m.type] = true; });
   return '<div class="roadmap-legend">' +
     ROADMAP_LEGEND_TYPES_.filter(function (row) { return present[row[0]]; }).map(function (row) {
-      var vars = row[0] === 'eventStart' || row[0] === 'eventEnd' ? { term: Term('event') } :
+      var vars = row[0] === 'init' || row[0] === 'eventStart' || row[0] === 'eventEnd' ? { term: Term('event') } :
         row[0] === 'subEvent' ? { term: Term('subEvent') } : row[0] === 'meeting' ? { term: Term('meeting') } :
         row[0] === 'inspection' ? { term: Term('inspection').toLowerCase() } :
         (row[0] === 'templateSent' || row[0] === 'templateEvaluated' || row[0] === 'templateMissed') ? { term: Term('template') } : {};
