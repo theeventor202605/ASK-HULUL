@@ -541,6 +541,41 @@ function recordInspectionResults(user, p) {
   return { inspection: getById('Inspections', p.inspectionId), findingsCreated: createdFindings };
 }
 
+// REQ: "Completed checklists should be accessible and can be printed and exported with updated
+// results." recordInspectionResults only ever inserted -- there was no way to correct an already-
+// recorded item. This edits one InspectionResults row in place. Deliberately does NOT touch any
+// Finding that may have been auto-created when the item was first marked Crossed (see
+// recordInspectionResults above) -- that Finding is already a separate record governed by its own
+// Risk Logging workflow (Findings tab, its own edit/resolve/reject actions); silently
+// creating/deleting/mutating it from here risks contradicting something a reviewer already acted on.
+// An inspector who needs that reflected too still has to update the Finding itself, same as any other
+// correction to a finding today.
+function updateInspectionResult(user, p) {
+  requirePermission(user, 'inspection.recordResults'); // RBAC pilot -- same permission as recording one in the first place
+  if (!p || !p.resultId) throw new HululError('BAD_REQUEST', 'resultId is required');
+  var existing = getById('InspectionResults', p.resultId);
+  if (!existing) throw new HululError('NOT_FOUND', 'Result not found');
+  var inspection = getById('Inspections', existing.inspectionId);
+  if (inspection && user.role === ROLES.INSPECTOR && inspection.inspectorId !== user.id) {
+    throw new HululError('FORBIDDEN', 'Not your assigned inspection');
+  }
+  if (['Ticked', 'Crossed', 'N/A'].indexOf(p.state) === -1) {
+    throw new HululError('BAD_REQUEST', 'state must be Ticked, Crossed, or N/A');
+  }
+  if (p.state === 'Crossed' && (!p.evidenceUrls || !p.evidenceUrls.length)) {
+    throw new HululError('BAD_REQUEST', 'A Risk Logging with at least one photo or video is required for items marked Crossed.');
+  }
+  var item = getById('ChecklistItems', existing.checklistItemId);
+  var riskLevel = p.riskLevel || existing.riskLevel || (item ? item.defaultRisk : 'Medium');
+  var windowHours = p.resolutionWindowHours || existing.resolutionWindowHours || (item ? item.defaultWindowHours : 24);
+  var updated = updateRow('InspectionResults', p.resultId, {
+    state: p.state, riskLevel: riskLevel, resolutionWindowHours: windowHours,
+    notes: p.notes || '', evidenceUrls: (p.evidenceUrls || []).join(',')
+  });
+  audit(user.id, 'UPDATE_INSPECTION_RESULT', 'InspectionResults', p.resultId, { state: p.state });
+  return updated;
+}
+
 // Photo/video evidence for Risk Logging — uploaded to Drive, mirrors Templates.gs's uploadTemplate
 // pattern (reuses its getOrCreateFolder_ helper). Returns a URL usable in Findings/InspectionResults
 // evidenceUrls. p.fileBase64 + p.fileName + p.mimeType come from the frontend's file input;

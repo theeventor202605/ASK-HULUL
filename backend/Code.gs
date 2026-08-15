@@ -205,6 +205,7 @@ var ROUTES = {
   listInspections: function (u, p) { return listInspections(u, p); },
   listInspectionResults: function (u, p) { return listInspectionResults(u, p); },
   recordInspectionResults: function (u, p) { return recordInspectionResults(u, p); },
+  updateInspectionResult: function (u, p) { return updateInspectionResult(u, p); },
   listInspectionParticipants: function (u, p) { return listInspectionParticipants(u, p); },
   uploadEvidence: function (u, p) { return uploadEvidence(u, p); },
   pingInspectionLocation: function (u, p) { return pingInspectionLocation(u, p); },

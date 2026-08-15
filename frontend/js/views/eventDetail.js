@@ -2126,12 +2126,18 @@ function renderNearestList_(eventId, inspection, participants, myLatLng) {
   });
 }
 
-// Record results: shows every Checklist item under the inspection's discipline+phase that hasn't
-// been recorded yet *for this one participant*. REQ: the inspector must first pick which Checklist
-// type they're recording this visit -- a vendor's discipline can span several types (e.g. Restaurant
-// vs Food Truck), and one visit might only cover one of them. Whatever type isn't picked stays open,
-// so the inspector can come back and do it as a separate visit later ("a second inspection with a
-// different Checklist type"); "All checklist types" records everything remaining in one pass.
+// Record results: shows EVERY Checklist item under the inspection's discipline+phase, whether
+// already recorded or not -- REQ follow-up: "Currently completed checklists disappear and can not be
+// found or edited; this should not be the case." (this used to filter down to open-only items and
+// dead-end with an "already fully recorded" message once nothing was left; both are gone now).
+// Already-recorded items pre-fill from existingResults (existingByItemId, built below) and stay
+// fully editable -- see recordResultRowHtml_/saveInspectionResults_. REQ: the inspector must first
+// pick which Checklist type they're reviewing/recording this visit -- a vendor's discipline can span
+// several types (e.g. Restaurant vs Food Truck), and one visit might only cover one of them; "All
+// checklist types" opens everything in one pass. REQ follow-up: "There are some long checklists ...
+// list should be saved and should show progress" -- Save no longer requires every row in view to have
+// a pick; any row left blank simply stays open for a later visit (openRecordResultsForm_'s progress
+// header, saveInspectionResults_ below).
 // Marking an item Crossed requires a Risk Logging: notes, suggested action, and at least one
 // photo/video. Evidence uploads start the moment a file is selected (in the background, with its
 // own progress bar) rather than waiting for Save.
@@ -2140,39 +2146,41 @@ async function openRecordResultsModal(eventId, inspection, participant) {
     Api.call('listChecklistItems', {}),
     Api.call('listInspectionResults', { inspectionId: inspection.id, participantId: participant.id })
   ]);
-  var doneIds = {};
-  existingResults.forEach(function (r) { doneIds[r.checklistItemId] = true; });
-  var scope = items.filter(function (i) { return i.category === inspection.disciplineName && i.phase === inspection.phase; });
-  var openItems = scope.filter(function (i) { return !doneIds[i.id]; });
+  // A checklistItemId can in theory have more than one recorded row (legacy multi-account data from
+  // before the shift-account merge, see listInspectionResults' own comment) -- keep the most recent.
+  var existingByItemId = {};
+  existingResults.forEach(function (r) {
+    var cur = existingByItemId[r.checklistItemId];
+    if (!cur || new Date(r.recordedAt) > new Date(cur.recordedAt)) existingByItemId[r.checklistItemId] = r;
+  });
+  var scope = items.filter(function (i) { return i.status !== 'Deleted' && i.category === inspection.disciplineName && i.phase === inspection.phase; });
 
   if (!scope.length) {
     UI.openModal(t('record_results_title'), '<div class="empty-state">' + esc(t('no_x_setup_for_discipline_phase', { term: Term('checklistItem_plural').toLowerCase(), discipline: Term('discipline').toLowerCase() })) + '</div>',
       [{ label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }]);
     return;
   }
-  if (!openItems.length) {
-    UI.openModal(t('record_results_title'), '<div class="empty-state">' + esc(t('x_checklist_already_recorded', { name: participant.name, term: Term('inspection').toLowerCase() })) + '</div>',
-      [{ label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }]);
-    return;
-  }
 
   var byType = {};
-  openItems.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
+  scope.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
   var typeNames = Object.keys(byType).sort();
 
-  openChecklistTypeStep_(eventId, inspection, participant, scope, openItems, byType, typeNames);
+  openChecklistTypeStep_(eventId, inspection, participant, scope, byType, typeNames, existingByItemId);
 }
 
-// Step 1: choose which Checklist type this visit covers before seeing any items.
-function openChecklistTypeStep_(eventId, inspection, participant, scope, openItems, byType, typeNames) {
+// Step 1: choose which Checklist type this visit covers before seeing any items. Each option shows
+// how much of that type is already done, e.g. "Restaurant — 7/12 done", so a long multi-type
+// checklist's overall progress is visible before even opening a list.
+function openChecklistTypeStep_(eventId, inspection, participant, scope, byType, typeNames, existingByItemId) {
   var ALL_KEY = '__ALL__';
+  function doneOf(list) { return list.filter(function (i) { return existingByItemId[i.id]; }).length; }
   var body =
     '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div>' +
     UI.field(t('field_checklist_type'), '<select id="fRecordType" class="field-input">' +
       typeNames.map(function (name) {
-        return '<option value="' + esc(name) + '">' + esc(name || '(untyped)') + esc(t('x_open_count_suffix', { count: byType[name].length })) + '</option>';
+        return '<option value="' + esc(name) + '">' + esc(name || '(untyped)') + esc(t('x_done_of_total_suffix', { done: doneOf(byType[name]), total: byType[name].length })) + '</option>';
       }).join('') +
-      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">' + esc(t('all_checklist_types_option')) + esc(t('x_open_count_suffix', { count: openItems.length })) + '</option>' : '') +
+      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">' + esc(t('all_checklist_types_option')) + esc(t('x_done_of_total_suffix', { done: doneOf(scope), total: scope.length })) + '</option>' : '') +
     '</select>') +
     '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('checklist_type_pick_hint')) + '</div>';
 
@@ -2180,39 +2188,65 @@ function openChecklistTypeStep_(eventId, inspection, participant, scope, openIte
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('continue_btn'), className: 'btn-primary', onClick: function () {
         var picked = document.getElementById('fRecordType').value;
-        var filtered = picked === ALL_KEY ? openItems : byType[picked];
-        var totalForScope = picked === ALL_KEY ? scope.length : scope.filter(function (i) { return i.checklistType === picked; }).length;
-        var doneCount = totalForScope - filtered.length;
+        var filtered = picked === ALL_KEY ? scope : byType[picked];
         var typeLabel = picked === ALL_KEY ? '' : (picked || '(untyped)');
-        openRecordResultsForm_(eventId, inspection, participant, filtered, doneCount, typeLabel);
+        openRecordResultsForm_(eventId, inspection, participant, filtered, existingByItemId, typeLabel);
       } }
   ]);
 }
 
 // Step 2: the actual results form, scoped to whichever Checklist type (or "all") was chosen above.
-function openRecordResultsForm_(eventId, inspection, participant, filteredItems, doneCount, typeLabel) {
+// Rows for already-recorded items pre-fill from existingByItemId and are just as editable as open
+// ones (recordResultRowHtml_) -- there's no separate "view" mode, viewing and editing are the same
+// screen. #recordResultsProgress is a live "X of Y completed" readout (updateRecordResultsProgress_)
+// that updates on every icon-toggle click, not just what was already saved before this modal opened.
+function openRecordResultsForm_(eventId, inspection, participant, filteredItems, existingByItemId, typeLabel) {
   var pendingFiles = {};
-  filteredItems.forEach(function (it) { pendingFiles[it.id] = []; });
+  filteredItems.forEach(function (it) {
+    var existing = existingByItemId[it.id];
+    // Pre-seed already-saved evidence as "done" entries so editing a Crossed item never looks like
+    // it lost its evidence, and so the "Crossed needs at least one" check still passes untouched.
+    pendingFiles[it.id] = (existing && existing.evidenceUrls) ? String(existing.evidenceUrls).split(',').filter(Boolean).map(function (url, idx) {
+      return { name: t('word_evidence') + ' ' + (idx + 1), status: 'done', pct: 100, url: url, localId: 'existing_' + it.id + '_' + idx };
+    }) : [];
+  });
 
   var byType = {};
   filteredItems.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
 
   var body =
-    (doneCount ? '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('already_recorded_count_hint', { count: doneCount, name: participant.name })) + '</div>' : '') +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
+      '<div id="recordResultsProgress" style="font-weight:600;font-size:12.5px;color:var(--accent);"></div>' +
+      '<div class="muted" style="font-size:11px;">' + esc(t('unset_items_stay_open_hint')) + '</div>' +
+    '</div>' +
     Object.keys(byType).sort().map(function (typeName) {
       return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName) + '</div>' +
-        byType[typeName].map(recordResultRowHtml_).join('');
+        byType[typeName].map(function (it) { return recordResultRowHtml_(it, existingByItemId[it.id]); }).join('');
     }).join('');
 
-  var title = 'Record results — ' + esc(participant.name) + ' · ' + esc(inspection.disciplineName) + ' (' + esc(inspection.phase) + ')' +
+  var title = t('record_results_for_x_title', { name: participant.name }) + ' · ' + esc(inspection.disciplineName) + ' (' + esc(inspection.phase) + ')' +
     (typeLabel ? ' — ' + esc(typeLabel) : '');
 
   UI.openModal(title, body, [
+    { label: ICON('print') + ' ' + t('print_btn'), className: 'btn-secondary', onClick: function () { printInspectionResults_(participant, inspection, filteredItems); } },
+    { label: ICON('export_csv') + ' ' + t('export_csv'), className: 'btn-secondary', onClick: function () { exportInspectionResultsCsv_(participant, inspection, filteredItems); } },
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
-    { label: t('save'), className: 'btn-primary', onClick: function () { saveInspectionResults_(eventId, inspection, participant, filteredItems, pendingFiles); } }
+    { label: t('save'), className: 'btn-primary', onClick: function () { saveInspectionResults_(eventId, inspection, participant, filteredItems, pendingFiles, existingByItemId); } }
   ]);
 
   wireRecordResultRows_(eventId, filteredItems, pendingFiles);
+  updateRecordResultsProgress_();
+}
+
+// Live "X of Y completed" readout, recomputed from the DOM (not from existingByItemId alone) so a
+// fresh icon pick counts immediately, before Save is even clicked.
+function updateRecordResultsProgress_() {
+  var el = document.getElementById('recordResultsProgress');
+  if (!el) return;
+  var groups = document.querySelectorAll('.result-state-group');
+  var total = groups.length, done = 0;
+  groups.forEach(function (g) { if (g.getAttribute('data-state')) done++; });
+  el.textContent = t('x_of_y_completed', { done: done, total: total });
 }
 
 // REQ: "Default Risk and Window are just default recommendation, Inspector can input value." --
@@ -2223,34 +2257,47 @@ function openRecordResultsForm_(eventId, inspection, participant, filteredItems,
 // never had a frontend field to actually send one. REQ follow-up: "convert [Ticked/Crossed/N/A] to
 // icons" -- a 3-button icon toggle (.result-state-group) replaces the old <select>; the currently
 // picked one is tracked in the group's own data-state attribute (wireRecordResultRows_ below), not a
-// form control's .value, since none of the three buttons is an <input>.
-function recordResultRowHtml_(it) {
+// form control's .value, since none of the three buttons is an <input>. REQ follow-up: "None should
+// be selected as default" -- an open item's group starts with no data-state and no button marked
+// .active at all, forcing an explicit pick. REQ follow-up: "Completed checklists should be accessible
+// and can ... be edited" -- `existing` (optional, an InspectionResults row from listInspectionResults)
+// pre-fills state/risk/window/notes here instead. data-result-id is recorded on the group purely as
+// a DOM-visible marker of which rows are edits vs new (devtools/debugging); saveInspectionResults_
+// itself decides insert-vs-update off the existingByItemId map it already has in closure, not this
+// attribute.
+function recordResultRowHtml_(it, existing) {
   var riskOptions = ['Critical', 'High', 'Medium', 'Low'].map(function (r) {
-    return '<option value="' + r + '"' + (r === it.defaultRisk ? ' selected' : '') + '>' + esc(t('risk_' + r.toLowerCase())) + '</option>';
+    return '<option value="' + r + '"' + (r === (existing ? existing.riskLevel : it.defaultRisk) ? ' selected' : '') + '>' + esc(t('risk_' + r.toLowerCase())) + '</option>';
   }).join('');
+  var windowVal = existing ? existing.resolutionWindowHours : it.defaultWindowHours;
+  var state = existing ? existing.state : '';
   return '<div class="result-row" data-row="' + it.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
       '<div style="flex:1 1 260px;">' +
-        '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
+        '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
+          '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
+          (existing ? '<span class="muted" style="font-size:10.5px;white-space:nowrap;">' + esc(t('recorded_on_label', { date: UI.fmtDate(existing.recordedAt) })) + '</span>' : '') +
+        '</div>' +
         '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;">' +
           '<span class="muted" style="font-size:11px;">' + esc(t('col_risk_level')) + '</span>' +
           '<select class="field-input result-risk" data-item="' + it.id + '" style="display:inline-block;width:auto;font-size:12px;padding:3px 6px;">' + riskOptions + '</select>' +
           '<span class="muted" style="font-size:11px;margin-inline-start:6px;">' + esc(t('field_window_hours')) + '</span>' +
-          '<input type="number" min="1" class="field-input result-window" data-item="' + it.id + '" value="' + esc(it.defaultWindowHours) + '" style="display:inline-block;width:60px;font-size:12px;padding:3px 6px;" />' +
+          '<input type="number" min="1" class="field-input result-window" data-item="' + it.id + '" value="' + esc(windowVal) + '" style="display:inline-block;width:60px;font-size:12px;padding:3px 6px;" />' +
         '</div>' +
         '<div class="muted" style="font-size:10.5px;margin-top:3px;">' + esc(t('risk_window_editable_hint')) + '</div>' +
       '</div>' +
-      '<div class="result-state-group" data-item="' + it.id + '" data-state="" style="display:flex;gap:4px;flex:none;">' +
-        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-ticked" data-item="' + it.id + '" data-state="Ticked" title="' + esc(t('title_result_ticked')) + '">' + ICON('result_ticked') + '</button>' +
-        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-crossed" data-item="' + it.id + '" data-state="Crossed" title="' + esc(t('title_result_crossed')) + '">' + ICON('result_crossed') + '</button>' +
-        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-na" data-item="' + it.id + '" data-state="N/A" title="' + esc(t('title_result_na')) + '">' + ICON('result_na') + '</button>' +
+      '<div class="result-state-group" data-item="' + it.id + '" data-state="' + esc(state) + '" data-result-id="' + esc(existing ? existing.id : '') + '" style="display:flex;gap:4px;flex:none;">' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-ticked' + (state === 'Ticked' ? ' active' : '') + '" data-item="' + it.id + '" data-state="Ticked" title="' + esc(t('title_result_ticked')) + '">' + ICON('result_ticked') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-crossed' + (state === 'Crossed' ? ' active' : '') + '" data-item="' + it.id + '" data-state="Crossed" title="' + esc(t('title_result_crossed')) + '">' + ICON('result_crossed') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon result-state-btn state-na' + (state === 'N/A' ? ' active' : '') + '" data-item="' + it.id + '" data-state="N/A" title="' + esc(t('title_result_na')) + '">' + ICON('result_na') + '</button>' +
       '</div>' +
     '</div>' +
-    '<div class="crossed-extra" data-extra="' + it.id + '" style="display:none;margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;">' +
+    '<div class="crossed-extra" data-extra="' + it.id + '" style="display:' + (state === 'Crossed' ? 'block' : 'none') + ';margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;">' +
       '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_notes_found')) + '</div>' +
-      '<textarea class="field-input result-notes" data-item="' + it.id + '" rows="3" style="margin-bottom:6px;"></textarea>' +
-      '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_suggested_action')) + '</div>' +
-      '<input class="field-input result-action" data-item="' + it.id + '" style="margin-bottom:6px;" />' +
+      '<textarea class="field-input result-notes" data-item="' + it.id + '" rows="3" style="margin-bottom:6px;">' + esc(existing ? (existing.notes || '') : '') + '</textarea>' +
+      (existing ? '' :
+        '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_suggested_action')) + '</div>' +
+        '<input class="field-input result-action" data-item="' + it.id + '" style="margin-bottom:6px;" />') +
       '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_evidence_required')) + '</div>' +
       // capture="environment" opens the device camera directly (rear camera) on mobile instead of
       // the general file/gallery picker -- REQ: evidence must be captured on the spot, not uploaded
@@ -2265,7 +2312,7 @@ function recordResultRowHtml_(it) {
   '</div>';
 }
 
-function wireRecordResultRows_(eventId, openItems, pendingFiles) {
+function wireRecordResultRows_(eventId, filteredItems, pendingFiles) {
   document.querySelectorAll('.result-state-btn').forEach(function (btn) {
     btn.onclick = function () {
       var itemId = btn.getAttribute('data-item');
@@ -2277,6 +2324,7 @@ function wireRecordResultRows_(eventId, openItems, pendingFiles) {
       }
       var extra = document.querySelector('[data-extra="' + itemId + '"]');
       if (extra) extra.style.display = state === 'Crossed' ? 'block' : 'none';
+      updateRecordResultsProgress_();
     };
   });
   document.querySelectorAll('.result-evidence').forEach(function (input) {
@@ -2292,6 +2340,11 @@ function wireRecordResultRows_(eventId, openItems, pendingFiles) {
       var input = document.querySelector('.result-evidence[data-item="' + itemId + '"]');
       if (input) input.click();
     };
+  });
+  // Paint any pre-seeded evidence (already-saved rows, see openRecordResultsForm_) right away --
+  // renderEvidenceList_ otherwise only ever runs reactively, off an upload/retry event.
+  Object.keys(pendingFiles).forEach(function (itemId) {
+    if (pendingFiles[itemId].length) renderEvidenceList_(itemId, pendingFiles);
   });
 }
 
@@ -2386,57 +2439,147 @@ function renderEvidenceList_(itemId, pendingFiles) {
   });
 }
 
-async function saveInspectionResults_(eventId, inspection, participant, openItems, pendingFiles) {
-  var results = [];
-  for (var i = 0; i < openItems.length; i++) {
-    var it = openItems[i];
+// REQ: "There are some long checklists. When not fully completed and user tries to save they get an
+// error ... List should be saved." A row left blank (data-state === '') is simply skipped -- it stays
+// open for a later visit, same as before anything was recorded -- instead of blocking the whole save.
+// REQ follow-up: "Completed checklists should be ... edited." A row that already had a result
+// (data-result-id set, see recordResultRowHtml_) goes through updateInspectionResult instead of being
+// bundled into the recordInspectionResults batch, and only if something on it actually changed --
+// re-saving every untouched already-done row on every visit would be needless API calls and, for
+// Crossed ones, needlessly re-validate evidence that was never touched.
+async function saveInspectionResults_(eventId, inspection, participant, filteredItems, pendingFiles, existingByItemId) {
+  var newResults = [];
+  var updates = [];
+  for (var i = 0; i < filteredItems.length; i++) {
+    var it = filteredItems[i];
     var row = document.querySelector('[data-row="' + it.id + '"]');
     if (!row) continue;
     var state = row.querySelector('.result-state-group').getAttribute('data-state');
-    // REQ: "None should be selected as default" -- recordResultRowHtml_ no longer pre-picks Comply,
-    // so an Inspector who skips a row entirely would otherwise silently save an empty state; catch
-    // that here, same "toast + abort the whole save" pattern as the evidence checks just below.
-    if (!state) {
-      UI.toast(t('toast_result_state_required', { desc: it.description }), 'error');
+    if (!state) continue; // left blank -- stays open, not an error
+
+    var files = pendingFiles[it.id] || [];
+    if (state === 'Crossed' && files.some(function (f) { return f.status === 'uploading'; })) {
+      UI.toast(t('toast_evidence_uploading', { desc: it.description }), 'error');
       return;
     }
-    var entry = { checklistItemId: it.id, state: state };
-    // Inspector-editable Risk/Window (defaults from the checklist item, see recordResultRowHtml_) --
-    // sent for every state, not just Crossed, since InspectionResults (Inspections.gs) records both
-    // regardless; they only actually shape anything downstream (the auto-created Finding) when this
-    // item is Crossed.
+    var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
+    if (state === 'Crossed' && !urls.length) {
+      UI.toast(t('toast_evidence_required_desc', { desc: it.description }), 'error');
+      return;
+    }
+
     var riskSel = row.querySelector('.result-risk');
     var windowInput = row.querySelector('.result-window');
-    if (riskSel) entry.riskLevel = riskSel.value;
-    if (windowInput && windowInput.value !== '') entry.resolutionWindowHours = Number(windowInput.value);
-    if (state === 'Crossed') {
-      var files = pendingFiles[it.id] || [];
-      if (files.some(function (f) { return f.status === 'uploading'; })) {
-        UI.toast(t('toast_evidence_uploading', { desc: it.description }), 'error');
-        return;
+    var notesInput = row.querySelector('.result-notes');
+    // Risk/Window/evidence are sent for every state, not just Crossed, since InspectionResults
+    // (Inspections.gs) records all of them regardless -- they only actually shape anything downstream
+    // (the auto-created Finding) when this item is Crossed.
+    var entry = {
+      checklistItemId: it.id, state: state,
+      riskLevel: riskSel ? riskSel.value : undefined,
+      resolutionWindowHours: (windowInput && windowInput.value !== '') ? Number(windowInput.value) : undefined,
+      notes: notesInput ? notesInput.value : '',
+      evidenceUrls: urls
+    };
+
+    var existing = existingByItemId[it.id];
+    if (!existing) {
+      if (state === 'Crossed') {
+        var actionInput = row.querySelector('.result-action');
+        entry.suggestedAction = actionInput ? actionInput.value : '';
+        // REQ follow-up: a Crossed item's auto-created finding used to always end up with a blank
+        // lat/lng even though the live-inspection GPS watch (startLiveInspectionTracking_) is
+        // running the whole time this modal is open -- attach the latest fix here so
+        // recordInspectionResults (Inspections.gs) can save it on the Finding it creates.
+        if (liveInspectionLastCoords_) { entry.lat = liveInspectionLastCoords_.lat; entry.lng = liveInspectionLastCoords_.lng; }
       }
-      var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
-      if (!urls.length) {
-        UI.toast(t('toast_evidence_required_desc', { desc: it.description }), 'error');
-        return;
-      }
-      entry.notes = row.querySelector('.result-notes').value;
-      entry.suggestedAction = row.querySelector('.result-action').value;
-      entry.evidenceUrls = urls;
-      // REQ follow-up: a Crossed item's auto-created finding used to always end up with a blank
-      // lat/lng even though the live-inspection GPS watch (startLiveInspectionTracking_) is running
-      // the whole time this modal is open -- attach the latest fix here so recordInspectionResults
-      // (Inspections.gs) can save it on the Finding it creates for this item.
-      if (liveInspectionLastCoords_) { entry.lat = liveInspectionLastCoords_.lat; entry.lng = liveInspectionLastCoords_.lng; }
+      newResults.push(entry);
+    } else {
+      var changed = state !== existing.state ||
+        String(entry.riskLevel) !== String(existing.riskLevel) ||
+        String(entry.resolutionWindowHours) !== String(existing.resolutionWindowHours) ||
+        entry.notes !== (existing.notes || '') ||
+        urls.join(',') !== (existing.evidenceUrls || '');
+      if (changed) updates.push(Object.assign({ resultId: existing.id }, entry));
     }
-    results.push(entry);
   }
+
+  if (!newResults.length && !updates.length) {
+    UI.toast(t('toast_nothing_to_save'), 'error');
+    return;
+  }
+
   try {
-    var res = await Api.call('recordInspectionResults', { inspectionId: inspection.id, participantId: participant.id, results: results });
+    var recordPromise = newResults.length
+      ? Api.call('recordInspectionResults', { inspectionId: inspection.id, participantId: participant.id, results: newResults })
+      : null;
+    var updatePromises = updates.map(function (u) { return Api.call('updateInspectionResult', u); });
+    var responses = await Promise.all((recordPromise ? [recordPromise] : []).concat(updatePromises));
     UI.closeModal();
-    UI.toast(t('findings_created_toast', { count: res.findingsCreated.length, term: esc(res.findingsCreated.length === 1 ? Term('finding') : Term('finding_plural')).toLowerCase() }), 'success');
+    var findingsCreated = recordPromise ? (responses[0].findingsCreated || []).length : 0;
+    var msg = t('toast_results_saved', { saved: newResults.length + updates.length });
+    if (findingsCreated) msg += ' — ' + t('findings_created_toast', { count: findingsCreated, term: (findingsCreated === 1 ? Term('finding') : Term('finding_plural')).toLowerCase() });
+    UI.toast(msg, 'success');
     Router.resolve();
   } catch (err) { UI.error(err); }
+}
+
+// REQ: "Completed checklists should be accessible and can be printed and exported with updated
+// results." Reads the CURRENT state straight out of the modal's own DOM (not a re-fetch) -- so it
+// always reflects whatever's on screen right now, including edits not yet saved, same as the
+// live progress readout above.
+function inspectionResultsStateLabel_(state) {
+  return state === 'Ticked' ? t('title_result_ticked') : state === 'Crossed' ? t('title_result_crossed') :
+    state === 'N/A' ? t('title_result_na') : t('word_pending');
+}
+function inspectionResultsSnapshot_(filteredItems) {
+  return filteredItems.map(function (it) {
+    var row = document.querySelector('[data-row="' + it.id + '"]');
+    var state = row ? row.querySelector('.result-state-group').getAttribute('data-state') : '';
+    var riskSel = row ? row.querySelector('.result-risk') : null;
+    var windowInput = row ? row.querySelector('.result-window') : null;
+    var notesInput = row ? row.querySelector('.result-notes') : null;
+    return {
+      type: it.checklistType || '', description: it.description, stateLabel: inspectionResultsStateLabel_(state),
+      risk: riskSel ? t('risk_' + riskSel.value.toLowerCase()) : '',
+      windowHours: windowInput ? windowInput.value : '',
+      notes: (state === 'Crossed' && notesInput) ? notesInput.value : ''
+    };
+  });
+}
+
+function exportInspectionResultsCsv_(participant, inspection, filteredItems) {
+  var rows = inspectionResultsSnapshot_(filteredItems);
+  var header = [t('col_type'), t('field_description'), t('col_result'), t('col_risk_level'), t('field_window_hours'), t('field_notes_found')];
+  var body = rows.map(function (r) { return [r.type, r.description, r.stateLabel, r.risk, r.windowHours, r.notes]; });
+  var filename = (participant.name + '-' + inspection.disciplineName + '-' + inspection.phase + '.csv').replace(/[^\w.\-]+/g, '_');
+  UI.downloadCsv(filename, [header].concat(body));
+}
+
+function printInspectionResults_(participant, inspection, filteredItems) {
+  var rows = inspectionResultsSnapshot_(filteredItems);
+  var w = window.open('', '_blank', 'width=800,height=900');
+  if (!w) { UI.toast(t('toast_allow_popups'), 'error'); return; }
+  w.document.write(
+    '<!DOCTYPE html><html><head><title>' + esc(participant.name) + ' — ' + esc(inspection.disciplineName) + '</title>' +
+    '<meta charset="UTF-8" /><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;}' +
+      'h2{margin:0 0 4px;} .sub{color:#666;font-size:12px;margin-bottom:16px;}' +
+      'table{width:100%;border-collapse:collapse;font-size:12px;} th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top;}' +
+      'th{background:#f3f3f3;}' +
+    '</style></head><body>' +
+      '<h2>' + esc(participant.name) + '</h2>' +
+      '<div class="sub">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + ' · ' + esc(UI.fmtDate(new Date().toISOString())) + '</div>' +
+      '<table><thead><tr><th>' + esc(t('col_type')) + '</th><th>' + esc(t('field_description')) + '</th><th>' + esc(t('col_result')) + '</th><th>' + esc(t('col_risk_level')) + '</th><th>' + esc(t('field_window_hours')) + '</th><th>' + esc(t('field_notes_found')) + '</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + esc(r.type) + '</td><td>' + esc(r.description) + '</td><td>' + esc(r.stateLabel) + '</td><td>' + esc(r.risk) + '</td><td>' + esc(r.windowHours) + '</td><td>' + esc(r.notes) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>' +
+    '</body></html>'
+  );
+  w.document.close();
+  w.focus();
+  setTimeout(function () { w.print(); }, 300);
 }
 
 /* ---------------- Findings (Risk Logging) ----------------
