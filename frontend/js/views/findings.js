@@ -307,7 +307,7 @@ async function renderNewFinding(params) {
           '<label class="field-label" style="margin-top:0;">' + esc(Term('participant')) + '</label>' +
           '<input id="fParticipantSearch" class="field-input" placeholder="' + esc(t('participant_search_placeholder', { term: Term('participant').toLowerCase() })) + '" autocomplete="off" />' +
           '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
-          '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ ' + esc(t('live_location_map_soon')) + '</div>' +
+          '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ ' + esc(t('live_location_map_hint')) + '</div>' +
         '</div>' +
         UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
           disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
@@ -342,7 +342,10 @@ async function renderNewFinding(params) {
     '</div>';
 
   document.getElementById('backFindingBtn').onclick = function () { destroyFindingLocationMap_(); window.location.hash = '#/events/' + eventId + '?tab=findings'; };
-  initFindingLocationMap_(detail && detail.venue, detail && detail.zones, participants);
+  // pickParticipant_ is declared with `function` below (hoisted -- already fully defined by the time
+  // this runs, even though it's textually further down this same function body), so it's safe to
+  // hand it straight to the map as the dot-click callback here.
+  initFindingLocationMap_(detail && detail.venue, detail && detail.zones, participants, function (pt) { pickParticipant_(pt); });
 
   /* ---- Participant: searchable dropdown (mandatory) ---- */
   var selectedParticipant = null;
@@ -450,13 +453,18 @@ async function renderNewFinding(params) {
     var doneUrls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
     var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
     try {
-      var f = await Api.call('createFinding', {
+      var f = await Api.call('createFinding', Object.assign({
         eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
         category: document.getElementById('fChecklistType').value,
         riskLevel: document.getElementById('fRisk').value, resolutionWindowHours: Number(document.getElementById('fWindow').value),
         evidenceUrls: doneUrls
-      });
+        // REQ follow-up: findings used to always fall back to the participant's static coordinates,
+        // never the inspector's actual live GPS fix, even though startFindingLocationWatch_ tracks
+        // it the whole time this form is open (only used for the map/banner). Attach it when we have
+        // one -- createFinding (Findings.gs) still falls back to the participant's own lat/lng when
+        // this is omitted (no fix yet, denied, or unsupported browser).
+      }, findingLocationLastCoords_ ? { lat: findingLocationLastCoords_.lat, lng: findingLocationLastCoords_.lng } : {}));
       if (stillUploading) {
         UI.toast(t('toast_x_logged_uploading', { term: Term('finding') }), 'success');
         attachFindingEvidenceInBackground_(f.id, files, doneUrls);
@@ -670,6 +678,13 @@ var findingLocationMapInstance_ = null;
 var findingLocationMyMarker_ = null;
 var findingLocationWatchId_ = null;
 var findingLocationResizeObserver_ = null;
+// Latest GPS fix from the watch below, { lat, lng } or null -- read by createFindingBtn's onclick
+// (renderNewFinding) so a submitted finding carries the inspector's actual live position instead of
+// only falling back to the participant's static location (createFinding, Findings.gs, still falls
+// back to that when this is null -- no GPS fix yet, or the browser denied/lacks geolocation). Cleared
+// whenever the map/watch is torn down or the position steps outside the venue boundary, matching the
+// "never visible if outside the event's boundary" rule already enforced for the live dot itself.
+var findingLocationLastCoords_ = null;
 // GOLDEN RULE: "Users locations can never be visible if outside events boundaries." Parsed once per
 // visit (initFindingLocationMap_, from the event's own venue) via parseBoundaryClient_ (venues.js,
 // loaded app-wide) -- same client-side containment check used for eventDetail.js's liveInspectionMap.
@@ -687,9 +702,14 @@ function destroyFindingLocationMap_() {
   if (findingLocationMapInstance_) { findingLocationMapInstance_.remove(); findingLocationMapInstance_ = null; }
   findingLocationMyMarker_ = null;
   findingLocationVenueBoundary_ = null;
+  findingLocationLastCoords_ = null;
 }
 
-function initFindingLocationMap_(venue, zones, participants) {
+// onParticipantClick (optional): REQ ("live location side map") -- lets an inspector tap a
+// participant's dot on this map to pick them, instead of only the searchable text dropdown. Was
+// a "coming soon" placeholder under the search box; UI.drawPlaceDots (ui.js) already supported a
+// per-dot click callback (used elsewhere, e.g. eventPlaces.js) -- this map just never passed one in.
+function initFindingLocationMap_(venue, zones, participants, onParticipantClick) {
   destroyFindingLocationMap_(); // in case a previous visit left a GPS watch/map running (same defensive pattern as tabInspections/destroyLiveInspectionMap_)
   findingLocationVenueBoundary_ = venue ? parseBoundaryClient_(venue.boundary) : null;
   var el = document.getElementById('findingLocationMap');
@@ -720,7 +740,7 @@ function initFindingLocationMap_(venue, zones, participants) {
     UI.drawZoneBoundaries(findingLocationMapInstance_, zones).forEach(function (layer) {
       bounds = bounds.concat(layer.getLatLngs()[0]);
     });
-    UI.drawPlaceDots(findingLocationMapInstance_, participants);
+    UI.drawPlaceDots(findingLocationMapInstance_, participants, onParticipantClick);
     (participants || []).forEach(function (pt) {
       if (pt.lat !== '' && pt.lat != null && pt.lng !== '' && pt.lng != null) bounds.push([Number(pt.lat), Number(pt.lng)]);
     });
@@ -749,9 +769,11 @@ function updateFindingMyPosition_(latlng) {
   var banner = document.getElementById('findingLocationBanner');
   if (findingLocationVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], findingLocationVenueBoundary_)) {
     if (findingLocationMyMarker_) { findingLocationMapInstance_.removeLayer(findingLocationMyMarker_); findingLocationMyMarker_ = null; }
+    findingLocationLastCoords_ = null; // outside the venue boundary -- don't attach this fix to the finding either
     if (banner) banner.innerHTML = '<div class="muted" style="font-size:11.5px;">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_banner')) + '</div>';
     return;
   }
+  findingLocationLastCoords_ = { lat: latlng[0], lng: latlng[1] };
   if (!findingLocationMyMarker_) {
     var icon = HululLeaflet.divIcon({
       className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'

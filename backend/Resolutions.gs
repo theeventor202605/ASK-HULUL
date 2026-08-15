@@ -62,6 +62,14 @@ function getEscalationConfig(user) {
   // the Settings panel never needs its own hardcoded copy of which roles are offerable.
   cfg.allRoles = ESCALATION_SELECTABLE_ROLES_.map(function (r) { return { value: r, label: roleLabel_(r) }; });
   cfg.riskLevels = RISK_LEVELS_;
+  // REQ follow-up: "resolution of tier timing, not true real-time" -- the sweep interval used to be
+  // hardcoded to 30 minutes regardless of how short a delay was configured above. Read fresh (not
+  // part of the ESCALATION_CONFIG_KEY_ JSON blob -- escalationCheckIntervalMinutes_/
+  // reinstallEscalationTrigger_, Setup.gs, already read/write it as a plain Config key) so the
+  // Settings panel always shows what's actually installed, snapped to one of ScriptApp's allowed
+  // values, not just whatever was last saved.
+  cfg.checkIntervalMinutes = escalationCheckIntervalMinutes_();
+  cfg.checkIntervalAllowedMinutes = ESCALATION_CHECK_INTERVAL_ALLOWED_MINUTES_;
   return cfg;
 }
 
@@ -106,6 +114,17 @@ function setEscalationConfig(user, p) {
   });
   setConfigJson_(ESCALATION_CONFIG_KEY_, clean);
   audit(user.id, 'SET_ESCALATION_CONFIG', 'Config', ESCALATION_CONFIG_KEY_, clean);
+
+  // Stored as its own flat Config key (not inside the clean/ESCALATION_CONFIG_KEY_ blob above) --
+  // escalationCheckIntervalMinutes_ (Setup.gs) already reads it that way. Only touched when the
+  // caller actually sent one, so older frontend builds mid-deploy that don't know about this field
+  // yet can't accidentally reset it back to the default on every unrelated save.
+  if (p.checkIntervalMinutes !== undefined) {
+    setConfig('escalationCheckIntervalMinutes', Number(p.checkIntervalMinutes) || ESCALATION_CHECK_INTERVAL_DEFAULT_MINUTES_);
+    reinstallEscalationTrigger_();
+    audit(user.id, 'SET_ESCALATION_CHECK_INTERVAL', 'Config', 'escalationCheckIntervalMinutes', { minutes: escalationCheckIntervalMinutes_() });
+  }
+  clean.checkIntervalMinutes = escalationCheckIntervalMinutes_();
   return clean;
 }
 

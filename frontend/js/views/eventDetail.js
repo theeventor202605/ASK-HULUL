@@ -611,12 +611,12 @@ function initEventPlacesMap_(venue, placesWithCoords, zones, eventId) {
     var showingSatellite = false;
     // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
-    var toggleBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', 'Satellite');
+    var toggleBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', t('map_satellite'));
     UI.mapControls(el, [toggleBtn]);
     toggleBtn.onclick = function () {
       showingSatellite = !showingSatellite;
-      if (showingSatellite) { eventPlacesMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('map_toggle') + ' Map'; }
-      else { eventPlacesMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('satellite_toggle') + ' Satellite'; }
+      if (showingSatellite) { eventPlacesMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
+      else { eventPlacesMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(eventPlacesMapInstance_); toggleBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
     };
     // REQ: "Add legend to the map" -- stood in previously (incidentally) by the color swatch next to
     // each checkbox in the now-removed type filter panel; now that that's gone, this is the only key
@@ -1227,6 +1227,11 @@ async function tabApproval(content, eventId) {
   // as the Disciplines & Inspectors tab above.
   var canRecommend = hasPermission('venueApproval.recommend');
   var canDecide = hasPermission('venueApproval.decide');
+  // REQ-VAP-04/REQ-EVT-12: "Not Approved" leaves the Event stuck on VenueRejected with no way to act
+  // on it -- reassignVenue (VenueApproval.gs) already existed and works, this button was the only
+  // missing piece. Same permission as the decision itself (reassignVenue's own requirePermission
+  // call), since picking the replacement Venue/EMC is really a continuation of that same decision.
+  var canReassign = canDecide && !!(current && current.decision === 'Not Approved');
 
   // Once a recommendation is on record for this evaluation it's locked -- shown read-only instead
   // of the form, matching recordRecommendation's own one-per-evaluation check server-side.
@@ -1255,8 +1260,16 @@ async function tabApproval(content, eventId) {
           '<div class="card-body"><button class="btn btn-secondary btn-sm" id="approveBtn">' + esc(t('approve_btn')) + '</button> ' +
           '<button class="btn btn-danger btn-sm" id="rejectBtn">' + esc(t('not_approved_btn')) + '</button></div></div>'
         : '') +
+      (canReassign
+        ? '<div class="card" style="flex:1;min-width:260px;border-color:var(--danger);"><div class="card-header"><div class="card-title">' + esc(t('reassign_venue_title')) + '</div></div>' +
+          '<div class="card-body"><div class="muted" style="font-size:12px;margin-bottom:8px;">' + esc(t('reassign_venue_hint')) + '</div>' +
+          '<button class="btn btn-primary btn-sm" id="reassignVenueBtn">' + esc(t('reassign_venue_btn')) + '</button></div></div>'
+        : '') +
     '</div>';
 
+  if (canReassign) {
+    document.getElementById('reassignVenueBtn').onclick = function () { openReassignVenueModal_(eventId); };
+  }
   if (canRecommend && !hasRecommendation) {
     document.getElementById('submitRecBtn').onclick = async function () {
       var val = document.getElementById('fRecommendation').value.trim();
@@ -1275,6 +1288,56 @@ async function tabApproval(content, eventId) {
     try { await Api.call('recordVenueDecision', { eventId: eventId, decision: decision }); UI.toast(t('toast_decision_recorded'), 'success'); Router.resolve(); }
     catch (err) { UI.error(err); }
   }
+}
+
+// REQ-VAP-04/REQ-EVT-12: pick a replacement Venue (required) after a rejection, optionally a new
+// renting EMC and/or Inspection Company too -- same three fields as the New Event form
+// (openNewEventModal, events.js), reassignVenue (VenueApproval.gs) just never had a frontend caller.
+// Venues/Organizations aren't loaded by tabApproval itself (most visits never need them), so this
+// fetches them plus the Event's own current emcId/inspectionCoId lazily, only when the button is
+// actually clicked.
+async function openReassignVenueModal_(eventId) {
+  var body = '<div class="empty-state">' + esc(t('loading')) + '</div>';
+  UI.openModal(t('reassign_venue_title'), body, [{ label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal }]);
+
+  var detail, venues, orgs;
+  try {
+    [detail, venues, orgs] = await Promise.all([
+      Api.call('getEvent', { eventId: eventId }), Api.call('listVenues', {}), Api.call('listOrganizations', {})
+    ]);
+  } catch (err) { UI.closeModal(); UI.error(err); return; }
+
+  var event = detail.event;
+  var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
+  var emcOrgs = orgs.filter(function (o) { return o.type === 'EMC'; });
+  var venueOptions = venues.filter(function (v) { return v.id !== event.venueId; })
+    .map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
+  var emcOptions = emcOrgs.map(function (o) { return '<option value="' + o.id + '"' + (o.id === event.emcId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('');
+  var inspCoOptions = inspectionCos.map(function (o) { return '<option value="' + o.id + '"' + (o.id === event.inspectionCoId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('');
+
+  if (!venueOptions) {
+    UI.closeModal();
+    UI.toast(t('no_other_venues_found'), 'error');
+    return;
+  }
+
+  var newBody =
+    '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('reassign_venue_modal_hint')) + '</div>' +
+    UI.field(Term('venue'), '<select id="fRVVenue" class="field-input">' + venueOptions + '</select>') +
+    UI.field(t('field_renting_emc'), '<select id="fRVEmc" class="field-input">' + emcOptions + '</select>') +
+    UI.field(t('field_inspection_co'), '<select id="fRVInspCo" class="field-input">' + inspCoOptions + '</select>');
+  UI.openModal(t('reassign_venue_title'), newBody, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('reassign_venue_btn'), className: 'btn-primary', onClick: async function () {
+        try {
+          await Api.call('reassignVenue', {
+            eventId: eventId, venueId: document.getElementById('fRVVenue').value,
+            emcId: document.getElementById('fRVEmc').value, inspectionCoId: document.getElementById('fRVInspCo').value
+          });
+          UI.closeModal(); UI.toast(t('toast_venue_reassigned'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 /* ---------------- Disciplines & Inspectors ---------------- */
@@ -1815,6 +1878,12 @@ var liveInspectionLastPingAt_ = 0; // throttle for pingInspectionLocation, see i
 // inspector, but that filter never touched this device's own unconditional-until-now display of its
 // own raw GPS fix.
 var liveInspectionVenueBoundary_ = null;
+// Latest GPS fix from the watch below, { lat, lng } or null -- read by saveInspectionResults_ so a
+// Crossed item's finding carries the inspector's actual live position at record time instead of
+// only the (blank, for InspectionResults-originated findings) fallback. Cleared on teardown or when
+// the fix steps outside the venue boundary, same rule as the live dot itself and findingLocationLastCoords_
+// (findings.js's equivalent for the New Finding form).
+var liveInspectionLastCoords_ = null;
 
 function stopLiveInspectionWatch_() {
   if (liveInspectionWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(liveInspectionWatchId_); liveInspectionWatchId_ = null; }
@@ -1823,7 +1892,7 @@ function destroyLiveInspectionMap_() {
   stopLiveInspectionWatch_();
   if (liveInspectionMapInstance_) { liveInspectionMapInstance_.remove(); liveInspectionMapInstance_ = null; }
   liveInspectionMyMarker_ = null; liveInspectionMarkers_ = {}; liveInspectionClosestId_ = null; liveInspectionLastPingAt_ = 0;
-  liveInspectionVenueBoundary_ = null;
+  liveInspectionVenueBoundary_ = null; liveInspectionLastCoords_ = null;
 }
 
 async function openChooseParticipantScreen_(content, eventId, inspection, venue) {
@@ -1979,9 +2048,11 @@ function updateLiveInspectionMyPosition_(latlng) {
   var banner = document.getElementById('liveInspectionBanner');
   if (liveInspectionVenueBoundary_ && !pointInPolygonClient_(latlng[0], latlng[1], liveInspectionVenueBoundary_)) {
     if (liveInspectionMyMarker_) { liveInspectionMapInstance_.removeLayer(liveInspectionMyMarker_); liveInspectionMyMarker_ = null; }
+    liveInspectionLastCoords_ = null; // outside the venue boundary -- don't attach this fix to a recorded result either
     if (banner) banner.innerHTML = '<div class="muted" style="font-size:12px;">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_hint')) + '</div>';
     return;
   }
+  liveInspectionLastCoords_ = { lat: latlng[0], lng: latlng[1] };
   if (!liveInspectionMyMarker_) {
     var icon = HululLeaflet.divIcon({
       className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'
@@ -2282,6 +2353,11 @@ async function saveInspectionResults_(eventId, inspection, participant, openItem
       entry.notes = row.querySelector('.result-notes').value;
       entry.suggestedAction = row.querySelector('.result-action').value;
       entry.evidenceUrls = urls;
+      // REQ follow-up: a Crossed item's auto-created finding used to always end up with a blank
+      // lat/lng even though the live-inspection GPS watch (startLiveInspectionTracking_) is running
+      // the whole time this modal is open -- attach the latest fix here so recordInspectionResults
+      // (Inspections.gs) can save it on the Finding it creates for this item.
+      if (liveInspectionLastCoords_) { entry.lat = liveInspectionLastCoords_.lat; entry.lng = liveInspectionLastCoords_.lng; }
     }
     results.push(entry);
   }

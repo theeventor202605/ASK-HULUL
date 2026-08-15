@@ -105,6 +105,7 @@ window.Router = {
     this.add('/support', renderSupport);
     this.add('/support/:id', renderSupportDetail);
     this.add('/config', renderConfig);
+    this.add('/audit-log', renderAuditLog);
     this.add('/settings', renderSettings);
     window.addEventListener('hashchange', () => this.resolve());
   }

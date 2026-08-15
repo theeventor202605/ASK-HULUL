@@ -40,6 +40,11 @@ var NAV_ITEMS = [
     entityLabelFn: function () { return t('template_library_title', { term: Term('template_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/config', icon: LUCIDE_ICONS['wrench'], label: 'nav_config', section: 'section_admin', roles: ['SystemAdmin'] },
+  // REQ-ACC-10: "immutable audit log of all account-management actions." listAuditLog (Accounts.gs)
+  // and its 'auditLog.view' permission already existed; this nav entry (and audit-log route/view)
+  // were the missing piece -- same default-roles set as 'auditLog.view' (backend/Permissions.gs).
+  { path: '/audit-log', icon: LUCIDE_ICONS['clipboard-list'], label: 'nav_audit_log', section: 'section_admin',
+    roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
   { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 

@@ -227,10 +227,11 @@ var ROUTES = {
   listMyPendingEscalations: function (u) { return listMyPendingEscalations(u); },
   acknowledgeEscalation: function (u, p) { return acknowledgeEscalation(u, p); },
 
-  // Participants (PAR)
+  // Participants (PAR) -- direct createParticipant/updateParticipant routes were removed (dead code,
+  // no frontend caller): Places.gs's createPlace/updatePlace fully superseded manual participant
+  // creation (auto-provisions the linked Users account too). listParticipants/dedupe/bulk-assign
+  // still operate on the same underlying Participants rows Places writes, so nothing else changes.
   listParticipants: function (u, p) { return listParticipants(u, p); },
-  createParticipant: function (u, p) { return createParticipant(u, p); },
-  updateParticipant: function (u, p) { return updateParticipant(u, p); },
   bulkAssignParticipantDisciplines: function (u, p) { return bulkAssignParticipantDisciplines(u, p); },
   dedupeParticipants: function (u, p) { return dedupeParticipants(u, p); },
 

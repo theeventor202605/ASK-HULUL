@@ -72,24 +72,52 @@ creates their own org's users).
 
 ## Known gaps / good follow-ups
 
-- **Arabic coverage**: navigation chrome and common labels are bilingual (`js/i18n.js`); the
-  event-workspace view field labels (form inputs inside each tab) are still English-only.
-  Extend `HULUL_I18N` and swap the hardcoded strings in `frontend/js/views/eventDetail.js`.
-- **Live GPS on evidence**: the API already accepts `lat`/`lng` on findings/results; wire
-  `navigator.geolocation.getCurrentPosition` into the "Record results" and "Log finding"
-  modals in `eventDetail.js` to auto-fill them on mobile.
-- **File size**: Apps Script's `doPost` has a ~50MB payload ceiling; base64-encoding inflates
-  file size ~33%, so keep individual evidence uploads well under 30MB, or switch to Drive's
-  resumable upload API for large video evidence.
-- **Escalation cadence**: the time-driven trigger runs every 30 minutes (`Setup.gs`), which is
-  the resolution of tier timing, not true real-time — tighten via `ScriptApp` trigger frequency
-  if your GA's SLA needs finer granularity (Apps Script's minimum is 1 minute).
-- **Multi-admin System Admin**: `ACCOUNT_CREATION_MATRIX` already allows SystemAdmin to create
-  more SystemAdmins (REQ-ACC-01); do this from **Users & Roles** once logged in as the seeded
-  admin.
-- **Reassign Venue screen**: `reassignVenue` (VenueApproval.gs, REQ-VAP-04/REQ-EVT-12 — re-pick the
-  Venue for an Event after a venue-decision rejection, optionally changing the renting EMC too) has
-  no frontend UI yet — nothing in `frontend/js/views/eventDetail.js`'s Venue Approval tab calls it.
-  `recordVenueDecision`'s "Not Approved" path sets the Event to `VenueRejected` but there's currently
-  no button to act on that. Add a "Reassign venue" action (Venue + EMC pickers, same shape as the
-  New Event form in `events.js`) to that tab.
+Last verified against the actual code (not just this doc) on 2026-08-15 — see the note at the
+bottom on why that distinction matters here.
+
+- **Arabic coverage**: `UI.statusBadge`/`UI.riskBadge` (`ui.js`) — the single shared renderer every
+  status/risk badge in the app goes through (Findings, Templates, Venue Approval, Events,
+  Inspections, Support tickets) — used to hardcode English label text internally regardless of the
+  active language; now routed through `t()`. Some event-workspace form field labels and a few
+  data-driven legend labels (e.g. Place type names) in `eventDetail.js` are still English-only —
+  those are shared data vocabulary used identically across several other views (`venues.js`,
+  `eventPlaces.js`), so translating them needs a coordinated pass across all of those, not just
+  `eventDetail.js` alone, to avoid the same term showing translated in one tab and English in
+  another.
+- **Live GPS on evidence**: fixed. `findings.js` (New Finding) and `eventDetail.js` (Record
+  results, live inspection tracking) now attach the inspector's live GPS fix to `createFinding`/
+  `recordInspectionResults` when one's available, instead of only ever falling back to the
+  participant's static coordinates.
+- **File size**: already handled — `eventDetail.js`'s `uploadEvidenceFile_` hard-caps any single
+  evidence file (photo or video) at 15MB client-side with a clear error before upload is attempted,
+  well under Apps Script's ~50MB `doPost` ceiling even after base64's ~33% inflation.
+- **Escalation cadence**: fixed. The sweep interval (which also gates Place-account deactivation
+  and template-deadline checks — they piggyback on the same trigger) is now admin-configurable from
+  **Config > Escalations** (`escalationCheckIntervalMinutes_`/`reinstallEscalationTrigger_`,
+  `Setup.gs`), defaulting to 5 minutes instead of the old hardcoded 30. Limited to the 5 values
+  `ScriptApp.ClockTriggerBuilder.everyMinutes` actually accepts (1/5/10/15/30).
+- **Multi-admin System Admin**: not actually a gap — `frontend/js/views/users.js` already offers
+  "SystemAdmin" in the role picker when a SystemAdmin creates a new account, matching
+  `ACCOUNT_CREATION_MATRIX` (REQ-ACC-01).
+- **Reassign Venue screen**: fixed. The Venue Approval tab now shows a "Reassign venue" action once
+  a venue's been rejected (`VenueRejected`), opening a Venue/EMC/Inspection Co picker that calls the
+  existing `reassignVenue` backend route.
+- **Audit log viewer**: fixed. `listAuditLog`/`auditLog.view` (REQ-ACC-10) existed server-side with
+  no frontend caller anywhere — added `frontend/js/views/auditLog.js` + nav entry, visible to
+  SystemAdmin/GAAdmin/EMCAdmin/InspectionAdmin.
+- **Admin reset-password / edit-user UI**: fixed. `resetPassword`/`updateUser` were registered
+  backend routes with no frontend caller; **Users & Roles** now has Edit and Reset password actions
+  per account.
+- **Orphaned Participants create/update code**: removed. `createParticipant`/`updateParticipant`
+  (`Participants.gs`) had zero frontend callers — fully superseded by `Places.gs`'s `createPlace`/
+  `updatePlace`, which auto-provisions the linked account in the same step. `listParticipants` and
+  everything else in that file (dedup, bulk discipline assignment) is untouched and still used.
+- **"Live location side map — coming soon"**: fixed. The New Finding form's own live-GPS map
+  (`findingLocationMap`) now lets an inspector tap a participant's dot to pick them, via
+  `UI.drawPlaceDots`'s existing click-callback support — it just wasn't wired up before.
+
+Note on how this list gets kept honest: a doc like this one is a snapshot, not a live view of the
+code — the previous version of this list had drifted (claimed gaps that were already fixed,
+missed real gaps like the audit log viewer entirely). Anyone re-verifying this list should grep the
+actual call sites (`grep -rn 'auditLog\|resetPassword\|updateUser' frontend/js/`, etc.) rather than
+trust this file at face value, this note included.

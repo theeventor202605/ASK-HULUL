@@ -112,28 +112,42 @@ window.UI = {
     root.innerHTML = '';
   },
 
+  // REQ follow-up: "event-workspace field labels are still English-only." Every status badge in the
+  // app (Findings, Templates, Venue Approval, Events, Inspections, Support tickets) rendered through
+  // this ONE shared function, which used to hardcode its own English label text right in the map
+  // below -- so no matter how many individual call sites got their own labels translated, every
+  // status badge anywhere still came out English. Fixing it once here covers every badge app-wide,
+  // not just eventDetail.js. Status keys themselves (map's left-hand side) stay exactly as they are
+  // -- those are the real data values compared elsewhere (finding.status === 'Open' etc.), only the
+  // display text (now routed through t()) changes with the language.
   statusBadge(status) {
     var map = {
-      Open: ['badge-open', 'Open'], Viewed: ['badge-open', 'Viewed'],
-      Submitted: ['badge-inreview', 'Submitted'], InReview: ['badge-inreview', 'In Review'],
-      Resubmitted: ['badge-inreview', 'Resubmitted'], Resolved: ['badge-resolved', 'Resolved'],
-      ReOpen: ['badge-reopen', 'Re-open'], Rejected: ['badge-rejected', 'Rejected'],
-      Approved: ['badge-resolved', 'Approved'], 'Not Approved': ['badge-rejected', 'Not Approved'],
+      Open: ['badge-open', 'status_open'], Viewed: ['badge-open', 'status_viewed'],
+      Submitted: ['badge-inreview', 'status_submitted'], InReview: ['badge-inreview', 'status_inreview'],
+      Resubmitted: ['badge-inreview', 'status_resubmitted'], Resolved: ['badge-resolved', 'status_resolved'],
+      ReOpen: ['badge-reopen', 'status_reopen'], Rejected: ['badge-rejected', 'status_rejected'],
+      Approved: ['badge-resolved', 'status_approved'], 'Not Approved': ['badge-rejected', 'status_not_approved'],
       // Readiness Templates (Templates.gs) -- formerly Approved/Rejected, renamed to avoid clashing
       // with the Venue Approval / Findings decisions above, which keep their own separate statuses.
-      Evaluated: ['badge-resolved', 'Evaluated'], Missed: ['badge-rejected', 'Missed'],
-      Pending: ['badge-neutral', 'Pending'], Scheduled: ['badge-open', 'Scheduled'], Completed: ['badge-resolved', 'Completed'],
-      Planning: ['badge-neutral', 'Planning'], VenueApproved: ['badge-resolved', 'Venue Approved'], VenueRejected: ['badge-rejected', 'Venue Rejected'],
+      Evaluated: ['badge-resolved', 'status_evaluated'], Missed: ['badge-rejected', 'status_missed'],
+      Pending: ['badge-neutral', 'status_pending'], Scheduled: ['badge-open', 'status_scheduled'], Completed: ['badge-resolved', 'status_completed'],
+      Planning: ['badge-neutral', 'status_planning'], VenueApproved: ['badge-resolved', 'status_venue_approved'], VenueRejected: ['badge-rejected', 'status_venue_rejected'],
       // Support tickets (Support.gs) -- Open/Resolved/Completed/Rejected all reuse maps above.
-      InProgress: ['badge-inreview', 'In Progress']
+      InProgress: ['badge-inreview', 'status_inprogress']
     };
-    var m = map[status] || ['badge-neutral', status || '—'];
-    return '<span class="badge ' + m[0] + '"><span class="badge-dot"></span>' + esc(m[1]) + '</span>';
+    var m = map[status];
+    var label = m ? t(m[1]) : (status || '—');
+    return '<span class="badge ' + (m ? m[0] : 'badge-neutral') + '"><span class="badge-dot"></span>' + esc(label) + '</span>';
   },
 
+  // Same "shared function, one fix covers every call site" reasoning as statusBadge above --
+  // risk (Critical/High/Medium/Low, RISK_LEVELS_ in backend/Resolutions.gs) is itself the data value
+  // compared elsewhere, so it's kept as the lookup key; only the rendered text is translated.
   riskBadge(risk) {
     var cls = risk === 'Critical' ? 'badge-critical' : risk === 'High' ? 'badge-high' : risk === 'Medium' ? 'badge-medium' : risk === 'Low' ? 'badge-low' : 'badge-neutral';
-    return '<span class="badge ' + cls + '">' + esc(risk || '—') + '</span>';
+    var riskLabelKeys = { Critical: 'risk_critical', High: 'risk_high', Medium: 'risk_medium', Low: 'risk_low' };
+    var label = riskLabelKeys[risk] ? t(riskLabelKeys[risk]) : (risk || '—');
+    return '<span class="badge ' + cls + '">' + esc(label) + '</span>';
   },
 
   // Every table built through here gets a filter box, sortable columns, and a CSV export button

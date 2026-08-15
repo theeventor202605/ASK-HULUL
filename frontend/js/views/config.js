@@ -146,6 +146,19 @@ async function renderConfigEscalations_(content) {
       '</label>' +
       '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('lock_screen_hint')) + '</div>' +
     '</div></div>' +
+    // REQ follow-up: "resolution of tier timing, not true real-time" -- the sweep that actually
+    // checks whether a delay has elapsed used to run every 30 minutes no matter how short a delay
+    // was configured below; now editable here too (escalationCheckIntervalMinutes_/
+    // reinstallEscalationTrigger_, Setup.gs). Only the 5 values ScriptApp's ClockTriggerBuilder
+    // actually accepts are offered -- anything else would just get silently snapped server-side.
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('check_interval_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('check_interval_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      UI.field(t('check_interval_field'), '<select id="cfgCheckIntervalMinutes" class="field-input" style="max-width:200px;">' +
+        (cfg.checkIntervalAllowedMinutes || [1, 5, 10, 15, 30]).map(function (m) {
+          return '<option value="' + m + '"' + (m === cfg.checkIntervalMinutes ? ' selected' : '') + '>' + esc(t('x_minutes', { count: m })) + '</option>';
+        }).join('') + '</select>') +
+    '</div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tier1_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('tier1_subtitle')) + '</div></div>' +
     '<div class="card-body" style="display:flex;flex-direction:column;gap:20px;max-width:640px;">' +
@@ -171,7 +184,8 @@ async function renderConfigEscalations_(content) {
         tier1: { toRoles: tier1ToRoles, ccRoles: readCheckedRoles_('cfgTier1Cc') },
         tier2: { toRoles: tier2ToRoles, ccRoles: readCheckedRoles_('cfgTier2Cc'), delayMinutesByRisk: escalationReadDelayMinutesByRisk_('cfgTier2', cfg.riskLevels) },
         tier3: { toRoles: tier3ToRoles, ccRoles: readCheckedRoles_('cfgTier3Cc'), delayMinutesByRisk: escalationReadDelayMinutesByRisk_('cfgTier3', cfg.riskLevels) },
-        lockScreenEnabled: document.getElementById('cfgLockScreenEnabled').checked
+        lockScreenEnabled: document.getElementById('cfgLockScreenEnabled').checked,
+        checkIntervalMinutes: Number(document.getElementById('cfgCheckIntervalMinutes').value)
       });
       UI.toast(t('toast_escalation_settings_saved'), 'success');
       Router.resolve();

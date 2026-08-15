@@ -237,16 +237,50 @@ function seedFirstAdmin_() {
   });
 }
 
+// REQ follow-up: the sweep used to be hardcoded to 30 minutes, which put a 30-minute floor on how
+// promptly ANY of the three things piggybacking on it (escalation tiers, Place-account
+// deactivation, template-deadline checks) could react even if their own configured delay was much
+// shorter -- e.g. an admin setting a Tier 2 delay of 5 minutes (setEscalationConfig allows as low
+// as 1) still wouldn't see it fire for up to 30. ScriptApp's ClockTriggerBuilder.everyMinutes only
+// accepts 1, 5, 10, 15, or 30 -- not an arbitrary number -- so this snaps whatever's configured to
+// the nearest of those instead of erroring. Defaults to 5 (6x tighter than the old hardcoded value)
+// rather than 1, since a 1-minute sweep scanning every open Finding/Place/Template on a busy
+// deployment is needlessly close to Apps Script's daily trigger-runtime quota for marginal benefit
+// -- SystemAdmins who need finer than 5 minutes can still dial it down from Config > Escalations.
+var ESCALATION_CHECK_INTERVAL_ALLOWED_MINUTES_ = [1, 5, 10, 15, 30];
+var ESCALATION_CHECK_INTERVAL_DEFAULT_MINUTES_ = 5;
+function escalationCheckIntervalMinutes_() {
+  var configured = Number(getConfig('escalationCheckIntervalMinutes', ESCALATION_CHECK_INTERVAL_DEFAULT_MINUTES_));
+  if (isNaN(configured) || configured <= 0) configured = ESCALATION_CHECK_INTERVAL_DEFAULT_MINUTES_;
+  var nearest = ESCALATION_CHECK_INTERVAL_ALLOWED_MINUTES_[0];
+  ESCALATION_CHECK_INTERVAL_ALLOWED_MINUTES_.forEach(function (m) {
+    if (Math.abs(m - configured) < Math.abs(nearest - configured)) nearest = m;
+  });
+  return nearest;
+}
+
 function installEscalationTrigger_() {
-  var triggers = ScriptApp.getProjectTriggers();
-  var already = triggers.some(function (t) { return t.getHandlerFunction() === 'scheduledEscalationCheck'; });
+  var already = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'scheduledEscalationCheck'; });
   if (already) return;
-  ScriptApp.newTrigger('scheduledEscalationCheck').timeBased().everyMinutes(30).create();
+  ScriptApp.newTrigger('scheduledEscalationCheck').timeBased().everyMinutes(escalationCheckIntervalMinutes_()).create();
+}
+
+// Called from setEscalationConfig (Resolutions.gs) whenever the interval changes, so a SystemAdmin
+// sees it take effect immediately instead of needing to re-run setupHulul from the Apps Script
+// editor. Safe to call any time -- deletes every existing scheduledEscalationCheck trigger (there
+// should only ever be one; the >1 case would only happen from manual editor tampering) before
+// creating the fresh one, so re-saving the same interval twice never leaves duplicates running.
+function reinstallEscalationTrigger_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'scheduledEscalationCheck') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('scheduledEscalationCheck').timeBased().everyMinutes(escalationCheckIntervalMinutes_()).create();
 }
 
 // Wrapper so the trigger doesn't need an acting user. Also carries deactivateEndedEventPlaceAccounts
-// (Places.gs) and checkTemplateDeadlines (Templates.gs) piggybacking on the same 30-min trigger
-// rather than installing a separate one each -- REQ: "when an event ends all participant accounts
+// (Places.gs) and checkTemplateDeadlines (Templates.gs) piggybacking on the same configurable-interval
+// trigger (escalationCheckIntervalMinutes_ above, 5 minutes by default) rather than installing a
+// separate one each -- REQ: "when an event ends all participant accounts
 // registered under events will be deactivated" / "a document becomes Missed if the Event Manager
 // does not submit before the deadline."
 function scheduledEscalationCheck() {

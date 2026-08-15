@@ -6,8 +6,6 @@
  * the auto-provisioned version of this (one Participant + Users account per catalog Place).
  */
 
-var PARTICIPANT_TYPES = ['Vendor', 'Operator', 'Exhibitor', 'Other'];
-
 function listParticipants(user, p) {
   var all = getAll('Participants');
   if (p && p.venueId) all = all.filter(function (pt) { return pt.venueId === p.venueId; });
@@ -27,81 +25,15 @@ function listParticipants(user, p) {
   return merged.map(function (pt) { return Object.assign({}, pt, { openFindingsCount: countById[pt.id] || 0 }); });
 }
 
-function createParticipant(actingUser, p) {
-  requirePermission(actingUser, 'participant.create');
-  if (PARTICIPANT_TYPES.indexOf(p.type) === -1) throw new HululError('BAD_REQUEST', 'Invalid participant type');
-  if (!p.venueId || !p.name) throw new HululError('BAD_REQUEST', 'venueId and name are required');
-  var venue = getById('Venues', p.venueId);
-  if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
-  if (p.zoneId) {
-    var zone = getById('Zones', p.zoneId);
-    if (!zone || zone.venueId !== p.venueId) throw new HululError('BAD_REQUEST', 'zoneId must belong to this venue');
-  }
-
-  var lat = '', lng = '';
-  if (p.lat !== undefined && p.lat !== '' && p.lng !== undefined && p.lng !== '') {
-    lat = Number(p.lat); lng = Number(p.lng);
-    if (isNaN(lat) || isNaN(lng)) throw new HululError('BAD_REQUEST', 'lat/lng must be numbers');
-  }
-
-  var participant = {
-    id: newId('Participants'), eventId: '', venueId: p.venueId, type: p.type, name: p.name, zoneId: p.zoneId || '',
-    location: p.location || '', contactEmail: p.contactEmail || '', userId: '', createdAt: nowIso_(),
-    lat: lat, lng: lng, disciplineIds: '' // disciplineIds is a PM-owned field -- see bulkAssignParticipantDisciplines
-  };
-
-  // Optionally create a login account for the participant (REQ-ACC-08).
-  if (p.createLogin && p.contactEmail && p.password) {
-    var loginUser = createUserWithPassword({
-      id: newId('Users'), name: p.name, email: p.contactEmail, orgType: 'PARTICIPANT',
-      orgId: venue.emcId || '', role: mapParticipantRole_(p.type), createdBy: actingUser.id
-    }, p.password);
-    participant.userId = loginUser.id;
-  }
-
-  insertRow('Participants', participant);
-  audit(actingUser.id, 'CREATE_PARTICIPANT', 'Participants', participant.id, { type: p.type });
-  return participant;
-}
-
+// NOTE: the original manual createParticipant/updateParticipant API (REQ-ACC-08's direct-creation
+// path) was removed here -- Places.gs's createPlace/updatePlace fully superseded it (auto-provisions
+// the linked Users account in the same step) and had zero remaining frontend callers. mapParticipantRole_
+// is kept because Places.gs's provisionPlaceAccount_ still uses it to pick the right role per place type.
 function mapParticipantRole_(type) {
   if (type === 'Vendor') return ROLES.VENDOR;
   if (type === 'Operator') return ROLES.OPERATOR;
   if (type === 'Exhibitor') return ROLES.EXHIBITOR;
   return ROLES.VENDOR;
-}
-
-function updateParticipant(user, p) {
-  var participant = getById('Participants', p.participantId);
-  if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
-  requirePermission(user, 'participant.edit');
-
-  // name/zoneId/location/lat/lng describe the shared physical spot -- computed and applied to every
-  // sibling account at that spot (see participantAccountIds_) BEFORE the edit, so a rename can't
-  // silently split what used to be one merged vendor back into two visible rows (mergeParticipantsByLocation_
-  // groups purely on these fields matching exactly). contactEmail is deliberately excluded -- that's
-  // per-account (each shift's own login email) and only ever touches the exact row being edited.
-  var sharedPatch = {};
-  ['name', 'zoneId', 'location'].forEach(function (f) { if (p[f] !== undefined) sharedPatch[f] = p[f]; });
-  if (p.lat !== undefined && p.lng !== undefined) {
-    if (p.lat === '' || p.lng === '') { sharedPatch.lat = ''; sharedPatch.lng = ''; }
-    else {
-      var lat = Number(p.lat), lng = Number(p.lng);
-      if (isNaN(lat) || isNaN(lng)) throw new HululError('BAD_REQUEST', 'lat/lng must be numbers');
-      sharedPatch.lat = lat; sharedPatch.lng = lng;
-    }
-  }
-
-  var siblingIds = participantAccountIds_(p.participantId);
-  var updated = participant;
-  if (Object.keys(sharedPatch).length) {
-    siblingIds.forEach(function (id) { updated = updateRow('Participants', id, sharedPatch); });
-  }
-  if (p.contactEmail !== undefined) updated = updateRow('Participants', p.participantId, { contactEmail: p.contactEmail });
-
-  var auditPatch = Object.assign({}, sharedPatch, p.contactEmail !== undefined ? { contactEmail: p.contactEmail } : {});
-  audit(user.id, 'UPDATE_PARTICIPANT', 'Participants', p.participantId, auditPatch);
-  return updated;
 }
 
 // REQ: "PM must select relevant disciplines for every participant; PM may select one or more
