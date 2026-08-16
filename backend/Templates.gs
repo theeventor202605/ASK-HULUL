@@ -57,15 +57,27 @@ function listTemplateLibrary(user, p) {
   return findWhere('TemplateLibrary', function (l) { return l.orgId === orgId; });
 }
 
-// REQ follow-up: "convert the templates to forms and include evaluation process." docType (optional,
-// validated against TEMPLATE_DOC_TYPES_) tags which structured scoring catalog applies to documents
-// sent from this library entry -- blank/omitted keeps the old plain upload+review behavior exactly
-// as it was before this feature existed.
+// REQ follow-up: "convert the templates to forms and include evaluation process." docType (optional)
+// tags which structured scoring catalog applies to documents sent from this library entry --
+// blank/omitted keeps the old plain upload+review behavior exactly as it was before this feature
+// existed. TEMPLATE_DOC_TYPES_ used to be a hard-coded enum a docType had to belong to -- that meant
+// every genuinely new document type (REQ: "if a new template is added then a new form must also be
+// created... how do I create new forms") needed a code change just to become selectable. It's now
+// only a set of quick-pick SUGGESTIONS for the frontend's Form type dropdown (merged there with
+// whatever docTypes already have an imported scoring catalog -- see listScoringCatalogSummary
+// below); validation itself is just a format check via isValidDocTypeCode_, open to any code an org
+// wants to use. importTemplateScoringCatalog (below) is how a brand-new docType actually gets its
+// scoring form built, no code change required.
 var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC', 'Other'];
+// Short administrative code, not free text -- letters/digits/underscore/hyphen only, 1-20 chars, so
+// it stays safe to use as a lookup key (TemplateScoringItems.docType) and a URL-safe query param.
+function isValidDocTypeCode_(code) {
+  return typeof code === 'string' && /^[A-Za-z0-9_-]{1,20}$/.test(code);
+}
 function createLibraryTemplate(user, p) {
   requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
-  if (p.docType && TEMPLATE_DOC_TYPES_.indexOf(p.docType) === -1) throw new HululError('BAD_REQUEST', 'Invalid docType');
+  if (p.docType && !isValidDocTypeCode_(p.docType)) throw new HululError('BAD_REQUEST', 'docType must be 1-20 letters/digits/underscore/hyphen');
   var orgId = user.role === ROLES.SYSTEM_ADMIN ? (p.orgId || user.orgId) : user.orgId;
   if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
   var row = {
@@ -89,7 +101,7 @@ function updateLibraryTemplate(user, p) {
   var lib = getById('TemplateLibrary', p.templateLibraryId);
   if (!lib) throw new HululError('NOT_FOUND', 'Template not found');
   if (user.role !== ROLES.SYSTEM_ADMIN && lib.orgId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s template');
-  if (p.docType && TEMPLATE_DOC_TYPES_.indexOf(p.docType) === -1) throw new HululError('BAD_REQUEST', 'Invalid docType');
+  if (p.docType && !isValidDocTypeCode_(p.docType)) throw new HululError('BAD_REQUEST', 'docType must be 1-20 letters/digits/underscore/hyphen');
   var patch = { updatedAt: nowIso_() };
   if (p.name !== undefined) { if (!p.name) throw new HululError('BAD_REQUEST', 'name is required'); patch.name = p.name; }
   if (p.docType !== undefined) patch.docType = p.docType;
@@ -346,6 +358,71 @@ function saveTemplateScoring(user, p) {
   });
   audit(user.id, 'SAVE_TEMPLATE_SCORING', 'Templates', p.templateId, { count: saved.length });
   return saved;
+}
+
+// REQ follow-up: "if a new template is added then a new form must also be created -- how do I create
+// new forms" -- builds a brand-new scoring catalog (or replaces an existing one) from a CSV instead
+// of needing a code change every time, same shape as how ZSMP/ZERP/TTP/CSM/SEC were ported from the
+// source workbook. Expected columns (header row required, matched case-insensitively, any order):
+// sectionCode, sectionName, itemCode, description, multiplier. Rows missing itemCode or description
+// are skipped and reported back rather than failing the whole import -- a hand-edited spreadsheet is
+// rarely perfectly clean. Replacing an existing catalog soft-deletes (status: 'Deleted') its old rows
+// rather than hard-deleting, same convention as Meetings' own soft delete, so past scoring results
+// (TemplateScoringResults, keyed by itemId) don't silently point at a vanished row.
+function importTemplateScoringCatalog(user, p) {
+  requirePermission(user, 'templateLibrary.manage'); // same admin action as managing the library itself
+  if (!p || !p.docType || !isValidDocTypeCode_(p.docType)) throw new HululError('BAD_REQUEST', 'docType must be 1-20 letters/digits/underscore/hyphen');
+  if (!p.csvText) throw new HululError('BAD_REQUEST', 'csvText is required');
+  var existing = findWhere('TemplateScoringItems', function (i) { return i.docType === p.docType && i.status !== 'Deleted'; });
+  if (existing.length && !p.replace) {
+    throw new HululError('BAD_REQUEST', 'This doc type already has ' + existing.length + ' item(s) -- pass replace:true to overwrite');
+  }
+
+  var rows;
+  try { rows = Utilities.parseCsv(p.csvText); } catch (e) { throw new HululError('BAD_REQUEST', 'Could not parse CSV: ' + e.message); }
+  if (!rows.length) throw new HululError('BAD_REQUEST', 'CSV is empty');
+  var headers = rows[0].map(function (h) { return String(h || '').trim().toLowerCase(); });
+  var col = function (name) { return headers.indexOf(name); };
+  var idxSection = col('sectioncode'), idxSectionName = col('sectionname'), idxItem = col('itemcode'),
+    idxDesc = col('description'), idxMult = col('multiplier');
+  if (idxItem === -1 || idxDesc === -1) throw new HululError('BAD_REQUEST', 'CSV must have itemCode and description columns');
+
+  if (p.replace) {
+    existing.forEach(function (i) { updateRow('TemplateScoringItems', i.id, { status: 'Deleted' }); });
+  }
+
+  var imported = 0, skipped = [];
+  for (var r = 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.join('').trim() === '') continue;
+    var itemCode = String(row[idxItem] || '').trim();
+    var description = String(row[idxDesc] || '').trim();
+    if (!itemCode || !description) { skipped.push({ row: r + 1, reason: 'missing itemCode or description' }); continue; }
+    var multiplier = idxMult !== -1 ? Number(row[idxMult]) : 1;
+    if (isNaN(multiplier)) multiplier = 1;
+    insertRow('TemplateScoringItems', {
+      id: newId('TemplateScoringItems'), docType: p.docType,
+      sectionCode: idxSection !== -1 ? String(row[idxSection] || '').trim() : '',
+      sectionName: idxSectionName !== -1 ? String(row[idxSectionName] || '').trim() : '',
+      itemCode: itemCode, description: description, multiplier: multiplier, sortOrder: imported, status: 'Active'
+    });
+    imported++;
+  }
+  audit(user.id, 'IMPORT_TEMPLATE_SCORING_CATALOG', 'TemplateScoringItems', p.docType, { imported: imported, skipped: skipped.length, replace: !!p.replace });
+  return { docType: p.docType, imported: imported, skipped: skipped };
+}
+
+// Powers both the Score-button visibility check (the frontend no longer hardcodes which docTypes
+// have a catalog -- see tabTemplates/templateActionsHtml_, eventDetail.js) and the Scoring Forms
+// admin table (Template Library page) that lists every catalog and its item count. Read-only, same
+// visibility as listTemplateScoringItems.
+function listScoringCatalogSummary(user) {
+  var counts = {};
+  getAll('TemplateScoringItems').forEach(function (i) {
+    if (i.status === 'Deleted') return;
+    counts[i.docType] = (counts[i.docType] || 0) + 1;
+  });
+  return Object.keys(counts).sort().map(function (docType) { return { docType: docType, itemCount: counts[docType] }; });
 }
 
 // REQ: "PM must set one deadline for all documents, by date/time picker or by N weeks/days before

@@ -156,6 +156,8 @@ var ROUTES = {
   listTemplateScoringItems: function (u, p) { return listTemplateScoringItems(u, p); },
   getTemplateScoringResults: function (u, p) { return getTemplateScoringResults(u, p); },
   saveTemplateScoring: function (u, p) { return saveTemplateScoring(u, p); },
+  importTemplateScoringCatalog: function (u, p) { return importTemplateScoringCatalog(u, p); },
+  listScoringCatalogSummary: function (u, p) { return listScoringCatalogSummary(u); },
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },

@@ -416,11 +416,6 @@ var EVENT_PLACE_TYPE_OPTIONS_ = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
 var EVENT_PLACE_TYPE_COLORS_ = { Operator: '#4f46e5', Vendor: '#16a34a', Exhibitor: '#d97706', Other: '#2563eb' };
 
 /* ---------------- Templates ---------------- */
-// docTypes with a seeded structured scoring catalog (TemplateScoringItems) -- mirrors the doc types
-// covered by seedTemplateScoringItems in Setup.gs. Anything else (TTP/CSM/SEC's siblings 'Other', or
-// a docType with no catalog seeded yet) falls back to the old plain upload+review flow with no Score
-// button.
-var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC'];
 var TEMPLATE_BOARD_COLUMNS = ['Not Sent', 'Sent', 'In Progress', 'Submitted', 'Under Review', 'Evaluated', 'Missed'];
 var TEMPLATE_BOARD_BORDER = {
   'Not Sent': 'var(--border)', 'Sent': 'var(--info)', 'In Progress': 'var(--accent)', 'Submitted': 'var(--info)',
@@ -439,7 +434,7 @@ var TEMPLATE_BOARD_BORDER = {
 // uploaderRoles/reviewerRoles come from getTemplateProcessRoles (see tabTemplates below) --
 // configurable per REQ: "role assignments... Inspection Analyst and Event Manager, where I can
 // change them and allow one or multiple role assignment" (Configuration > Process).
-function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
+function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline, scoredDocTypes) {
   var role = HululState.user.role;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
   // "Send readiness templates to an event".
@@ -465,12 +460,15 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
   }
   // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
   // attached file?" / "Let's add the remaining score templates" -- a structured item-level scoring
-  // form (renderTemplateScoring below), only for docTypes with a seeded catalog (ZSMP, ZERP, TTP,
-  // CSM, SEC -- see SCORED_DOC_TYPES_, Templates.gs/Setup.gs) and only once there's actually
-  // something to review (id is truthy -- excludes the virtual "Not Sent" placeholder row). Kept
-  // visible past Evaluated/Missed too (unlike the Evaluate/Mark Missed buttons themselves, which are
-  // one-shot) so the analyst can still open and review their own past scoring.
-  if (isAnalyst && tpl.id && SCORED_DOC_TYPES_.indexOf(tpl.docType) !== -1 &&
+  // form (renderTemplateScoring below), only for docTypes with an imported catalog. scoredDocTypes
+  // comes from listScoringCatalogSummary (Templates.gs), fetched once in tabTemplates below -- no
+  // hardcoded list here, so a brand-new catalog imported from the Template Library page (REQ:
+  // "how do I create new forms") shows its Score button immediately, no code change needed. Only
+  // once there's actually something to review (id is truthy -- excludes the virtual "Not Sent"
+  // placeholder row). Kept visible past Evaluated/Missed too (unlike the Evaluate/Mark Missed
+  // buttons themselves, which are one-shot) so the analyst can still open and review their own past
+  // scoring.
+  if (isAnalyst && tpl.id && scoredDocTypes.indexOf(tpl.docType) !== -1 &&
       ['Submitted', 'Under Review', 'Evaluated', 'Missed'].indexOf(tpl.status) !== -1) {
     parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_score_document')) + '" data-score-template="' + tpl.id + '">' + ICON('record_results') + '</button>');
   }
@@ -483,9 +481,11 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
 async function tabTemplates(content, eventId, detail) {
   var results = await Promise.all([
     Api.call('getEventTemplates', { eventId: eventId }),
-    Api.call('getTemplateProcessRoles', {})
+    Api.call('getTemplateProcessRoles', {}),
+    Api.call('listScoringCatalogSummary', {})
   ]);
   var templates = results[0], processRoles = results[1];
+  var scoredDocTypes = results[2].map(function (s) { return s.docType; });
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
   // "Set an event's documents deadline".
   var canManageDeadline = hasPermission('template.setDeadline');
@@ -514,7 +514,7 @@ async function tabTemplates(content, eventId, detail) {
       { key: 'fileName', label: t('col_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
       { key: 'reviewReason', label: t('col_review_notes'), render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
-      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt) }
+      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt, scoredDocTypes) }
     ], templates, { emptyText: t('no_templates_in_library_hint', { term: t('field_inspection_company') }) }) + '</div></div>';
 
   UI.wireBoard(content, function (id) {
@@ -710,6 +710,12 @@ async function renderTemplateScoring(params) {
   var resultsByItemId = {};
   results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
 
+  // REQ follow-up: "scoring forms are long and take days to complete -- filtered by section... know
+  // the progress of each score form" -- sidebar jump navigation (templateScoringSectionNavHtml_)
+  // instead of a flat multi-hundred-item page: click a section to scroll straight to it, with its
+  // own running done/total count so progress is visible per-chunk, not just as one overall number.
+  var sections = templateScoringSectionsList_(items);
+
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(tpl.name) + '</div>' +
     '<div class="page-subtitle">' + esc(tpl.docType) + (tpl.fileUrl ? ' · <a href="' + tpl.fileUrl + '" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(t('word_view')) + '</a>' : '') + '</div></div>' +
@@ -717,12 +723,23 @@ async function renderTemplateScoring(params) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
       '<div id="tplScoringProgress" style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px;font-weight:600;"></div>' +
     '</div></div>' +
-    '<div class="card"><div class="card-body">' +
-      templateScoringItemsHtml_(items, resultsByItemId) +
-    '</div>' +
-    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-      '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
-    '</div></div>';
+    '<div style="display:flex;gap:16px;align-items:flex-start;">' +
+      '<div class="card" style="width:230px;flex:0 0 230px;position:sticky;top:16px;max-height:calc(100vh - 160px);overflow-y:auto;">' +
+        '<div class="card-header"><div class="card-title" style="font-size:12px;">' + esc(t('scoring_sections_title')) + '</div></div>' +
+        '<div class="card-body" id="tplScoringSectionNav" style="padding:6px;">' + templateScoringSectionNavHtml_(sections) + '</div>' +
+      '</div>' +
+      '<div class="card" style="flex:1 1 auto;min-width:0;">' +
+        '<div class="card-header" style="display:flex;justify-content:flex-end;gap:6px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="tplScoringExportBtn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="tplScoringImportBtn" title="' + esc(t('import_csv')) + '">' + ICON('import_csv') + '</button>' +
+          '<input type="file" id="tplScoringImportInput" accept=".csv" style="display:none;" />' +
+        '</div>' +
+        '<div class="card-body">' + templateScoringItemsHtml_(items, resultsByItemId) + '</div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
+          '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 
   document.getElementById('backTplScoringBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=templates'; };
   document.getElementById('saveTplScoringBtn').onclick = async function () {
@@ -731,9 +748,19 @@ async function renderTemplateScoring(params) {
       UI.toast(t('toast_scoring_saved'), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
+  document.getElementById('tplScoringExportBtn').onclick = function () { exportTemplateScoringCsv_(tpl, items); };
+  document.getElementById('tplScoringImportBtn').onclick = function () { document.getElementById('tplScoringImportInput').click(); };
+  document.getElementById('tplScoringImportInput').onchange = function (e) {
+    var file = e.target.files[0];
+    e.target.value = ''; // reset immediately so re-picking the same file still fires 'change' next time
+    if (!file) return;
+    UI.confirmModal(t('confirm_import_scoring_answers'), function () { importTemplateScoringCsv_(file, items); });
+  };
 
   wireTemplateScoringRows_(items);
+  wireTemplateScoringSectionNav_(sections);
   updateTemplateScoringProgress_(items);
+  updateTemplateScoringSectionNav_(items);
 }
 
 // Items already arrive from listTemplateScoringItems sorted by itemCode -- which, since every
@@ -745,12 +772,72 @@ function templateScoringItemsHtml_(items, resultsByItemId) {
   var lastSectionCode = null;
   items.forEach(function (it) {
     if (it.sectionCode !== lastSectionCode) {
-      html += '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:14px 0 4px;">' + esc(it.sectionCode) + ' ' + esc(it.sectionName) + '</div>';
+      // id is the scroll target for the sidebar's jump navigation (wireTemplateScoringSectionNav_
+      // below) -- sectionCode values like '4.00' are fine straight in an id attribute (only CSS
+      // querySelector-by-id needs escaping for the dot, and nothing here does that; navigation uses
+      // getElementById).
+      html += '<div id="tpl-sec-' + esc(it.sectionCode) + '" style="font-weight:600;font-size:12.5px;color:var(--accent);margin:14px 0 4px;scroll-margin-top:16px;">' + esc(it.sectionCode) + ' ' + esc(it.sectionName) + '</div>';
       lastSectionCode = it.sectionCode;
     }
     html += templateScoringRowHtml_(it, resultsByItemId[it.id]);
   });
   return html;
+}
+
+// Ordered, de-duplicated section list with each section's item count -- drives both the sidebar nav
+// (templateScoringSectionNavHtml_) and its live per-section progress readout
+// (updateTemplateScoringSectionNav_). Relies on the same already-sorted-by-itemCode order as
+// templateScoringItemsHtml_ above.
+function templateScoringSectionsList_(items) {
+  var sections = [], bySection = {};
+  items.forEach(function (it) {
+    if (!bySection[it.sectionCode]) {
+      bySection[it.sectionCode] = { sectionCode: it.sectionCode, sectionName: it.sectionName, total: 0 };
+      sections.push(bySection[it.sectionCode]);
+    }
+    bySection[it.sectionCode].total++;
+  });
+  return sections;
+}
+
+function templateScoringSectionNavHtml_(sections) {
+  return sections.map(function (sec) {
+    return '<div class="tpl-section-nav-item" data-section="' + esc(sec.sectionCode) + '" style="cursor:pointer;padding:6px 8px;border-radius:6px;margin-bottom:2px;">' +
+      '<div style="font-size:11.5px;font-weight:600;">' + esc(sec.sectionCode) + ' ' + esc(sec.sectionName) + '</div>' +
+      '<div class="muted tpl-section-nav-progress" data-section-progress="' + esc(sec.sectionCode) + '" style="font-size:10px;">0 / ' + sec.total + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function wireTemplateScoringSectionNav_(sections) {
+  document.querySelectorAll('.tpl-section-nav-item').forEach(function (nav) {
+    nav.onclick = function () {
+      var anchor = document.getElementById('tpl-sec-' + nav.getAttribute('data-section'));
+      if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
+}
+
+// A section counts an item as "done" once it has a Completeness answer, and (unless that answer is
+// N/A -- nothing left to quality-score on an item that doesn't apply) a Quality score too. Read from
+// the DOM live, same convention as updateTemplateScoringProgress_ right below, so every click
+// updates both the overall and per-section numbers together.
+function updateTemplateScoringSectionNav_(items) {
+  var doneBySection = {}, totalBySection = {};
+  items.forEach(function (it) {
+    totalBySection[it.sectionCode] = (totalBySection[it.sectionCode] || 0) + 1;
+    var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
+    var cVal = cGroup ? cGroup.getAttribute('data-value') : '';
+    var qGroup = document.querySelector('.doc-quality-group[data-item="' + it.id + '"]');
+    var qVal = qGroup ? qGroup.getAttribute('data-value') : '';
+    if (cVal && (cVal === 'N/A' || qVal !== '')) doneBySection[it.sectionCode] = (doneBySection[it.sectionCode] || 0) + 1;
+  });
+  document.querySelectorAll('.tpl-section-nav-progress').forEach(function (el) {
+    var sec = el.getAttribute('data-section-progress');
+    var done = doneBySection[sec] || 0, total = totalBySection[sec] || 0;
+    el.textContent = done + ' / ' + total;
+    el.style.color = (total && done === total) ? 'var(--success)' : '';
+  });
 }
 
 function templateScoringRowHtml_(item, result) {
@@ -793,6 +880,7 @@ function wireTemplateScoringRows_(items) {
       group.setAttribute('data-value', value);
       group.querySelectorAll('.doc-completeness-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === value); });
       updateTemplateScoringProgress_(items);
+      updateTemplateScoringSectionNav_(items);
     };
   });
   document.querySelectorAll('.doc-quality-btn').forEach(function (btn) {
@@ -803,6 +891,7 @@ function wireTemplateScoringRows_(items) {
       group.setAttribute('data-value', value);
       group.querySelectorAll('.doc-quality-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === value); });
       updateTemplateScoringProgress_(items);
+      updateTemplateScoringSectionNav_(items);
     };
   });
 }
@@ -856,6 +945,85 @@ function collectTemplateScoringResults_(items) {
       detail: detailEl ? detailEl.value : ''
     };
   });
+}
+
+// REQ follow-up: "Scoring forms are long and take days to complete; so need to know the progress...
+// Also add import and export as well." -- exports the form's current on-screen state (same DOM read
+// as collectTemplateScoringResults_ above) to CSV so an auditor can keep working offline (a laptop
+// with no connectivity, or just prefers a spreadsheet) across several sessions, then bring it back in
+// via importTemplateScoringCsv_ below. itemId is the hidden join key import matches rows back by;
+// itemCode/section/description/multiplier are included read-only for the auditor's own reference
+// while filling it in -- not read back on import. csvEscape_ reused from events.js (loaded on the
+// same page), same BOM-prefixed Excel-friendly convention as every other export in this app.
+function exportTemplateScoringCsv_(tpl, items) {
+  var resultsNow = collectTemplateScoringResults_(items);
+  var byItemId = {};
+  resultsNow.forEach(function (r) { byItemId[r.itemId] = r; });
+  var headers = ['itemId', 'itemCode', 'sectionCode', 'sectionName', 'description', 'multiplier', 'completeness', 'quality', 'remarks', 'detail'];
+  var lines = [headers.map(csvEscape_).join(',')];
+  items.forEach(function (it) {
+    var r = byItemId[it.id] || {};
+    lines.push([
+      it.id, it.itemCode, it.sectionCode, it.sectionName, it.description, it.multiplier,
+      r.completeness || '', r.quality || '', r.remarks || '', r.detail || ''
+    ].map(csvEscape_).join(','));
+  });
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'hulul-scoring-' + (tpl.docType || 'form') + '-' + tpl.id + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Import is deliberately a pure DOM populate, not an auto-save -- matches every other form in this
+// app's "review before Save" convention. parseCsv_ reused from events.js (same RFC4180-ish parser
+// the checklist-item import already relies on). Matched by itemId (the export's own hidden join
+// column); a row whose itemId doesn't match any item on THIS form (wrong file, or the catalog
+// changed since export) is silently skipped rather than failing the whole import. Progress (both
+// overall and per-section) is recomputed once at the end, same as any other batch of DOM changes.
+async function importTemplateScoringCsv_(file, items) {
+  var text = await file.text();
+  var rows = parseCsv_(text);
+  if (!rows.length) { UI.toast(t('empty_csv'), 'error'); return; }
+  var headers = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+  var col = function (name) { return headers.indexOf(name); };
+  var idxId = col('itemid'), idxCompleteness = col('completeness'), idxQuality = col('quality'),
+    idxRemarks = col('remarks'), idxDetail = col('detail');
+  if (idxId === -1) { UI.toast(t('toast_scoring_csv_missing_itemid'), 'error'); return; }
+  var itemById = {};
+  items.forEach(function (it) { itemById[it.id] = it; });
+
+  var applied = 0;
+  for (var r = 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.join('').trim() === '') continue;
+    var it = itemById[(row[idxId] || '').trim()];
+    if (!it) continue;
+    var completeness = idxCompleteness !== -1 ? (row[idxCompleteness] || '').trim() : '';
+    if (['Yes', 'No', 'N/A', ''].indexOf(completeness) === -1) completeness = '';
+    var quality = idxQuality !== -1 ? (row[idxQuality] || '').trim() : '';
+    if (quality !== '' && (isNaN(Number(quality)) || Number(quality) < 0 || Number(quality) > 4)) quality = '';
+
+    var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
+    if (cGroup) {
+      cGroup.setAttribute('data-value', completeness);
+      cGroup.querySelectorAll('.doc-completeness-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === completeness); });
+    }
+    var qGroup = document.querySelector('.doc-quality-group[data-item="' + it.id + '"]');
+    if (qGroup) {
+      qGroup.setAttribute('data-value', quality);
+      qGroup.querySelectorAll('.doc-quality-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === quality); });
+    }
+    var remarksEl = document.querySelector('.doc-remarks[data-item="' + it.id + '"]');
+    if (remarksEl && idxRemarks !== -1) remarksEl.value = row[idxRemarks] || '';
+    var detailEl = document.querySelector('.doc-detail[data-item="' + it.id + '"]');
+    if (detailEl && idxDetail !== -1) detailEl.value = row[idxDetail] || '';
+    applied++;
+  }
+  updateTemplateScoringProgress_(items);
+  updateTemplateScoringSectionNav_(items);
+  UI.toast(t('toast_scoring_csv_imported', { count: applied }), 'success');
 }
 
 /* ---------------- Opening Approval ---------------- */

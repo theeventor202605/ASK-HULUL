@@ -244,10 +244,10 @@ function backfillLibraryAndTemplateDocTypes() {
 // was first coded as 'CMP' (matching the source workbook's own "Crowd Management" sheet name), but
 // every real TemplateLibrary entry in this org is actually named "CSM", not "CMP" -- so the Form
 // type dropdown offering "CMP" was never going to match anything real. Renamed to 'CSM' everywhere
-// (TEMPLATE_DOC_TYPES_ in Templates.gs/templateLibrary.js, SCORED_DOC_TYPES_ in eventDetail.js/
-// Setup.gs). Only needed if seedTemplateScoringItems already ran once under the old 'CMP' name before
-// this fix -- renames any TemplateScoringItems/TemplateLibrary/Templates rows still tagged 'CMP' over
-// to 'CSM'. Safe to run even if nothing is tagged 'CMP' yet (no-op).
+// (TEMPLATE_DOC_TYPES_ in Templates.gs/templateLibrary.js, the SCORED_DOC_TYPES_ list right below in
+// this file). Only needed if seedTemplateScoringItems already ran once under the old 'CMP' name
+// before this fix -- renames any TemplateScoringItems/TemplateLibrary/Templates rows still tagged
+// 'CMP' over to 'CSM'. Safe to run even if nothing is tagged 'CMP' yet (no-op).
 function renameCmpDocTypeToCsm() {
   var renamed = { items: 0, library: 0, templates: 0 };
   getAll('TemplateScoringItems').forEach(function (i) {
