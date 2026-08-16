@@ -111,8 +111,14 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 /* Every icon in the app (see icons.js) is inline Lucide SVG, sized width/height:1em so it inherits
    whatever font-size its container already sets -- same "just drop it in text" model the emoji
    glyphs it replaced used. This one rule nudges every icon's baseline up so it sits centered next
-   to text/inside buttons instead of sagging below the baseline, the way inline SVG does by default. */
-.icon-svg{ vertical-align:-0.125em; }
+   to text/inside buttons instead of sagging below the baseline, the way inline SVG does by default.
+   REQ: "Throughout the application, icons are very small, we need to go one size up." -- font-size
+   here doesn't render any text (this is an <svg>, not a text node); it only feeds the width/height:1em
+   on the icon itself, so bumping it scales every icon app-wide ~20% without touching the surrounding
+   button/label text size. The few spots that hardcode their own pixel width/height instead of relying
+   on 1em (nav-group-header chevron, .tab-btn arrow, .photo-timeline-credit icon -- all below) are
+   deliberately small utility indicators, not content icons, and are untouched by this. */
+.icon-svg{ vertical-align:-0.125em; font-size:1.2em; }
 /* REQ: "I do not want background colours in any icon within the application." Icon-only action
    buttons (edit/delete/send/upload/approve/reject/etc -- table + card actions app-wide) keep their
    semantic variant as the glyph/text color, but lose the solid colored square behind it. Hover swaps
