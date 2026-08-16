@@ -136,7 +136,23 @@ var PENDING_TAB_HIGHLIGHT_KEY_ = 'hululPendingTabHighlight';
 async function renderEventDetail(params) {
   var root = document.getElementById('viewRoot');
   var eventId = params.id;
-  var detail = await Api.call('getEvent', { eventId: eventId });
+  // BUG FIX ("can't access property 'event', detail is undefined"): unlike every other route
+  // handler in this file (renderTemplateScoring, renderCompletedChecklistDetail, etc.), this first
+  // Api.call had no try/catch of its own -- any failure here (a network blip, an aborted request from
+  // rapid navigation, a backend timeout) threw straight past this point with `detail` never assigned,
+  // so the very next line (detail.event.name) crashed with that confusing raw TypeError instead of a
+  // clean message. router.js's own top-level catch still caught it and showed "Failed to load this
+  // page," but lost WHY -- UI.error(err) below at least surfaces the real reason (and quietly returns
+  // on an AbortError from simply navigating away fast, same as router.js's own AbortError check, since
+  // that's not a real failure worth a toast).
+  var detail;
+  try { detail = await Api.call('getEvent', { eventId: eventId }); }
+  catch (err) {
+    if (err && err.name === 'AbortError') return;
+    UI.error(err);
+    root.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>';
+    return;
+  }
   HululState.currentEventId = eventId;
   var visibleTabs = EVENT_TABS.filter(function (tb) { return !tb[3] || tb[3](); });
   var activeTab = params.tab || 'overview';
