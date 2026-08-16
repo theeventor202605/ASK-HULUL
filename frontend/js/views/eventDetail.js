@@ -353,9 +353,7 @@ function initOverviewZoneMap_(venue, zones) {
       // and behaves identically for our simple stroked/filled polygons, just via a different renderer.
       preferCanvas: true
     }).setView(center, hasVenueCoords ? 15 : 6);
-    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(overviewZoneMapInstance_);
+    hululTileLayer_().addTo(overviewZoneMapInstance_);
 
     var bounds = [];
     var venueBoundary = parseBoundaryClient_(venue.boundary);
@@ -2206,9 +2204,7 @@ function initLiveInspectionMap_(participants, eventId, inspection) {
     if (!document.getElementById('liveInspectionMap')) return;
     liveInspectionMapInstance_ = HululLeaflet.map('liveInspectionMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 16); // see overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(liveInspectionMapInstance_, el);
-    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(liveInspectionMapInstance_);
+    hululTileLayer_().addTo(liveInspectionMapInstance_);
 
     liveInspectionMarkers_ = {};
     participants.forEach(function (p) {

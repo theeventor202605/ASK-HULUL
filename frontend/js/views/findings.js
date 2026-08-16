@@ -724,9 +724,7 @@ function initFindingLocationMap_(venue, zones, participants, onParticipantClick)
     if (!document.getElementById('findingLocationMap')) return;
     findingLocationMapInstance_ = HululLeaflet.map('findingLocationMap', { preferCanvas: true }).setView(EVENT_MAP_DEFAULT_CENTER_, 16); // see eventDetail.js overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(findingLocationMapInstance_, el);
-    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(findingLocationMapInstance_);
+    hululTileLayer_().addTo(findingLocationMapInstance_);
 
     // REQ: "map should follow our standard maps by displaying boundaries and dots."
     var bounds = [];

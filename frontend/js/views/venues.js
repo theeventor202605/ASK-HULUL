@@ -275,9 +275,7 @@ function initVenueViewMap_(venue) {
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     venueMapInstance_ = HululLeaflet.map('venueViewMap', { preferCanvas: true }).setView(center, hasCoords ? 15 : 6);
     UI.requireClickToActivateMap(venueMapInstance_, mapEl);
-    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(venueMapInstance_);
+    var osmLayer = hululTileLayer_().addTo(venueMapInstance_);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
@@ -446,9 +444,7 @@ function initVenueMap_(startCenter, existingBoundary, placesWithCoords, zones, v
     UI.requireClickToActivateMap(venueMapInstance_, mapEl);
     // Single hostname (no a/b/c subdomains) -- matches OSM's current tile usage policy; the old
     // lettered-subdomain form ({s}.tile...) is deprecated and can silently serve nothing.
-    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(venueMapInstance_);
+    var osmLayer = hululTileLayer_().addTo(venueMapInstance_);
     // REQ: "no satellite toggle ... on the [venue] map" -- same OSM/ArcGIS swap as venues.js's own
     // Add-a-Place map (initPlaceMap_ below) and eventPlaces.js's Add-participant map.
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -886,9 +882,7 @@ function initZoneMap_(venue, existingZone, siblingZones, places) {
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     zoneMapInstance_ = HululLeaflet.map('zoneMap', { preferCanvas: true }).setView(center, hasVenueCoords ? 16 : 6); // see venues.js's own initVenueMap_'s preferCanvas comment
     UI.requireClickToActivateMap(zoneMapInstance_, mapEl);
-    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(zoneMapInstance_);
+    hululTileLayer_().addTo(zoneMapInstance_);
     zoneMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, zoneMapInstance_);
     // Wrapped in try/catch -- Leaflet.draw is a third-party plugin (CDN can fail to load, or throw
     // on a Leaflet version it doesn't fully support) and a failure here must never take down the
@@ -986,9 +980,7 @@ function initZoneOverviewMap_(venue, zones, places) {
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     zoneOverviewMapInstance_ = HululLeaflet.map('zoneOverviewMap', { preferCanvas: true }).setView(center, hasVenueCoords ? 16 : 6);
     UI.requireClickToActivateMap(zoneOverviewMapInstance_, mapEl);
-    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(zoneOverviewMapInstance_);
+    var osmLayer = hululTileLayer_().addTo(zoneOverviewMapInstance_);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
@@ -1566,9 +1558,7 @@ function initPlaceMap_(venue, zones, places) {
     if (!mapEl || mapEl._leaflet_id) return; // gone, or (defensive belt-and-suspenders) already claimed
     placeMapInstance_ = HululLeaflet.map('placeMap', { preferCanvas: true }).setView(center, hasCoords ? 16 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment
     UI.requireClickToActivateMap(placeMapInstance_, mapEl);
-    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(placeMapInstance_);
+    var osmLayer = hululTileLayer_().addTo(placeMapInstance_);
     // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map. This
     // also means wireMapFullscreen no longer needs to reparent them (see the old BUG comment this

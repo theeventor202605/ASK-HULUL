@@ -335,9 +335,7 @@ function initParticipantDisciplineMap_(venue, zones, participants) {
     if (!mapEl || mapEl._leaflet_id) return;
     participantDisciplineMapInstance_ = HululLeaflet.map('participantDisciplineMap', { preferCanvas: true }).setView(center, hasCoords ? 15 : 6); // see eventDetail.js overviewZoneMap's preferCanvas comment -- same html2canvas/SVG-transform fix
     UI.requireClickToActivateMap(participantDisciplineMapInstance_, mapEl);
-    HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(participantDisciplineMapInstance_);
+    hululTileLayer_().addTo(participantDisciplineMapInstance_);
 
     var bounds = [];
     var venueBoundary = parseBoundaryClient_(venue.boundary);
@@ -477,9 +475,7 @@ function initEventPlaceMap_(venue, zones, places, eventId) {
     // pin also happens to be the click that unlocks panning/scroll-zoom for whatever the user does
     // next on this map.
     UI.requireClickToActivateMap(eventPlaceMapInstance_, el);
-    var osmLayer = HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-    }).addTo(eventPlaceMapInstance_);
+    var osmLayer = hululTileLayer_().addTo(eventPlaceMapInstance_);
     // REQ: "Move the Use my location / Satellite buttons inside map canvas." -- built and appended
     // directly into mapEl (UI.mapControls) instead of living in the card header above the map.
     var locBtn = UI.mapToggleButton('useMyLocationEPBtn', 'location_pin', t('use_my_location'));

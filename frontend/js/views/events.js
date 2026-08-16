@@ -315,6 +315,29 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
   ]);
 }
 
+/* ---------------- Shared map basemap layer ---------------- */
+// BUG FIX ("map is not displaying correctly" -- Funfair overview Zones map showing OpenStreetMap's
+// own literal "Access blocked ... Referer is required by tile usage policy" placeholder tile instead
+// of real map imagery): every map in the app (eventDetail.js/venues.js/eventPlaces.js/findings.js)
+// was hitting tile.openstreetmap.org directly. Raw OSM tile servers are explicitly NOT meant for an
+// app embedded in daily production use at any real scale (see
+// https://operations.osmfoundation.org/policies/tiles/) -- OSM's ops team rate-limits/blacklists
+// referrers that generate more than occasional personal-use traffic, which is exactly what serving
+// this "Access blocked" placeholder tile back means: this domain got flagged. Switched every map to
+// Esri's ArcGIS Online World_Street_Map service instead -- no API key required, and this exact app
+// already relies on Esri's ArcGIS World_Imagery service for the satellite toggle (venues.js), so this
+// reuses infrastructure already proven to work here rather than introducing a brand new third-party
+// domain that could hit its own restrictions. One shared helper (instead of the same tileLayer call
+// copy-pasted at 10 separate map-init sites) means switching providers again later is a one-line
+// change instead of a repo-wide find/replace. Esri's tile URL uses {z}/{y}/{x} order (not {z}/{x}/{y}
+// like OSM) -- same convention the existing World_Imagery satellite layer already uses.
+function hululTileLayer_() {
+  return HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ',
+    maxZoom: 19
+  });
+}
+
 /* ---------------- CSV export / import ---------------- */
 function csvEscape_(v) {
   var s = v === undefined || v === null ? '' : String(v);

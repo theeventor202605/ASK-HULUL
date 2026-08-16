@@ -302,7 +302,11 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .topbar-search input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .topbar-actions{ display:flex; align-items:center; gap:14px; margin-inline-start:auto; }
 .org-logo{ height:34px; width:auto; max-width:130px; object-fit:contain; border-radius:6px; }
-.icon-btn{ position:relative; background:transparent; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:15px; }
+/* REQ: "icons are very small, we need to go one size up" -- these 4 topbar buttons (mobileNavBtn,
+   supportBtn, escAlertBtn, notifBtn, index.html) render a raw emoji character, not an ICON()/SVG icon,
+   so the earlier app-wide .icon-svg font-size bump never reached them -- their size comes straight
+   from this font-size instead. Bumped in step with that same ~20% factor. */
+.icon-btn{ position:relative; background:transparent; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:18px; }
 .icon-btn:hover{ background:var(--surface); }
 .notif-badge{ position:absolute; top:-4px; inset-inline-end:-4px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
   border-radius:999px; min-width:16px; height:16px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
@@ -339,7 +343,12 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 /* REQ: "I do not want background colours in any icon within the application." -- was a solid
    color+'22' badge behind the glyph (still set inline per-card, see kpiCard()/dashboard.js); now a
    plain icon at a slightly larger size so it still reads clearly without the colored square. */
-.kpi-icon{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:19px; }
+/* REQ: "icons are very small, we need to go one size up." This icon IS an SVG (ICON(), via
+   kpiCard()) so it already picks up the app-wide .icon-svg{font-size:1.2em} bump on top of whatever
+   this container's own font-size is -- bumping this too (19->22px, so the rendered icon lands around
+   22*1.2≈26px inside the 32px box) makes the KPI card icons a clearly bigger, not just marginally
+   bigger, jump -- matching the "still very small" feedback on top of the first pass. */
+.kpi-icon{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:22px; }
 .kpi-value{ font-size:28px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 
 /* ---------- Dashboard (dashboard.js) ---------- */
