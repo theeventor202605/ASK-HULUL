@@ -697,6 +697,20 @@ async function renderTemplateScoring(params) {
     Api.call('listTemplateScoringItems', { docType: tpl.docType }),
     Api.call('getTemplateScoringResults', { templateId: templateId })
   ]);
+  // BUG FIX ("Completeness and Quality do not work properly when filtered"): TemplateScoringItems.
+  // sectionCode is stored as a plain "4.00" / "4.01" style string, but that's also a value Google
+  // Sheets auto-detects as looking like a number -- so getAll() can hand it back as the JS Number 4
+  // instead of the string "4.00", silently dropping the trailing zero (visible in the section header
+  // showing "4 Third Party Sign Off" instead of "4.00 Third Party Sign Off"). Every sectionCode
+  // comparison in this page (data-section attributes, TPL_SCORING_ACTIVE_SECTION_, the CSV export) is
+  // a strict === against a string, so a Number sectionCode never matches and the section-scoped
+  // Completeness/Quality math silently sees zero items. Normalizing every item's sectionCode to this
+  // canonical zero-padded string once, right here, means everything downstream (grouping, the sidebar
+  // filter, progress scoping, CSV) works of the exact same string regardless of what Sheets did to it.
+  items.forEach(function (it) {
+    var n = Number(it.sectionCode);
+    it.sectionCode = isNaN(n) ? String(it.sectionCode) : n.toFixed(2);
+  });
 
   if (!items.length) {
     root.innerHTML =
@@ -1047,9 +1061,15 @@ function wireTemplateScoringRows_(items) {
 // to the bars. Autosave toggle (tplScoringAutosaveToggle, checked by default) sits right under Save;
 // tplScoringAutosaveStatus below that shows "Autosaved HH:MM" or "Autosave paused" (autosaveTemplateScoring_
 // / the toggle's onchange in renderTemplateScoring fill both in).
+// REQ follow-up (user feedback: "Save and Autosave need to be aligned vertically to the middle of the
+// parent section") -- the previous version forced this column to align-items:stretch + a negative
+// margin to visually compensate, which is exactly what made it look mis-aligned/overflowing instead of
+// centered. Simplified: the outer row is align-items:center (so every column is vertically centered
+// against whichever one is tallest -- normally this Save/Autosave column, since it stacks 3 rows), and
+// this column just sizes to its own content -- no stretch, no manual offset needed.
 function templateScoringProgressHtml_() {
-  return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:stretch;">' +
-    '<div style="flex:1 1 220px;min-width:180px;align-self:center;">' +
+  return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center;">' +
+    '<div style="flex:1 1 220px;min-width:180px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
         '<span>' + esc(t('col_completeness')) + '</span><span id="tplCompletenessPctText" style="color:var(--accent);">—</span>' +
       '</div>' +
@@ -1057,7 +1077,7 @@ function templateScoringProgressHtml_() {
         '<div id="tplCompletenessBar" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-    '<div style="flex:1 1 220px;min-width:180px;align-self:center;">' +
+    '<div style="flex:1 1 220px;min-width:180px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
         '<span>' + esc(t('col_quality')) + '</span><span id="tplQualityPctText" style="color:var(--success);">—</span>' +
       '</div>' +
@@ -1065,7 +1085,7 @@ function templateScoringProgressHtml_() {
         '<div id="tplQualityBar" style="height:100%;width:0%;background:var(--success);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-    '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 16px;margin:-8px 0;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
+    '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
       '<button class="btn btn-primary" id="saveTplScoringBtn" style="min-width:120px;">' + esc(t('save')) + '</button>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;">' +
         '<input type="checkbox" id="tplScoringAutosaveToggle" checked style="cursor:pointer;margin:0;" />' + esc(t('autosave_toggle_label')) +
