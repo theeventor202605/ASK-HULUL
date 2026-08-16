@@ -13,7 +13,7 @@
  * just the plain Evaluated/Missed decision. Mirrors backend/Templates.gs's own TEMPLATE_DOC_TYPES_
  * list -- kept in sync by hand since frontend/backend don't share constants in this app.
  */
-var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC', 'Other'];
+var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC', 'Other'];
 function templateDocTypeOptionsHtml_(selected) {
   return '<option value="">' + esc(t('doctype_none_option')) + '</option>' +
     TEMPLATE_DOC_TYPES_.map(function (dt) { return '<option value="' + dt + '"' + (dt === selected ? ' selected' : '') + '>' + esc(dt) + '</option>'; }).join('');

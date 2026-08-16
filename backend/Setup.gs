@@ -229,7 +229,7 @@ function debugTemplateDocTypeGaps() {
 // time), then re-runs backfillTemplateDocTypes so already-sent documents under every org pick it up
 // in the same pass. Only touches rows/library entries still blank -- safe to re-run.
 function backfillLibraryAndTemplateDocTypes() {
-  var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC'];
+  var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC'];
   var libUpdated = 0;
   getAll('TemplateLibrary').forEach(function (l) {
     if (l.docType) return;
@@ -240,8 +240,32 @@ function backfillLibraryAndTemplateDocTypes() {
   return { libUpdated: libUpdated, templatesUpdated: tplResult.updated };
 }
 
+// REQ bug report: "There is no CSM Form Type in Templates Library!" -- the Crowd Management doc type
+// was first coded as 'CMP' (matching the source workbook's own "Crowd Management" sheet name), but
+// every real TemplateLibrary entry in this org is actually named "CSM", not "CMP" -- so the Form
+// type dropdown offering "CMP" was never going to match anything real. Renamed to 'CSM' everywhere
+// (TEMPLATE_DOC_TYPES_ in Templates.gs/templateLibrary.js, SCORED_DOC_TYPES_ in eventDetail.js/
+// Setup.gs). Only needed if seedTemplateScoringItems already ran once under the old 'CMP' name before
+// this fix -- renames any TemplateScoringItems/TemplateLibrary/Templates rows still tagged 'CMP' over
+// to 'CSM'. Safe to run even if nothing is tagged 'CMP' yet (no-op).
+function renameCmpDocTypeToCsm() {
+  var renamed = { items: 0, library: 0, templates: 0 };
+  getAll('TemplateScoringItems').forEach(function (i) {
+    if (i.docType === 'CMP') { updateRow('TemplateScoringItems', i.id, { docType: 'CSM' }); renamed.items++; }
+  });
+  getAll('TemplateLibrary').forEach(function (l) {
+    if (l.docType === 'CMP') { updateRow('TemplateLibrary', l.id, { docType: 'CSM' }); renamed.library++; }
+  });
+  getAll('Templates').forEach(function (t) {
+    if (t.docType === 'CMP') { updateRow('Templates', t.id, { docType: 'CSM' }); renamed.templates++; }
+  });
+  Logger.log('renameCmpDocTypeToCsm: renamed ' + renamed.items + ' TemplateScoringItems, ' +
+    renamed.library + ' TemplateLibrary, ' + renamed.templates + ' Templates row(s) from CMP to CSM.');
+  return renamed;
+}
+
 // extracted verbatim (itemCode/sectionCode/sectionName/description/multiplier) from the GA26/JDCB
-// "Document Review Tool" workbook's own ZSMP, ZERP, TTP, CMP, and SEC sheets. Run once from the Apps
+// "Document Review Tool" workbook's own ZSMP, ZERP, TTP, CSM, and SEC sheets. Run once from the Apps
 // Script editor's function dropdown after deploying this feature. Idempotent per docType: if
 // TemplateScoringItems already has any rows for a given docType, that docType is left alone and only
 // re-seeds if you first delete its existing rows -- safe to re-run without duplicating on a second
@@ -252,7 +276,7 @@ function seedTemplateScoringItems() {
   existing.forEach(function (i) { existingDocTypes[i.docType] = true; });
 
   var seeded = 0;
-  [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_], ['TTP', TTP_SEED_ITEMS_], ['CMP', CMP_SEED_ITEMS_], ['SEC', SEC_SEED_ITEMS_]].forEach(function (pair) {
+  [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_], ['TTP', TTP_SEED_ITEMS_], ['CSM', CMP_SEED_ITEMS_], ['SEC', SEC_SEED_ITEMS_]].forEach(function (pair) {
     var docType = pair[0], items = pair[1];
     if (existingDocTypes[docType]) { Logger.log('seedTemplateScoringItems: ' + docType + ' already has rows, skipping.'); return; }
     items.forEach(function (it, idx) {
@@ -463,8 +487,10 @@ var ZERP_SEED_ITEMS_ = [
 ];
 
 // extracted verbatim, same pattern as ZSMP/ZERP above -- from the 'Traffic & Transport' sheet
-// (TTP), 'Crowd Management' sheet (CMP), and 'Security Management' sheet (SEC) of the same
-// workbook. Phase 2 per the original scoping note ("see the sibling TTP/CMP/SEC sheets in that
+// (TTP), 'Crowd Management' sheet (docType 'CSM' -- your library entries use "CSM", not the
+// workbook's own "CMP" abbreviation, so the seed pairing below uses 'CSM' even though this array is
+// still named CMP_SEED_ITEMS_ after the source sheet), and 'Security Management' sheet (SEC) of the
+// same workbook. Phase 2 per the original scoping note ("see the sibling TTP/CMP/SEC sheets in that
 // same workbook for a future phase"). One source typo fixed: the "Accreditation Team" row under
 // Perimeter Protection shared itemCode 3.03.02 with the row above it -- renumbered to 3.03.03.
 var TTP_SEED_ITEMS_ = [

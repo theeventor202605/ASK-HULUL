@@ -61,7 +61,7 @@ function listTemplateLibrary(user, p) {
 // validated against TEMPLATE_DOC_TYPES_) tags which structured scoring catalog applies to documents
 // sent from this library entry -- blank/omitted keeps the old plain upload+review behavior exactly
 // as it was before this feature existed.
-var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC', 'Other'];
+var TEMPLATE_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC', 'Other'];
 function createLibraryTemplate(user, p) {
   requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name) throw new HululError('BAD_REQUEST', 'name is required');
@@ -282,7 +282,7 @@ function reviewEventTemplate(user, p) {
  * sits ALONGSIDE the existing plain Evaluated/Missed decision above, not in place of it -- scoring
  * is optional working detail the analyst can save progressively; reviewEventTemplate is still the
  * one action that actually finalizes the document's status. Only wired up for docTypes that have a
- * seeded catalog (ZSMP, ZERP, TTP, CMP, SEC) -- any other docType (or a document sent before this
+ * seeded catalog (ZSMP, ZERP, TTP, CSM, SEC) -- any other docType (or a document sent before this
  * feature existed, docType '') has no scoring form, and the frontend falls back to plain
  * review-only, exactly as it always has.
  */

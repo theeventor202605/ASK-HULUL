@@ -417,10 +417,10 @@ var EVENT_PLACE_TYPE_COLORS_ = { Operator: '#4f46e5', Vendor: '#16a34a', Exhibit
 
 /* ---------------- Templates ---------------- */
 // docTypes with a seeded structured scoring catalog (TemplateScoringItems) -- mirrors the doc types
-// covered by seedTemplateScoringItems in Setup.gs. Anything else (TTP/CMP/SEC's siblings 'Other', or
+// covered by seedTemplateScoringItems in Setup.gs. Anything else (TTP/CSM/SEC's siblings 'Other', or
 // a docType with no catalog seeded yet) falls back to the old plain upload+review flow with no Score
 // button.
-var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC'];
+var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC'];
 var TEMPLATE_BOARD_COLUMNS = ['Not Sent', 'Sent', 'In Progress', 'Submitted', 'Under Review', 'Evaluated', 'Missed'];
 var TEMPLATE_BOARD_BORDER = {
   'Not Sent': 'var(--border)', 'Sent': 'var(--info)', 'In Progress': 'var(--accent)', 'Submitted': 'var(--info)',
@@ -466,7 +466,7 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline) {
   // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
   // attached file?" / "Let's add the remaining score templates" -- a structured item-level scoring
   // form (renderTemplateScoring below), only for docTypes with a seeded catalog (ZSMP, ZERP, TTP,
-  // CMP, SEC -- see SCORED_DOC_TYPES_, Templates.gs/Setup.gs) and only once there's actually
+  // CSM, SEC -- see SCORED_DOC_TYPES_, Templates.gs/Setup.gs) and only once there's actually
   // something to review (id is truthy -- excludes the virtual "Not Sent" placeholder row). Kept
   // visible past Evaluated/Missed too (unlike the Evaluate/Mark Missed buttons themselves, which are
   // one-shot) so the analyst can still open and review their own past scoring.
@@ -677,7 +677,7 @@ function fileToBase64(file) {
  * works through while a document sits at Submitted/Under Review (still reachable afterward too --
  * see templateActionsHtml_ above): a Yes/No/N/A Completeness checklist plus a 0-4 Quality review
  * score per item, ported item-for-item from the GA26/JDCB "Document Review Tool" workbook (ZSMP,
- * ZERP, TTP, CMP, SEC -- TemplateScoringItems, seeded via seedTemplateScoringItems, Setup.gs). Sits ALONGSIDE
+ * ZERP, TTP, CSM, SEC -- TemplateScoringItems, seeded via seedTemplateScoringItems, Setup.gs). Sits ALONGSIDE
  * the plain Evaluated/Missed decision (openReviewTemplateModal_ above), not in place of it -- Save
  * here just persists progress (saveTemplateScoring, Templates.gs); the analyst still uses the
  * existing Evaluate/Mark Missed buttons on the Templates tab to actually finalize the document.
