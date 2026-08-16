@@ -167,6 +167,17 @@ var PERMISSION_REGISTRY_ = {
     page: 'templates', crud: ['update'],
     defaultRoles: ['InspectionAnalyst', 'SystemAdmin']
   },
+  // REQ follow-up: "Finalize closes score editing" -- once a Document Review scoring form is
+  // finalized (finalizeTemplateScoring, Templates.gs -- reuses 'template.review' above, same role
+  // that can score it can finalize it) it becomes read-only for everyone. Reopening it is
+  // deliberately its own, separately-configurable permission (default SystemAdmin only) rather than
+  // reusing 'template.review' again, so an org can let its Inspection Analysts finalize freely while
+  // still requiring a manager/admin sign-off to undo one.
+  'template.reopenScoring': {
+    module: 'Templates', label: 'Reopen a finalized Document Review scoring form for editing again',
+    page: 'templates', crud: ['update'],
+    defaultRoles: ['SystemAdmin']
+  },
   'meeting.manage': {
     module: 'Meetings', label: 'Schedule, edit, or delete a meeting', page: 'meetings', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager']

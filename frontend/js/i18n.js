@@ -52,7 +52,7 @@ window.HULUL_I18N = {
     kpi_reopen: 'Re-open', kpi_rejected: 'Rejected', kpi_events: 'Active Events',
     events_title: 'Events', new_event: 'New Event', tab_overview: 'Overview', tab_chat: 'Chat', tab_venue: 'Venue',
     tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Assignments',
-    tab_inspections: 'Inspections', tab_completed_checklists: 'Completed Checklists',
+    tab_inspections: 'Inspections', tab_completed_checklists: 'Completed Checklists', tab_score_overview: 'Score',
     tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
     tab_escalations: 'Escalations', tab_participants: 'Participants', tab_participants_new: 'New', tab_reports: 'Reports', tab_event_log: 'Logs',
     // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
@@ -441,6 +441,18 @@ window.HULUL_I18N = {
     confirm_import_scoring_answers: 'This will overwrite the answers currently on screen with the imported file. Continue?',
     toast_scoring_csv_missing_itemid: 'CSV must include an itemId column (use Export first to get the right format)',
     toast_scoring_csv_imported: 'Imported {{count}} answer(s) — review, then Save',
+    // REQ follow-up: "After all items are scored prompt to finalize instead of save. Finalize closes
+    // score editing." (renderTemplateScoring/promptFinalizeTemplateScoring_, eventDetail.js).
+    finalize_prompt_title: 'All items scored', finalize_prompt_body: "Every item on this document has a Completeness answer. You can finalize now to lock it from further editing, or just save and keep working.",
+    finalize_prompt_just_save: 'Not yet, just save', finalize_prompt_finalize: 'Finalize',
+    toast_scoring_finalized: 'Document finalized — scoring is now locked',
+    scoring_finalized_label: 'Finalized', finalized_on_x: 'Finalized on {{date}}',
+    reopen_scoring_btn: 'Reopen', confirm_reopen_scoring: 'Reopen this document for editing again? Anyone with access will be able to change its answers.',
+    toast_scoring_reopened: 'Document reopened for editing',
+    // REQ: "Add Tab under Checklist name is score. Add to it template filter to narrow down items."
+    // (tabScoreOverview, eventDetail.js) -- read-only, cross-document scoring item list.
+    score_overview_hint: 'Every Document Review item across this event, from every scored document. Filter by document to narrow it down.',
+    col_item: 'Item', col_description: 'Description', empty_no_scoring_items: 'No scoring items yet.',
     // REQ follow-up: "if a new template is added then a new form must also be created -- how do I
     // create new forms" -- the Scoring Forms admin card (templateLibrary.js) that imports a new
     // catalog from a CSV.
@@ -605,7 +617,7 @@ window.HULUL_I18N = {
     kpi_reopen: 'إعادة فتح', kpi_rejected: 'مرفوض', kpi_events: 'فعاليات نشطة',
     events_title: 'الفعاليات', new_event: 'فعالية جديدة', tab_overview: 'نظرة عامة', tab_chat: 'المحادثة', tab_venue: 'الموقع',
     tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'المهام',
-    tab_inspections: 'عمليات التفتيش', tab_completed_checklists: 'القوائم المكتملة',
+    tab_inspections: 'عمليات التفتيش', tab_completed_checklists: 'القوائم المكتملة', tab_score_overview: 'التقييم',
     tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_participants_new: 'جديد', tab_reports: 'التقارير', tab_event_log: 'السجلات',
     tab_group_general: 'عام', tab_group_readiness: 'الجاهزية', tab_group_inspections: 'قوائم المراجعة', tab_group_findings: 'سجلات المخاطر',
@@ -979,6 +991,14 @@ window.HULUL_I18N = {
     confirm_import_scoring_answers: 'سيؤدي هذا إلى استبدال الإجابات الحالية على الشاشة بالملف المستورد. هل تريد المتابعة؟',
     toast_scoring_csv_missing_itemid: 'يجب أن يحتوي ملف CSV على عمود itemId (استخدم التصدير أولاً للحصول على الصيغة الصحيحة)',
     toast_scoring_csv_imported: 'تم استيراد {{count}} إجابة/إجابات — راجعها ثم احفظ',
+    finalize_prompt_title: 'تم تقييم جميع العناصر', finalize_prompt_body: 'يحتوي كل عنصر في هذا المستند على إجابة اكتمال. يمكنك الإنهاء الآن لقفله من مزيد من التعديل، أو الحفظ فقط ومتابعة العمل.',
+    finalize_prompt_just_save: 'ليس بعد، احفظ فقط', finalize_prompt_finalize: 'إنهاء',
+    toast_scoring_finalized: 'تم إنهاء المستند — التقييم مقفل الآن',
+    scoring_finalized_label: 'منتهي', finalized_on_x: 'تم الإنهاء في {{date}}',
+    reopen_scoring_btn: 'إعادة الفتح', confirm_reopen_scoring: 'هل تريد إعادة فتح هذا المستند للتعديل مرة أخرى؟ سيتمكن كل من لديه صلاحية الوصول من تغيير إجاباته.',
+    toast_scoring_reopened: 'تمت إعادة فتح المستند للتعديل',
+    score_overview_hint: 'كل عنصر تقييم مستندات عبر هذا الحدث، من كل مستند تم تقييمه. صفِّ حسب المستند لتضييق النتائج.',
+    col_item: 'العنصر', col_description: 'الوصف', empty_no_scoring_items: 'لا توجد عناصر تقييم بعد.',
     scoring_forms_title: 'نماذج التقييم', new_scoring_form_btn: '+ نموذج تقييم جديد',
     scoring_forms_hint: 'كل نموذج تقييم مُهيكل متاح عبر مؤسساتك. استورد ملف CSV لإنشاء نموذج جديد تمامًا أو استبدال نموذج موجود — دون الحاجة لتعديل الكود.',
     col_item_count: 'العناصر', title_reimport_catalog: 'استيراد / استبدال عناصر هذا النموذج',

@@ -32,6 +32,10 @@ var EVENT_TABS = [
   // Inspections list above (its status flips to 'Completed') -- this is the way back into one of
   // those, still fully viewable/editable/printable/exportable (see tabCompletedChecklists below).
   ['completedChecklists', 'tab_completed_checklists'],
+  // REQ: "Add Tab under Checklist name is score. Add to it template filter to narrow down items." --
+  // read-only, cross-document view of every Document Review scoring item in this event (tabScoreOverview
+  // below) -- same "Checklists" group as Assignments/Inspections/Completed Checklists above it.
+  ['scoreOverview', 'tab_score_overview'],
   ['findings', 'tab_findings'],
   // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
   // cool. Only relevant to the same roles who can create a Finding at all (FINDING_ROLE_REVIEWER_,
@@ -74,7 +78,7 @@ var EVENT_TABS = [
 var EVENT_TAB_GROUPS_ = [
   { key: 'generalGroup', labelKey: 'tab_group_general', tabs: ['overview', 'roadmap', 'chat'] },
   { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
-  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists'] },
+  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists', 'scoreOverview'] },
   // REQ follow-up: "Move Log Photos to Findings tab" + explicit subtab order (Log Photos, Risk
   // Logging, Photo Timeline, Escalations) -- logPhotos moved out of inspectionsGroup above into here,
   // first; findings/findingPhotos/escalations reordered to match ('findings' tab's own display label
@@ -112,7 +116,7 @@ function eventTabRenderers_() {
   if (!EVENT_TAB_RENDERERS_) {
     EVENT_TAB_RENDERERS_ = {
       overview: tabOverview, roadmap: tabRoadmap, chat: tabEventChat, templates: tabTemplates, approval: tabApproval,
-      disciplines: tabDisciplines, inspections: tabInspections, completedChecklists: tabCompletedChecklists, logPhotos: tabLogPhotos, findings: tabFindings,
+      disciplines: tabDisciplines, inspections: tabInspections, completedChecklists: tabCompletedChecklists, scoreOverview: tabScoreOverview, logPhotos: tabLogPhotos, findings: tabFindings,
       escalations: tabEscalations, findingPhotos: tabFindingPhotos, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
     };
@@ -480,10 +484,14 @@ async function tabTemplates(content, eventId, detail) {
   var results = await Promise.all([
     Api.call('getEventTemplates', { eventId: eventId }),
     Api.call('getTemplateProcessRoles', {}),
-    Api.call('listScoringCatalogSummary', {})
+    Api.call('listScoringCatalogSummary', {}),
+    // REQ: "Add a score column to Readiness Templates" -- one call for every document's
+    // Completeness%/Quality%/finalized status, instead of the frontend re-deriving it per row.
+    Api.call('getEventTemplatesScoringSummary', { eventId: eventId })
   ]);
   var templates = results[0], processRoles = results[1];
   var scoredDocTypes = results[2].map(function (s) { return s.docType; });
+  var scoringSummaryByTemplateId = results[3];
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
   // "Set an event's documents deadline".
   var canManageDeadline = hasPermission('template.setDeadline');
@@ -510,6 +518,8 @@ async function tabTemplates(content, eventId, detail) {
       { key: 'name', label: t('col_template') },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'fileName', label: t('col_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
+      { key: 'completenessPct', label: t('col_completeness'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'completenessPct') },
+      { key: 'qualityPct', label: t('col_quality'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'qualityPct', true) },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
       { key: 'reviewReason', label: t('col_review_notes'), render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
       { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt, scoredDocTypes) }
@@ -577,6 +587,20 @@ async function tabTemplates(content, eventId, detail) {
       } catch (err) { UI.error(err); }
     };
   }
+}
+
+// REQ: "Add a score column to Readiness Templates" -- getEventTemplatesScoringSummary returns null
+// (not 0) for a percentage nothing's been answered for yet, so this shows "--" instead of a misleading
+// "0%"; a document whose docType has no scoring catalog at all has no entry in the summary map either,
+// same "--" fallback. isQualityCol also shows the finalize-lock indicator (REQ follow-up: "Finalize
+// closes score editing") -- only on the Quality column so it doesn't repeat across both.
+function templateScoreCellHtml_(summary, field, isQualityCol) {
+  var pctHtml = (!summary || summary[field] === null || summary[field] === undefined)
+    ? '<span class="muted">—</span>' : (summary[field] + '%');
+  if (isQualityCol && summary && summary.finalizedAt) {
+    pctHtml += ' <span title="' + esc(t('finalized_on_x', { date: UI.fmtDate(summary.finalizedAt) })) + '" style="color:var(--success);">' + ICON('locked_indicator') + '</span>';
+  }
+  return pctHtml;
 }
 
 // REQ: "PM must set one deadline for all documents, by date/time picker or by N weeks/days before
@@ -690,6 +714,12 @@ async function renderTemplateScoring(params) {
   catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('failed_load_tab')) + '</div>'; return; }
   var tpl = templates.filter(function (t2) { return t2.id === templateId; })[0];
   if (!tpl) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('template') })) + '</div>'; return; }
+  // REQ follow-up: "Finalize closes score editing." isFinalized drives every interactive piece of
+  // this page below (Save/Autosave block vs a Finalized banner, whether wireTemplateScoringRows_ is
+  // even called, whether Import is offered) -- canReopen (Permissions.gs 'template.reopenScoring',
+  // default SystemAdmin only) gates the one way back out of that state.
+  var isFinalized = !!tpl.scoringFinalizedAt;
+  var canReopen = hasPermission('template.reopenScoring');
 
   var [items, results] = await Promise.all([
     Api.call('listTemplateScoringItems', { docType: tpl.docType }),
@@ -742,7 +772,7 @@ async function renderTemplateScoring(params) {
     // everything in the page body, so a sticky element in here needs to sit BELOW it, not compete
     // for the same spot (same 64px topbar-height offset .notif-panel already uses).
     '<div class="card" style="margin-bottom:16px;position:sticky;top:64px;z-index:5;"><div class="card-body" style="padding:12px 20px;">' +
-      templateScoringProgressHtml_() +
+      templateScoringProgressHtml_(tpl, isFinalized, canReopen) +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
       // top:160px = topbar (64px) + the sticky progress card above it (~80px) + its margin-bottom
@@ -754,25 +784,58 @@ async function renderTemplateScoring(params) {
       '<div class="card" style="flex:1 1 auto;min-width:0;">' +
         '<div class="card-header" style="display:flex;justify-content:flex-end;gap:6px;">' +
           '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="tplScoringExportBtn" title="' + esc(t('export_csv')) + '">' + ICON('export_csv') + '</button>' +
-          '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="tplScoringImportBtn" title="' + esc(t('import_csv')) + '">' + ICON('import_csv') + '</button>' +
-          '<input type="file" id="tplScoringImportInput" accept=".csv" style="display:none;" />' +
+          // REQ follow-up: "Finalize closes score editing" -- Import would let a CSV silently
+          // overwrite a signed-off document's answers, so it's the one thing dropped entirely (not
+          // just disabled) once finalized, rather than rendering a button that would just error.
+          (isFinalized ? '' :
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon" id="tplScoringImportBtn" title="' + esc(t('import_csv')) + '">' + ICON('import_csv') + '</button>' +
+            '<input type="file" id="tplScoringImportInput" accept=".csv" style="display:none;" />') +
         '</div>' +
-        '<div class="card-body">' + templateScoringItemsHtml_(items, resultsByItemId) + '</div>' +
+        // isFinalized: pointer-events:none blocks every click/focus inside in one place -- covers the
+        // Completeness/Quality buttons AND the Remarks/Detail textareas without templateScoringRowHtml_
+        // needing to know about finalize state at all (it renders identically either way).
+        '<div class="card-body"' + (isFinalized ? ' style="pointer-events:none;opacity:.7;"' : '') + '>' + templateScoringItemsHtml_(items, resultsByItemId) + '</div>' +
       '</div>' +
     '</div>';
 
   document.getElementById('backTplScoringBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=templates'; };
-  // REQ follow-up: "Move the save button with the completeness and quality button and autosave every
-  // minute." -- saveTplScoringBtn now lives in templateScoringProgressHtml_ (the sticky card), not at
-  // the bottom of the item list; the manual-save handler is unchanged (full toast + Router.resolve()
-  // refresh), autosaveTemplateScoring_ below is the silent counterpart used by the interval.
+  document.getElementById('tplScoringExportBtn').onclick = function () { exportTemplateScoringCsv_(tpl, items); };
+  wireTemplateScoringSectionNav_(sections, items);
+  filterTemplateScoringSection_('');
+  updateTemplateScoringProgress_(items);
+  updateTemplateScoringSectionNav_(items);
+
+  // REQ follow-up: "Finalize closes score editing." Finalized: only the Reopen button (admin-only,
+  // 'template.reopenScoring') and the read-only view itself -- no row wiring, no Save/Import/Autosave
+  // at all, matching the pointer-events:none on the item card-body above (belt-and-suspenders: even if
+  // someone found a way around that CSS, there's simply no click handler here to fire).
+  if (isFinalized) {
+    var reopenBtn = document.getElementById('reopenTplScoringBtn');
+    if (reopenBtn) reopenBtn.onclick = function () {
+      UI.confirmModal(t('confirm_reopen_scoring'), async function () {
+        try {
+          await Api.call('reopenTemplateScoring', { templateId: templateId });
+          UI.toast(t('toast_scoring_reopened'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      });
+    };
+    return;
+  }
+
+  // REQ follow-up: "After all items are scored prompt to finalize instead of save. Finalize closes
+  // score editing." -- checked against the CURRENT on-screen state at click time (not the last saved
+  // copy), so reaching 100% completeness mid-session prompts on the very next Save click rather than
+  // needing an extra round trip first. Autosave (below) deliberately never prompts -- only an explicit
+  // Save does; a background timer silently popping a modal would be a bad surprise.
   document.getElementById('saveTplScoringBtn').onclick = async function () {
+    var currentResults = collectTemplateScoringResults_(items);
+    var allScored = currentResults.every(function (r) { return !!r.completeness; });
+    if (allScored) { promptFinalizeTemplateScoring_(templateId, currentResults); return; }
     try {
-      await Api.call('saveTemplateScoring', { templateId: templateId, results: collectTemplateScoringResults_(items) });
+      await Api.call('saveTemplateScoring', { templateId: templateId, results: currentResults });
       UI.toast(t('toast_scoring_saved'), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
-  document.getElementById('tplScoringExportBtn').onclick = function () { exportTemplateScoringCsv_(tpl, items); };
   document.getElementById('tplScoringImportBtn').onclick = function () { document.getElementById('tplScoringImportInput').click(); };
   document.getElementById('tplScoringImportInput').onchange = function (e) {
     var file = e.target.files[0];
@@ -790,10 +853,6 @@ async function renderTemplateScoring(params) {
   };
 
   wireTemplateScoringRows_(items);
-  wireTemplateScoringSectionNav_(sections, items);
-  filterTemplateScoringSection_('');
-  updateTemplateScoringProgress_(items);
-  updateTemplateScoringSectionNav_(items);
 
   // Autosave every 60s while this page stays open. No generic page-teardown hook exists in this
   // router (pages are just replaced via root.innerHTML on next navigation), so the interval is
@@ -807,6 +866,32 @@ async function renderTemplateScoring(params) {
     if (toggle && !toggle.checked) return; // paused -- interval keeps ticking cheaply so it resumes the instant the user re-checks it
     autosaveTemplateScoring_(templateId, items);
   }, 60000);
+}
+
+// REQ follow-up: "After all items are scored prompt to finalize instead of save." Two forward
+// choices, no separate "just close without saving" option -- the person already clicked Save meaning
+// to persist their work, so both buttons here save first either way; they only differ on whether
+// finalizeTemplateScoring runs afterward. Uses UI.openModal directly (not confirmModal) since this
+// needs two meaningfully different actions, not a single confirm/cancel pair.
+function promptFinalizeTemplateScoring_(templateId, results) {
+  var body = '<div style="font-size:13.5px;line-height:1.6;">' + esc(t('finalize_prompt_body')) + '</div>';
+  UI.openModal(t('finalize_prompt_title'), body, [
+    { label: t('finalize_prompt_just_save'), className: 'btn-secondary', onClick: async function () {
+        UI.closeModal();
+        try {
+          await Api.call('saveTemplateScoring', { templateId: templateId, results: results });
+          UI.toast(t('toast_scoring_saved'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } },
+    { label: t('finalize_prompt_finalize'), className: 'btn-primary', onClick: async function () {
+        UI.closeModal();
+        try {
+          await Api.call('saveTemplateScoring', { templateId: templateId, results: results });
+          await Api.call('finalizeTemplateScoring', { templateId: templateId });
+          UI.toast(t('toast_scoring_finalized'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 // Silent counterpart to the manual Save button's handler above -- same endpoint, same
@@ -1065,7 +1150,24 @@ function wireTemplateScoringRows_(items) {
 // centered. Simplified: the outer row is align-items:center (so every column is vertically centered
 // against whichever one is tallest -- normally this Save/Autosave column, since it stacks 3 rows), and
 // this column just sizes to its own content -- no stretch, no manual offset needed.
-function templateScoringProgressHtml_() {
+// REQ follow-up: "Finalize closes score editing." isFinalized swaps the actions column (Save +
+// Autosave toggle) for a plain "Finalized" banner, plus a Reopen button when canReopen (admin-only,
+// 'template.reopenScoring') -- everyone else just sees the banner with no way to undo it, matching
+// pointer-events:none on the item list itself: nothing left to click in either place.
+function templateScoringProgressHtml_(tpl, isFinalized, canReopen) {
+  var actionsColHtml = isFinalized
+    ? '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
+        '<div style="display:flex;align-items:center;gap:6px;color:var(--success);font-weight:700;font-size:12px;white-space:nowrap;">' + ICON('locked_indicator') + ' ' + esc(t('scoring_finalized_label')) + '</div>' +
+        '<div class="muted" style="font-size:10px;white-space:nowrap;">' + esc(t('finalized_on_x', { date: UI.fmtDate(tpl.scoringFinalizedAt) })) + '</div>' +
+        (canReopen ? '<button class="btn btn-secondary btn-sm" id="reopenTplScoringBtn" style="margin-top:2px;">' + esc(t('reopen_scoring_btn')) + '</button>' : '') +
+      '</div>'
+    : '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
+        '<button class="btn btn-primary" id="saveTplScoringBtn" style="min-width:120px;">' + esc(t('save')) + '</button>' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;">' +
+          '<input type="checkbox" id="tplScoringAutosaveToggle" checked style="cursor:pointer;margin:0;" />' + esc(t('autosave_toggle_label')) +
+        '</label>' +
+        '<span class="muted" id="tplScoringAutosaveStatus" style="font-size:10px;white-space:nowrap;">&nbsp;</span>' +
+      '</div>';
   return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center;">' +
     '<div style="flex:1 1 220px;min-width:180px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
@@ -1083,13 +1185,7 @@ function templateScoringProgressHtml_() {
         '<div id="tplQualityBar" style="height:100%;width:0%;background:var(--success);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-    '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
-      '<button class="btn btn-primary" id="saveTplScoringBtn" style="min-width:120px;">' + esc(t('save')) + '</button>' +
-      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;">' +
-        '<input type="checkbox" id="tplScoringAutosaveToggle" checked style="cursor:pointer;margin:0;" />' + esc(t('autosave_toggle_label')) +
-      '</label>' +
-      '<span class="muted" id="tplScoringAutosaveStatus" style="font-size:10px;white-space:nowrap;">&nbsp;</span>' +
-    '</div>' +
+    actionsColHtml +
   '</div>' +
   '<div class="muted" style="font-size:11px;margin-top:10px;">' + esc(t('scoring_scope_label')) + ': <span id="tplScoringScopeLabel" style="font-weight:600;"></span></div>';
 }
@@ -1829,6 +1925,66 @@ async function tabInspections(content, eventId, detail) {
 // name itself (same hyperlink convention as venues.js's/completedChecklists.js's own name columns) --
 // same canRecordInspection_ gate as the old button had: plain text (no link) for a row this viewer
 // isn't SystemAdmin or the assigned Inspector for, exactly like the button used to just not render.
+// REQ follow-up: "Add Tab under Checklist name is score. Add to it template filter to narrow down
+// items." -- one flat, read-only table of every Document Review item across every scored document in
+// this event (listEventScoringItems, Templates.gs), same "flatten it all, then filter it back down"
+// shape as tabCompletedChecklists right below -- except this one needs an actual dropdown (not just
+// visual scanning) since an event can have several documents each with their own dozens of items.
+// Template name links straight into that document's own scoring form for anyone who wants to actually
+// change an answer -- this tab itself is read-only, purely for reviewing everything in one place.
+async function tabScoreOverview(content, eventId, detail) {
+  var rows = await Api.call('listEventScoringItems', { eventId: eventId });
+
+  // Distinct documents present in `rows`, first-seen order (already the deterministic
+  // Templates-then-itemCode order listEventScoringItems emits) -- powers the filter dropdown.
+  var seenTemplateIds = {};
+  var docs = [];
+  rows.forEach(function (r) {
+    if (seenTemplateIds[r.templateId]) return;
+    seenTemplateIds[r.templateId] = true;
+    docs.push({ templateId: r.templateId, templateName: r.templateName, docType: r.docType });
+  });
+
+  content.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('tab_score_overview')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('score_overview_hint')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<div style="max-width:280px;margin-bottom:14px;">' + UI.field(Term('template'),
+        '<select class="field-input" id="scoreOverviewTemplateFilter">' +
+          '<option value="">' + esc(t('all_x', { term: Term('template_plural') })) + '</option>' +
+          docs.map(function (d) { return '<option value="' + esc(d.templateId) + '">' + esc(d.templateName) + ' (' + esc(d.docType) + ')</option>'; }).join('') +
+        '</select>') +
+      '</div>' +
+      '<div id="scoreOverviewTableWrap"></div>' +
+    '</div></div>';
+
+  var renderTable_ = function (filterTemplateId) {
+    var filtered = filterTemplateId ? rows.filter(function (r) { return r.templateId === filterTemplateId; }) : rows;
+    document.getElementById('scoreOverviewTableWrap').innerHTML = UI.table([
+      { key: 'templateName', label: t('col_template'), render: r =>
+          '<a href="#/events/' + esc(eventId) + '/template-scoring/' + esc(r.templateId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.templateName) + '</a>' },
+      { key: 'sectionCode', label: t('scoring_sections_title'), render: r => esc(r.sectionCode + ' ' + r.sectionName) },
+      { key: 'itemCode', label: t('col_item') },
+      { key: 'description', label: t('col_description') },
+      { key: 'completeness', label: t('col_completeness'), render: r => scoreOverviewCompletenessHtml_(r.completeness) },
+      { key: 'quality', label: t('col_quality'), render: r => (r.quality !== '' && r.quality != null) ? (r.quality + ' / 4') : '<span class="muted">—</span>' },
+      { key: 'remarks', label: t('field_remarks'), render: r => r.remarks ? esc(r.remarks) : '—' },
+      { key: 'detail', label: t('field_detail'), render: r => r.detail ? esc(r.detail) : '—' }
+    ], filtered, { emptyText: t('empty_no_scoring_items') });
+  };
+  renderTable_('');
+  document.getElementById('scoreOverviewTemplateFilter').onchange = function (e) { renderTable_(e.target.value); };
+}
+
+// Plain colored text (not the icon buttons the scoring form itself uses -- those are inputs, this is
+// a read-only table cell) -- same Yes/No/N-A color language as TPL_COMPLETENESS_STATE_CLASS_'s own
+// state-ticked/state-crossed/state-na classes elsewhere on this page, just as static text here.
+function scoreOverviewCompletenessHtml_(completeness) {
+  if (!completeness) return '<span class="muted">—</span>';
+  var color = completeness === 'Yes' ? 'var(--success)' : completeness === 'No' ? 'var(--danger)' : 'var(--text-600)';
+  return '<span style="color:' + color + ';font-weight:600;">' + esc(t('completeness_' + completeness.toLowerCase().replace('/', ''))) + '</span>';
+}
+
 async function tabCompletedChecklists(content, eventId, detail) {
   var rows = await Api.call('listCompletedChecklists', { eventId: eventId });
 

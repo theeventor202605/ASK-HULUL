@@ -329,6 +329,12 @@ function saveTemplateScoring(user, p) {
   var tpl = getById('Templates', p.templateId);
   if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
   requirePermission(user, 'template.review'); // same role as the final Evaluated/Missed decision
+  // REQ follow-up: "Finalize closes score editing" -- a finalized form is read-only for everyone
+  // (including whoever finalized it) until reopenTemplateScoring explicitly unlocks it again. The
+  // frontend already disables every input once finalized, but this is the actual enforcement --
+  // without it, a stale page tab left open from before finalizing could still silently overwrite a
+  // signed-off document.
+  if (tpl.scoringFinalizedAt) throw new HululError('BAD_REQUEST', 'This document\'s scoring has been finalized -- reopen it first to make changes');
   if (!p.results || !p.results.length) throw new HululError('BAD_REQUEST', 'results is required');
   var existing = findWhere('TemplateScoringResults', function (r) { return r.templateId === p.templateId; });
   var existingByItemId = {};
@@ -358,6 +364,133 @@ function saveTemplateScoring(user, p) {
   });
   audit(user.id, 'SAVE_TEMPLATE_SCORING', 'Templates', p.templateId, { count: saved.length });
   return saved;
+}
+
+// Used by finalizeTemplateScoring's own completeness re-validation below -- "this docType's active
+// catalog, plus this one template's saved answers, joined by itemId." getEventTemplatesScoringSummary/
+// listEventScoringItems below do the same join across MULTIPLE templates at once and memoize the
+// catalog fetch per docType (several templates in one event often share a docType), so they don't
+// reuse this single-template version -- would just mean re-fetching the same catalog N times.
+function templateScoringJoin_(tpl) {
+  var items = findWhere('TemplateScoringItems', function (i) { return i.docType === tpl.docType && i.status !== 'Deleted'; });
+  var results = findWhere('TemplateScoringResults', function (r) { return r.templateId === tpl.id; });
+  var resultsByItemId = {};
+  results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
+  return { items: items, resultsByItemId: resultsByItemId };
+}
+
+// REQ follow-up: "After all items are scored prompt to finalize instead of save. Finalize closes
+// score editing." Reuses 'template.review' -- same role that can score a document can finalize it.
+// Re-validates completeness server-side (every item must have an explicit Yes/No/N-A answer) rather
+// than trusting the frontend's own 100%-complete gate, same "don't trust the client for the thing
+// that actually matters" posture as every other state-transition guard in this app.
+function finalizeTemplateScoring(user, p) {
+  if (!p || !p.templateId) throw new HululError('BAD_REQUEST', 'templateId is required');
+  var tpl = getById('Templates', p.templateId);
+  if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
+  requirePermission(user, 'template.review');
+  if (tpl.scoringFinalizedAt) throw new HululError('BAD_REQUEST', 'Already finalized');
+  var join = templateScoringJoin_(tpl);
+  if (!join.items.length) throw new HululError('BAD_REQUEST', 'This document has no scoring form');
+  var unscored = join.items.filter(function (it) {
+    var r = join.resultsByItemId[it.id];
+    return !r || !r.completeness;
+  });
+  if (unscored.length) throw new HululError('BAD_REQUEST', unscored.length + ' item(s) still need a Completeness answer before finalizing');
+  var updated = updateRow('Templates', tpl.id, { scoringFinalizedAt: nowIso_(), scoringFinalizedBy: user.id });
+  audit(user.id, 'FINALIZE_TEMPLATE_SCORING', 'Templates', tpl.id, {});
+  return updated;
+}
+
+// Admin-only unlock (see 'template.reopenScoring', Permissions.gs) -- clears the two finalize fields
+// so saveTemplateScoring's own guard above stops rejecting writes; doesn't touch any of the actual
+// TemplateScoringResults rows, so every answer is exactly as it was left at finalize time.
+function reopenTemplateScoring(user, p) {
+  if (!p || !p.templateId) throw new HululError('BAD_REQUEST', 'templateId is required');
+  var tpl = getById('Templates', p.templateId);
+  if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
+  requirePermission(user, 'template.reopenScoring');
+  if (!tpl.scoringFinalizedAt) throw new HululError('BAD_REQUEST', 'This document is not finalized');
+  var updated = updateRow('Templates', tpl.id, { scoringFinalizedAt: '', scoringFinalizedBy: '' });
+  audit(user.id, 'REOPEN_TEMPLATE_SCORING', 'Templates', tpl.id, {});
+  return updated;
+}
+
+// REQ: "Add a score column to Readiness Templates" (Completeness% + Quality%, plus finalize status).
+// Computes both for every scored document in one call instead of the frontend re-fetching
+// listTemplateScoringItems + getTemplateScoringResults once per template row (an event can have
+// several -- ZSMP, ZERP, TTP...). Read-only, same open visibility as listTemplateScoringItems/
+// getTemplateScoringResults themselves -- keyed by templateId for an O(1) frontend lookup per row.
+// Percentages mirror the scoring form's own math exactly (updateTemplateScoringProgress_,
+// eventDetail.js): Completeness excludes N/A and not-yet-answered items from both sides of the ratio;
+// Quality's denominator is every item's own max (4 * multiplier) regardless of whether it's been
+// scored yet. null (not 0) when nothing's answered yet, so the frontend can show "--" instead of a
+// misleading "0%".
+function getEventTemplatesScoringSummary(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var templates = findWhere('Templates', function (t) { return t.eventId === p.eventId && t.docType; });
+  var itemsByDocType = {};
+  var out = {};
+  templates.forEach(function (tpl) {
+    if (!itemsByDocType[tpl.docType]) {
+      itemsByDocType[tpl.docType] = findWhere('TemplateScoringItems', function (i) { return i.docType === tpl.docType && i.status !== 'Deleted'; });
+    }
+    var items = itemsByDocType[tpl.docType];
+    if (!items.length) return; // no catalog for this docType -- nothing to score
+    var results = findWhere('TemplateScoringResults', function (r) { return r.templateId === tpl.id; });
+    var resultsByItemId = {};
+    results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
+    var yes = 0, no = 0, qualityScore = 0, qualityMax = 0;
+    items.forEach(function (it) {
+      var r = resultsByItemId[it.id];
+      var mult = Number(it.multiplier) || 0;
+      qualityMax += 4 * mult;
+      if (r && r.completeness === 'Yes') yes++;
+      else if (r && r.completeness === 'No') no++;
+      if (r && r.quality !== '' && r.quality != null) qualityScore += Number(r.quality) * mult;
+    });
+    out[tpl.id] = {
+      templateId: tpl.id, itemCount: items.length,
+      completenessPct: (yes + no) ? Math.round((yes / (yes + no)) * 100) : null,
+      qualityPct: qualityMax ? Math.round((qualityScore / qualityMax) * 100) : null,
+      finalizedAt: tpl.scoringFinalizedAt || '', finalizedBy: tpl.scoringFinalizedBy || ''
+    };
+  });
+  return out;
+}
+
+// REQ follow-up: "Add Tab under Checklist name is score. Add to it template filter to narrow down
+// items." -- one flat, read-only join across every scored document in the event (same "flatten it all
+// so a filter dropdown can narrow it back down" shape as listCompletedChecklists) instead of the
+// frontend making 2 calls PER template document just to build this table. itemCode sort matches
+// listTemplateScoringItems' own convention (already zero-padded, plain string sort is correct).
+function listEventScoringItems(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var templates = findWhere('Templates', function (t) { return t.eventId === p.eventId && t.docType; });
+  var itemsByDocType = {};
+  var out = [];
+  templates.forEach(function (tpl) {
+    if (!itemsByDocType[tpl.docType]) {
+      itemsByDocType[tpl.docType] = findWhere('TemplateScoringItems', function (i) { return i.docType === tpl.docType && i.status !== 'Deleted'; })
+        .sort(function (a, b) { return a.itemCode < b.itemCode ? -1 : a.itemCode > b.itemCode ? 1 : 0; });
+    }
+    var items = itemsByDocType[tpl.docType];
+    if (!items.length) return;
+    var results = findWhere('TemplateScoringResults', function (r) { return r.templateId === tpl.id; });
+    var resultsByItemId = {};
+    results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
+    items.forEach(function (it) {
+      var r = resultsByItemId[it.id];
+      out.push({
+        templateId: tpl.id, templateName: tpl.name, docType: tpl.docType,
+        itemId: it.id, itemCode: it.itemCode, sectionCode: it.sectionCode, sectionName: it.sectionName,
+        description: it.description, multiplier: it.multiplier,
+        completeness: r ? r.completeness : '', quality: (r && r.quality !== '' && r.quality != null) ? r.quality : '',
+        remarks: r ? r.remarks : '', detail: r ? r.detail : ''
+      });
+    });
+  });
+  return out;
 }
 
 // REQ follow-up: "if a new template is added then a new form must also be created -- how do I create

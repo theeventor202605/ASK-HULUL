@@ -73,7 +73,14 @@ var SCHEMA = {
   // TemplateScoringItems lookups (see listTemplateScoringItems, Templates.gs); blank or any other
   // value just means this document type has no structured scoring form yet -- the plain Evaluated/
   // Missed decision (reviewEventTemplate) keeps working exactly as before either way.
-  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType'],
+  // scoringFinalizedAt/scoringFinalizedBy: REQ follow-up: "After all items are scored prompt to
+  // finalize instead of save. Finalize closes score editing." -- blank means the Document Review
+  // scoring form is still open for editing (or was never started); once set, saveTemplateScoring
+  // rejects further writes until reopenTemplateScoring (admin-only, see Permissions.gs
+  // 'template.reopenScoring') clears them again. Independent of `status` (Sent/Submitted/Evaluated/
+  // etc, the upload/review workflow) -- a document can be Evaluated without its scoring form ever
+  // being finalized, or vice versa; these two workflows track different things.
+  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy'],
   // toJson/ccJson: JSON-stringified arrays of Users.id (invitee/cc userIds) -- same
   // array-in-a-single-cell convention as the Permissions sheet's overridesJson (Permissions.gs).
   // status: 'Scheduled' (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs,

@@ -11,6 +11,10 @@ var NAV_ITEMS = [
     roles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager'] },
   { path: '/meetings', icon: LUCIDE_ICONS['calendar-clock'], label: 'nav_meetings', entityLabel: 'meeting_plural', section: 'section_main',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager'] },
+  // REQ: "Move Venues to Main section above Notifications." -- was under Administration; roles
+  // unchanged (still just SystemAdmin/EMCAdmin/EMCManager), only its section/position moved.
+  { path: '/venues', icon: LUCIDE_ICONS['map-pin'], label: 'nav_venues', entityLabel: 'venue_plural', section: 'section_main',
+    roles: ['SystemAdmin', 'EMCAdmin', 'EMCManager'] },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as the reassignment.manage
@@ -27,8 +31,6 @@ var NAV_ITEMS = [
   { path: '/users', icon: LUCIDE_ICONS['users'], label: 'nav_users', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
   { path: '/organizations', icon: LUCIDE_ICONS['building-2'], label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
-  { path: '/venues', icon: LUCIDE_ICONS['map-pin'], label: 'nav_venues', entityLabel: 'venue_plural', section: 'section_admin',
-    roles: ['SystemAdmin', 'EMCAdmin', 'EMCManager'] },
   { path: '/disciplines', icon: LUCIDE_ICONS['shield-check'], label: 'nav_disciplines', entityLabel: 'discipline_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin'] },
   { path: '/checklist-items', icon: LUCIDE_ICONS['list-checks'], label: 'nav_checklist', entityLabel: 'checklistItem_plural', section: 'section_admin',
@@ -57,11 +59,12 @@ var NAV_ITEMS = [
 var NAV_GROUPS_ = [
   { section: 'section_main', paths: ['/dashboard'] },
   { section: 'section_main', key: 'eventsGroup', labelKey: 'nav_group_events', paths: ['/projects', '/events', '/sub-events', '/meetings'] },
+  // REQ: "Move Venues to Main section above Notifications."
+  { section: 'section_main', paths: ['/venues'] },
   { section: 'section_main', paths: ['/notifications'] },
   { section: 'section_main', paths: ['/reassignment'] },
   { section: 'section_main', paths: ['/support'] },
   { section: 'section_admin', key: 'accountsGroup', labelKey: 'nav_group_accounts', paths: ['/users', '/organizations'] },
-  { section: 'section_admin', paths: ['/venues'] },
   // "Everything the Inspections workflow draws its catalogue/setup from" -- Disciplines, Checklist
   // Items, Inspector Qualifications, Template Library.
   { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/inspector-qualifications', '/template-library'] },
