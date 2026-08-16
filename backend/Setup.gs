@@ -195,19 +195,64 @@ function backfillTemplateDocTypes() {
   return { updated: updated };
 }
 
+// Diagnostic for "backfillTemplateDocTypes: updated 0 row(s)" when a row is still visibly missing
+// its Score button -- logs exactly why each docType-less Templates row wasn't (or couldn't be)
+// backfilled, instead of guessing. Read-only, safe to run any time. Check the Execution log after
+// running.
+function debugTemplateDocTypeGaps() {
+  var libById = {};
+  getAll('TemplateLibrary').forEach(function (l) { libById[l.id] = l; });
+  var events = {};
+  getAll('Events').forEach(function (e) { events[e.id] = e.name; });
+
+  var gaps = getAll('Templates').filter(function (t) { return !t.docType; });
+  Logger.log('debugTemplateDocTypeGaps: ' + gaps.length + ' Templates row(s) with no docType.');
+  gaps.forEach(function (t) {
+    var lib = t.libraryTemplateId && libById[t.libraryTemplateId];
+    var reason = !t.libraryTemplateId ? 'NO libraryTemplateId on this row (orphaned/legacy send)'
+      : !lib ? 'libraryTemplateId "' + t.libraryTemplateId + '" does not match any TemplateLibrary row'
+      : !lib.docType ? 'matched library row "' + lib.name + '" but its own docType is blank'
+      : 'should have matched -- lib.docType="' + lib.docType + '" (unexpected, investigate)';
+    Logger.log('  ' + t.id + ' | event="' + (events[t.eventId] || t.eventId) + '" | name="' + t.name +
+      '" | status=' + t.status + ' | libraryTemplateId=' + (t.libraryTemplateId || '(none)') + ' | ' + reason);
+  });
+  return { gaps: gaps.length };
+}
+
+// debugTemplateDocTypeGaps traced every remaining gap back to the SAME root cause: Template Library
+// is scoped per Inspection Company (orgId), and the docType/"Form type" tagging done from the UI
+// (Template Library page > Edit) only ever touches whichever org is selected in that page's dropdown
+// at the time. Every OTHER Inspection Company has its own separate library rows for the same doc
+// types that were never tagged -- even though their name is literally "ZSMP"/"TTP"/etc. -- so their
+// docType is genuinely blank, not a bug. This auto-tags any TemplateLibrary row whose name is an
+// exact match for a scoring-catalog doc type (no need to click into every org's library one at a
+// time), then re-runs backfillTemplateDocTypes so already-sent documents under every org pick it up
+// in the same pass. Only touches rows/library entries still blank -- safe to re-run.
+function backfillLibraryAndTemplateDocTypes() {
+  var SCORED_DOC_TYPES_ = ['ZSMP', 'ZERP', 'TTP', 'CMP', 'SEC'];
+  var libUpdated = 0;
+  getAll('TemplateLibrary').forEach(function (l) {
+    if (l.docType) return;
+    if (SCORED_DOC_TYPES_.indexOf(l.name) !== -1) { updateRow('TemplateLibrary', l.id, { docType: l.name }); libUpdated++; }
+  });
+  var tplResult = backfillTemplateDocTypes();
+  Logger.log('backfillLibraryAndTemplateDocTypes: tagged ' + libUpdated + ' library row(s), backfilled ' + tplResult.updated + ' Templates row(s).');
+  return { libUpdated: libUpdated, templatesUpdated: tplResult.updated };
+}
+
 // extracted verbatim (itemCode/sectionCode/sectionName/description/multiplier) from the GA26/JDCB
-// "Document Review Tool" workbook's own ZSMP and ZERP sheets -- v1 scope (see the sibling TTP/CMP/
-// SEC sheets in that same workbook for a future phase). Run once from the Apps Script editor's
-// function dropdown after deploying this feature. Idempotent per docType: if TemplateScoringItems
-// already has any 'ZSMP' (or 'ZERP') rows, that docType is left alone and only re-seeds if you first
-// delete its existing rows -- safe to re-run without duplicating on a second accidental click.
+// "Document Review Tool" workbook's own ZSMP, ZERP, TTP, CMP, and SEC sheets. Run once from the Apps
+// Script editor's function dropdown after deploying this feature. Idempotent per docType: if
+// TemplateScoringItems already has any rows for a given docType, that docType is left alone and only
+// re-seeds if you first delete its existing rows -- safe to re-run without duplicating on a second
+// accidental click.
 function seedTemplateScoringItems() {
   var existing = getAll('TemplateScoringItems');
   var existingDocTypes = {};
   existing.forEach(function (i) { existingDocTypes[i.docType] = true; });
 
   var seeded = 0;
-  [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_]].forEach(function (pair) {
+  [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_], ['TTP', TTP_SEED_ITEMS_], ['CMP', CMP_SEED_ITEMS_], ['SEC', SEC_SEED_ITEMS_]].forEach(function (pair) {
     var docType = pair[0], items = pair[1];
     if (existingDocTypes[docType]) { Logger.log('seedTemplateScoringItems: ' + docType + ' already has rows, skipping.'); return; }
     items.forEach(function (it, idx) {
@@ -415,6 +460,111 @@ var ZERP_SEED_ITEMS_ = [
   { itemCode: '5.16.01', sectionCode: '5.16', sectionName: 'Adverse Weather Procedure', description: 'The ZERP embeds a detailed action chart with actions to be taken in case of Adverse Weather.', multiplier: 1.0 },
   { itemCode: '5.17.01', sectionCode: '5.17', sectionName: 'Terror or Bomb Threat', description: 'The ZERP embeds a detailed action chart with actions in case of Terror or Bomb threat.', multiplier: 1.0 },
   { itemCode: '5.18.01', sectionCode: '5.18', sectionName: 'Public Announcements', description: 'The ZERP embeds a section that documents and defines public announcements, pre-recorded or to be made live, for the different applicable procedures', multiplier: 1.0 }
+];
+
+// extracted verbatim, same pattern as ZSMP/ZERP above -- from the 'Traffic & Transport' sheet
+// (TTP), 'Crowd Management' sheet (CMP), and 'Security Management' sheet (SEC) of the same
+// workbook. Phase 2 per the original scoping note ("see the sibling TTP/CMP/SEC sheets in that
+// same workbook for a future phase"). One source typo fixed: the "Accreditation Team" row under
+// Perimeter Protection shared itemCode 3.03.02 with the row above it -- renumbered to 3.03.03.
+var TTP_SEED_ITEMS_ = [
+  { itemCode: '1.01.01', sectionCode: '1.01', sectionName: 'Organisation', description: 'A Traffic & Transport Company has been assigned, and the details are embedded in the TTP.', multiplier: 1.0 },
+  { itemCode: '1.01.02', sectionCode: '1.01', sectionName: 'Organisation', description: 'A Named individual is appointed Traffic & Transport Manager.', multiplier: 1.0 },
+  { itemCode: '1.01.03', sectionCode: '1.01', sectionName: 'Organisation', description: 'A clear Organogram is embedded.', multiplier: 1.0 },
+  { itemCode: '1.01.04', sectionCode: '1.01', sectionName: 'Organisation', description: 'Roles and Responsibilitied within the Traffic and Transport Management are defined.', multiplier: 0.75 },
+  { itemCode: '1.01.05', sectionCode: '1.01', sectionName: 'Organisation', description: 'Roles and Responsibilitied within the Traffic and Transport Management are assigned.', multiplier: 0.75 },
+  { itemCode: '1.01.06', sectionCode: '1.01', sectionName: 'Organisation', description: 'Clear timing is defined for the major Milestones within the delivery of the Traffic & Trransport Plan.', multiplier: 1.0 },
+  { itemCode: '1.02.01', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'A clear overview of Ingress Routes is given in the plan.', multiplier: 1.5 },
+  { itemCode: '1.02.02', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'The plan embeds an overview of road closures (location, operating hours…).', multiplier: 1.0 },
+  { itemCode: '1.02.03', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'The plan embeds an overview of vehicle checkpoints (location, operating hours…).', multiplier: 1.0 },
+  { itemCode: '1.02.04', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'A clear overview of the site Points of Access is given in the plan.', multiplier: 1.0 },
+  { itemCode: '1.02.05', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'Ingress Routes are further detaild for all applicable profiles and modes of traffic.', multiplier: 2.0 },
+  { itemCode: '1.02.06', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'A clear overview of Egress Routes is given in the plan.', multiplier: 1.25 },
+  { itemCode: '1.02.07', sectionCode: '1.02', sectionName: 'Routes Ingress/Egress', description: 'Egress Routes are further detailed for all applicable profiles and modes of traffic.', multiplier: 1.0 },
+  { itemCode: '1.03.01', sectionCode: '1.03', sectionName: 'Parking', description: 'A clear overview of Parking location and capacity is given in the plan.', multiplier: 1.0 },
+  { itemCode: '1.03.02', sectionCode: '1.03', sectionName: 'Parking', description: 'The plan embeds the method used to define parking capacity.', multiplier: 1.0 },
+  { itemCode: '1.03.03', sectionCode: '1.03', sectionName: 'Parking', description: 'The plan shows in detail the layout of each parking, including capacity, dimensions, points of entry, flow of traffic, pedestrian routes, protective equipment...', multiplier: 1.0 },
+  { itemCode: '1.03.04', sectionCode: '1.03', sectionName: 'Parking', description: 'The plan embeds a TTP staff DOT Plan for each parking area.', multiplier: 1.0 },
+  { itemCode: '1.03.05', sectionCode: '1.03', sectionName: 'Parking', description: 'The plan embeds an overview of Staff deployment for the different parking areas.', multiplier: 1.0 },
+  { itemCode: '1.03.06', sectionCode: '1.03', sectionName: 'Parking', description: 'The plan embeds an overview of equipment deployment for the different parking areas.', multiplier: 1.0 },
+  { itemCode: '1.04.01', sectionCode: '1.04', sectionName: 'Pedestrian Last Mile', description: 'The TTP embeds an overview of the Pedestrian Last Mile.', multiplier: 1.0 },
+  { itemCode: '1.04.02', sectionCode: '1.04', sectionName: 'Pedestrian Last Mile', description: 'The TTP embeds a the Pedestrian Last Mile Risk Analysis.', multiplier: 1.5 },
+  { itemCode: '1.04.03', sectionCode: '1.04', sectionName: 'Pedestrian Last Mile', description: 'The TTP embeds a the Pedestrian Last Mile Risk Map.', multiplier: 2.0 },
+  { itemCode: '1.05.06', sectionCode: '1.05', sectionName: 'Signage', description: 'For each Ingress Route a detailed Signage Plan is worked out.', multiplier: 1.5 },
+  { itemCode: '1.05.07', sectionCode: '1.05', sectionName: 'Signage', description: 'The Ingress Route Signage Plan embedss details on signage location (coordinates, .kmz file).', multiplier: 1.5 },
+  { itemCode: '1.05.08', sectionCode: '1.05', sectionName: 'Signage', description: 'The Ingress Route Signage Plan embedss details on signage design.', multiplier: 1.5 },
+  { itemCode: '1.06.01', sectionCode: '1.06', sectionName: 'VAPPS ', description: 'A clear overview of the applicable VAPPS is given in the plan.', multiplier: 1.0 },
+  { itemCode: '1.06.02', sectionCode: '1.06', sectionName: 'VAPPS ', description: 'An overview is given of when the different VAPPS go in operation.', multiplier: 1.0 },
+  { itemCode: '1.07.01', sectionCode: '1.07', sectionName: 'Blue Routes Emergency Services', description: 'A clear overview of Blue Routes is given in the plan, embedding way in and way out for Police.', multiplier: 1.0 },
+  { itemCode: '1.07.02', sectionCode: '1.07', sectionName: 'Blue Routes Emergency Services', description: 'A clear overview of Blue Routes is given in the plan, embedding way in and way out for Civil Defence.', multiplier: 1.0 },
+  { itemCode: '1.07.03', sectionCode: '1.07', sectionName: 'Blue Routes Emergency Services', description: 'A clear overview of Blue Routes is given in the plan, embedding way in and way out for Medical Services.', multiplier: 1.0 },
+  { itemCode: '1.07.04', sectionCode: '1.07', sectionName: 'Blue Routes Emergency Services', description: 'A clear overview of Blue Routes is given in the plan, embedding an overview of the areas/routes that interfere with visitor areas/routes or visitor experience.', multiplier: 1.0 },
+  { itemCode: '1.07.05', sectionCode: '1.07', sectionName: 'Blue Routes Emergency Services', description: 'Details on the location of static/stand-by vehicles and teams are given in the plan.', multiplier: 1.0 },
+  { itemCode: '1.08.01', sectionCode: '1.08', sectionName: 'PUDO & PT', description: 'The TTP embeds information on the designated area for PUDO (Careem/Uber/Taxi)', multiplier: 1.0 },
+  { itemCode: '1.08.02', sectionCode: '1.08', sectionName: 'PUDO & PT', description: 'The TTP embeds information on the possibilities for the use of Public Transport to get to the site.', multiplier: 1.0 },
+  { itemCode: '1.08.03', sectionCode: '1.08', sectionName: 'PUDO & PT', description: 'The relevant Shuttle Bus details are embedded in the plan, including capacity calculations of the system, operating hours…', multiplier: 0.5 },
+  { itemCode: '1.09.01', sectionCode: '1.09', sectionName: 'DOT Plans', description: 'The plan embeds a clear and understandable Traffic Staff DOT plan for all relevant zones.', multiplier: 1.0 },
+  { itemCode: '1.09.02', sectionCode: '1.09', sectionName: 'DOT Plans', description: 'The plan embeds an overview of staff totals for every type of staff', multiplier: 1.5 },
+];
+
+var CMP_SEED_ITEMS_ = [
+  { itemCode: '2.01.01', sectionCode: '2.01', sectionName: 'Organisation', description: 'A Crowd Management Company has been assigned and the details are embedded in the CMP.', multiplier: 1.0 },
+  { itemCode: '2.01.02', sectionCode: '2.01', sectionName: 'Organisation', description: 'A Named Individual is appointed Crowd Manager.', multiplier: 1.0 },
+  { itemCode: '2.01.03', sectionCode: '2.01', sectionName: 'Organisation', description: 'A clear Organogram is embedded.', multiplier: 1.0 },
+  { itemCode: '2.01.04', sectionCode: '2.01', sectionName: 'Organisation', description: 'Roles and Responsibilities within the Crowd Management structure are defined.', multiplier: 0.75 },
+  { itemCode: '2.01.05', sectionCode: '2.01', sectionName: 'Organisation', description: 'Roles and Responsibilities within the Crowd Management structure are assigned.', multiplier: 0.75 },
+  { itemCode: '2.01.06', sectionCode: '2.01', sectionName: 'Organisation', description: 'Clear timing is defined for the major Milestones within the delivery of the Crowd Management plan.', multiplier: 1.0 },
+  { itemCode: '2.02.01', sectionCode: '2.02', sectionName: 'Study of Site Plans', description: 'A basic site plan is provided (pdf and dwg)', multiplier: 0.75 },
+  { itemCode: '2.02.02', sectionCode: '2.02', sectionName: 'Study of Site Plans', description: 'A Disney map is developed and provided (pdf)', multiplier: 0.75 },
+  { itemCode: '2.03.01', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The Crowd Management Plan embeds a detailed plan for the Pedestrian ROUTES ', multiplier: 2.0 },
+  { itemCode: '2.03.02', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The plan also provides details on location of signage and details on the signs themselves (dimensions, colour, reflection…)', multiplier: 1.0 },
+  { itemCode: '2.03.03', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The RAMP Analysis embeds a study of the different AREAS and details available space, dimensions, location of services, expected use and density...', multiplier: 2.0 },
+  { itemCode: '2.03.04', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The RAMP Analysis embeds a study of the expected MOVEMENT between different areas, including expected flow rates and according fill times', multiplier: 1.0 },
+  { itemCode: '2.03.05', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The RAMP Analysis gives details on the expected Arrival profile', multiplier: 1.0 },
+  { itemCode: '2.03.06', sectionCode: '2.03', sectionName: 'RAMP Analysis', description: 'The RAMP Analysis embeds a study of the expected crowd PROFILE', multiplier: 1.0 },
+  { itemCode: '2.04.01', sectionCode: '2.04', sectionName: 'Risk Analysis', description: 'The DIM-ALICED Model is used for Crowd Safety Risk Analysis under Normal Operation. ', multiplier: 3.0 },
+  { itemCode: '2.04.02', sectionCode: '2.04', sectionName: 'Risk Analysis', description: 'The DIM-ALICED Model is used for Crowd Safety Risk Analysis under Emergency Operation. ', multiplier: 2.0 },
+  { itemCode: '2.04.03', sectionCode: '2.04', sectionName: 'Risk Analysis', description: 'Crowd Risks are shown and documented on a risk map.', multiplier: 2.0 },
+  { itemCode: '2.05.01', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The Entry Process is shown in detail for each Visitor Profile. ', multiplier: 2.0 },
+  { itemCode: '2.05.02', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The Entry System Design is embedded and dimensions are shown.', multiplier: 2.0 },
+  { itemCode: '2.05.03', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The entry lanes are at least 1.1 meter wide.', multiplier: 0.75 },
+  { itemCode: '2.05.04', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The different Entry Systems are embedded with Staff DOTs.', multiplier: 1.0 },
+  { itemCode: '2.05.05', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The CMP Embeds an Entry Throughput Calculation for all entry systems and Visitor Profiles. ', multiplier: 3.0 },
+  { itemCode: '2.05.06', sectionCode: '2.05', sectionName: 'Entry Process', description: 'The Plan embeds the Prohibited Items list. ', multiplier: 1.0 },
+  { itemCode: '2.06.05', sectionCode: '2.06', sectionName: 'Capacity', description: 'The Crowd Management Company has read the Capacity Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.06.06', sectionCode: '2.06', sectionName: 'Capacity', description: 'The Crowd Management Company has understood the Capacity Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.06.07', sectionCode: '2.06', sectionName: 'Capacity', description: 'The Crowd Management Company agrees with the Capacity Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.06.08', sectionCode: '2.06', sectionName: 'Capacity', description: 'In the Case where the Crowd Management Company does not aggree with the Capacity Study, did the Crowd Management Company provide its own study?', multiplier: 0.0 },
+  { itemCode: '2.07.06', sectionCode: '2.07', sectionName: 'Evacuation', description: 'The Crowd Management Company has read the Evacuation Plan and Evacuation Time Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.07.07', sectionCode: '2.07', sectionName: 'Evacuation', description: 'The Crowd Management Company has understood the Evacuation Plan and Evacuation Time Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.07.08', sectionCode: '2.07', sectionName: 'Evacuation', description: 'The Crowd Management Company agrees with the Evacuation Plan and Evacuation Time Study as presented by the Event Management Company in the ZSMP?', multiplier: 0.0 },
+  { itemCode: '2.07.09', sectionCode: '2.07', sectionName: 'Evacuation', description: 'In the Case where the Crowd Management Company does not aggree with the Evacuation Plan and Evacuation Time Study, did the Crowd Management Company provide its own study?', multiplier: 0.0 },
+  { itemCode: '2.08.01', sectionCode: '2.08', sectionName: 'Barrier Plan', description: 'The plan shows details on the barrier plan. The documentation shows the setup and design of the different barriers with a clear link beteen the type of barrier and its intended purpose. ', multiplier: 1.0 },
+  { itemCode: '2.08.02', sectionCode: '2.08', sectionName: 'Barrier Plan', description: 'The plan embeds evidence that the barrier design is suitable for the intended purpose.', multiplier: 1.0 },
+  { itemCode: '2.08.03', sectionCode: '2.08', sectionName: 'Barrier Plan', description: 'The plan embeds evidence or the fact that the used barriers are fit for purpose.', multiplier: 1.0 },
+  { itemCode: '2.09.01', sectionCode: '2.09', sectionName: 'DOT Plan', description: 'The plan gives a clear overview of the deployment of the crowd management staff and equipment.', multiplier: 1.0 },
+  { itemCode: '2.09.02', sectionCode: '2.09', sectionName: 'DOT Plan', description: 'The plan provides detailed briefings and instructions for all the postings on the DOT plan.', multiplier: 1.0 },
+];
+
+var SEC_SEED_ITEMS_ = [
+  { itemCode: '3.01.01', sectionCode: '3.01', sectionName: 'Organisation', description: 'A Security Management Company has been assigned and the details are embedded in the SMP.', multiplier: 1.0 },
+  { itemCode: '3.01.02', sectionCode: '3.01', sectionName: 'Organisation', description: 'A Named individual is appointed Security Manager.', multiplier: 1.0 },
+  { itemCode: '3.01.03', sectionCode: '3.01', sectionName: 'Organisation', description: 'A clear Organogram is embedded.', multiplier: 1.0 },
+  { itemCode: '3.01.04', sectionCode: '3.01', sectionName: 'Organisation', description: 'Roles and Responsibilities within the Security Management structure are defined.', multiplier: 0.5 },
+  { itemCode: '3.01.05', sectionCode: '3.01', sectionName: 'Organisation', description: 'Roles and Responsibilities within the Security Management structure are assigned.', multiplier: 0.5 },
+  { itemCode: '3.01.06', sectionCode: '3.01', sectionName: 'Organisation', description: 'Clear timing is defined for the major Milestones within the delivery of the Security Management plan.', multiplier: 0.25 },
+  { itemCode: '3.02.01', sectionCode: '3.02', sectionName: 'Risk Analysis', description: 'A site specific Security Risk Analysis is embedded in the Security Management Plan. ', multiplier: 4.0 },
+  { itemCode: '3.02.02', sectionCode: '3.02', sectionName: 'Risk Analysis', description: 'The plan shows the identified risks in time and space and prioritises based on Severity and Likelihood.', multiplier: 1.0 },
+  { itemCode: '3.03.01', sectionCode: '3.03', sectionName: 'Perimeter Protection', description: 'The plan embeds details on the site/event perimeter and how the integrity of the perimeter is maintained and how the perimeter is secured. This includes details on fencing, walls, cctv, other equipment.', multiplier: 1.5 },
+  { itemCode: '3.03.02', sectionCode: '3.03', sectionName: 'Perimeter Protection', description: 'The plan embeds details on the guarding operation in place to protect and secure the perimeter .', multiplier: 1.0 },
+  { itemCode: '3.03.03', sectionCode: '3.03', sectionName: 'Perimeter Protection', description: 'The plan embeds details on Accreditation Team.', multiplier: 1.0 },
+  { itemCode: '3.04.01', sectionCode: '3.04', sectionName: 'Entry Process', description: 'The Entry Process is shown in detail for each Visitor Profile. ', multiplier: 2.0 },
+  { itemCode: '3.04.05', sectionCode: '3.04', sectionName: 'Entry Process', description: 'The plan shows details on the used equipment for security searches.', multiplier: 2.0 },
+  { itemCode: '3.04.06', sectionCode: '3.04', sectionName: 'Entry Process', description: 'A list of prohibited items, in relation with the outcome of the Risk Analysis, is included in the plan.', multiplier: 3.0 },
+  { itemCode: '3.04.07', sectionCode: '3.04', sectionName: 'Entry Process', description: 'The plan embeds a DOT plan that shows the staff involved in the entry process for the different profiles.', multiplier: 1.0 },
+  { itemCode: '3.05.01', sectionCode: '3.05', sectionName: 'Internal', description: 'The plan shows details on the internal security organisation', multiplier: 4.0 },
+  { itemCode: '3.06.01', sectionCode: '3.06', sectionName: 'DOT Plans', description: 'The plan gives a clear overview of the deployment of the security staff and equipment', multiplier: 3.0 },
+  { itemCode: '3.06.02', sectionCode: '3.06', sectionName: 'DOT Plans', description: 'The plan provides detailed briefings and instrcutions for all the postings on the DOT plan', multiplier: 2.0 },
 ];
 
 function seedDisciplines_() {

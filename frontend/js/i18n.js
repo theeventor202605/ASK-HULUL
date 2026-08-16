@@ -424,7 +424,7 @@ window.HULUL_I18N = {
     // evaluation process as per attached file?") -- templateLibrary.js's docType field + the scoring
     // form itself (eventDetail.js's renderTemplateScoring).
     col_doctype: 'Form type', doctype_none_option: 'None (plain document)',
-    doctype_hint: 'Tag a document type to give it a structured scoring form on the Templates tab (currently available for ZSMP and ZERP).',
+    doctype_hint: 'Tag a document type to give it a structured scoring form on the Templates tab (currently available for ZSMP, ZERP, TTP, CMP, and SEC).',
     title_score_document: 'Score this document', no_scoring_form_for_doctype: 'No scoring form is set up for this document type yet.',
     toast_scoring_saved: 'Scoring saved', col_completeness: 'Completeness', col_quality: 'Quality',
     field_multiplier: 'Multiplier', field_remarks: 'Remarks', field_detail: 'Detail',
@@ -939,7 +939,7 @@ window.HULUL_I18N = {
     pipeline_title: 'خط سير العمل', click_card_open_file_hint: 'انقر على بطاقة لفتح ملفها', col_template: 'القالب',
     col_file: 'الملف', col_review_notes: 'ملاحظات المراجعة',
     col_doctype: 'نوع النموذج', doctype_none_option: 'بدون (مستند عادي)',
-    doctype_hint: 'حدد نوع المستند لمنحه نموذج تقييم مُهيكل في تبويب القوالب (متاح حاليًا لـ ZSMP وZERP).',
+    doctype_hint: 'حدد نوع المستند لمنحه نموذج تقييم مُهيكل في تبويب القوالب (متاح حاليًا لـ ZSMP وZERP وTTP وCMP وSEC).',
     title_score_document: 'تقييم هذا المستند', no_scoring_form_for_doctype: 'لا يوجد نموذج تقييم مُعد لهذا النوع من المستندات بعد.',
     toast_scoring_saved: 'تم حفظ التقييم', col_completeness: 'الاكتمال', col_quality: 'الجودة',
     field_multiplier: 'المضاعِف', field_remarks: 'ملاحظات', field_detail: 'التفاصيل',
