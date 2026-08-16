@@ -879,7 +879,12 @@ function updateTemplateScoringSectionNav_(items) {
 var TPL_COMPLETENESS_STATE_CLASS_ = { Yes: 'state-ticked', No: 'state-crossed', 'N/A': 'state-na' };
 var TPL_COMPLETENESS_ICON_ = { Yes: 'result_ticked', No: 'result_crossed', 'N/A': 'result_na' };
 function templateScoringRowHtml_(item, result) {
-  var completeness = result ? result.completeness : '';
+  // REQ follow-up: "Keep default Completeness as No" -- an item with no saved answer yet (or one
+  // whose completeness was explicitly cleared) starts pre-selected on No rather than unset, so a
+  // reviewer has to actively mark something Yes/N-A instead of it silently staying blank if they
+  // skip past it. Toggling the pre-selected No button off still clears it back to unset, same as
+  // any other choice -- this only changes what a fresh/untouched item starts as.
+  var completeness = (result && result.completeness) ? result.completeness : 'No';
   var quality = (result && result.quality !== '' && result.quality != null) ? String(result.quality) : '';
   var completenessBtns = ['Yes', 'No', 'N/A'].map(function (v) {
     return '<button type="button" class="btn btn-secondary btn-icon result-state-btn ' + TPL_COMPLETENESS_STATE_CLASS_[v] + ' doc-completeness-btn' + (completeness === v ? ' active' : '') +
