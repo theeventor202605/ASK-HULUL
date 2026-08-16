@@ -323,18 +323,23 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
 // app embedded in daily production use at any real scale (see
 // https://operations.osmfoundation.org/policies/tiles/) -- OSM's ops team rate-limits/blacklists
 // referrers that generate more than occasional personal-use traffic, which is exactly what serving
-// this "Access blocked" placeholder tile back means: this domain got flagged. Switched every map to
-// Esri's ArcGIS Online World_Street_Map service instead -- no API key required, and this exact app
-// already relies on Esri's ArcGIS World_Imagery service for the satellite toggle (venues.js), so this
-// reuses infrastructure already proven to work here rather than introducing a brand new third-party
-// domain that could hit its own restrictions. One shared helper (instead of the same tileLayer call
-// copy-pasted at 10 separate map-init sites) means switching providers again later is a one-line
-// change instead of a repo-wide find/replace. Esri's tile URL uses {z}/{y}/{x} order (not {z}/{x}/{y}
-// like OSM) -- same convention the existing World_Imagery satellite layer already uses.
+// this "Access blocked" placeholder tile back means: this domain got flagged.
+// REQ follow-up: "I had the default layer first, but now it is a different one. Keep the default
+// layer." -- the first fix swapped to Esri's World_Street_Map service, which fixed the blocking but
+// looks noticeably different (Esri's own muted beige cartographic style, different fonts/road
+// colors) from the colorful OSM-standard look everyone was used to. Switched to CARTO's free Voyager
+// basemap instead -- CARTO explicitly designed Voyager to be a visual drop-in for the classic OSM/
+// Google-Maps "everyday map" look (same light background, colorful roads, readable labels), and
+// unlike raw tile.openstreetmap.org, CARTO's own usage policy is built for exactly this "embedded in
+// a real app" case rather than "occasional personal use" -- so this should sidestep the same block
+// without the visual regression. Esri's World_Imagery satellite toggle (venues.js) is untouched --
+// nobody flagged that one, this is only about the default/street layer. One shared helper (instead of
+// the same tileLayer call copy-pasted at 10 separate map-init sites) means switching providers again
+// later is still just a one-line change.
 function hululTileLayer_() {
-  return HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ',
-    maxZoom: 19
+  return HululLeaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 19
   });
 }
 
