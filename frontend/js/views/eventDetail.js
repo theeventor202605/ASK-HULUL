@@ -34,7 +34,9 @@ var EVENT_TABS = [
   ['completedChecklists', 'tab_completed_checklists'],
   // REQ: "Add Tab under Checklist name is score. Add to it template filter to narrow down items." --
   // read-only, cross-document view of every Document Review scoring item in this event (tabScoreOverview
-  // below) -- same "Checklists" group as Assignments/Inspections/Completed Checklists above it.
+  // below). REQ follow-up: "Move Score tab from Checklists to Readiness" -- grouped with
+  // templates/approval (EVENT_TAB_GROUPS_ below), not with Assignments/Inspections/Completed
+  // Checklists -- this array's own order is just declaration order, not what drives grouping.
   ['scoreOverview', 'tab_score_overview'],
   ['findings', 'tab_findings'],
   // REQ: "Log Photos" tab -- inspectors take photos in the heat first, group/log them later somewhere
@@ -77,8 +79,11 @@ var EVENT_TABS = [
 // redundant one-item dropdown.
 var EVENT_TAB_GROUPS_ = [
   { key: 'generalGroup', labelKey: 'tab_group_general', tabs: ['overview', 'roadmap', 'chat'] },
-  { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval'] },
-  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists', 'scoreOverview'] },
+  // REQ follow-up: "Move Score tab from Checklists to Readiness." -- scoreOverview (Document Review
+  // scoring across every document) fits better alongside templates/approval than the Checklist-item
+  // workflow tabs it was grouped with.
+  { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval', 'scoreOverview'] },
+  { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists'] },
   // REQ follow-up: "Move Log Photos to Findings tab" + explicit subtab order (Log Photos, Risk
   // Logging, Photo Timeline, Escalations) -- logPhotos moved out of inspectionsGroup above into here,
   // first; findings/findingPhotos/escalations reordered to match ('findings' tab's own display label
