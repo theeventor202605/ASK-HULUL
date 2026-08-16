@@ -711,20 +711,30 @@ async function renderTemplateScoring(params) {
   results.forEach(function (r) { resultsByItemId[r.itemId] = r; });
 
   // REQ follow-up: "scoring forms are long and take days to complete -- filtered by section... know
-  // the progress of each score form" -- sidebar jump navigation (templateScoringSectionNavHtml_)
-  // instead of a flat multi-hundred-item page: click a section to scroll straight to it, with its
-  // own running done/total count so progress is visible per-chunk, not just as one overall number.
+  // the progress of each score form" / "the side filter should only show relevant items not jump" --
+  // the sidebar (templateScoringSectionNavHtml_) actually FILTERS the main content down to one
+  // section at a time (filterTemplateScoringSection_) instead of just scrolling to it, with each
+  // section's own running done/total count so progress is visible per-chunk too.
   var sections = templateScoringSectionsList_(items);
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(tpl.name) + '</div>' +
     '<div class="page-subtitle">' + esc(tpl.docType) + (tpl.fileUrl ? ' · <a href="' + tpl.fileUrl + '" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(t('word_view')) + '</a>' : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backTplScoringBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
-    '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
-      '<div id="tplScoringProgress" style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px;font-weight:600;"></div>' +
+    // REQ follow-up: "keep the progress bar always visible" -- sticky (not just "at the top once"),
+    // so it stays in view while scrolling a long section instead of disappearing the moment the
+    // first card scrolls past. Actual visual bars (not just percentage text) per
+    // templateScoringProgressHtml_ below; updateTemplateScoringProgress_ fills them in live.
+    // top:64px, not 0 -- .topbar (styles.css) is itself sticky at top:0 with z-index:20 above
+    // everything in the page body, so a sticky element in here needs to sit BELOW it, not compete
+    // for the same spot (same 64px topbar-height offset .notif-panel already uses).
+    '<div class="card" style="margin-bottom:16px;position:sticky;top:64px;z-index:5;"><div class="card-body" style="padding:12px 20px;">' +
+      templateScoringProgressHtml_() +
     '</div></div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;">' +
-      '<div class="card" style="width:230px;flex:0 0 230px;position:sticky;top:16px;max-height:calc(100vh - 160px);overflow-y:auto;">' +
+      // top:160px = topbar (64px) + the sticky progress card above it (~80px) + its margin-bottom
+      // (16px) -- keeps this sidebar pinned just below the progress card instead of sliding under it.
+      '<div class="card" style="width:230px;flex:0 0 230px;position:sticky;top:160px;max-height:calc(100vh - 176px);overflow-y:auto;">' +
         '<div class="card-header"><div class="card-title" style="font-size:12px;">' + esc(t('scoring_sections_title')) + '</div></div>' +
         '<div class="card-body" id="tplScoringSectionNav" style="padding:6px;">' + templateScoringSectionNavHtml_(sections) + '</div>' +
       '</div>' +
@@ -759,6 +769,7 @@ async function renderTemplateScoring(params) {
 
   wireTemplateScoringRows_(items);
   wireTemplateScoringSectionNav_(sections);
+  filterTemplateScoringSection_('');
   updateTemplateScoringProgress_(items);
   updateTemplateScoringSectionNav_(items);
 }
@@ -767,20 +778,23 @@ async function renderTemplateScoring(params) {
 // segment in this catalog is zero-padded to two digits (see seedTemplateScoringItems_'s own
 // comment), sorts in exactly the same order as sectionCode groups them -- so a single linear pass
 // detecting sectionCode changes is enough to emit section headers, no separate group-then-sort step.
+// Each section's header + rows are wrapped in one .tpl-score-section container carrying
+// data-section -- the sidebar filter (filterTemplateScoringSection_ below) toggles that whole
+// container's visibility rather than re-rendering, so switching sections never loses any unsaved
+// on-screen answers or re-wires event listeners.
 function templateScoringItemsHtml_(items, resultsByItemId) {
   var html = '';
   var lastSectionCode = null;
   items.forEach(function (it) {
     if (it.sectionCode !== lastSectionCode) {
-      // id is the scroll target for the sidebar's jump navigation (wireTemplateScoringSectionNav_
-      // below) -- sectionCode values like '4.00' are fine straight in an id attribute (only CSS
-      // querySelector-by-id needs escaping for the dot, and nothing here does that; navigation uses
-      // getElementById).
-      html += '<div id="tpl-sec-' + esc(it.sectionCode) + '" style="font-weight:600;font-size:12.5px;color:var(--accent);margin:14px 0 4px;scroll-margin-top:16px;">' + esc(it.sectionCode) + ' ' + esc(it.sectionName) + '</div>';
+      if (lastSectionCode !== null) html += '</div>';
+      html += '<div class="tpl-score-section" data-section="' + esc(it.sectionCode) + '">' +
+        '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:14px 0 4px;">' + esc(it.sectionCode) + ' ' + esc(it.sectionName) + '</div>';
       lastSectionCode = it.sectionCode;
     }
     html += templateScoringRowHtml_(it, resultsByItemId[it.id]);
   });
+  if (lastSectionCode !== null) html += '</div>';
   return html;
 }
 
@@ -800,8 +814,12 @@ function templateScoringSectionsList_(items) {
   return sections;
 }
 
+// REQ follow-up: "The side filter should only show relevant items not jump." -- the "All sections"
+// row (data-section="") is the only way back to seeing everything at once; every other row filters
+// the main content down to just that one section (filterTemplateScoringSection_ below).
 function templateScoringSectionNavHtml_(sections) {
-  return sections.map(function (sec) {
+  var allRow = '<div class="tpl-section-nav-item" data-section="" style="cursor:pointer;padding:6px 8px;border-radius:6px;margin-bottom:4px;font-size:11.5px;font-weight:600;">' + esc(t('scoring_all_sections')) + '</div>';
+  return allRow + sections.map(function (sec) {
     return '<div class="tpl-section-nav-item" data-section="' + esc(sec.sectionCode) + '" style="cursor:pointer;padding:6px 8px;border-radius:6px;margin-bottom:2px;">' +
       '<div style="font-size:11.5px;font-weight:600;">' + esc(sec.sectionCode) + ' ' + esc(sec.sectionName) + '</div>' +
       '<div class="muted tpl-section-nav-progress" data-section-progress="' + esc(sec.sectionCode) + '" style="font-size:10px;">0 / ' + sec.total + '</div>' +
@@ -811,10 +829,21 @@ function templateScoringSectionNavHtml_(sections) {
 
 function wireTemplateScoringSectionNav_(sections) {
   document.querySelectorAll('.tpl-section-nav-item').forEach(function (nav) {
-    nav.onclick = function () {
-      var anchor = document.getElementById('tpl-sec-' + nav.getAttribute('data-section'));
-      if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
+    nav.onclick = function () { filterTemplateScoringSection_(nav.getAttribute('data-section')); };
+  });
+}
+
+// sectionCode === '' shows every section (the "All sections" row); anything else hides every
+// .tpl-score-section container except the matching one. Containers stay in the DOM either way (just
+// display:none) so no on-screen answers, wiring, or scroll position are lost switching between them.
+function filterTemplateScoringSection_(sectionCode) {
+  document.querySelectorAll('.tpl-score-section').forEach(function (sec) {
+    sec.style.display = (!sectionCode || sec.getAttribute('data-section') === sectionCode) ? '' : 'none';
+  });
+  document.querySelectorAll('.tpl-section-nav-item').forEach(function (nav) {
+    var isActive = nav.getAttribute('data-section') === sectionCode;
+    nav.classList.toggle('active', isActive);
+    nav.style.background = isActive ? 'var(--accent-soft)' : '';
   });
 }
 
@@ -840,12 +869,25 @@ function updateTemplateScoringSectionNav_(items) {
   });
 }
 
+// REQ follow-up: "Use icons instead of Yes, No and N/A... must be visually easy to see what is
+// selected." Completeness reuses the exact same icon+CSS pattern as the Completed Checklists'
+// Ticked/Crossed/N-A state buttons (result-state-btn/state-ticked/state-crossed/state-na,
+// styles.css) -- Yes=checkmark, No=X, N/A=ban -- so the selected choice gets a strong colored fill
+// instead of the plain outline every btn-secondary shares, exactly the "hard to tell what's picked"
+// problem being fixed. doc-completeness-btn/doc-completeness-group class names and data-item/
+// data-value attributes are kept as-is so wireTemplateScoringRows_ below needs no changes.
+var TPL_COMPLETENESS_STATE_CLASS_ = { Yes: 'state-ticked', No: 'state-crossed', 'N/A': 'state-na' };
+var TPL_COMPLETENESS_ICON_ = { Yes: 'result_ticked', No: 'result_crossed', 'N/A': 'result_na' };
 function templateScoringRowHtml_(item, result) {
   var completeness = result ? result.completeness : '';
   var quality = (result && result.quality !== '' && result.quality != null) ? String(result.quality) : '';
   var completenessBtns = ['Yes', 'No', 'N/A'].map(function (v) {
-    return '<button type="button" class="btn btn-secondary btn-sm doc-completeness-btn' + (completeness === v ? ' active' : '') + '" data-item="' + item.id + '" data-value="' + v + '">' + esc(t('completeness_' + v.toLowerCase().replace('/', ''))) + '</button>';
+    return '<button type="button" class="btn btn-secondary btn-icon result-state-btn ' + TPL_COMPLETENESS_STATE_CLASS_[v] + ' doc-completeness-btn' + (completeness === v ? ' active' : '') +
+      '" data-item="' + item.id + '" data-value="' + v + '" title="' + esc(t('completeness_' + v.toLowerCase().replace('/', ''))) + '">' + ICON(TPL_COMPLETENESS_ICON_[v]) + '</button>';
   }).join('');
+  // Quality (0-4) has its own accent-filled active state -- see .doc-quality-btn.active, styles.css
+  // -- same "dim until picked" idea as result-state-btn, just accent-colored since 0-4 isn't a
+  // pass/fail choice the way Completeness is.
   var qualityBtns = [0, 1, 2, 3, 4].map(function (q) {
     return '<button type="button" class="btn btn-secondary btn-sm doc-quality-btn' + (quality === String(q) ? ' active' : '') + '" data-item="' + item.id + '" data-value="' + q + '" title="' + esc(t('quality_level_' + q)) + '">' + q + '</button>';
   }).join('');
@@ -904,9 +946,36 @@ function wireTemplateScoringRows_(items) {
 // 4 * multiplier (its max possible, workbook's own MaxScore column) regardless of whether it's been
 // scored yet, so the running % honestly reflects "how much of the whole document is fully scored,"
 // not just "how much of what's been touched so far."
+// REQ follow-up: "keep the progress bar always visible" -- two actual visual bars (Completeness /
+// Quality) instead of plain percentage text, matched to the sticky card in renderTemplateScoring
+// (position:sticky;top:0) so they stay on screen while scrolling a long section. IDs only, no
+// innerHTML rebuild on every click -- keeps this cheap enough to call on every single button press
+// (see wireTemplateScoringRows_) without any visible flicker.
+function templateScoringProgressHtml_() {
+  return '<div style="display:flex;gap:28px;flex-wrap:wrap;">' +
+    '<div style="flex:1 1 220px;min-width:180px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
+        '<span>' + esc(t('col_completeness')) + '</span><span id="tplCompletenessPctText" style="color:var(--accent);">—</span>' +
+      '</div>' +
+      '<div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden;">' +
+        '<div id="tplCompletenessBar" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="flex:1 1 220px;min-width:180px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
+        '<span>' + esc(t('col_quality')) + '</span><span id="tplQualityPctText" style="color:var(--success);">—</span>' +
+      '</div>' +
+      '<div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden;">' +
+        '<div id="tplQualityBar" style="height:100%;width:0%;background:var(--success);transition:width .2s;"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function updateTemplateScoringProgress_(items) {
-  var el = document.getElementById('tplScoringProgress');
-  if (!el) return;
+  var completenessBar = document.getElementById('tplCompletenessBar');
+  var qualityBar = document.getElementById('tplQualityBar');
+  if (!completenessBar || !qualityBar) return;
   var yes = 0, no = 0, qualityScore = 0, qualityMax = 0;
   items.forEach(function (it) {
     var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
@@ -918,12 +987,12 @@ function updateTemplateScoringProgress_(items) {
     qualityMax += 4 * mult;
     if (qVal !== '') qualityScore += Number(qVal) * mult;
   });
-  var completenessPct = (yes + no) ? Math.round((yes / (yes + no)) * 100) : null;
-  var qualityPct = qualityMax ? Math.round((qualityScore / qualityMax) * 100) : null;
-  el.innerHTML =
-    '<div>' + esc(t('col_completeness')) + ': <span style="color:var(--accent);">' + (completenessPct === null ? '—' : completenessPct + '%') + '</span></div>' +
-    '<div>' + esc(t('col_quality')) + ': <span style="color:var(--accent);">' + (qualityPct === null ? '—' : qualityPct + '%') + '</span> ' +
-      '<span class="muted" style="font-weight:400;">(' + qualityScore.toFixed(2) + ' / ' + qualityMax.toFixed(2) + ')</span></div>';
+  var completenessPct = (yes + no) ? Math.round((yes / (yes + no)) * 100) : 0;
+  var qualityPct = qualityMax ? Math.round((qualityScore / qualityMax) * 100) : 0;
+  completenessBar.style.width = completenessPct + '%';
+  qualityBar.style.width = qualityPct + '%';
+  document.getElementById('tplCompletenessPctText').textContent = (yes + no) ? completenessPct + '%' : '—';
+  document.getElementById('tplQualityPctText').textContent = qualityMax ? (qualityPct + '% (' + qualityScore.toFixed(2) + ' / ' + qualityMax.toFixed(2) + ')') : '—';
 }
 
 // Reads every item row's current DOM state back into the flat array saveTemplateScoring expects --

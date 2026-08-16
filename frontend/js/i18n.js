@@ -435,7 +435,7 @@ window.HULUL_I18N = {
     // REQ follow-up: "filtered by section... know the progress... view completed forms... import and
     // export" -- the scoring form's sidebar section nav + CSV round-trip (renderTemplateScoring,
     // eventDetail.js).
-    scoring_sections_title: 'Sections',
+    scoring_sections_title: 'Sections', scoring_all_sections: 'All sections',
     confirm_import_scoring_answers: 'This will overwrite the answers currently on screen with the imported file. Continue?',
     toast_scoring_csv_missing_itemid: 'CSV must include an itemId column (use Export first to get the right format)',
     toast_scoring_csv_imported: 'Imported {{count}} answer(s) — review, then Save',
@@ -971,7 +971,7 @@ window.HULUL_I18N = {
     quality_level_0: 'العنصر غير موجود', quality_level_1: 'العنصر مذكور لكنه غير مُضمَّن في المستندات',
     quality_level_2: 'العنصر مُضمَّن — مستوى الجودة 1/3', quality_level_3: 'العنصر مُضمَّن — مستوى الجودة 2/3',
     quality_level_4: 'العنصر مُضمَّن — مستوى الجودة 3/3',
-    scoring_sections_title: 'الأقسام',
+    scoring_sections_title: 'الأقسام', scoring_all_sections: 'كل الأقسام',
     confirm_import_scoring_answers: 'سيؤدي هذا إلى استبدال الإجابات الحالية على الشاشة بالملف المستورد. هل تريد المتابعة؟',
     toast_scoring_csv_missing_itemid: 'يجب أن يحتوي ملف CSV على عمود itemId (استخدم التصدير أولاً للحصول على الصيغة الصحيحة)',
     toast_scoring_csv_imported: 'تم استيراد {{count}} إجابة/إجابات — راجعها ثم احفظ',

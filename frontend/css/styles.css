@@ -138,6 +138,13 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .result-state-btn.state-ticked.active{ background:var(--success-soft); color:var(--success); }
 .result-state-btn.state-crossed.active{ background:var(--danger-soft); color:var(--danger); }
 .result-state-btn.state-na.active{ background:var(--surface); color:var(--text-600); }
+/* Document Review scoring form's Quality 0-4 picker (templateScoringRowHtml_, eventDetail.js) --
+   same "dim until picked" idea as .result-state-btn above (this rule used to be missing entirely,
+   which made the selected quality score nearly impossible to spot at a glance). Accent-filled
+   instead of a pass/fail color since 0-4 isn't a binary choice the way Completeness is. */
+.doc-quality-btn{ opacity:.55; }
+.doc-quality-btn:hover{ opacity:.9; }
+.doc-quality-btn.active{ opacity:1; background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
 .w-full{ width:100%; }
 
 /* Click guard (app-wide, wired once in ui.js): every .btn gets disabled + this look for 10s right
