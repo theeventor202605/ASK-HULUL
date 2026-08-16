@@ -437,6 +437,7 @@ window.HULUL_I18N = {
     // eventDetail.js).
     scoring_sections_title: 'Sections', scoring_all_sections: 'All sections',
     scoring_scope_label: 'Showing', autosaved_at: 'Autosaved {{time}}',
+    autosave_toggle_label: 'Autosave', autosave_paused: 'Autosave paused',
     confirm_import_scoring_answers: 'This will overwrite the answers currently on screen with the imported file. Continue?',
     toast_scoring_csv_missing_itemid: 'CSV must include an itemId column (use Export first to get the right format)',
     toast_scoring_csv_imported: 'Imported {{count}} answer(s) — review, then Save',
@@ -974,6 +975,7 @@ window.HULUL_I18N = {
     quality_level_4: 'العنصر مُضمَّن — مستوى الجودة 3/3',
     scoring_sections_title: 'الأقسام', scoring_all_sections: 'كل الأقسام',
     scoring_scope_label: 'عرض', autosaved_at: 'تم الحفظ التلقائي {{time}}',
+    autosave_toggle_label: 'الحفظ التلقائي', autosave_paused: 'تم إيقاف الحفظ التلقائي مؤقتًا',
     confirm_import_scoring_answers: 'سيؤدي هذا إلى استبدال الإجابات الحالية على الشاشة بالملف المستورد. هل تريد المتابعة؟',
     toast_scoring_csv_missing_itemid: 'يجب أن يحتوي ملف CSV على عمود itemId (استخدم التصدير أولاً للحصول على الصيغة الصحيحة)',
     toast_scoring_csv_imported: 'تم استيراد {{count}} إجابة/إجابات — راجعها ثم احفظ',

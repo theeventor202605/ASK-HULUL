@@ -768,6 +768,14 @@ async function renderTemplateScoring(params) {
     if (!file) return;
     UI.confirmModal(t('confirm_import_scoring_answers'), function () { importTemplateScoringCsv_(file, items); });
   };
+  // REQ follow-up: "add Autosave toggle" -- on by default; unchecking it doesn't stop/restart the
+  // interval below (simplest correct option, and it means re-checking resumes on the very next tick
+  // with no extra bookkeeping) -- it just makes each tick a no-op, and immediately swaps the status
+  // caption to "paused" so unchecking gives instant feedback instead of waiting up to 60s to notice.
+  document.getElementById('tplScoringAutosaveToggle').onchange = function (e) {
+    var statusEl = document.getElementById('tplScoringAutosaveStatus');
+    if (statusEl) statusEl.textContent = e.target.checked ? ' ' : t('autosave_paused');
+  };
 
   wireTemplateScoringRows_(items);
   wireTemplateScoringSectionNav_(sections, items);
@@ -783,6 +791,8 @@ async function renderTemplateScoring(params) {
   // attachFindingEvidenceInBackground_ (findings.js) uses for its own background interval.
   var autosaveTimer = setInterval(function () {
     if (!document.getElementById('saveTplScoringBtn')) { clearInterval(autosaveTimer); return; }
+    var toggle = document.getElementById('tplScoringAutosaveToggle');
+    if (toggle && !toggle.checked) return; // paused -- interval keeps ticking cheaply so it resumes the instant the user re-checks it
     autosaveTemplateScoring_(templateId, items);
   }, 60000);
 }
@@ -925,15 +935,24 @@ function updateTemplateScoringSectionNav_(items) {
 var TPL_COMPLETENESS_STATE_CLASS_ = { Yes: 'state-ticked', No: 'state-crossed', 'N/A': 'state-na' };
 var TPL_COMPLETENESS_ICON_ = { Yes: 'result_ticked', No: 'result_crossed', 'N/A': 'result_na' };
 function templateScoringRowHtml_(item, result) {
-  // REQ follow-up: "Keep default Completeness as No" -- an item with no saved answer yet (or one
-  // whose completeness was explicitly cleared) starts pre-selected on No rather than unset, so a
-  // reviewer has to actively mark something Yes/N-A instead of it silently staying blank if they
-  // skip past it. Toggling the pre-selected No button off still clears it back to unset, same as
-  // any other choice -- this only changes what a fresh/untouched item starts as.
-  var completeness = (result && result.completeness) ? result.completeness : 'No';
+  // REQ follow-up: "Keep default Completeness as No" -- an untouched item shows the No button lightly
+  // pre-highlighted as a visual nudge to actively decide, rather than looking blank.
+  // BUG FIX ("Completeness and Quality do not work properly when filtered"): the first version of
+  // this baked that default into the doc-completeness-group's own data-value too, i.e. every untouched
+  // item was silently saved/counted AS an explicit "No" -- inflating the "No" side of the Completeness
+  // ratio (and Quality's denominator effect) with items nobody had actually reviewed yet, which is
+  // exactly what made the numbers look wrong once you filtered down to a mostly-untouched section
+  // (e.g. a fresh section reads 0% instead of "--", because every one of its items was already
+  // silently counted as a real "No"). Fixed by keeping `completeness` (and therefore the group's own
+  // data-value, and whatever collectTemplateScoringResults_ saves) genuinely blank until the reviewer
+  // actually clicks something -- only the button's own CSS `active` state defaults to No, purely
+  // cosmetic, so updateTemplateScoringProgress_/updateTemplateScoringSectionNav_ (which both key off
+  // the group's data-value) keep excluding not-yet-reviewed items from the ratio like they're meant to.
+  var completeness = (result && result.completeness) ? result.completeness : '';
   var quality = (result && result.quality !== '' && result.quality != null) ? String(result.quality) : '';
   var completenessBtns = ['Yes', 'No', 'N/A'].map(function (v) {
-    return '<button type="button" class="btn btn-secondary btn-icon result-state-btn ' + TPL_COMPLETENESS_STATE_CLASS_[v] + ' doc-completeness-btn' + (completeness === v ? ' active' : '') +
+    var isActive = completeness ? (completeness === v) : (v === 'No');
+    return '<button type="button" class="btn btn-secondary btn-icon result-state-btn ' + TPL_COMPLETENESS_STATE_CLASS_[v] + ' doc-completeness-btn' + (isActive ? ' active' : '') +
       '" data-item="' + item.id + '" data-value="' + v + '" title="' + esc(t('completeness_' + v.toLowerCase().replace('/', ''))) + '">' + ICON(TPL_COMPLETENESS_ICON_[v]) + '</button>';
   }).join('');
   // Quality (0-4) has its own accent-filled active state -- see .doc-quality-btn.active, styles.css
@@ -976,10 +995,17 @@ function wireTemplateScoringRows_(items) {
       var group = document.querySelector('.doc-completeness-group[data-item="' + btn.getAttribute('data-item') + '"]');
       if (!group) return;
       // Clicking the already-active choice clears it back to unset -- same "an explicit pick, but
-      // not an irreversible one" affordance as toggling a single-select checkbox off again.
+      // not an irreversible one" affordance as toggling a single-select checkbox off again. Clearing
+      // back to unset re-shows the No button's cosmetic default-highlight (same rule as the initial
+      // render in templateScoringRowHtml_) without writing 'No' back into the group's real data-value
+      // -- that's the whole fix for the "Completeness/Quality wrong when filtered" bug: the visual nudge
+      // never becomes a counted answer on its own.
       var value = group.getAttribute('data-value') === btn.getAttribute('data-value') ? '' : btn.getAttribute('data-value');
       group.setAttribute('data-value', value);
-      group.querySelectorAll('.doc-completeness-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-value') === value); });
+      group.querySelectorAll('.doc-completeness-btn').forEach(function (b) {
+        var isActive = value ? (b.getAttribute('data-value') === value) : (b.getAttribute('data-value') === 'No');
+        b.classList.toggle('active', isActive);
+      });
       updateTemplateScoringProgress_(items);
       updateTemplateScoringSectionNav_(items);
     };
@@ -1014,12 +1040,16 @@ function wireTemplateScoringRows_(items) {
 // section" -- tplScoringScopeLabel makes it obvious at a glance whether the bars below are showing
 // the whole form or just the filtered section (filterTemplateScoringSection_ keeps it in sync).
 // REQ follow-up: "Move the save button with the completeness and quality button and autosave every
-// minute" -- saveTplScoringBtn now sits in this same sticky card instead of the bottom of the item
-// list, with tplScoringAutosaveStatus right under it for the silent interval save's "Autosaved HH:MM"
-// feedback (autosaveTemplateScoring_ above fills it in; blank until the first tick completes).
+// minute" -- saveTplScoringBtn sits in this same sticky card instead of the bottom of the item list.
+// REQ follow-up (user feedback: "Save button seems out of location") -- kept in this same spot (user
+// confirmed via AskUserQuestion) but given its own visually-boxed column -- background fill + left
+// divider -- so it reads as a distinct "actions" group instead of a button floating in open space next
+// to the bars. Autosave toggle (tplScoringAutosaveToggle, checked by default) sits right under Save;
+// tplScoringAutosaveStatus below that shows "Autosaved HH:MM" or "Autosave paused" (autosaveTemplateScoring_
+// / the toggle's onchange in renderTemplateScoring fill both in).
 function templateScoringProgressHtml_() {
-  return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;">' +
-    '<div style="flex:1 1 220px;min-width:180px;">' +
+  return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:stretch;">' +
+    '<div style="flex:1 1 220px;min-width:180px;align-self:center;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
         '<span>' + esc(t('col_completeness')) + '</span><span id="tplCompletenessPctText" style="color:var(--accent);">—</span>' +
       '</div>' +
@@ -1027,7 +1057,7 @@ function templateScoringProgressHtml_() {
         '<div id="tplCompletenessBar" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-    '<div style="flex:1 1 220px;min-width:180px;">' +
+    '<div style="flex:1 1 220px;min-width:180px;align-self:center;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
         '<span>' + esc(t('col_quality')) + '</span><span id="tplQualityPctText" style="color:var(--success);">—</span>' +
       '</div>' +
@@ -1035,9 +1065,12 @@ function templateScoringProgressHtml_() {
         '<div id="tplQualityBar" style="height:100%;width:0%;background:var(--success);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
-      '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
-      '<span class="muted" id="tplScoringAutosaveStatus" style="font-size:10px;">&nbsp;</span>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 16px;margin:-8px 0;border-left:1px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;">' +
+      '<button class="btn btn-primary" id="saveTplScoringBtn" style="min-width:120px;">' + esc(t('save')) + '</button>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;">' +
+        '<input type="checkbox" id="tplScoringAutosaveToggle" checked style="cursor:pointer;margin:0;" />' + esc(t('autosave_toggle_label')) +
+      '</label>' +
+      '<span class="muted" id="tplScoringAutosaveStatus" style="font-size:10px;white-space:nowrap;">&nbsp;</span>' +
     '</div>' +
   '</div>' +
   '<div class="muted" style="font-size:11px;margin-top:10px;">' + esc(t('scoring_scope_label')) + ': <span id="tplScoringScopeLabel" style="font-weight:600;"></span></div>';
