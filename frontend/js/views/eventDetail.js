@@ -716,6 +716,7 @@ async function renderTemplateScoring(params) {
   // section at a time (filterTemplateScoringSection_) instead of just scrolling to it, with each
   // section's own running done/total count so progress is visible per-chunk too.
   var sections = templateScoringSectionsList_(items);
+  TPL_SCORING_SECTIONS_ = sections;
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(tpl.name) + '</div>' +
@@ -745,13 +746,14 @@ async function renderTemplateScoring(params) {
           '<input type="file" id="tplScoringImportInput" accept=".csv" style="display:none;" />' +
         '</div>' +
         '<div class="card-body">' + templateScoringItemsHtml_(items, resultsByItemId) + '</div>' +
-        '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">' +
-          '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
-        '</div>' +
       '</div>' +
     '</div>';
 
   document.getElementById('backTplScoringBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=templates'; };
+  // REQ follow-up: "Move the save button with the completeness and quality button and autosave every
+  // minute." -- saveTplScoringBtn now lives in templateScoringProgressHtml_ (the sticky card), not at
+  // the bottom of the item list; the manual-save handler is unchanged (full toast + Router.resolve()
+  // refresh), autosaveTemplateScoring_ below is the silent counterpart used by the interval.
   document.getElementById('saveTplScoringBtn').onclick = async function () {
     try {
       await Api.call('saveTemplateScoring', { templateId: templateId, results: collectTemplateScoringResults_(items) });
@@ -768,10 +770,35 @@ async function renderTemplateScoring(params) {
   };
 
   wireTemplateScoringRows_(items);
-  wireTemplateScoringSectionNav_(sections);
+  wireTemplateScoringSectionNav_(sections, items);
   filterTemplateScoringSection_('');
   updateTemplateScoringProgress_(items);
   updateTemplateScoringSectionNav_(items);
+
+  // Autosave every 60s while this page stays open. No generic page-teardown hook exists in this
+  // router (pages are just replaced via root.innerHTML on next navigation), so the interval is
+  // self-terminating instead of relying on an external stop signal: every tick first checks that
+  // saveTplScoringBtn is still in the DOM (i.e. this exact render is still the one on screen) and
+  // clears itself the moment that's no longer true, same self-cleanup shape as
+  // attachFindingEvidenceInBackground_ (findings.js) uses for its own background interval.
+  var autosaveTimer = setInterval(function () {
+    if (!document.getElementById('saveTplScoringBtn')) { clearInterval(autosaveTimer); return; }
+    autosaveTemplateScoring_(templateId, items);
+  }, 60000);
+}
+
+// Silent counterpart to the manual Save button's handler above -- same endpoint, same
+// collectTemplateScoringResults_ DOM read, but no toast and no Router.resolve() refresh (a full
+// re-render every 60s would blow away the section filter, scroll position, and any in-progress
+// typing). Failures are swallowed on purpose: the next tick retries automatically, and the manual
+// Save button is always right there if the person wants an explicit confirmation.
+function autosaveTemplateScoring_(templateId, items) {
+  Api.call('saveTemplateScoring', { templateId: templateId, results: collectTemplateScoringResults_(items) })
+    .then(function () {
+      var statusEl = document.getElementById('tplScoringAutosaveStatus');
+      if (statusEl) statusEl.textContent = t('autosaved_at', { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+    })
+    .catch(function () { /* silent -- next tick retries, manual Save still available */ });
 }
 
 // Items already arrive from listTemplateScoringItems sorted by itemCode -- which, since every
@@ -827,16 +854,30 @@ function templateScoringSectionNavHtml_(sections) {
   }).join('');
 }
 
-function wireTemplateScoringSectionNav_(sections) {
+// REQ follow-up: "When a section is selected Completeness and Quality should only reflect that
+// section." -- TPL_SCORING_ACTIVE_SECTION_/TPL_SCORING_SECTIONS_ are plain module-level state (this
+// page only ever has one scoring form open at a time) that updateTemplateScoringProgress_ reads to
+// decide which items to include, and filterTemplateScoringSection_ writes whenever the selection
+// changes. '' means "All sections" -- no filtering, whole-form numbers.
+var TPL_SCORING_ACTIVE_SECTION_ = '';
+var TPL_SCORING_SECTIONS_ = [];
+
+function wireTemplateScoringSectionNav_(sections, items) {
   document.querySelectorAll('.tpl-section-nav-item').forEach(function (nav) {
-    nav.onclick = function () { filterTemplateScoringSection_(nav.getAttribute('data-section')); };
+    nav.onclick = function () {
+      filterTemplateScoringSection_(nav.getAttribute('data-section'));
+      updateTemplateScoringProgress_(items);
+    };
   });
 }
 
 // sectionCode === '' shows every section (the "All sections" row); anything else hides every
 // .tpl-score-section container except the matching one. Containers stay in the DOM either way (just
 // display:none) so no on-screen answers, wiring, or scroll position are lost switching between them.
+// Also updates the scope label above the progress bars (templateScoringProgressHtml_) so it's always
+// obvious whether Completeness/Quality are showing the whole form or just one section.
 function filterTemplateScoringSection_(sectionCode) {
+  TPL_SCORING_ACTIVE_SECTION_ = sectionCode || '';
   document.querySelectorAll('.tpl-score-section').forEach(function (sec) {
     sec.style.display = (!sectionCode || sec.getAttribute('data-section') === sectionCode) ? '' : 'none';
   });
@@ -845,6 +886,11 @@ function filterTemplateScoringSection_(sectionCode) {
     nav.classList.toggle('active', isActive);
     nav.style.background = isActive ? 'var(--accent-soft)' : '';
   });
+  var scopeLabel = document.getElementById('tplScoringScopeLabel');
+  if (scopeLabel) {
+    var sec = sectionCode && TPL_SCORING_SECTIONS_.filter(function (s) { return s.sectionCode === sectionCode; })[0];
+    scopeLabel.textContent = sec ? (sec.sectionCode + ' ' + sec.sectionName) : t('scoring_all_sections');
+  }
 }
 
 // A section counts an item as "done" once it has a Completeness answer, and (unless that answer is
@@ -896,20 +942,28 @@ function templateScoringRowHtml_(item, result) {
   var qualityBtns = [0, 1, 2, 3, 4].map(function (q) {
     return '<button type="button" class="btn btn-secondary btn-sm doc-quality-btn' + (quality === String(q) ? ' active' : '') + '" data-item="' + item.id + '" data-value="' + q + '" title="' + esc(t('quality_level_' + q)) + '">' + q + '</button>';
   }).join('');
-  return '<div class="tpl-score-row" data-tsi="' + item.id + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
-      '<div style="flex:1 1 260px;">' +
+  // REQ follow-up: "Redesign card to get rid of white space." -- the old layout used
+  // justify-content:space-between with a flex-grow text column, which stretched that column across
+  // almost the entire card width and shoved Completeness/Quality out to the far right edge, leaving
+  // a huge dead gap between the (usually short) description text and the controls. Now everything
+  // sits in one left-aligned row with a capped text column width and controls immediately next to
+  // it -- no more artificial full-width stretch.
+  return '<div class="tpl-score-row" data-tsi="' + item.id + '" style="border-bottom:1px solid #f0f1f6;padding:8px 0;">' +
+    '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">' +
+      '<div style="flex:0 1 420px;min-width:200px;">' +
         '<div style="font-weight:600;font-size:13px;">' + esc(item.description) + '</div>' +
         '<div class="muted" style="font-size:10.5px;margin-top:2px;">' + esc(item.itemCode) + ' · ' + esc(t('field_multiplier')) + ': ' + esc(item.multiplier) + '</div>' +
       '</div>' +
-      '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">' +
-        '<div class="muted" style="font-size:10px;">' + esc(t('col_completeness')) + '</div>' +
-        '<div class="doc-completeness-group" data-item="' + item.id + '" data-value="' + esc(completeness) + '" style="display:flex;gap:4px;">' + completenessBtns + '</div>' +
-        '<div class="muted" style="font-size:10px;margin-top:2px;">' + esc(t('col_quality')) + '</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;">' +
+        '<span class="muted" style="font-size:10px;">' + esc(t('col_completeness')) + '</span>' +
+        '<div class="doc-completeness-group" data-item="' + item.id + '" data-value="' + esc(completeness) + '" style="display:flex;gap:3px;">' + completenessBtns + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;">' +
+        '<span class="muted" style="font-size:10px;">' + esc(t('col_quality')) + '</span>' +
         '<div class="doc-quality-group" data-item="' + item.id + '" data-value="' + esc(quality) + '" style="display:flex;gap:3px;">' + qualityBtns + '</div>' +
       '</div>' +
     '</div>' +
-    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
+    '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
       '<div style="flex:1 1 240px;">' + UI.field(t('field_remarks'), '<textarea class="field-input doc-remarks" data-item="' + item.id + '" rows="2">' + esc(result ? result.remarks : '') + '</textarea>') + '</div>' +
       '<div style="flex:1 1 240px;">' + UI.field(t('field_detail'), '<textarea class="field-input doc-detail" data-item="' + item.id + '" rows="2">' + esc(result ? result.detail : '') + '</textarea>') + '</div>' +
     '</div>' +
@@ -956,8 +1010,15 @@ function wireTemplateScoringRows_(items) {
 // (position:sticky;top:0) so they stay on screen while scrolling a long section. IDs only, no
 // innerHTML rebuild on every click -- keeps this cheap enough to call on every single button press
 // (see wireTemplateScoringRows_) without any visible flicker.
+// REQ follow-up: "When a section is selected Completeness and Quality should only reflect that
+// section" -- tplScoringScopeLabel makes it obvious at a glance whether the bars below are showing
+// the whole form or just the filtered section (filterTemplateScoringSection_ keeps it in sync).
+// REQ follow-up: "Move the save button with the completeness and quality button and autosave every
+// minute" -- saveTplScoringBtn now sits in this same sticky card instead of the bottom of the item
+// list, with tplScoringAutosaveStatus right under it for the silent interval save's "Autosaved HH:MM"
+// feedback (autosaveTemplateScoring_ above fills it in; blank until the first tick completes).
 function templateScoringProgressHtml_() {
-  return '<div style="display:flex;gap:28px;flex-wrap:wrap;">' +
+  return '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;">' +
     '<div style="flex:1 1 220px;min-width:180px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px;">' +
         '<span>' + esc(t('col_completeness')) + '</span><span id="tplCompletenessPctText" style="color:var(--accent);">—</span>' +
@@ -974,15 +1035,26 @@ function templateScoringProgressHtml_() {
         '<div id="tplQualityBar" style="height:100%;width:0%;background:var(--success);transition:width .2s;"></div>' +
       '</div>' +
     '</div>' +
-  '</div>';
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
+      '<button class="btn btn-primary" id="saveTplScoringBtn">' + esc(t('save')) + '</button>' +
+      '<span class="muted" id="tplScoringAutosaveStatus" style="font-size:10px;">&nbsp;</span>' +
+    '</div>' +
+  '</div>' +
+  '<div class="muted" style="font-size:11px;margin-top:10px;">' + esc(t('scoring_scope_label')) + ': <span id="tplScoringScopeLabel" style="font-weight:600;"></span></div>';
 }
 
 function updateTemplateScoringProgress_(items) {
   var completenessBar = document.getElementById('tplCompletenessBar');
   var qualityBar = document.getElementById('tplQualityBar');
   if (!completenessBar || !qualityBar) return;
+  // REQ follow-up: "When a section is selected Completeness and Quality should only reflect that
+  // section" -- scope to TPL_SCORING_ACTIVE_SECTION_ (set by filterTemplateScoringSection_) when one
+  // is selected; '' (All sections) falls back to the full item list, same as before this change.
+  var scopedItems = TPL_SCORING_ACTIVE_SECTION_
+    ? items.filter(function (it) { return it.sectionCode === TPL_SCORING_ACTIVE_SECTION_; })
+    : items;
   var yes = 0, no = 0, qualityScore = 0, qualityMax = 0;
-  items.forEach(function (it) {
+  scopedItems.forEach(function (it) {
     var cGroup = document.querySelector('.doc-completeness-group[data-item="' + it.id + '"]');
     var cVal = cGroup ? cGroup.getAttribute('data-value') : '';
     if (cVal === 'Yes') yes++; else if (cVal === 'No') no++;
