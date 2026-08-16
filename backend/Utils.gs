@@ -177,7 +177,7 @@ var SCHEMA = {
   // reviews a submitted document against, one row per item (not per section -- section grouping is
   // denormalized onto every item row, sectionCode/sectionName, same flat convention ChecklistItems
   // already uses for category/phase rather than a separate lookup table). Sourced from the GA26/JDCB
-  // "Document Review Tool" workbook's own ZSMP/ZERP sheets (seedTemplateScoringItems_, Setup.gs) --
+  // "Document Review Tool" workbook's own ZSMP/ZERP sheets (seedTemplateScoringItems, Setup.gs) --
   // itemCode/sectionCode mirror that workbook's own numbering (e.g. '4.00' / '4.00.01') purely for
   // traceability back to the source tool, not because the app parses/relies on the numbering scheme
   // itself. multiplier is the item's scoring weight (workbook's own "Multiplier" column) -- an

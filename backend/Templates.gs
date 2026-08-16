@@ -278,7 +278,7 @@ function reviewEventTemplate(user, p) {
  * Two-axis, item-level scoring an Inspection Analyst works through while a document sits at
  * Submitted/Under Review, ported from the GA26/JDCB "Document Review Tool" workbook: a Yes/No/N/A
  * Completeness checklist plus a 0-4 Quality review score per item, each item weighted by its own
- * Multiplier (TemplateScoringItems, seeded once via seedTemplateScoringItems_ in Setup.gs). This
+ * Multiplier (TemplateScoringItems, seeded once via seedTemplateScoringItems in Setup.gs). This
  * sits ALONGSIDE the existing plain Evaluated/Missed decision above, not in place of it -- scoring
  * is optional working detail the analyst can save progressively; reviewEventTemplate is still the
  * one action that actually finalizes the document's status. Only wired up for docTypes that have a

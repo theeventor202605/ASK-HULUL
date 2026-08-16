@@ -172,13 +172,36 @@ function migrateTemplateLibrary() {
 
 // One-time seed: the item-level scoring catalog behind the Document Review feature (REQ follow-up:
 // "Can I convert the templates to forms and include evaluation process as per attached file?"),
+// REQ bug report: "Screenshot shows document under review, but no score button" -- sendTemplates
+// (Templates.gs) snapshots the library entry's docType onto the Templates row ONLY at send time, by
+// design (so retagging a library entry later doesn't retroactively change an already-sent document's
+// scoring form -- see the comment there). But that means any Templates row that was sent BEFORE its
+// library entry got tagged with a Form Type is stuck with a blank docType forever, even after you go
+// back and tag the library entry today. This one-time pass fixes exactly that: for every Templates
+// row with no docType, look up its current library entry and copy today's docType across. Only
+// touches rows that are still blank, so it won't clobber the deliberate snapshot-at-send behavior for
+// anything sent after this fix (or after you've retagged and want a stale row updated once more, blank
+// it in the sheet first). Run once from the Apps Script editor's function dropdown.
+function backfillTemplateDocTypes() {
+  var libById = {};
+  getAll('TemplateLibrary').forEach(function (l) { libById[l.id] = l; });
+  var updated = 0;
+  getAll('Templates').forEach(function (t) {
+    if (t.docType) return; // already has one -- respect the existing snapshot
+    var lib = t.libraryTemplateId && libById[t.libraryTemplateId];
+    if (lib && lib.docType) { updateRow('Templates', t.id, { docType: lib.docType }); updated++; }
+  });
+  Logger.log('backfillTemplateDocTypes: updated ' + updated + ' row(s).');
+  return { updated: updated };
+}
+
 // extracted verbatim (itemCode/sectionCode/sectionName/description/multiplier) from the GA26/JDCB
 // "Document Review Tool" workbook's own ZSMP and ZERP sheets -- v1 scope (see the sibling TTP/CMP/
 // SEC sheets in that same workbook for a future phase). Run once from the Apps Script editor's
 // function dropdown after deploying this feature. Idempotent per docType: if TemplateScoringItems
 // already has any 'ZSMP' (or 'ZERP') rows, that docType is left alone and only re-seeds if you first
 // delete its existing rows -- safe to re-run without duplicating on a second accidental click.
-function seedTemplateScoringItems_() {
+function seedTemplateScoringItems() {
   var existing = getAll('TemplateScoringItems');
   var existingDocTypes = {};
   existing.forEach(function (i) { existingDocTypes[i.docType] = true; });
@@ -186,7 +209,7 @@ function seedTemplateScoringItems_() {
   var seeded = 0;
   [['ZSMP', ZSMP_SEED_ITEMS_], ['ZERP', ZERP_SEED_ITEMS_]].forEach(function (pair) {
     var docType = pair[0], items = pair[1];
-    if (existingDocTypes[docType]) { Logger.log('seedTemplateScoringItems_: ' + docType + ' already has rows, skipping.'); return; }
+    if (existingDocTypes[docType]) { Logger.log('seedTemplateScoringItems: ' + docType + ' already has rows, skipping.'); return; }
     items.forEach(function (it, idx) {
       insertRow('TemplateScoringItems', {
         id: newId('TemplateScoringItems'), docType: docType, sectionCode: it.sectionCode, sectionName: it.sectionName,
@@ -195,11 +218,11 @@ function seedTemplateScoringItems_() {
       seeded++;
     });
   });
-  Logger.log('seedTemplateScoringItems_: seeded ' + seeded + ' item(s).');
+  Logger.log('seedTemplateScoringItems: seeded ' + seeded + ' item(s).');
   return { seeded: seeded };
 }
 
-// Source data for seedTemplateScoringItems_ above -- one entry per real scoring item (the workbook's
+// Source data for seedTemplateScoringItems above -- one entry per real scoring item (the workbook's
 // own '<section>.00' rows are section HEADERS, not items, and are folded into sectionName/sectionCode
 // on every real item instead of getting their own row here, matching ChecklistItems' flat category/
 // phase convention rather than a separate Sections table).

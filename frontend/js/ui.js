@@ -296,14 +296,21 @@ window.UI = {
   // about how those buttons are built or wired changes -- views still attach their own onclick
   // handlers via querySelectorAll('[data-x]') right after inserting the table HTML, exactly like
   // before; this just hides them inside a popover that opens on click instead of always showing
-  // them inline in the cell. buttonsHtml may be '' (e.g. a row with no actions available under the
-  // current permissions) -- the toggle still renders so the column stays visually consistent, it
-  // just opens an empty popover.
+  // them inline in the cell -- but only once there are 2+ buttons to disambiguate (see the REQ note
+  // just below): 0 or 1 buttons pass straight through with no toggle at all.
   // See the delegated open/close/position wiring (hululActionsMenu*) further down this file, and
   // .actions-menu/.actions-menu-popover in styles.css for why the popover is position:fixed rather
   // than a normal absolute-positioned dropdown (it has to escape .table-wrap's overflow:auto, which
   // would otherwise clip it).
+  // REQ follow-up: "All lists with one do icon need no menu icon and should show instead of the
+  // three dots" -- a row with exactly one action has nothing to disambiguate, so the three-dot
+  // toggle is a pointless extra click; that single button is returned as-is instead of being
+  // wrapped in the popover. Two-or-more-button rows keep the toggle exactly as before. Detected by
+  // counting '<button' tags rather than adding a second param everywhere, since every call site
+  // already just concatenates '<button ...>...</button>' HTML strings together.
   actionsCell(buttonsHtml) {
+    var buttonCount = (buttonsHtml.match(/<button/g) || []).length;
+    if (buttonCount <= 1) return buttonsHtml;
     return '<div class="actions-menu">' +
       '<button type="button" class="btn btn-secondary btn-sm btn-icon actions-menu-toggle" title="' + esc(t('actions')) + '">' + ICON('actions_menu') + '</button>' +
       '<div class="actions-menu-popover">' + buttonsHtml + '</div>' +
