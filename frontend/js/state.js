@@ -5,7 +5,7 @@ window.HululState = {
   user: null,
   token: null,
   lang: localStorage.getItem('hulul_lang') || 'en',
-  theme: localStorage.getItem('hulul_theme') || 'indigo',
+  theme: localStorage.getItem('hulul_theme') || 'light',
   currentEventId: null,
   notifications: [],
   notifBadgeLoadedAt: 0,

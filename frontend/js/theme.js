@@ -13,7 +13,7 @@ window.HULUL_THEMES = [
 ];
 
 function setTheme(themeId) {
-  if (!window.HULUL_THEMES.some(function (th) { return th.id === themeId; })) themeId = 'indigo';
+  if (!window.HULUL_THEMES.some(function (th) { return th.id === themeId; })) themeId = 'light';
   HululState.theme = themeId;
   localStorage.setItem('hulul_theme', themeId);
   document.documentElement.setAttribute('data-theme', themeId);
