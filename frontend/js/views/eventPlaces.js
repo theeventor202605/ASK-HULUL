@@ -13,8 +13,8 @@
  * once the Event's endDateTime passes.
  *
  * Reuses venues.js's showPlaceAccountModal_/printPlaceAccountCredentials_/sharePlaceAccountCredentials_
- * (already generic -- take a place/account pair, no venue-specific state) and PLACE_TYPES/
- * PLACE_MAX_DISTANCE_KM/haversineKm_ as-is; the map (below) is its own instance with its own DOM id
+ * (already generic -- take a place/account pair, no venue-specific state) and PLACE_TYPES_()/
+ * placeTypeOptionsHtml_/PLACE_MAX_DISTANCE_KM/haversineKm_ as-is; the map (below) is its own instance with its own DOM id
  * and state vars so it doesn't collide with the Venues > Places page's map.
  *
  * The PM "assign disciplines to a participant" feature (bulkAssignParticipantDisciplines) isn't a
@@ -402,7 +402,7 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
         // then Latitude+Longitude side by side, then Location last.
         UI.field(t('col_name'), '<input id="fEPName" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field(t('col_type'), '<select id="fEPType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
+          UI.field(t('col_type'), '<select id="fEPType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fEP') + '</div>' +
         '</div>' +
         '<div class="form-row">' +

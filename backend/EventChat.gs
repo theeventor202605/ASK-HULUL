@@ -15,14 +15,13 @@
  * ChecklistItems, Organizations, Config) are simply not event-scoped and never show up here.
  */
 
-// Plain string literals, not ROLES.X -- backend .gs files concatenate alphabetically at load, and
-// EventChat.gs loads BEFORE Utils.gs (E < U), so a top-level reference to ROLES here would
-// dereference it before it exists, throwing at script load and breaking every single API call
-// platform-wide (this exact failure mode already happened once before, see SUPPORT_MANAGE_ROLES in
-// Support.gs). ROLES.VENDOR/OPERATOR/EXHIBITOR are 'Vendor'/'Operator'/'Exhibitor'.
-var CHAT_BLOCKED_ROLES_ = ['Vendor', 'Operator', 'Exhibitor'];
+// REQ ("configurable Place/Participant types, allow adding others"): was a hardcoded 3-item array --
+// now delegates to isParticipantRoleCode_ (Roles.gs, called at runtime inside the function body, never
+// at top-level load, so the alphabetical-file-load-order constraint noted below doesn't apply to it),
+// which also covers any custom role an admin flagged isParticipantType, so a newly added type is
+// blocked from chat automatically, same as Vendor/Operator/Exhibitor always were.
 function assertChatAccess_(user) {
-  if (CHAT_BLOCKED_ROLES_.indexOf(user.role) !== -1) {
+  if (isParticipantRoleCode_(user.role)) {
     throw new HululError('FORBIDDEN', 'Participant accounts do not have access to the event chat');
   }
 }
@@ -131,7 +130,7 @@ function uploadChatScreenshot(user, p) {
 function listChatTaggableUsers(user, p) {
   assertChatAccess_(user);
   return getAll('Users').filter(function (u) {
-    return u.status === 'Active' && CHAT_BLOCKED_ROLES_.indexOf(u.role) === -1;
+    return u.status === 'Active' && !isParticipantRoleCode_(u.role);
   }).map(function (u) { return { id: u.id, name: u.name, email: u.email, role: u.role }; });
 }
 

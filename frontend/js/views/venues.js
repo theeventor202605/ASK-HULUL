@@ -738,7 +738,11 @@ async function venueTabZones_(content, venue) {
   places.forEach(function (pl) {
     if (!pl.zoneId) return;
     if (!placeCountsByZone[pl.zoneId]) placeCountsByZone[pl.zoneId] = { Operator: 0, Vendor: 0, Exhibitor: 0, Other: 0 };
-    if (placeCountsByZone[pl.zoneId][pl.type] !== undefined) placeCountsByZone[pl.zoneId][pl.type]++;
+    // This table only ever has 4 dedicated type columns -- a custom type (Settings > Roles > "Use as
+    // Place/Participant type") folds into the Other bucket here rather than getting silently dropped
+    // from the count, same as it already had no dedicated column before this feature existed.
+    var bucket = placeCountsByZone[pl.zoneId][pl.type] !== undefined ? pl.type : 'Other';
+    placeCountsByZone[pl.zoneId][bucket]++;
   });
   // A Participant with no zoneId is documented/treated as covering every zone for inspection
   // purposes (Participants can never literally hold zoneId 'ALL' -- backend validates zoneId against
@@ -1088,7 +1092,29 @@ async function openDeleteZoneModal_(zoneId, allZones) {
  * enforced here for immediate feedback, and again (authoritatively) server-side in createPlace. A
  * Venue with no boundary drawn yet is unrestricted.
  */
-var PLACE_TYPES = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
+// REQ ("Can this be configurable, and allow to add other types"): was a fixed 4-item array; now reads
+// HululState.participantTypes (loadParticipantTypes, app.js) -- the 4 built-ins plus any active custom
+// role flagged isParticipantType (Settings > Roles). Kept as a function (not a plain array) since the
+// list can grow at runtime the moment an admin adds a new type, unlike the old hardcoded constant.
+function PLACE_TYPES_() { return (window.HululState && HululState.participantTypes) || []; }
+
+// Builds a Place/Participant type <select>'s <option> list -- shared by every type dropdown in the
+// app (this file's own Add-a-place form, edit modal, and OSM-detect picker, plus eventPlaces.js's
+// Add-a-participant form) so a newly added custom type shows up everywhere at once.
+function placeTypeOptionsHtml_(selected) {
+  return PLACE_TYPES_().map(function (ty) {
+    return '<option value="' + esc(ty.code) + '"' + (ty.code === selected ? ' selected' : '') + '>' + esc(ty.label) + '</option>';
+  }).join('');
+}
+
+// True for any Place/Participant-account role (the 3 built-ins plus any custom type an admin added --
+// see PLACE_TYPES_ above). Mirrors isParticipantRoleCode_ (backend/Roles.gs) exactly, so client-side
+// gates (the Chat tab's own visibility, findings.js; the Meetings To/Cc picker, meetings.js) stay in
+// sync with what the server actually enforces, custom types included -- was a fixed 3-item array
+// (FINDING_ROLE_PARTICIPANT_/PARTICIPANT_ROLES) in each of those files before this feature existed.
+function isParticipantRole_(role) {
+  return PLACE_TYPES_().some(function (ty) { return ty.code === role; });
+}
 var PLACE_MAX_DISTANCE_KM = 1;
 var placeMapInstance_ = null;
 var placeMapMarker_ = null;
@@ -1434,7 +1460,7 @@ function renderAddPlaceCard_(zones, hasBoundary) {
         // then Latitude+Longitude side by side, then Location last.
         UI.field(t('col_name'), '<input id="fPlName" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field(t('col_type'), '<select id="fPlType" class="field-input">' + PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '">' + ty + '</option>'; }).join('') + '</select>') +
+          UI.field(t('col_type'), '<select id="fPlType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fPl') + '</div>' +
         '</div>' +
         '<div class="form-row">' +
@@ -1489,9 +1515,7 @@ function openEditPlaceModal_(place, zones) {
   var body =
     UI.field(t('col_name'), '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
     '<div class="form-row">' +
-      UI.field(t('col_type'), '<select id="' + prefix + 'Type" class="field-input">' + PLACE_TYPES.map(function (ty) {
-        return '<option value="' + ty + '"' + (ty === place.type ? ' selected' : '') + '>' + ty + '</option>';
-      }).join('') + '</select>') +
+      UI.field(t('col_type'), '<select id="' + prefix + 'Type" class="field-input">' + placeTypeOptionsHtml_(place.type) + '</select>') +
       '<div>' + zoneFieldHtml_(zones, prefix) + '</div>' +
     '</div>' +
     '<div class="form-row">' +
@@ -1877,7 +1901,7 @@ function osmCandidateRowHtml_(c, i, zones) {
     '<td style="padding:6px 8px;font-size:12.5px;">' + esc(c.name) + (c.alreadyExists ? ' <span class="muted">(already added)</span>' : '') + '</td>' +
     '<td style="padding:6px 8px;">' +
       '<select class="field-input osm-candidate-type" data-idx="' + i + '" style="font-size:12px;padding:4px 6px;" ' + (c.alreadyExists ? 'disabled' : '') + '>' +
-        PLACE_TYPES.map(function (ty) { return '<option value="' + ty + '"' + (ty === c._type ? ' selected' : '') + '>' + ty + '</option>'; }).join('') +
+        placeTypeOptionsHtml_(c._type) +
       '</select>' +
     '</td>' +
     '<td style="padding:6px 8px;font-size:12px;" class="muted">' + esc(zoneMatch ? zoneMatch.name : '—') + '</td>' +

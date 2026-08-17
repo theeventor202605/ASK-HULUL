@@ -22,11 +22,18 @@
  * Listing is open to any authenticated user, matching listVenues/listZones.
  *
  * Every Place auto-provisions a login-capable Users account (role = the Place's type: Vendor/
- * Operator/Exhibitor) plus a matching Participant (see Participants.gs). A Place can have more than
+ * Operator/Exhibitor, or a custom role flagged isParticipantType -- see mapParticipantRole_,
+ * Participants.gs) plus a matching Participant (see Participants.gs). A Place can have more than
  * one account -- see addPlaceAccount -- for e.g. separate morning/afternoon shift staff who each
  * need their own login to respond to risk logging.
  */
-var PLACE_TYPES = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
+// REQ ("configurable Place/Participant types, allow adding others") -- was a fixed 4-item array;
+// now validated dynamically against participantTypes_() (Roles.gs: the 4 built-ins + any active
+// custom role flagged isParticipantType), so a SystemAdmin can add new types from Settings > Roles
+// without a code deploy. validPlaceType_ is the one helper both createPlace/updatePlace call.
+function validPlaceType_(type) {
+  return participantTypes_().some(function (t) { return t.code === type; });
+}
 var PLACE_MAX_DISTANCE_KM = 1;
 var PLACE_ACCOUNT_DEFAULT_PASSWORD = '123';
 // Who can manage an Event Place (create/add account/view credentials/delete) -- same set as
@@ -131,7 +138,7 @@ function createPlace(user, p) {
   if (p.eventId && !event) throw new HululError('NOT_FOUND', 'Event not found');
   var venueId = event ? event.venueId : p.venueId;
   if (!venueId || !p.name) throw new HululError('BAD_REQUEST', (event ? 'This event has no venue assigned yet' : 'venueId') + ' and name are required');
-  if (PLACE_TYPES.indexOf(p.type) === -1) throw new HululError('BAD_REQUEST', 'Invalid place type');
+  if (!validPlaceType_(p.type)) throw new HululError('BAD_REQUEST', 'Invalid place type');
   var venue = getById('Venues', venueId);
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   assertCanCreatePlace_(user, venue, event);
@@ -262,7 +269,7 @@ function updatePlace(user, p) {
   var name = p.name !== undefined ? String(p.name).trim() : place.name;
   if (!name) throw new HululError('BAD_REQUEST', 'name is required');
   var type = p.type !== undefined ? p.type : place.type;
-  if (PLACE_TYPES.indexOf(type) === -1) throw new HululError('BAD_REQUEST', 'Invalid place type');
+  if (!validPlaceType_(type)) throw new HululError('BAD_REQUEST', 'Invalid place type');
 
   var zoneId = p.zoneId !== undefined ? p.zoneId : place.zoneId;
   if (zoneId && zoneId !== 'ALL') {

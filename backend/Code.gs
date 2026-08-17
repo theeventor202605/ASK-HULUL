@@ -103,6 +103,7 @@ var ROUTES = {
   createRole: function (u, p) { return createRole(u, p); },
   updateRole: function (u, p) { return updateRole(u, p); },
   deleteRole: function (u, p) { return deleteRole(u, p); },
+  listParticipantTypes: function (u, p) { return listParticipantTypes(u); },
 
   // Projects (grouping of several Events)
   listProjects: function (u, p) { return listProjects(u, p); },

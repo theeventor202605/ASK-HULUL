@@ -701,7 +701,9 @@ function roleRowHtml_(role, allRoles) {
   return '<div class="perm-row">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
       '<div>' +
-        '<div style="font-weight:700;font-size:13.5px;">' + esc(role.label) + '</div>' +
+        '<div style="font-weight:700;font-size:13.5px;">' + esc(role.label) +
+          (role.isParticipantType ? ' <span class="badge badge-neutral" style="font-size:10px;">' + esc(t('participant_type_badge')) + '</span>' : '') +
+        '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(role.code) + ' · ' + esc(roleOrgTypeLabel_(role.orgType)) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('creatable_by_label')) + ': ' +
           (creatableLabels.length ? esc(creatableLabels.join(', ')) : esc(t('nobody_yet'))) + '</div>' +
@@ -750,6 +752,15 @@ function openNewRoleModal_(allRoles) {
       allRoles.map(function (r) { return '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>'; }).join('') +
     '</select>') +
     '<div class="muted" style="font-size:11px;margin:4px 0 12px;">' + esc(t('based_on_role_hint')) + '</div>' +
+    // REQ: "Can this [Place/Participant type] be configurable, and allow to add other types." A
+    // custom role IS a Place/Participant type option the moment this is checked -- see
+    // isParticipantRoleCode_/participantTypes_ (Roles.gs), which fold it into the type dropdown
+    // (Venues > Places, Event > Participants) plus every place that already special-cases
+    // Vendor/Operator/Exhibitor (event chat blocking, escalation/meeting exclusion).
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:2px 0 14px;">' +
+      '<input type="checkbox" id="fRoleIsParticipantType" /> ' + esc(t('field_is_participant_type')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_participant_type_hint')) + '</div>' +
     '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
     roleCreatableByChipsHtml_('new-role-creatable', allRoles, []);
 
@@ -762,7 +773,8 @@ function openNewRoleModal_(allRoles) {
           await Api.call('createRole', {
             label: label, orgType: document.getElementById('fRoleOrgType').value,
             basedOnRole: document.getElementById('fRoleBasedOn').value,
-            creatableBy: readCheckedRoles_('new-role-creatable')
+            creatableBy: readCheckedRoles_('new-role-creatable'),
+            isParticipantType: document.getElementById('fRoleIsParticipantType').checked
           });
           UI.closeModal();
           UI.toast(t('toast_role_created'), 'success');
@@ -778,6 +790,10 @@ function openEditRoleModal_(role, allRoles) {
     '<div class="muted" style="font-size:11px;margin-bottom:10px;">' + esc(role.code) + '</div>' +
     UI.field(t('field_role_name'), '<input id="fERoleLabel" class="field-input" maxlength="60" value="' + esc(role.label) + '" />') +
     UI.field(t('field_org_type'), roleOrgTypeSelectHtml_('fERoleOrgType', role.orgType || '')) +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:2px 0 14px;">' +
+      '<input type="checkbox" id="fERoleIsParticipantType"' + (role.isParticipantType ? ' checked' : '') + ' /> ' + esc(t('field_is_participant_type')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_participant_type_hint')) + '</div>' +
     '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
     roleCreatableByChipsHtml_('edit-role-creatable', allRoles, role.creatableBy);
 
@@ -789,7 +805,8 @@ function openEditRoleModal_(role, allRoles) {
         try {
           await Api.call('updateRole', {
             code: role.code, label: label, orgType: document.getElementById('fERoleOrgType').value,
-            creatableBy: readCheckedRoles_('edit-role-creatable')
+            creatableBy: readCheckedRoles_('edit-role-creatable'),
+            isParticipantType: document.getElementById('fERoleIsParticipantType').checked
           });
           UI.closeModal();
           UI.toast(t('toast_role_updated'), 'success');

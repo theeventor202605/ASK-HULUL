@@ -22,7 +22,10 @@ function getCustomRoles_() {
   return findWhere('Roles', function (r) { return r.status === 'Active'; }).map(function (r) {
     var creatableBy = [];
     try { creatableBy = r.creatableBy ? JSON.parse(r.creatableBy) : []; } catch (e) { /* ignore malformed row */ }
-    return { code: r.code, label: r.label, orgType: r.orgType || '', creatableBy: creatableBy, basedOnRole: r.basedOnRole || '' };
+    return {
+      code: r.code, label: r.label, orgType: r.orgType || '', creatableBy: creatableBy, basedOnRole: r.basedOnRole || '',
+      isParticipantType: r.isParticipantType === true || r.isParticipantType === 'true'
+    };
   });
 }
 
@@ -70,10 +73,15 @@ function generateRoleCode_(label) {
 
 function validOrgType_(v) { return ['', 'GA', 'EMC', 'INSPECTION'].indexOf(v) !== -1; }
 
-// SystemAdmin-only: define a new role. p: { label, orgType, creatableBy: [roleCode...], basedOnRole }.
-// basedOnRole (optional) clones that role's CURRENT effective permissions (defaults + any admin
-// overrides already in place) as this role's starting grants in the CRUD matrix -- additive only
-// (the new code is appended alongside whoever already had that permission, never replacing them).
+// SystemAdmin-only: define a new role. p: { label, orgType, creatableBy: [roleCode...], basedOnRole,
+// isParticipantType }. basedOnRole (optional) clones that role's CURRENT effective permissions
+// (defaults + any admin overrides already in place) as this role's starting grants in the CRUD matrix
+// -- additive only (the new code is appended alongside whoever already had that permission, never
+// replacing them). isParticipantType (optional, default false) -- REQ ("configurable Place/
+// Participant types, allow adding others") -- makes this role selectable as a Place/Participant type
+// (Venues > Places, Event > Participants) alongside the 3 built-in types, and folds it into every
+// place that today only special-cases Vendor/Operator/Exhibitor (event chat blocking, escalation/
+// meeting recipient exclusion -- see isParticipantRoleCode_ below).
 function createRole(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
   var label = String((p && p.label) || '').trim();
@@ -84,12 +92,13 @@ function createRole(user, p) {
   var creatableBy = ((p && p.creatableBy) || []).filter(function (r) { return validCodes.indexOf(r) !== -1; });
   var basedOnRole = (p && p.basedOnRole) || '';
   if (basedOnRole && validCodes.indexOf(basedOnRole) === -1) basedOnRole = '';
+  var isParticipantType = !!(p && p.isParticipantType);
 
   var code = generateRoleCode_(label);
   var row = insertRow('Roles', {
     id: newId('Roles'), code: code, label: label, orgType: orgType,
     creatableBy: JSON.stringify(creatableBy), basedOnRole: basedOnRole,
-    status: 'Active', createdBy: user.id, createdAt: nowIso_()
+    status: 'Active', createdBy: user.id, createdAt: nowIso_(), isParticipantType: isParticipantType
   });
 
   var clonedCount = 0;
@@ -104,8 +113,8 @@ function createRole(user, p) {
     if (clonedCount) savePermissionOverrides_(user, overrides);
   }
 
-  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount });
-  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole };
+  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount, isParticipantType: isParticipantType });
+  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole, isParticipantType: isParticipantType };
 }
 
 // SystemAdmin-only: edit an existing CUSTOM role's label/orgType/creatableBy. Built-in roles (not in
@@ -129,9 +138,48 @@ function updateRole(user, p) {
     var validCodes = allRoleCodes_();
     patch.creatableBy = JSON.stringify((p.creatableBy || []).filter(function (r) { return validCodes.indexOf(r) !== -1; }));
   }
+  if (p.isParticipantType !== undefined) patch.isParticipantType = !!p.isParticipantType;
   var updated = updateRow('Roles', row.id, patch);
   audit(user.id, 'UPDATE_ROLE', 'Roles', row.id, patch);
-  return { code: updated.code, label: updated.label, orgType: updated.orgType || '', creatableBy: JSON.parse(updated.creatableBy || '[]') };
+  return {
+    code: updated.code, label: updated.label, orgType: updated.orgType || '', creatableBy: JSON.parse(updated.creatableBy || '[]'),
+    isParticipantType: updated.isParticipantType === true || updated.isParticipantType === 'true'
+  };
+}
+
+// True for a Place/Participant "type" role -- the 3 built-in ones (Vendor/Operator/Exhibitor) plus any
+// active custom role an admin flagged isParticipantType when creating/editing it (Settings > Roles).
+// Used everywhere the app treats "any participant-account role" as a group instead of a hardcoded
+// 3-item list -- event chat blocking (EventChat.gs), escalation/meeting recipient exclusion
+// (Resolutions.gs, meetings.js) -- so a newly added custom type automatically gets the same treatment.
+function isParticipantRoleCode_(code) {
+  if (code === ROLES.VENDOR || code === ROLES.OPERATOR || code === ROLES.EXHIBITOR) return true;
+  var row = findWhere('Roles', function (r) { return r.code === code && r.status === 'Active'; })[0];
+  return !!(row && (row.isParticipantType === true || row.isParticipantType === 'true'));
+}
+
+// Every selectable Place/Participant type: the 4 built-ins (Vendor/Operator/Exhibitor each map to a
+// real login role via mapParticipantRole_, Participants.gs; Other has no role of its own, falls back
+// to Vendor there, same as before this feature existed) plus any active custom role flagged
+// isParticipantType. Internal (no auth check) -- Places.gs's createPlace/updatePlace validate against
+// this directly; listParticipantTypes below is the public, auth-checked endpoint wrapping it.
+function participantTypes_() {
+  var builtin = [
+    { code: 'Operator', label: roleLabel_(ROLES.OPERATOR), builtin: true },
+    { code: 'Vendor', label: roleLabel_(ROLES.VENDOR), builtin: true },
+    { code: 'Exhibitor', label: roleLabel_(ROLES.EXHIBITOR), builtin: true },
+    { code: 'Other', label: 'Other', builtin: true }
+  ];
+  var custom = getCustomRoles_().filter(function (r) { return r.isParticipantType; })
+    .map(function (r) { return { code: r.code, label: r.label, builtin: false }; });
+  return builtin.concat(custom);
+}
+
+// Open to any authenticated user -- same reasoning as listCustomRoles (type names aren't sensitive,
+// and every Place/Participant create/edit form needs this list to build its type dropdown).
+function listParticipantTypes(user) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  return participantTypes_();
 }
 
 // SystemAdmin-only: retire a custom role. Soft-delete (status -> 'Inactive') rather than removing the

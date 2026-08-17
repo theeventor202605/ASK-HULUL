@@ -29,11 +29,17 @@ function listParticipants(user, p) {
 // path) was removed here -- Places.gs's createPlace/updatePlace fully superseded it (auto-provisions
 // the linked Users account in the same step) and had zero remaining frontend callers. mapParticipantRole_
 // is kept because Places.gs's provisionPlaceAccount_ still uses it to pick the right role per place type.
+// REQ ("configurable Place/Participant types, allow adding others"): a custom type IS a role code by
+// construction -- it only ever reaches here after validPlaceType_ (Places.gs) confirmed it's either a
+// built-in or an active custom role flagged isParticipantType (participantTypes_, Roles.gs) -- so any
+// type other than the 3 hardcoded ones is trusted and returned as-is, same as a built-in code would be.
+// 'Other' keeps its original fallback (no role of its own, provisions a Vendor-role account).
 function mapParticipantRole_(type) {
   if (type === 'Vendor') return ROLES.VENDOR;
   if (type === 'Operator') return ROLES.OPERATOR;
   if (type === 'Exhibitor') return ROLES.EXHIBITOR;
-  return ROLES.VENDOR;
+  if (type === 'Other' || !type) return ROLES.VENDOR;
+  return type;
 }
 
 // REQ: "PM must select relevant disciplines for every participant; PM may select one or more

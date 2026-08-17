@@ -16,9 +16,9 @@ var EVENT_TABS = [
   // this file) and eventRoadmapMilestones_ for exactly which ones. Placed right after Overview since
   // it's a big-picture summary like Overview is, just date-oriented instead of KPI-oriented.
   ['roadmap', 'tab_roadmap'],
-  // REQ: "Add an event chat page after overview tab." FINDING_ROLE_PARTICIPANT_ (findings.js) is
-  // the existing Vendor/Operator/Exhibitor list -- reused here rather than redeclared.
-  ['chat', 'tab_chat', function () { return t('tab_chat'); }, function () { return FINDING_ROLE_PARTICIPANT_.indexOf(HululState.user.role) === -1; }],
+  // REQ: "Add an event chat page after overview tab." isParticipantRole_ (venues.js) checks
+  // HululState.participantTypes -- Vendor/Operator/Exhibitor plus any admin-added custom type.
+  ['chat', 'tab_chat', function () { return t('tab_chat'); }, function () { return !isParticipantRole_(HululState.user.role); }],
   ['templates', 'tab_templates', function () { return t('readiness_x_label', { term: Term('template_plural') }); }],
   ['approval', 'tab_approval', function () { return t('tab_approval'); }],
   // REQ follow-up: "Disciplines & Inspectors" -> "Assignments", "Inspections & Checklist Items" ->
@@ -432,11 +432,33 @@ var EVENT_MAP_DEFAULT_CENTER_ = [24.7136, 46.6753]; // Riyadh -- only used if ne
 // Cycled per zone (by list order) so multiple zone boundaries stay visually distinguishable from
 // each other -- read by ui.js's UI.drawZoneBoundaries and venues.js's zone-management map.
 var ZONE_BOUNDARY_COLORS_ = ['#0d9488', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#65a30d'];
-// Place-type -> map pin color, and the type list itself. Matches Places' own `type` field
-// (PLACE_TYPES in venues.js/Places.gs). Read cross-file by ui.js (UI.drawPlaceDots) and
-// eventPlaces.js (the Participants map).
-var EVENT_PLACE_TYPE_OPTIONS_ = ['Operator', 'Vendor', 'Exhibitor', 'Other'];
+// Place-type -> map pin color. Matches Places' own `type` field (PLACE_TYPES_(), venues.js/Places.gs).
+// Read cross-file by ui.js (UI.drawPlaceDots) and eventPlaces.js (the Participants map). The 4
+// built-ins keep their original hand-picked colors, permanently; refreshParticipantTypeColors_ below
+// (called from loadParticipantTypes, app.js, once HululState.participantTypes has loaded) mutates this
+// SAME object in place to also cover any custom type an admin adds (Settings > Roles > "Use as Place/
+// Participant type") -- every existing `EVENT_PLACE_TYPE_COLORS_[type] || .Other` call site keeps
+// working unchanged, custom types included, with no per-call-site change needed.
 var EVENT_PLACE_TYPE_COLORS_ = { Operator: '#4f46e5', Vendor: '#16a34a', Exhibitor: '#d97706', Other: '#2563eb' };
+// Fallback color palette for a custom Place/Participant type (cycled by its order among OTHER custom
+// types, so it's stable across renders as long as the type list itself doesn't reorder).
+var PARTICIPANT_TYPE_COLOR_PALETTE_ = ['#0891b2', '#7c3aed', '#65a30d', '#db2777', '#ca8a04', '#0d9488'];
+function refreshParticipantTypeColors_() {
+  var types = (window.HululState && HululState.participantTypes) || [];
+  var customIdx = 0;
+  types.forEach(function (ty) {
+    if (EVENT_PLACE_TYPE_COLORS_[ty.code]) return; // built-in, already has its fixed color
+    EVENT_PLACE_TYPE_COLORS_[ty.code] = PARTICIPANT_TYPE_COLOR_PALETTE_[customIdx % PARTICIPANT_TYPE_COLOR_PALETTE_.length];
+    customIdx++;
+  });
+}
+// listParticipantTypes (Roles.gs) fetch-failure fallback (loadParticipantTypes, app.js) -- just the 4
+// built-ins, same shape the endpoint itself returns, so Places/Participants forms never end up with an
+// empty type dropdown.
+var PARTICIPANT_TYPES_FALLBACK_ = [
+  { code: 'Operator', label: 'Operator', builtin: true }, { code: 'Vendor', label: 'Vendor', builtin: true },
+  { code: 'Exhibitor', label: 'Exhibitor', builtin: true }, { code: 'Other', label: 'Other', builtin: true }
+];
 
 /* ---------------- Templates ---------------- */
 var TEMPLATE_BOARD_COLUMNS = ['Not Sent', 'Sent', 'In Progress', 'Submitted', 'Under Review', 'Evaluated', 'Missed'];

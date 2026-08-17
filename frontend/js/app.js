@@ -81,6 +81,7 @@ async function showApp() {
   document.getElementById('appShell').classList.remove('hidden');
   await loadOrgLabels();
   await loadAppIcons();
+  await loadParticipantTypes();
   await loadPermissions();
   renderSidebar();
   renderUserChip();
@@ -97,6 +98,20 @@ async function loadAppIcons() {
   HululState.appIconsLoaded = true;
   try { HululState.appIcons = await Api.call('getAppIcons', {}); }
   catch (e) { HululState.appIcons = {}; }
+}
+
+// Loads the app-wide list of Place/Participant types (Venues > Places, Event > Participants) --
+// the 3 built-in roles (Vendor/Operator/Exhibitor) + 'Other' + any active custom role flagged
+// isParticipantType (listParticipantTypes, backend/Roles.gs) -- once per session, same caching
+// pattern as loadAppIcons above. REQ: "Can this be configurable, and allow to add other types."
+// Falls back to just the 4 built-ins on a fetch error so Places/Participants forms never end up with
+// an empty type dropdown.
+async function loadParticipantTypes() {
+  if (HululState.participantTypesLoaded) return;
+  HululState.participantTypesLoaded = true;
+  try { HululState.participantTypes = await Api.call('listParticipantTypes', {}); }
+  catch (e) { HululState.participantTypes = PARTICIPANT_TYPES_FALLBACK_; }
+  refreshParticipantTypeColors_();
 }
 
 // Loads the signed-in user's effective RBAC permission map (see permissions.js's hasPermission,

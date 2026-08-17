@@ -31,12 +31,13 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
-// REQ: "Do not include participants in To:/Cc:" -- Vendor/Operator/Exhibitor accounts are event
-// Participants with app-login access (see Accounts.gs's own "org users -> participants" account
-// hierarchy comment), not internal staff. Meetings' To/Cc is an internal-staff coordination tool,
-// so these three roles are filtered out of the picker entirely -- mirrors ROLES.VENDOR/OPERATOR/
-// EXHIBITOR (Utils.gs) as literal strings, same mirroring convention as MEETING_TYPES above.
-var PARTICIPANT_ROLES = ['Vendor', 'Operator', 'Exhibitor'];
+// REQ: "Do not include participants in To:/Cc:" -- Vendor/Operator/Exhibitor accounts (plus any
+// custom Place/Participant type an admin adds, Settings > Roles > "Use as Place/Participant type")
+// are event Participants with app-login access (see Accounts.gs's own "org users -> participants"
+// account hierarchy comment), not internal staff. Meetings' To/Cc is an internal-staff coordination
+// tool, so these roles are filtered out of the picker entirely -- isParticipantRole_ (venues.js)
+// checks HululState.participantTypes dynamically; was a fixed 3-item array here before this feature
+// existed.
 
 async function renderMeetings(params) {
   var root = document.getElementById('viewRoot');
@@ -353,8 +354,8 @@ function eventOptionsHtml_(eventsList, projectId, selectedEventId) {
 // Participant search, findings.js) plus removable chips for whoever's already picked (same chip
 // look as the Event Chat composer's staged @mentions -- eventDetail.js chipHtml_). checkedIds
 // pre-selects whichever ids are already on the meeting (edit only). usersList is expected to already
-// exclude PARTICIPANT_ROLES (see renderMeetingFormPage_ below) -- REQ: "Do not include participants
-// in To:/Cc:".
+// exclude participant-account roles via isParticipantRole_ (see renderMeetingFormPage_ below) -- REQ:
+// "Do not include participants in To:/Cc:".
 var USER_PICKER_STATE_ = {}; // prefix -> { selected: [user,...], usersList: [user,...] } -- one entry per field instance (fMtgTo/fMtgCc)
 
 function userPickerFieldHtml_(prefix, label, checkedIds, usersList) {
@@ -586,8 +587,8 @@ async function renderMeetingFormPage_(mode, params) {
     isEdit ? Api.call('listMeetings', { includeDeleted: true }) : Promise.resolve([])
   ]);
   var events = results[0], projects = results[1], subEvents = results[2];
-  // REQ: "Do not include participants in To:/Cc:" -- see PARTICIPANT_ROLES comment above.
-  var users = results[3].filter(function (u) { return PARTICIPANT_ROLES.indexOf(u.role) === -1; });
+  // REQ: "Do not include participants in To:/Cc:" -- see isParticipantRole_ comment above.
+  var users = results[3].filter(function (u) { return !isParticipantRole_(u.role); });
   var eventById = {}; events.forEach(function (e) { eventById[e.id] = e; });
 
   var meeting = null;

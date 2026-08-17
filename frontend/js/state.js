@@ -14,6 +14,12 @@ window.HululState = {
   // Settings > Permissions grants cover, on top of the existing hardcoded NAV_ITEMS `roles` arrays.
   // See navItemVisible_, app.js.
   pageAccess: {},
+  // Every selectable Place/Participant type (loadParticipantTypes, app.js) -- defaults to just the 4
+  // built-ins until that first loads, so any view rendered before then still gets a sane dropdown.
+  participantTypes: [
+    { code: 'Operator', label: 'Operator', builtin: true }, { code: 'Vendor', label: 'Vendor', builtin: true },
+    { code: 'Exhibitor', label: 'Exhibitor', builtin: true }, { code: 'Other', label: 'Other', builtin: true }
+  ],
   escalationAlertLoadedAt: 0,
   escalationLockShownId: null, // id of the escalation currently occupying the full-screen lock (or null) -- see refreshEscalationAlert in app.js
 
@@ -34,6 +40,7 @@ window.HululState = {
     this.orgLabelsLoaded = false; this.orgLabels = {};
     this.appIconsLoaded = false; this.appIcons = {};
     this.permissionsLoaded = false; this.permissions = {}; this.pageAccess = {};
+    this.participantTypesLoaded = false; // participantTypes itself is left at its built-in default, not cleared
     this.notifBadgeLoadedAt = 0;
     this.escalationAlertLoadedAt = 0; this.escalationLockShownId = null;
     localStorage.removeItem('hulul_token'); localStorage.removeItem('hulul_user');

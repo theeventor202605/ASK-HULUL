@@ -175,7 +175,11 @@ var SCHEMA = {
   // (display-only, "started from X"). status ('Active'/'Inactive', same convention as Users.status)
   // -- deleteRole soft-deletes rather than removing the row, so AuditLog/Permission-override history
   // referencing this code stays meaningful; getCustomRoles_ filters to Active only.
-  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt'],
+  // isParticipantType: REQ ("configurable Place/Participant types, allow adding others") -- marks a
+  // custom role as usable in the Place/Participant "type" picker (Venues > Places, Event >
+  // Participants) alongside the 3 built-in types (Vendor/Operator/Exhibitor). See
+  // isParticipantRoleCode_/listParticipantTypes (Roles.gs).
+  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt','isParticipantType'],
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.

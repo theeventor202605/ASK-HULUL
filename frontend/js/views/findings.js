@@ -20,7 +20,10 @@
  * file after both in index.html. The Resolve section's camera capture reuses those exact functions
  * (keyed by a fixed itemId of 'resolve') instead of duplicating the upload/retry/progress-list logic.
  */
-var FINDING_ROLE_PARTICIPANT_ = ['Vendor', 'Operator', 'Exhibitor'];
+// REQ ("Can this be configurable, and allow to add other types"): was a fixed 3-item array; now
+// isParticipantRole_ (venues.js, loaded app-wide) checks HululState.participantTypes dynamically, so a
+// newly added custom type is treated the same as Vendor/Operator/Exhibitor everywhere this gated
+// (currently just the Chat tab's own visibility below).
 var FINDING_ROLE_REVIEWER_ = ['Inspector', 'ProjectManager', 'SystemAdmin'];
 
 // size (optional, default 400): Drive's thumbnail endpoint will scale to whatever width you ask for --
@@ -817,9 +820,9 @@ async function renderFindingDetail(params) {
   var finding = data.finding, resolutions = data.resolutions || [];
   // RBAC pilot: which action section renders is now driven by the same admin-configurable
   // finding.resolve/finding.review permissions the backend enforces (resolveFinding/
-  // reviewFindingResolution, Findings.gs), not the hardcoded FINDING_ROLE_PARTICIPANT_/
-  // FINDING_ROLE_REVIEWER_ arrays (those two constants still gate unrelated things -- the Chat and
-  // Log Photos tab visibility in eventDetail.js -- and are deliberately left as-is for now).
+  // reviewFindingResolution, Findings.gs), not isParticipantRole_/FINDING_ROLE_REVIEWER_ (those two
+  // still gate unrelated things -- the Chat and Log Photos tab visibility in eventDetail.js -- and are
+  // deliberately left as-is for now).
   var isParticipant = hasPermission('finding.resolve');
   var isReviewer = hasPermission('finding.review');
   var latestPending = resolutions.filter(function (r) { return r.decision === 'Pending'; })[0];
