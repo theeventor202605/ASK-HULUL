@@ -336,10 +336,21 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
 // nobody flagged that one, this is only about the default/street layer. One shared helper (instead of
 // the same tileLayer call copy-pasted at 10 separate map-init sites) means switching providers again
 // later is still just a one-line change.
+// REQ bug report: "Place names are not showing... I mean place names from OpenStreetMap." Confirmed
+// (via openstreetmap.org itself, same real venue) this was never a data gap -- OSM has dense POI data
+// here (shop/restaurant names + icons). CARTO Voyager (the previous provider here) just doesn't render
+// that level of POI detail, only roads/water/buildings. Switched back to OSM's own "Standard" tiles,
+// which do render it -- knowingly reintroducing the exact risk the CARTO switch (see git blame /
+// session history) was originally made to avoid: tile.openstreetmap.org's usage policy actively serves
+// an "Access blocked... Referer required" placeholder tile once a referring domain exceeds "occasional
+// personal use" (https://operations.osmfoundation.org/policies/tiles/). If that blocking resurfaces in
+// production, the fix is a tile-provider swap here again (e.g. Stadia Maps/MapTiler "streets" style,
+// which also render POI labels and are meant for this kind of embedded-app traffic) -- not a revert to
+// CARTO, which was chosen specifically to dodge blocking at the cost of exactly this POI detail.
 function hululTileLayer_() {
-  return HululLeaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd', maxZoom: 19
+  return HululLeaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
   });
 }
 
