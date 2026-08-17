@@ -83,6 +83,7 @@ var ROUTES = {
   getMyOrg: function (u) { return getMyOrg(u); },
   getEventBrandingLogos: function (u, p) { return getEventBrandingLogos(u, p); },
   uploadOrgLogo: function (u, p) { return uploadOrgLogo(u, p); },
+  setOrgPhotoProperties: function (u, p) { return setOrgPhotoProperties(u, p); },
   getOrgLabels: function (u, p) { return getOrgLabels(u, p); },
   setOrgLabels: function (u, p) { return setOrgLabels(u, p); },
   getAppIcons: function (u, p) { return getAppIcons(u, p); },

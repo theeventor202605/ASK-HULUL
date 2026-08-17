@@ -24,6 +24,9 @@ var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
 // chips on the Templates row of the Permissions matrix below instead of their own tab. So Process
 // itself is gone; CONFIG_MANAGE_ROLES now only gates Escalations.
 var CONFIG_MANAGE_ROLES = ['SystemAdmin'];
+// REQ: "Add to settings the 'Photos Properties'" -- SystemAdmin-only, same gating as the org logo
+// upload endpoint itself (uploadOrgLogo/setOrgPhotoProperties, Accounts.gs both requireRole SystemAdmin).
+var PHOTO_PROPS_MANAGE_ROLES = ['SystemAdmin'];
 // Tabs that build their own stack of .card blocks (same as Escalations did on the old /config page)
 // render into a plain, un-carded content div instead of the shared one -- otherwise every one of
 // their cards would sit nested inside the shared outer card, doubling the border/padding for no
@@ -38,6 +41,7 @@ async function renderSettings(params) {
   var canManageIcons = ICON_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManageConfig = CONFIG_MANAGE_ROLES.indexOf(u.role) !== -1;
+  var canManagePhotoProps = PHOTO_PROPS_MANAGE_ROLES.indexOf(u.role) !== -1;
 
   var tabs = [
     { key: 'profile', label: t('settings_tab_profile') },
@@ -46,6 +50,7 @@ async function renderSettings(params) {
   ];
   if (canManageLabels) tabs.push({ key: 'terminology', label: t('settings_tab_terminology') });
   if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
+  if (canManagePhotoProps) tabs.push({ key: 'photoProperties', label: t('settings_tab_photo_properties') });
   if (canManageConfig) tabs.push({ key: 'escalations', label: t('tab_escalations') });
   if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
   if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
@@ -74,6 +79,7 @@ async function renderSettings(params) {
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
+  else if (activeTab === 'photoProperties' && canManagePhotoProps) await renderPhotoPropertiesTab_(content);
   else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
@@ -423,6 +429,112 @@ function readCheckedRoles_(prefix) {
   var ids = [];
   document.querySelectorAll('.' + prefix + '-check:checked').forEach(function (c) { ids.push(c.value); });
   return ids;
+}
+
+/* ---------------- Photos Properties (per-org logo/geolocation/QR overlay config) ----------------
+ * REQ: "Add to settings the 'Photos Properties': GA logo (on/off), Inspection Company logo (on/off),
+ * geolocation (on/off), and QR (on/off). For each logo its own settings. Also options where each one
+ * is placed on the photo." One card per GA/Inspection-Company org (EMC orgs have nothing to configure
+ * here -- they don't have a logo stamped on evidence photos). Geolocation + QR are only shown on
+ * Inspection Company orgs -- they describe the capture itself (the operational org out in the field),
+ * not a GA's own branding; see the comment on getEventBrandingLogos (Accounts.gs) for why. Saves per
+ * org via setOrgPhotoProperties, same one-JSON-blob-per-row pattern as photoPropsJson itself.
+ */
+// Same 6 named positions PHOTO_POSITIONS_ (Accounts.gs) and evidencePlace_ (evidence.js) work with --
+// literal duplicate since Apps Script and the browser don't share a module system here.
+var PHOTO_POSITIONS_ = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+
+async function renderPhotoPropertiesTab_(content) {
+  content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+  var orgs = await Api.call('listOrganizations', {});
+  var relevant = (orgs || []).filter(function (o) { return o.type === 'GA' || o.type === 'INSPECTION'; });
+  renderPhotoPropertiesTabBody_(content, relevant);
+}
+
+// Parses one org's photoPropsJson, defaulting every field to the pre-existing hardcoded layout (top-
+// left Inspection Co logo, top-right GA logo, bottom-left geolocation, bottom-right QR) -- mirrors
+// photoProps_ (Accounts.gs) exactly so the picker always opens already showing what's actually live.
+function photoPropertiesDefaults_(org) {
+  var raw = {};
+  try { raw = org.photoPropsJson ? JSON.parse(org.photoPropsJson) : {}; } catch (e) { raw = {}; }
+  return {
+    logoEnabled: raw.logoEnabled !== false,
+    logoPosition: raw.logoPosition || (org.type === 'GA' ? 'top-right' : 'top-left'),
+    geoEnabled: raw.geoEnabled !== false,
+    geoPosition: raw.geoPosition || 'bottom-left',
+    qrEnabled: raw.qrEnabled !== false,
+    qrPosition: raw.qrPosition || 'bottom-right'
+  };
+}
+
+function photoPositionOptionsHtml_(selected) {
+  return PHOTO_POSITIONS_.map(function (p) {
+    return '<option value="' + p + '"' + (p === selected ? ' selected' : '') + '>' + esc(t('photo_position_' + p.replace(/-/g, '_'))) + '</option>';
+  }).join('');
+}
+
+function renderPhotoPropertiesTabBody_(content, orgs) {
+  if (!orgs.length) {
+    content.innerHTML = '<div class="empty-state">' + esc(t('empty_no_organizations')) + '</div>';
+    return;
+  }
+  var rowsHtml = orgs.map(function (org) {
+    var props = photoPropertiesDefaults_(org);
+    var isInspection = org.type === 'INSPECTION';
+    return '<div class="card" style="margin-bottom:14px;" data-org-row="' + esc(org.id) + '">' +
+      '<div class="card-body">' +
+        '<div style="font-weight:700;font-size:14px;margin-bottom:2px;">' + esc(org.name) + '</div>' +
+        '<div class="muted" style="font-size:11.5px;margin-bottom:12px;">' + esc(org.type === 'GA' ? t('org_type_ga') : t('org_type_inspection')) + '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 24px;max-width:760px;">' +
+          '<div>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px;">' +
+              '<input type="checkbox" class="pp-logo-enabled" ' + (props.logoEnabled ? 'checked' : '') + ' /> ' + esc(t('photo_prop_logo_enabled')) +
+            '</label>' +
+            '<select class="field-input pp-logo-position">' + photoPositionOptionsHtml_(props.logoPosition) + '</select>' +
+          '</div>' +
+          (isInspection ?
+            '<div>' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px;">' +
+                '<input type="checkbox" class="pp-geo-enabled" ' + (props.geoEnabled ? 'checked' : '') + ' /> ' + esc(t('photo_prop_geo_enabled')) +
+              '</label>' +
+              '<select class="field-input pp-geo-position">' + photoPositionOptionsHtml_(props.geoPosition) + '</select>' +
+            '</div>' +
+            '<div>' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px;">' +
+                '<input type="checkbox" class="pp-qr-enabled" ' + (props.qrEnabled ? 'checked' : '') + ' /> ' + esc(t('photo_prop_qr_enabled')) +
+              '</label>' +
+              '<select class="field-input pp-qr-position">' + photoPositionOptionsHtml_(props.qrPosition) + '</select>' +
+            '</div>'
+          : '') +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm" style="margin-top:16px;" data-save-org="' + esc(org.id) + '">' + t('save') + '</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  content.innerHTML = '<div class="muted" style="font-size:12.5px;margin-bottom:14px;">' + esc(t('photo_properties_intro')) + '</div>' + rowsHtml;
+
+  content.querySelectorAll('[data-save-org]').forEach(function (btn) {
+    btn.onclick = async function () {
+      var orgId = btn.getAttribute('data-save-org');
+      var row = content.querySelector('[data-org-row="' + orgId + '"]');
+      var geoEnabledEl = row.querySelector('.pp-geo-enabled'), geoPositionEl = row.querySelector('.pp-geo-position');
+      var qrEnabledEl = row.querySelector('.pp-qr-enabled'), qrPositionEl = row.querySelector('.pp-qr-position');
+      var payload = {
+        orgId: orgId,
+        logoEnabled: row.querySelector('.pp-logo-enabled').checked,
+        logoPosition: row.querySelector('.pp-logo-position').value,
+        geoEnabled: geoEnabledEl ? geoEnabledEl.checked : true,
+        geoPosition: geoPositionEl ? geoPositionEl.value : 'bottom-left',
+        qrEnabled: qrEnabledEl ? qrEnabledEl.checked : true,
+        qrPosition: qrPositionEl ? qrPositionEl.value : 'bottom-right'
+      };
+      try {
+        await Api.call('setOrgPhotoProperties', payload);
+        UI.toast(t('toast_photo_properties_saved'), 'success');
+      } catch (err) { UI.error(err); }
+    };
+  });
 }
 
 /* ---------------- Escalations (timers, To/Cc roles, lock-screen toggle) ----------------

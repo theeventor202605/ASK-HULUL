@@ -202,6 +202,22 @@ function evidenceRoundRect_(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+// REQ (Settings > Photos Properties): each overlay (a logo, the geolocation box, the QR code) can be
+// placed at one of 6 named positions instead of a hardcoded corner. `slots` accumulates how much
+// vertical space has already been claimed at each position on THIS photo, so if two overlays are
+// configured to the same position they stack (top ones grow downward, bottom ones grow upward)
+// instead of drawing directly on top of each other. Returns the box's top-left {x,y} for a box of
+// size w x h. Same 6-position list as PHOTO_POSITIONS_ (backend/Accounts.gs).
+function evidencePlace_(slots, position, w, h, cw, ch, pad) {
+  if (!slots[position]) slots[position] = 0;
+  var used = slots[position];
+  var isTop = position.indexOf('top-') === 0;
+  var align = position.indexOf('left') !== -1 ? 'left' : (position.indexOf('right') !== -1 ? 'right' : 'center');
+  var x = align === 'left' ? pad : (align === 'right' ? (cw - pad - w) : (cw - w) / 2);
+  var y = isTop ? (pad + used) : (ch - pad - h - used);
+  slots[position] = used + h + pad * 0.5;
+  return { x: x, y: y };
+}
 function evidenceWrapText_(ctx, text, maxWidth, maxLines) {
   if (!text) return [];
   var words = text.split(' ');
@@ -248,21 +264,24 @@ function evidenceComposite_(file, meta) {
           var gaLogo = imgs[0], coLogo = imgs[1], qrImg = imgs[2];
           var pad = Math.max(6, Math.round(ch * 0.02));
           var logoH = Math.round(ch * 0.09);
+          // REQ (Settings > Photos Properties): tracks claimed space per position across every
+          // overlay drawn below (logos, geolocation box, QR) so two overlays sharing a position stack
+          // instead of overlapping -- see evidencePlace_ above.
+          var slots = {};
 
-          var drawLogo = function (logoImg, alignRight) {
+          var drawLogo = function (logoImg, position) {
             if (!logoImg || !logoImg.width) return;
             var w = logoImg.width * (logoH / logoImg.height);
-            var x = alignRight ? (cw - pad - w) : pad;
-            var y = pad;
+            var pos = evidencePlace_(slots, position, w, logoH, cw, ch, pad);
             ctx.save();
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
-            evidenceRoundRect_(ctx, x - pad * 0.4, y - pad * 0.4, w + pad * 0.8, logoH + pad * 0.8, pad * 0.4);
+            evidenceRoundRect_(ctx, pos.x - pad * 0.4, pos.y - pad * 0.4, w + pad * 0.8, logoH + pad * 0.8, pad * 0.4);
             ctx.fill();
-            ctx.drawImage(logoImg, x, y, w, logoH);
+            ctx.drawImage(logoImg, pos.x, pos.y, w, logoH);
             ctx.restore();
           };
-          drawLogo(coLogo, false); // top-left: Inspection Company
-          drawLogo(gaLogo, true);  // top-right: GA
+          if (meta.inspectionCoLogoEnabled !== false) drawLogo(coLogo, meta.inspectionCoLogoPosition || 'top-left');
+          if (meta.gaLogoEnabled !== false) drawLogo(gaLogo, meta.gaLogoPosition || 'top-right');
 
           // REQ: "Any photos taken outside boundaries should be marked." A full-width red banner
           // just below the logo row -- deliberately loud/unmissable (not a small corner badge) since
@@ -282,44 +301,52 @@ function evidenceComposite_(file, meta) {
             ctx.restore();
           }
 
-          // Bottom-left: date/time, GPS, Arabic address.
-          var now = new Date();
-          var p2 = function (n) { return String(n).padStart(2, '0'); };
-          var dateTimeStr = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) +
-            '  ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
-          var gpsStr = (meta.lat != null && meta.lng != null)
-            ? (Math.abs(meta.lat).toFixed(6) + '°' + (meta.lat >= 0 ? 'N' : 'S') + ', ' + Math.abs(meta.lng).toFixed(6) + '°' + (meta.lng >= 0 ? 'E' : 'W'))
-            : 'GPS unavailable';
-          var addressStr = meta.address || 'العنوان غير متاح'; // "Address unavailable"
+          // Geolocation box: date/time, GPS, Arabic address -- REQ (Photos Properties): a single
+          // on/off toggle hides the whole box (date/time included, not just GPS/address), placed at
+          // whichever configured position (default bottom-left, matching the original hardcoded spot).
+          if (meta.geoEnabled !== false) {
+            var now = new Date();
+            var p2 = function (n) { return String(n).padStart(2, '0'); };
+            var dateTimeStr = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) +
+              '  ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+            var gpsStr = (meta.lat != null && meta.lng != null)
+              ? (Math.abs(meta.lat).toFixed(6) + '°' + (meta.lat >= 0 ? 'N' : 'S') + ', ' + Math.abs(meta.lng).toFixed(6) + '°' + (meta.lng >= 0 ? 'E' : 'W'))
+              : 'GPS unavailable';
+            var addressStr = meta.address || 'العنوان غير متاح'; // "Address unavailable"
 
-          var fontSize = Math.max(11, Math.round(ch * 0.022));
-          ctx.font = fontSize + 'px Tajawal, Arial, sans-serif';
-          var boxW = Math.round(cw * 0.62);
-          var addrLines = evidenceWrapText_(ctx, addressStr, boxW - pad * 1.6, 2);
-          var allLines = [dateTimeStr, gpsStr].concat(addrLines.length ? addrLines : ['']);
-          var lineH = Math.round(fontSize * 1.4);
-          var boxH = lineH * allLines.length + pad;
-          var boxX = pad, boxY = ch - boxH - pad;
+            var fontSize = Math.max(11, Math.round(ch * 0.022));
+            ctx.font = fontSize + 'px Tajawal, Arial, sans-serif';
+            var boxW = Math.round(cw * 0.62);
+            var addrLines = evidenceWrapText_(ctx, addressStr, boxW - pad * 1.6, 2);
+            var allLines = [dateTimeStr, gpsStr].concat(addrLines.length ? addrLines : ['']);
+            var lineH = Math.round(fontSize * 1.4);
+            var boxH = lineH * allLines.length + pad;
+            var geoPos = evidencePlace_(slots, meta.geoPosition || 'bottom-left', boxW, boxH, cw, ch, pad);
+            var boxX = geoPos.x, boxY = geoPos.y;
 
-          ctx.save();
-          ctx.fillStyle = 'rgba(0,0,0,0.55)';
-          evidenceRoundRect_(ctx, boxX, boxY, boxW, boxH, pad * 0.5);
-          ctx.fill();
-          ctx.fillStyle = '#fff';
-          ctx.textBaseline = 'top';
-          allLines.forEach(function (line, i) {
-            var isArabic = /[؀-ۿ]/.test(line);
-            ctx.direction = isArabic ? 'rtl' : 'ltr';
-            ctx.textAlign = isArabic ? 'right' : 'left';
-            var lineX = isArabic ? (boxX + boxW - pad * 0.6) : (boxX + pad * 0.6);
-            ctx.fillText(line, lineX, boxY + pad * 0.5 + i * lineH);
-          });
-          ctx.restore();
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            evidenceRoundRect_(ctx, boxX, boxY, boxW, boxH, pad * 0.5);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.textBaseline = 'top';
+            allLines.forEach(function (line, i) {
+              var isArabic = /[؀-ۿ]/.test(line);
+              ctx.direction = isArabic ? 'rtl' : 'ltr';
+              ctx.textAlign = isArabic ? 'right' : 'left';
+              var lineX = isArabic ? (boxX + boxW - pad * 0.6) : (boxX + pad * 0.6);
+              ctx.fillText(line, lineX, boxY + pad * 0.5 + i * lineH);
+            });
+            ctx.restore();
+          }
 
-          // Bottom-right: QR linking to the exact capture point on Google Maps.
-          if (qrImg && qrImg.width) {
+          // QR linking to the exact capture point on Google Maps -- REQ (Photos Properties):
+          // toggleable + placed at whichever configured position (default bottom-right, matching the
+          // original hardcoded spot).
+          if (meta.qrEnabled !== false && qrImg && qrImg.width) {
             var qrSize = Math.round(ch * 0.16);
-            var qx = cw - pad - qrSize, qy = ch - pad - qrSize;
+            var qrPos = evidencePlace_(slots, meta.qrPosition || 'bottom-right', qrSize, qrSize, cw, ch, pad);
+            var qx = qrPos.x, qy = qrPos.y;
             ctx.save();
             ctx.fillStyle = 'rgba(255,255,255,0.9)';
             evidenceRoundRect_(ctx, qx - pad * 0.3, qy - pad * 0.3, qrSize + pad * 0.6, qrSize + pad * 0.6, pad * 0.3);
@@ -371,7 +398,13 @@ window.EvidenceCapture = {
           return evidenceComposite_(file, {
             lat: pos ? pos.lat : null, lng: pos ? pos.lng : null, address: r2[0],
             gaLogoDataUri: branding.gaLogoDataUri, inspectionCoLogoDataUri: branding.inspectionCoLogoDataUri,
-            qrDataUrl: r2[1], outsideBoundary: outsideBoundary
+            qrDataUrl: r2[1], outsideBoundary: outsideBoundary,
+            // REQ (Settings > Photos Properties): per-org enabled/position config, already resolved
+            // server-side by getEventBrandingLogos -- see evidenceComposite_'s drawLogo/geo-box/QR.
+            gaLogoEnabled: branding.gaLogoEnabled, gaLogoPosition: branding.gaLogoPosition,
+            inspectionCoLogoEnabled: branding.inspectionCoLogoEnabled, inspectionCoLogoPosition: branding.inspectionCoLogoPosition,
+            geoEnabled: branding.geoEnabled, geoPosition: branding.geoPosition,
+            qrEnabled: branding.qrEnabled, qrPosition: branding.qrPosition
           });
         });
       })

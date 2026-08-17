@@ -116,23 +116,80 @@ function getMyOrg(user) {
   return { id: org.id, name: org.name, logoUrl: org.logoUrl || '' };
 }
 
-// GA + Inspection Company logos for one Event, used to stamp Risk Logging evidence photos (see
-// EvidenceCapture in evidence.js). Deliberately open to any authenticated user (unlike
-// listOrganizations, which excludes Inspector -- and Inspectors are exactly who's capturing these
-// photos) since logos aren't sensitive. Returned as base64 data URIs rather than the stored
-// drive.google.com/thumbnail links: those links don't send permissive CORS headers, so drawing them
-// into a <canvas> (needed to composite the watermark) would taint the canvas and block exporting the
-// finished photo entirely. Reading the same Drive file server-side and inlining its bytes sidesteps
-// that -- the browser never makes a cross-origin request for the logo at all.
+// REQ (Settings > Photos Properties): the 6 positions an overlay (a logo, the geolocation box, or
+// the QR code) can be placed at on a captured evidence photo. Shared between the backend validation
+// below and the frontend's evidencePlace_ (evidence.js) / position picker (settings.js) -- same
+// literal list in both places since Apps Script and the browser don't share a module system here.
+var PHOTO_POSITIONS_ = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+
+// Parses one org's photoPropsJson blob, defaulting every field to whatever the pre-existing hardcoded
+// layout used before this setting existed (top-left Inspection Co logo, top-right GA logo, bottom-left
+// geolocation, bottom-right QR) -- so an org nobody has visited the new settings tab for yet still
+// composites photos exactly as it always did.
+function photoProps_(org) {
+  var raw = {};
+  if (org && org.photoPropsJson) {
+    try { raw = JSON.parse(org.photoPropsJson) || {}; } catch (e) { raw = {}; }
+  }
+  return raw;
+}
+
+// GA + Inspection Company logos (+ geolocation/QR settings) for one Event, used to stamp Risk Logging
+// evidence photos (see EvidenceCapture in evidence.js). Deliberately open to any authenticated user
+// (unlike listOrganizations, which excludes Inspector -- and Inspectors are exactly who's capturing
+// these photos) since logos aren't sensitive. Logos returned as base64 data URIs rather than the
+// stored drive.google.com/thumbnail links: those links don't send permissive CORS headers, so drawing
+// them into a <canvas> (needed to composite the watermark) would taint the canvas and block exporting
+// the finished photo entirely. Reading the same Drive file server-side and inlining its bytes
+// sidesteps that -- the browser never makes a cross-origin request for the logo at all.
+//
+// geoEnabled/geoPosition/qrEnabled/qrPosition are read from the event's Inspection Company org (not
+// the GA) -- the geolocation stamp and QR code describe the capture itself, not a specific brand, and
+// the Inspection Company is the operational org actually out in the field taking the photo. A GA org's
+// own photoPropsJson only ever drives its own logo's enabled/position.
 function getEventBrandingLogos(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   var ga = findWhere('Organizations', function (o) { return o.type === 'GA'; })[0];
   var inspectionCo = event.inspectionCoId ? getById('Organizations', event.inspectionCoId) : null;
+  var gaProps = photoProps_(ga), coProps = photoProps_(inspectionCo);
   return {
     gaLogoDataUri: ga ? logoDataUri_(ga.logoUrl) : '',
-    inspectionCoLogoDataUri: inspectionCo ? logoDataUri_(inspectionCo.logoUrl) : ''
+    gaLogoEnabled: gaProps.logoEnabled !== false,
+    gaLogoPosition: gaProps.logoPosition || 'top-right',
+    inspectionCoLogoDataUri: inspectionCo ? logoDataUri_(inspectionCo.logoUrl) : '',
+    inspectionCoLogoEnabled: coProps.logoEnabled !== false,
+    inspectionCoLogoPosition: coProps.logoPosition || 'top-left',
+    geoEnabled: coProps.geoEnabled !== false,
+    geoPosition: coProps.geoPosition || 'bottom-left',
+    qrEnabled: coProps.qrEnabled !== false,
+    qrPosition: coProps.qrPosition || 'bottom-right'
   };
+}
+
+// SystemAdmin-only, mirrors uploadOrgLogo's gating. p: {orgId, logoEnabled, logoPosition, geoEnabled,
+// geoPosition, qrEnabled, qrPosition} -- geo/qr fields are accepted (and stored) for any org type, but
+// only ever consulted from an Inspection Company org (see getEventBrandingLogos above); harmless to
+// store on a GA org too, just unused, so the Settings UI doesn't need type-specific save logic.
+function setOrgPhotoProperties(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  var org = getById('Organizations', p.orgId);
+  if (!org) throw new HululError('NOT_FOUND', 'Organization not found');
+  var posOrDefault = function (v, def) {
+    v = String(v || '');
+    return PHOTO_POSITIONS_.indexOf(v) !== -1 ? v : def;
+  };
+  var props = {
+    logoEnabled: p.logoEnabled !== false,
+    logoPosition: posOrDefault(p.logoPosition, org.type === 'GA' ? 'top-right' : 'top-left'),
+    geoEnabled: p.geoEnabled !== false,
+    geoPosition: posOrDefault(p.geoPosition, 'bottom-left'),
+    qrEnabled: p.qrEnabled !== false,
+    qrPosition: posOrDefault(p.qrPosition, 'bottom-right')
+  };
+  var updated = updateRow('Organizations', p.orgId, { photoPropsJson: JSON.stringify(props) });
+  audit(user.id, 'UPDATE_ORG_PHOTO_PROPERTIES', 'Organizations', p.orgId, props);
+  return updated;
 }
 
 function driveFileIdFromThumbnailUrl_(url) {

@@ -8,7 +8,13 @@ var SCHEMA = {
   // domain appended at the end (established pattern -- see Venues below) -- used to build
   // auto-generated Place-account login emails (e.g. 'vendor001@yawad.sa'); blank on old rows,
   // in which case placeAccountDomain_ (Places.gs) falls back to slugifying the org name.
-  Organizations:          ['id','type','name','status','createdAt','logoUrl','domain'],
+  // photoPropsJson: REQ (Settings > Photos Properties) -- per-org JSON blob controlling how this
+  // org's own logo is stamped onto captured evidence photos ({logoEnabled, logoPosition}), plus (for
+  // Inspection Company-type orgs only, since they're the ones actually capturing evidence)
+  // {geoEnabled, geoPosition, qrEnabled, qrPosition} for the geolocation stamp + QR code. Blank/absent
+  // means "use the pre-existing hardcoded defaults" -- see photoProps_ (Accounts.gs). Same single-JSON-
+  // column pattern as AppIcons.iconsJson, just scoped per-org instead of one global row.
+  Organizations:          ['id','type','name','status','createdAt','logoUrl','domain','photoPropsJson'],
   // unavailable/unavailableReason/unavailableSince appended at the end -- REQ: "If a user is absent
   // then he will be added to list in this page as unavailable" (Sidebar Re-assignment, see
   // Reassignment.gs). Deliberately separate from `status` (Active/Inactive, which gates login) --
