@@ -239,6 +239,19 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    permanently instead of only while full screen. */
 .hulul-map-controls{ position:absolute; left:10px; bottom:10px; z-index:1000; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 20px); }
 
+/* UI.mapLayersDropdown (ui.js) -- REQ: "Add dropdown checkbox to show place names, and all other
+   options available can be selected per checkbox." Sits inline inside .hulul-map-controls (bottom-
+   left) alongside any action buttons; its own checklist panel opens upward (bottom:100%) since the
+   button lives at the bottom of the map. */
+.hulul-map-layers-dropdown{ position:relative; display:inline-flex; }
+.hulul-map-layers-panel{ position:absolute; bottom:calc(100% + 6px); left:0; z-index:1001; min-width:190px;
+  background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md);
+  padding:8px 10px; flex-direction:column; gap:2px; }
+.hulul-map-layers-item{ display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600;
+  color:var(--text-900); padding:5px 4px; border-radius:6px; cursor:pointer; }
+.hulul-map-layers-item:hover{ background:var(--surface); }
+.hulul-map-layers-item input{ margin:0; cursor:pointer; }
+
 /* UI.mapLegend (ui.js) -- key for a map's dot colors (e.g. Places' Operator/Vendor/Exhibitor/Other).
    Bottom-right, same z-index ceiling as the other map-overlay controls above; opposite corner from
    .hulul-map-controls (bottom-left) so the two never overlap. */

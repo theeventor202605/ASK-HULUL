@@ -629,18 +629,79 @@ window.UI = {
   // onClick (optional) fires with the raw place/participant row. Returns {id: marker}, same shape as
   // eventDetail.js's own eventPlacesMarkers_, so a caller that needs to track/remove them individually
   // can.
-  drawPlaceDots(map, places, onClick) {
+  // opts.permanentLabels (optional): binds every marker's name tooltip as always-visible instead of
+  // hover-only from the start -- BUG REPORT (Venue > Places tab): "Map is not showing places names"
+  // was this tooltip defaulting to hover-only with no way to turn it on. Off by default here (every
+  // other existing call site is unaffected) so only a caller that explicitly opts in changes behavior;
+  // see setPlaceLabelsVisible below for toggling it live from a checkbox.
+  drawPlaceDots(map, places, onClick, opts) {
+    var permanent = !!(opts && opts.permanentLabels);
     var markers = {};
     (places || []).forEach(function (pl) {
       if (pl.lat === '' || pl.lat == null || pl.lng === '' || pl.lng == null) return;
       var color = EVENT_PLACE_TYPE_COLORS_[pl.type] || EVENT_PLACE_TYPE_COLORS_.Other;
       var icon = UI.placeMarkerIcon(color, pl.openFindingsCount);
       var marker = HululLeaflet.marker([Number(pl.lat), Number(pl.lng)], { icon: icon }).addTo(map);
-      marker.bindTooltip(esc(pl.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+      marker._hululName = esc(pl.name); // stashed so setPlaceLabelsVisible can rebind the tooltip later
+      marker.bindTooltip(marker._hululName, permanent
+        ? { permanent: true, direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' }
+        : { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
       if (onClick) marker.on('click', function () { onClick(pl); });
       markers[pl.id] = marker;
     });
     return markers;
+  },
+
+  // Flips every drawPlaceDots marker's tooltip between always-visible and hover-only -- e.g. a "Show
+  // place names" checkbox in UI.mapLayersDropdown (see initPlaceMap_, venues.js). Re-binds rather than
+  // toggling opacity since Leaflet's `permanent` tooltip option can only be set at bind time, not
+  // flipped afterward.
+  setPlaceLabelsVisible(markers, visible) {
+    Object.keys(markers || {}).forEach(function (id) {
+      var m = markers[id];
+      if (!m || !m._hululName) return;
+      m.unbindTooltip();
+      m.bindTooltip(m._hululName, visible
+        ? { permanent: true, direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' }
+        : { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+    });
+  },
+
+  // REQ (Venue > Places tab): "Add dropdown checkbox to show place names, and all other options
+  // available can be selected per checkbox." One "Layers" button (same look/click-guard exemption as
+  // mapToggleButton above) that opens a small checklist panel instead of every toggle getting its own
+  // permanently-visible button. items: [{key, label, checked, onChange(checked)}]. Returns {el,
+  // cleanup} -- el goes into UI.mapControls alongside any action buttons (e.g. "Use my location"),
+  // cleanup (removes the outside-click listener that closes the panel) MUST be called from the
+  // caller's destroy*Map_, same convention as wireMapFullscreen/startInspectorLocationPolling above.
+  mapLayersDropdown(items) {
+    var wrap = document.createElement('div');
+    wrap.className = 'hulul-map-layers-dropdown';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'map-toggle-btn';
+    btn.innerHTML = ICON('map_layers') + ' ' + esc(t('map_layers_btn'));
+    var panel = document.createElement('div');
+    panel.className = 'hulul-map-layers-panel';
+    panel.style.display = 'none';
+    panel.innerHTML = (items || []).map(function (it, i) {
+      return '<label class="hulul-map-layers-item"><input type="checkbox" data-layer-idx="' + i + '"' + (it.checked ? ' checked' : '') + ' /><span>' + esc(it.label) + '</span></label>';
+    }).join('');
+    wrap.appendChild(btn);
+    wrap.appendChild(panel);
+    btn.onclick = function (e) {
+      e.stopPropagation();
+      panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    };
+    panel.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.onchange = function () {
+        var it = items[Number(cb.getAttribute('data-layer-idx'))];
+        if (it && it.onChange) it.onChange(cb.checked);
+      };
+    });
+    function outsideClick(e) { if (!wrap.contains(e.target)) panel.style.display = 'none'; }
+    document.addEventListener('click', outsideClick, true);
+    return { el: wrap, cleanup: function () { document.removeEventListener('click', outsideClick, true); } };
   },
 
   // BUG FIX (audit, this session): every list page that pairs a UI.table of places/participants

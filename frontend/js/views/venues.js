@@ -1096,6 +1096,7 @@ var placeMapBoundaryLayer_ = null;
 var placeMapFullscreenCleanup_ = null;
 var placeMapInspectorPollStop_ = null; // UI.startInspectorLocationPolling cleanup, see initPlaceMap_
 var placeMapFilterSyncCleanup_ = null; // UI.syncMapDotsToTableFilter cleanup, see initPlaceMap_
+var placeMapLayersDropdownCleanup_ = null; // UI.mapLayersDropdown cleanup, see initPlaceMap_
 var placeMapGen_ = 0; // same map-container-reuse race guard as venueMapGen_ above -- see its comment
 
 // Tab 3: embedded (no page-header/back button of its own -- the tabbed page's own chrome already
@@ -1564,18 +1565,36 @@ function initPlaceMap_(venue, zones, places) {
     // also means wireMapFullscreen no longer needs to reparent them (see the old BUG comment this
     // replaced): they're already inside the div that goes full screen.
     var locBtn = UI.mapToggleButton('useMyLocationBtn', 'location_pin', t('use_my_location'));
-    var satBtn = UI.mapToggleButton('toggleSatelliteBtn', 'satellite_toggle', t('map_satellite'));
-    UI.mapControls(mapEl, [locBtn, satBtn]);
-    placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_);
     var satelliteLayer = HululLeaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19
     });
-    var showingSatellite = false;
-    satBtn.onclick = function () {
-      showingSatellite = !showingSatellite;
-      if (showingSatellite) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('map_toggle') + ' ' + esc(t('map_view')); }
-      else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); satBtn.innerHTML = ICON('satellite_toggle') + ' ' + esc(t('map_satellite')); }
-    };
+    // REQ bug report: "Map is not showing places names. Add dropdown checkbox to show place names,
+    // and all other options available can be selected per checkbox." Replaces the old always-visible
+    // Satellite button with a single "Layers" dropdown (UI.mapLayersDropdown, ui.js) covering every
+    // toggleable overlay this map has -- "Use my location" stays its own button since it's a one-shot
+    // action, not a persistent on/off state. placeMapMarkers_/placeMapZoneLayers_ below are declared
+    // later in this same function (var-hoisted) but not actually read until a checkbox is clicked, by
+    // which point setup has long finished.
+    var placeMapLayers_ = [
+      { key: 'placeNames', label: t('map_layer_place_names'), checked: true,
+        onChange: function (v) { UI.setPlaceLabelsVisible(placeMapMarkers_, v); } },
+      { key: 'zoneBoundaries', label: t('map_layer_zone_boundaries'), checked: true,
+        onChange: function (v) { (placeMapZoneLayers_ || []).forEach(function (l) { if (v) l.addTo(placeMapInstance_); else placeMapInstance_.removeLayer(l); }); } },
+      { key: 'inspectorLocations', label: t('map_layer_inspector_locations'), checked: true,
+        onChange: function (v) {
+          if (v) { placeMapInspectorPollStop_ = UI.startInspectorLocationPolling(placeMapInstance_, { venueId: venue.id }, 20000); }
+          else if (placeMapInspectorPollStop_) { placeMapInspectorPollStop_(); placeMapInspectorPollStop_ = null; }
+        } },
+      { key: 'satellite', label: t('map_satellite'), checked: false,
+        onChange: function (v) {
+          if (v) { placeMapInstance_.removeLayer(osmLayer); satelliteLayer.addTo(placeMapInstance_); }
+          else { placeMapInstance_.removeLayer(satelliteLayer); osmLayer.addTo(placeMapInstance_); }
+        } }
+    ];
+    var placeMapLayersDropdown_ = UI.mapLayersDropdown(placeMapLayers_);
+    placeMapLayersDropdownCleanup_ = placeMapLayersDropdown_.cleanup;
+    UI.mapControls(mapEl, [locBtn, placeMapLayersDropdown_.el]);
+    placeMapFullscreenCleanup_ = UI.wireMapFullscreen(mapEl, placeMapInstance_);
     if (boundary) {
       var venueBoundaryColor = (venue && venue.color) || VENUE_BOUNDARY_DEFAULT_COLOR_;
       placeMapBoundaryLayer_ = HululLeaflet.polygon(boundary.map(function (pt) { return [pt.lat, pt.lng]; }), {
@@ -1587,12 +1606,14 @@ function initPlaceMap_(venue, zones, places) {
     // REQ: "Zone boundaries to be visible" / "Participant dots to be visible. This applies to all
     // maps." -- context for where the new place will land, same as the Event > Venue & Zones "Places
     // map" already showed (UI.drawZoneBoundaries/drawPlaceDots, ui.js).
-    UI.drawZoneBoundaries(placeMapInstance_, zones);
+    var placeMapZoneLayers_ = UI.drawZoneBoundaries(placeMapInstance_, zones);
     // BUG FIX (audit, this session): the Places table below has its own live filter box (built into
     // UI.table) but nothing told these dots to follow it, so filtering the list left every dot
     // showing regardless -- same gap Event > Venue & Zones' Places tab was originally reported for.
     // UI.syncMapDotsToTableFilter (ui.js) is that fix generalized to any table+map pairing.
-    var placeMapMarkers_ = UI.drawPlaceDots(placeMapInstance_, places);
+    // permanentLabels:true -- BUG FIX (REQ report): "Map is not showing places names" -- names used to
+    // only show on hover; on by default now, toggleable via the "Show place names" Layers checkbox above.
+    var placeMapMarkers_ = UI.drawPlaceDots(placeMapInstance_, places, undefined, { permanentLabels: true });
     placeMapFilterSyncCleanup_ = UI.syncMapDotsToTableFilter('venuePlacesListWrap', placeMapInstance_, placeMapMarkers_);
     // REQ: "Inspectors live location as they start inspections. This applies to all maps."
     placeMapInspectorPollStop_ = UI.startInspectorLocationPolling(placeMapInstance_, { venueId: venue.id }, 20000);
@@ -1649,6 +1670,7 @@ function destroyPlaceMap_() {
   if (placeMapFullscreenCleanup_) { placeMapFullscreenCleanup_(); placeMapFullscreenCleanup_ = null; }
   if (placeMapInspectorPollStop_) { placeMapInspectorPollStop_(); placeMapInspectorPollStop_ = null; }
   if (placeMapFilterSyncCleanup_) { placeMapFilterSyncCleanup_(); placeMapFilterSyncCleanup_ = null; }
+  if (placeMapLayersDropdownCleanup_) { placeMapLayersDropdownCleanup_(); placeMapLayersDropdownCleanup_ = null; }
   if (placeMapInstance_) { placeMapInstance_.remove(); placeMapInstance_ = null; placeMapMarker_ = null; placeMapBoundaryLayer_ = null; }
 }
 

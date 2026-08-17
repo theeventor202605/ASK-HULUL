@@ -291,6 +291,9 @@ window.ICON_DEFAULTS = {
   location_pin: LUCIDE_ICONS['map-pin'],
   satellite_toggle: LUCIDE_ICONS['satellite'],
   map_toggle: LUCIDE_ICONS['map'],
+  // REQ (Venue > Places tab): "Add dropdown checkbox to show place names, and all other options
+  // available can be selected per checkbox." Button that opens UI.mapLayersDropdown's checklist panel.
+  map_layers: LUCIDE_ICONS['list-checks'],
   open_calendar: LUCIDE_ICONS['calendar'],
   record_results: LUCIDE_ICONS['clipboard-check'],
   export_csv: LUCIDE_ICONS['download'],
@@ -359,7 +362,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'deactivate', label: 'Deactivate' }, { key: 'activate', label: 'Activate' },
     { key: 'add_account', label: 'Add account' }, { key: 'remove_from_project', label: 'Remove from project' },
     { key: 'location_pin', label: 'Location / use my location' }, { key: 'satellite_toggle', label: 'Satellite map toggle' },
-    { key: 'map_toggle', label: 'Standard map toggle' }, { key: 'open_calendar', label: 'Open calendar picker' },
+    { key: 'map_toggle', label: 'Standard map toggle' }, { key: 'map_layers', label: 'Map layers dropdown' },
+    { key: 'open_calendar', label: 'Open calendar picker' },
     { key: 'record_results', label: 'Record inspection results' }, { key: 'export_csv', label: 'Export CSV' },
     { key: 'import_csv', label: 'Import CSV' },
     { key: 'logout', label: 'Log out' }, { key: 'capture_photo', label: 'Take photo / video (evidence)' },
