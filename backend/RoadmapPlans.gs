@@ -30,7 +30,9 @@ function getRoadmapPlanItems_(planId) {
         id: it.id, planId: it.planId, name: it.name, sortOrder: Number(it.sortOrder),
         anchorType: it.anchorType, anchorItemId: it.anchorItemId || '',
         offsetSign: it.offsetSign, offsetWeeks: Number(it.offsetWeeks) || 0,
-        offsetDays: Number(it.offsetDays) || 0, offsetHours: Number(it.offsetHours) || 0
+        offsetDays: Number(it.offsetDays) || 0, offsetHours: Number(it.offsetHours) || 0,
+        requiresAttachment: it.requiresAttachment === true || it.requiresAttachment === 'true',
+        icon: it.icon || ''
       };
     });
 }
@@ -110,7 +112,15 @@ function validRoadmapItemInput_(p, planId) {
   function nonNegInt_(v) { var n = Number(v || 0); return (isNaN(n) || n < 0) ? 0 : Math.floor(n); }
   return {
     name: name, anchorType: anchorType, anchorItemId: anchorItemId, offsetSign: offsetSign,
-    offsetWeeks: nonNegInt_(p && p.offsetWeeks), offsetDays: nonNegInt_(p && p.offsetDays), offsetHours: nonNegInt_(p && p.offsetHours)
+    offsetWeeks: nonNegInt_(p && p.offsetWeeks), offsetDays: nonNegInt_(p && p.offsetDays), offsetHours: nonNegInt_(p && p.offsetHours),
+    // requiresAttachment (REQ: "allow to choose whether an attachment is required") -- enforced later,
+    // per-Event, when a PM tries to mark the rolled-out copy Done (updateEventRoadmapItem below), not
+    // here -- a plan item has no attachment of its own to check. icon (REQ: "Allow to change dot to
+    // icon per item") -- raw SVG markup/typed glyph from openIconPickerModal_ (settings.js), or blank
+    // to keep the plain colored dot on the Event Roadmap tab's timeline; capped well above any real
+    // icon's length purely as a sanity bound, not a meaningful validation.
+    requiresAttachment: !!(p && p.requiresAttachment),
+    icon: String((p && p.icon) || '').slice(0, 2000)
   };
 }
 
@@ -262,13 +272,21 @@ function rolloutEventRoadmap_(user, event, planId) {
     stillPresentSourceIds[entry.item.id] = true;
     var existing = existingBySourceId[entry.item.id];
     var dueAt = new Date(entry.dueMs).toISOString();
+    // requiresAttachment/icon are re-synced from the template every rollout (an admin editing the
+    // plan should apply to Events that already rolled it out too) -- but attachmentUrl/attachmentName
+    // are deliberately NOT touched here: they live only on the per-Event row, and a PM's already-
+    // provided attachment must survive a Regenerate (see EventRoadmapItems schema comment, Utils.gs).
     if (existing) {
-      updateRow('EventRoadmapItems', existing.id, { name: entry.item.name, dueAt: dueAt, sortOrder: entry.item.sortOrder });
+      updateRow('EventRoadmapItems', existing.id, {
+        name: entry.item.name, dueAt: dueAt, sortOrder: entry.item.sortOrder,
+        requiresAttachment: entry.item.requiresAttachment, icon: entry.item.icon
+      });
     } else {
       insertRow('EventRoadmapItems', {
         id: newId('EventRoadmapItems'), eventId: event.id, planId: planId, name: entry.item.name,
         sourceItemId: entry.item.id, dueAt: dueAt, status: 'Pending', completedBy: '', completedAt: '',
-        sortOrder: entry.item.sortOrder, createdBy: user.id, createdAt: nowIso_()
+        sortOrder: entry.item.sortOrder, createdBy: user.id, createdAt: nowIso_(),
+        requiresAttachment: entry.item.requiresAttachment, attachmentUrl: '', attachmentName: '', icon: entry.item.icon
       });
     }
   });
@@ -313,14 +331,20 @@ function listEventRoadmapItems(user, p) {
       return {
         id: r.id, eventId: r.eventId, planId: r.planId, name: r.name, sourceItemId: r.sourceItemId || '',
         dueAt: r.dueAt, status: r.status, overdue: overdue, completedBy: r.completedBy || '', completedAt: r.completedAt || '',
-        sortOrder: Number(r.sortOrder) || 0
+        sortOrder: Number(r.sortOrder) || 0,
+        requiresAttachment: r.requiresAttachment === true || r.requiresAttachment === 'true',
+        attachmentUrl: r.attachmentUrl || '', attachmentName: r.attachmentName || '', icon: r.icon || ''
       };
     })
     .sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
 }
 
 // Ad hoc item added directly on one Event (sourceItemId left blank) -- e.g. something specific to
-// this event that isn't worth adding to the shared template. p: { eventId, name, dueAt }.
+// this event that isn't worth adding to the shared template. p: { eventId, name, dueAt,
+// requiresAttachment? }. requiresAttachment is settable here too (unlike icon, which REQ scoped to
+// Roadmap Plans template items only) so an ad hoc item can still be held to the same "must attach
+// before Done" rule as a plan-sourced one -- enforced uniformly by updateEventRoadmapItem below
+// regardless of where the item came from.
 function addEventRoadmapItem(user, p) {
   var event = getById('Events', p && p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
@@ -332,15 +356,28 @@ function addEventRoadmapItem(user, p) {
   var row = insertRow('EventRoadmapItems', {
     id: newId('EventRoadmapItems'), eventId: event.id, planId: event.planTypeId || '', name: name,
     sourceItemId: '', dueAt: d.toISOString(), status: 'Pending', completedBy: '', completedAt: '',
-    sortOrder: 999999, createdBy: user.id, createdAt: nowIso_()
+    sortOrder: 999999, createdBy: user.id, createdAt: nowIso_(),
+    requiresAttachment: !!(p && p.requiresAttachment), attachmentUrl: '', attachmentName: '', icon: ''
   });
   audit(user.id, 'ADD_EVENT_ROADMAP_ITEM', 'EventRoadmapItems', row.id, { eventId: event.id, name: name });
   return listEventRoadmapItems(user, { eventId: event.id });
 }
 
-// Covers every PM-facing edit on one item: rename, move its due date, and mark Done/Pending. p:
-// { itemId, name?, dueAt?, done? }. Marking Done stamps completedBy/completedAt; reopening (done:
-// false) clears both, same convention as Templates' reviewedBy/reviewedAt on reopenTemplateScoring.
+// Covers every PM-facing edit on one item: rename, move its due date, set/replace its attachment
+// link, and mark Done/Pending. p: { itemId, name?, dueAt?, requiresAttachment?, attachmentUrl?,
+// attachmentName?, done? }. Marking Done stamps completedBy/completedAt; reopening (done: false)
+// clears both, same convention as Templates' reviewedBy/reviewedAt on reopenTemplateScoring.
+//
+// REQ: "allow to choose whether an attachment is required, if attachment is requirement check will
+// not accept unless attachment or link to the attachment or link to report in the system is
+// provided." Enforced right here, at the one place Done actually gets set -- not in the frontend --
+// so it can't be bypassed by calling this endpoint directly. attachmentUrl covers all three phrasings
+// in the REQ identically (an uploaded file's Drive URL via uploadRoadmapItemAttachment, a pasted link
+// to an external document, or a pasted link to another page inside HULUL itself, e.g. a Finding or
+// Template) -- from this endpoint's point of view they're all just "a URL was provided", nothing
+// distinguishes where it points. The check uses whichever value WILL be true after this patch lands
+// (this call's own p.requiresAttachment/p.attachmentUrl if supplied, else the item's current stored
+// value) so a single call that sets the link AND marks Done in one round-trip works correctly too.
 function updateEventRoadmapItem(user, p) {
   var item = getById('EventRoadmapItems', p && p.itemId);
   if (!item) throw new HululError('NOT_FOUND', 'Roadmap item not found');
@@ -358,9 +395,19 @@ function updateEventRoadmapItem(user, p) {
     if (isNaN(d)) throw new HululError('BAD_REQUEST', 'dueAt is not a valid date');
     patch.dueAt = d.toISOString();
   }
+  if (p.requiresAttachment !== undefined) patch.requiresAttachment = !!p.requiresAttachment;
+  if (p.attachmentUrl !== undefined) patch.attachmentUrl = String(p.attachmentUrl).trim();
+  if (p.attachmentName !== undefined) patch.attachmentName = String(p.attachmentName).trim();
   if (p.done !== undefined) {
-    if (p.done) { patch.status = 'Done'; patch.completedBy = user.id; patch.completedAt = nowIso_(); }
-    else { patch.status = 'Pending'; patch.completedBy = ''; patch.completedAt = ''; }
+    if (p.done) {
+      var effectiveRequires = patch.requiresAttachment !== undefined ? patch.requiresAttachment
+        : (item.requiresAttachment === true || item.requiresAttachment === 'true');
+      var effectiveAttachmentUrl = patch.attachmentUrl !== undefined ? patch.attachmentUrl : (item.attachmentUrl || '');
+      if (effectiveRequires && !effectiveAttachmentUrl) {
+        throw new HululError('BAD_REQUEST', 'This item requires an attachment or link before it can be marked done');
+      }
+      patch.status = 'Done'; patch.completedBy = user.id; patch.completedAt = nowIso_();
+    } else { patch.status = 'Pending'; patch.completedBy = ''; patch.completedAt = ''; }
   }
   updateRow('EventRoadmapItems', item.id, patch);
   audit(user.id, 'UPDATE_EVENT_ROADMAP_ITEM', 'EventRoadmapItems', item.id, patch);
@@ -376,4 +423,26 @@ function deleteEventRoadmapItem(user, p) {
   deleteRow('EventRoadmapItems', item.id);
   audit(user.id, 'DELETE_EVENT_ROADMAP_ITEM', 'EventRoadmapItems', item.id, { eventId: event.id, name: item.name });
   return listEventRoadmapItems(user, { eventId: event.id });
+}
+
+// REQ: "will not accept unless attachment or link to the attachment ... is provided" -- the "upload a
+// file" half of that; the "paste a link" half needs no endpoint at all (the PM just types/pastes a
+// URL straight into attachmentUrl via updateEventRoadmapItem above). Mirrors uploadEvidence
+// (Inspections.gs) / uploadTemplateFile_ (Templates.gs)'s Drive-upload mechanics exactly, just its
+// own per-event folder and gated by roadmapItem.manage instead of evidence.upload/templateLibrary.manage
+// -- the PM/EventManager roles attaching a Roadmap item's proof aren't necessarily the same roles
+// allowed to upload Risk Logging evidence or Template Library master documents. p: { eventId,
+// fileBase64, fileName, mimeType }. Returns { url, fileName } -- the frontend then folds that
+// straight into its own updateEventRoadmapItem call (attachmentUrl/attachmentName [+ done: true]).
+function uploadRoadmapItemAttachment(user, p) {
+  var event = getById('Events', p && p.eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  requirePermission(user, 'roadmapItem.manage');
+  if (!p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
+  var folder = getOrCreateFolder_('HULUL Roadmap Attachments - ' + event.id);
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), p.mimeType || 'application/octet-stream', p.fileName || 'attachment');
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  audit(user.id, 'UPLOAD_ROADMAP_ITEM_ATTACHMENT', 'Events', event.id, { fileName: p.fileName || file.getName() });
+  return { url: file.getUrl(), fileName: p.fileName || file.getName() };
 }

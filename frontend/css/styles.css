@@ -427,11 +427,30 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    above); Done/Overdue reuse green/red so they still read as "good/bad" at a glance like everything
    else on this line. */
 .tl-dot-indigo{ background:#6366f1; }
+/* REQ: "Allow to change dot to icon per item only in Roadmap Plans" -- when a rolled-out item's
+   template defines an icon (eventRoadmapHtml_, eventDetail.js), the dot renders that icon instead of
+   staying a plain filled circle. Sized up from the base 16px so a ~12px glyph actually fits, and the
+   icon itself is drawn in white via currentColor so it reads against whichever status color
+   (green/red/indigo) the dot's own .tl-dot-{color} rule already painted as the background -- no need
+   to know the color here, just sit on top of it. Two-class selector (.tl-dot.tl-dot-icon) so this
+   wins over the plain 16px sizing from .tl-dot without touching the shared background rules. */
+.tl-dot.tl-dot-icon{ width:22px; height:22px; display:flex; align-items:center; justify-content:center; color:#fff; }
+.tl-dot.tl-dot-icon svg{ width:12px; height:12px; }
+
+/* Roadmap Plans admin editor (roadmapPlanItemRowHtml_, roadmapPlans.js) -- one plain flex row per
+   template item (this page isn't a UI.table like the Event tab's checklist below is). */
+.roadmap-item-row{ display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px solid var(--border); }
+.roadmap-item-row:last-child{ border-bottom:none; }
+.roadmap-item-row .roadmap-item-name{ flex:1; font-size:13px; font-weight:600; }
+/* REQ: "Allow to change dot to icon per item" -- small square preview of the chosen icon, same size/
+   border treatment as the picker preview in openRoadmapPlanItemModal_. */
+.roadmap-item-icon-preview{ flex:none; width:24px; height:24px; border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+.roadmap-item-icon-preview svg{ width:14px; height:14px; }
 
 /* Event > Roadmap tab's checklist card (roadmapChecklistHtml_, eventDetail.js) -- a real UI.table
    now (REQ follow-up: "Add 'Planned Date' in a column, and ... 'Actual Date' ... in a column"), so
    these just style the cell CONTENT (checkbox button, name, date spans) inside <td>s rather than a
-   custom flex row like before. */
+   custom flex row like above. */
 .roadmap-item-check{ background:none; border:none; padding:0; cursor:pointer; display:flex; color:var(--text-400); }
 .roadmap-item-check.done{ color:#16a34a; }
 .roadmap-item-name.done{ text-decoration:line-through; color:var(--text-400); font-weight:500; }
@@ -441,6 +460,11 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    tinted the same green "good outcome" family as the rest of this tab (tl-dot-green) so it reads as
    a completed fact, not just another due date. */
 .roadmap-item-date.actual{ color:#16a34a; font-weight:600; }
+/* Attachment column (roadmapItemAttachmentCellHtml_) -- clickable link when a file/URL is on file;
+   the "Required" state re-uses the shared .badge-high (red) styling defined above. */
+.roadmap-item-attachment-link{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--accent); text-decoration:none; white-space:nowrap; }
+.roadmap-item-attachment-link svg{ width:13px; height:13px; }
+.roadmap-item-attachment-link:hover{ text-decoration:underline; }
 
 /* Event Roadmap tab (eventDetail.js, tabRoadmap/eventRoadmapHtml_) -- one horizontal line like
    .project-timeline above, but plotting every scheduling milestone within a single event instead of

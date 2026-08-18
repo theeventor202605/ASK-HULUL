@@ -130,7 +130,14 @@ async function renderRoadmapPlanDetail(params) {
 
 function roadmapPlanItemRowHtml_(item, idx, count, itemsById, canManage) {
   return '<div class="roadmap-item-row" data-plan-item-id="' + esc(item.id) + '">' +
-    '<span class="roadmap-item-name">' + esc(item.name) + '</span>' +
+    // REQ: "Allow to change dot to icon per item" -- a small live preview of whatever icon (if any)
+    // this item will show on the Event Roadmap tab's timeline instead of a plain dot.
+    (item.icon ? '<span class="roadmap-item-icon-preview" title="' + esc(t('roadmap_icon_label')) + '">' + item.icon + '</span>' : '') +
+    '<span class="roadmap-item-name">' + esc(item.name) +
+      // REQ: "allow to choose whether an attachment is required" -- badge so the admin can tell at a
+      // glance which items will block a PM's checkbox without an attachment/link first.
+      (item.requiresAttachment ? ' <span class="badge badge-neutral" style="font-size:10px;">' + ICON('link') + ' ' + esc(t('roadmap_requires_attachment_badge')) + '</span>' : '') +
+    '</span>' +
     '<span class="roadmap-item-date">' + esc(roadmapOffsetLabel_(item)) + ' ' + esc(roadmapAnchorLabel_(item, itemsById)) + '</span>' +
     (canManage ? '<span style="display:flex;gap:4px;flex:none;">' +
       '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('roadmap_move_up_title')) + '"' + (idx === 0 ? ' disabled' : '') + ' data-move-up="' + esc(item.id) + '">' + ICON('chevron_up') + '</button>' +
@@ -175,52 +182,90 @@ function wirePlanItemRows_(plan) {
   });
 }
 
-// Add/Edit an item's name + rollout rule (anchor + signed offset). anchorOptions only ever lists
-// items ABOVE this one in the plan (see addRoadmapPlanItem/updateRoadmapPlanItem, RoadmapPlans.gs,
-// for why that's a hard backend rule, not just a UI nicety) -- when editing, that's every item whose
-// sortOrder is less than the one being edited; when adding, it's every item that already exists
-// (a brand new item is always appended at the end, so all of them qualify).
-function openRoadmapPlanItemModal_(planId, existingItem, allItems) {
+// Add/Edit an item's name + rollout rule (anchor + signed offset) + REQ follow-ups: whether this
+// item requires an attachment before a PM can mark it Done, and which icon (if any) it shows on the
+// Event Roadmap tab's timeline instead of a plain dot. anchorOptions only ever lists items ABOVE this
+// one in the plan (see addRoadmapPlanItem/updateRoadmapPlanItem, RoadmapPlans.gs, for why that's a
+// hard backend rule, not just a UI nicety) -- when editing, that's every item whose sortOrder is less
+// than the one being edited; when adding, it's every item that already exists (a brand new item is
+// always appended at the end, so all of them qualify).
+//
+// draftOverride: UI.openModal fully replaces #modalRoot's contents, so opening the icon picker (its
+// own modal) from inside THIS modal would destroy whatever the admin already typed here. The "Browse
+// icons" button below works around that by reading every current field into a plain object, closing
+// this modal, opening the picker, and -- once an icon is chosen -- calling this same function again
+// with that object as draftOverride so the form reopens exactly as it was, just with the new icon.
+function openRoadmapPlanItemModal_(planId, existingItem, allItems, draftOverride) {
   var isEdit = !!existingItem;
+  var draft = draftOverride || (existingItem ? {
+    name: existingItem.name, anchorType: existingItem.anchorType, anchorItemId: existingItem.anchorItemId,
+    offsetSign: existingItem.offsetSign, offsetWeeks: existingItem.offsetWeeks, offsetDays: existingItem.offsetDays,
+    offsetHours: existingItem.offsetHours, requiresAttachment: existingItem.requiresAttachment, icon: existingItem.icon
+  } : { name: '', anchorType: 'eventStart', anchorItemId: '', offsetSign: 'before', offsetWeeks: 0, offsetDays: 0, offsetHours: 0, requiresAttachment: false, icon: '' });
+
   var eligibleAnchors = allItems.filter(function (it) {
     return !existingItem || it.sortOrder < existingItem.sortOrder;
   });
+  var selectedAnchorValue = draft.anchorType === 'item' ? 'item:' + draft.anchorItemId : draft.anchorType;
   var anchorOptions =
-    '<option value="eventStart">' + esc(t('roadmap_anchor_event_start', { term: Term('event') })) + '</option>' +
-    '<option value="eventEnd">' + esc(t('roadmap_anchor_event_end', { term: Term('event') })) + '</option>' +
-    eligibleAnchors.map(function (it) { return '<option value="item:' + esc(it.id) + '">' + esc(it.name) + '</option>'; }).join('');
-  var selectedAnchorValue = existingItem
-    ? (existingItem.anchorType === 'item' ? 'item:' + existingItem.anchorItemId : existingItem.anchorType)
-    : 'eventStart';
+    '<option value="eventStart"' + (selectedAnchorValue === 'eventStart' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_event_start', { term: Term('event') })) + '</option>' +
+    '<option value="eventEnd"' + (selectedAnchorValue === 'eventEnd' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_event_end', { term: Term('event') })) + '</option>' +
+    eligibleAnchors.map(function (it) {
+      var val = 'item:' + it.id;
+      return '<option value="' + esc(val) + '"' + (val === selectedAnchorValue ? ' selected' : '') + '>' + esc(it.name) + '</option>';
+    }).join('');
 
   var body =
-    UI.field(t('field_item_name'), '<input id="fPiName" class="field-input" maxlength="120" value="' + esc(existingItem ? existingItem.name : '') + '" />') +
+    UI.field(t('field_item_name'), '<input id="fPiName" class="field-input" maxlength="120" value="' + esc(draft.name) + '" />') +
     UI.field(t('roadmap_anchor_label'), '<select id="fPiAnchor" class="field-input">' + anchorOptions + '</select>') +
     '<div class="form-row-3" style="margin-top:8px;">' +
-      UI.field(t('unit_weeks'), '<input id="fPiWeeks" type="number" min="0" class="field-input" value="' + (existingItem ? existingItem.offsetWeeks : 0) + '" />') +
-      UI.field(t('unit_days'), '<input id="fPiDays" type="number" min="0" class="field-input" value="' + (existingItem ? existingItem.offsetDays : 0) + '" />') +
-      UI.field(t('unit_hours'), '<input id="fPiHours" type="number" min="0" class="field-input" value="' + (existingItem ? existingItem.offsetHours : 0) + '" />') +
+      UI.field(t('unit_weeks'), '<input id="fPiWeeks" type="number" min="0" class="field-input" value="' + draft.offsetWeeks + '" />') +
+      UI.field(t('unit_days'), '<input id="fPiDays" type="number" min="0" class="field-input" value="' + draft.offsetDays + '" />') +
+      UI.field(t('unit_hours'), '<input id="fPiHours" type="number" min="0" class="field-input" value="' + draft.offsetHours + '" />') +
     '</div>' +
     UI.field(t('roadmap_offset_direction_label'), '<select id="fPiSign" class="field-input">' +
-      '<option value="before"' + (!existingItem || existingItem.offsetSign === 'before' ? ' selected' : '') + '>' + esc(t('roadmap_offset_before')) + '</option>' +
-      '<option value="after"' + (existingItem && existingItem.offsetSign === 'after' ? ' selected' : '') + '>' + esc(t('roadmap_offset_after')) + '</option>' +
-    '</select>');
+      '<option value="before"' + (draft.offsetSign === 'before' ? ' selected' : '') + '>' + esc(t('roadmap_offset_before')) + '</option>' +
+      '<option value="after"' + (draft.offsetSign === 'after' ? ' selected' : '') + '>' + esc(t('roadmap_offset_after')) + '</option>' +
+    '</select>') +
+    // REQ: "allow to choose whether an attachment is required, if attachment is requirement check
+    // will not accept unless attachment or link ... is provided" -- enforced server-side (see
+    // updateEventRoadmapItem, RoadmapPlans.gs) the moment a PM tries to mark the rolled-out copy
+    // Done; this checkbox is just where that requirement gets defined.
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:14px 0 4px;">' +
+      '<input type="checkbox" id="fPiRequiresAttachment"' + (draft.requiresAttachment ? ' checked' : '') + ' /> ' + esc(t('roadmap_requires_attachment_label')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:0 0 14px;">' + esc(t('roadmap_requires_attachment_hint')) + '</div>' +
+    // REQ: "Allow to change dot to icon per item" -- reuses the same curated grid the app's own icon
+    // customization (Settings > Icons) uses, see openIconPickerModal_ (settings.js).
+    '<div class="field-label">' + esc(t('roadmap_icon_label')) + '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">' +
+      '<div id="fPiIconPreview" style="width:34px;height:34px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;">' + (draft.icon || '<span class="muted" style="font-size:10px;">' + esc(t('roadmap_icon_none')) + '</span>') + '</div>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="fPiBrowseIconBtn">' + esc(t('roadmap_browse_icons_btn')) + '</button>' +
+      (draft.icon ? '<button type="button" class="btn btn-secondary btn-sm" id="fPiClearIconBtn">' + esc(t('roadmap_clear_icon_btn')) + '</button>' : '') +
+    '</div>';
+
+  function readDraftFromForm_() {
+    var anchorRaw = document.getElementById('fPiAnchor').value;
+    return {
+      name: document.getElementById('fPiName').value,
+      anchorType: anchorRaw.indexOf('item:') === 0 ? 'item' : anchorRaw,
+      anchorItemId: anchorRaw.indexOf('item:') === 0 ? anchorRaw.slice(5) : '',
+      offsetSign: document.getElementById('fPiSign').value,
+      offsetWeeks: document.getElementById('fPiWeeks').value,
+      offsetDays: document.getElementById('fPiDays').value,
+      offsetHours: document.getElementById('fPiHours').value,
+      requiresAttachment: document.getElementById('fPiRequiresAttachment').checked,
+      icon: draft.icon
+    };
+  }
 
   UI.openModal(isEdit ? t('roadmap_edit_item_title') : t('roadmap_add_item_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: isEdit ? t('save') : t('create'), className: 'btn-primary', onClick: async function () {
-        var name = document.getElementById('fPiName').value.trim();
+        var current = readDraftFromForm_();
+        var name = current.name.trim();
         if (!name) { UI.toast(t('field_item_name'), 'error'); return; }
-        var anchorRaw = document.getElementById('fPiAnchor').value;
-        var payload = {
-          planId: planId, name: name,
-          anchorType: anchorRaw.indexOf('item:') === 0 ? 'item' : anchorRaw,
-          anchorItemId: anchorRaw.indexOf('item:') === 0 ? anchorRaw.slice(5) : '',
-          offsetSign: document.getElementById('fPiSign').value,
-          offsetWeeks: document.getElementById('fPiWeeks').value,
-          offsetDays: document.getElementById('fPiDays').value,
-          offsetHours: document.getElementById('fPiHours').value
-        };
+        var payload = Object.assign({ planId: planId }, current, { name: name });
         try {
           if (isEdit) { payload.itemId = existingItem.id; await Api.call('updateRoadmapPlanItem', payload); }
           else await Api.call('addRoadmapPlanItem', payload);
@@ -228,4 +273,20 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems) {
         } catch (err) { UI.error(err); }
       } }
   ]);
+
+  document.getElementById('fPiBrowseIconBtn').onclick = async function () {
+    var currentDraft = readDraftFromForm_();
+    var customLibraries = [];
+    try { customLibraries = await Api.call('getCustomIconLibraries', {}); } catch (e) { /* picker still works with just the built-in library */ }
+    openIconPickerModal_(customLibraries, function (chosenIcon) {
+      currentDraft.icon = chosenIcon;
+      openRoadmapPlanItemModal_(planId, existingItem, allItems, currentDraft);
+    });
+  };
+  var clearBtn = document.getElementById('fPiClearIconBtn');
+  if (clearBtn) clearBtn.onclick = function () {
+    var currentDraft = readDraftFromForm_();
+    currentDraft.icon = '';
+    openRoadmapPlanItemModal_(planId, existingItem, allItems, currentDraft);
+  };
 }

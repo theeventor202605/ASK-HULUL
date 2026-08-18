@@ -119,6 +119,7 @@ var ROUTES = {
   addEventRoadmapItem: function (u, p) { return addEventRoadmapItem(u, p); },
   updateEventRoadmapItem: function (u, p) { return updateEventRoadmapItem(u, p); },
   deleteEventRoadmapItem: function (u, p) { return deleteEventRoadmapItem(u, p); },
+  uploadRoadmapItemAttachment: function (u, p) { return uploadRoadmapItemAttachment(u, p); },
 
   // Projects (grouping of several Events)
   listProjects: function (u, p) { return listProjects(u, p); },

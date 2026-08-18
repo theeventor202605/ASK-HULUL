@@ -271,7 +271,16 @@ var SCHEMA = {
   // kept as three separate unit fields rather than one pre-multiplied total so "3 weeks 3 days
   // before" round-trips through the editor exactly as typed, instead of collapsing to "24 days" and
   // losing the PM's original phrasing.
-  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status'],
+  // requiresAttachment/icon appended at the end -- REQ: "allow to choose whether an attachment is
+  // required, if attachment is requirement check will not accept unless attachment or link ... is
+  // provided" and "Allow to change dot to icon per item only in Roadmap Plans." requiresAttachment is
+  // a plain boolean, enforced when a PM tries to mark the rolled-out EventRoadmapItems copy Done (see
+  // updateEventRoadmapItem, RoadmapPlans.gs) -- the plan item itself never carries an attachment, only
+  // the per-Event instance does (Events don't share attachments). icon is raw SVG markup (or a typed
+  // emoji/character) chosen via the same openIconPickerModal_ used by Settings > Icons, or blank to
+  // keep the plain colored dot -- displayed on the Event Roadmap tab's timeline instead of a dot when
+  // set (eventRoadmapHtml_, eventDetail.js).
+  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status','requiresAttachment','icon'],
   // One rolled-out, per-Event instance of a plan item -- REQ: "configure how it will rollout." Created
   // in bulk by rolloutEventRoadmap_ the moment an Event is created with a planTypeId set (or later via
   // the Roadmap tab's manual "Regenerate" action). dueAt is the fully resolved absolute instant (same
@@ -282,8 +291,14 @@ var SCHEMA = {
   // derived display state (Pending + dueAt in the past), not stored. sortOrder mirrors the source
   // item's sortOrder at generation time so the tab can list them in plan order even though dueAt
   // (used for the timeline dot placement) may not be perfectly monotonic once a PM manually overrides
-  // one item's date.
-  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt']
+  // one item's date. requiresAttachment/icon are copied down from the source RoadmapPlanItems row at
+  // rollout (blank/false for an ad hoc item, since the icon feature is scoped to plan items only, but
+  // requiresAttachment IS still settable ad hoc -- see addEventRoadmapItem). attachmentUrl/
+  // attachmentName hold whatever the PM actually provided (an uploaded file's Drive URL, or a pasted
+  // link to an external doc or another page inside HULUL itself) -- rolloutEventRoadmap_ never
+  // touches these on an upsert, so re-generating the Roadmap can't silently wipe an attachment a PM
+  // already attached.
+  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon']
 };
 
 var ROLES = {

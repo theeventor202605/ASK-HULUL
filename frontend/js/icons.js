@@ -301,6 +301,9 @@ window.ICON_DEFAULTS = {
   // event's current start/end (generateEventRoadmap, RoadmapPlans.gs) -- same recompute-in-place
   // idea as reupload_version above, just for the Roadmap tab instead of Template Library.
   roadmap_regenerate: LUCIDE_ICONS['refresh-cw'],
+  // REQ (Event > Roadmap tab): attachment column link -- "attachment or link to the attachment or
+  // link to report in the system is provided" (roadmapItemAttachmentCellHtml_, eventDetail.js).
+  roadmap_attachment: LUCIDE_ICONS['file-text'],
   open_calendar: LUCIDE_ICONS['calendar'],
   record_results: LUCIDE_ICONS['clipboard-check'],
   export_csv: LUCIDE_ICONS['download'],

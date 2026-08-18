@@ -3703,7 +3703,12 @@ function roadmapChecklistHtml_(items, event, canManage) {
         { key: 'status', label: '', sortable: false, exportable: false, render: r => roadmapItemCheckCellHtml_(r) },
         { key: 'name', label: t('field_item_name'), render: r => roadmapItemNameCellHtml_(r) },
         { key: 'dueAt', label: t('col_due_date'), render: r => roadmapItemPlannedDateCellHtml_(r) },
-        { key: 'completedAt', label: t('roadmap_actual_date_label'), render: r => roadmapItemActualDateCellHtml_(r) }
+        { key: 'completedAt', label: t('roadmap_actual_date_label'), render: r => roadmapItemActualDateCellHtml_(r) },
+        // REQ: "if attachment is requirement check will not accept unless attachment or link to the
+        // attachment or link to report in the system is provided." -- surfaces the current state
+        // (has one / still required / not applicable) so a PM can see what's blocking a checkbox
+        // before they even click it, see roadmapItemAttachmentCellHtml_ below.
+        { key: 'attachmentUrl', label: t('roadmap_attachment_col'), sortable: false, exportable: false, render: r => roadmapItemAttachmentCellHtml_(r) }
       ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
           UI.actionsCell(
             '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
@@ -3752,6 +3757,21 @@ function roadmapItemActualDateCellHtml_(item) {
   return '<span class="roadmap-item-date actual">' + esc(UI.fmtDate(item.completedAt)) + '</span>';
 }
 
+// REQ: "allow to choose whether an attachment is required, if attachment is requirement check will
+// not accept unless attachment or link to the attachment or link to report in the system is
+// provided." -- three states: a link/file already on record (clickable), required but still
+// missing (blocks the Done toggle, see wireRoadmapChecklist_), or not applicable to this item.
+function roadmapItemAttachmentCellHtml_(item) {
+  if (item.attachmentUrl) {
+    return '<a href="' + esc(item.attachmentUrl) + '" target="_blank" rel="noopener noreferrer" class="roadmap-item-attachment-link" title="' + esc(item.attachmentName || item.attachmentUrl) + '">' +
+      ICON('roadmap_attachment') + ' ' + esc(t('roadmap_view_attachment')) + '</a>';
+  }
+  if (item.requiresAttachment) {
+    return '<span class="badge badge-high">' + esc(t('roadmap_attachment_required_badge')) + '</span>';
+  }
+  return '<span class="muted">—</span>';
+}
+
 function wireRoadmapChecklist_(content, eventId, items, canManage) {
   if (!canManage) return;
   var itemsById = {}; (items || []).forEach(function (it) { itemsById[it.id] = it; });
@@ -3769,6 +3789,15 @@ function wireRoadmapChecklist_(content, eventId, items, canManage) {
     btn.onclick = async function () {
       var itemId = btn.getAttribute('data-toggle-done');
       var done = !btn.classList.contains('done');
+      var item = itemsById[itemId];
+      // REQ: "if attachment is requirement check will not accept unless attachment or link ... is
+      // provided." -- server-side updateEventRoadmapItem (RoadmapPlans.gs) enforces this either way,
+      // but intercepting here means the PM is prompted for the link/file right away instead of just
+      // seeing a rejected-toast with no obvious next step.
+      if (done && item && item.requiresAttachment && !item.attachmentUrl) {
+        openRoadmapAttachmentGateModal_(eventId, item);
+        return;
+      }
       try { await Api.call('updateEventRoadmapItem', { itemId: itemId, done: done }); Router.resolve(); }
       catch (err) { UI.error(err); }
     };
@@ -3790,12 +3819,53 @@ function wireRoadmapChecklist_(content, eventId, items, canManage) {
   });
 }
 
+// REQ: "if attachment is requirement check will not accept unless attachment or link to the
+// attachment or link to report in the system is provided." -- popped instead of the direct toggle
+// call whenever a requiresAttachment item without one on file is checked off. PM can either paste a
+// URL (an external file, or a link to a report/page already in HULUL -- indistinguishable from this
+// form's perspective, both are just a URL) or upload a file straight from here (reuses the same
+// fileToBase64 + Drive-upload plumbing as Template Library/Evidence, see uploadRoadmapItemAttachment,
+// RoadmapPlans.gs). Either way this closes the loop by setting attachmentUrl AND done:true in one
+// call, so updateEventRoadmapItem's server-side gate (the real enforcement) sees a request that
+// already satisfies its own requirement.
+function openRoadmapAttachmentGateModal_(eventId, item) {
+  var body =
+    '<div class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('roadmap_attachment_gate_hint')) + '</div>' +
+    UI.field(t('roadmap_attachment_link_label'), '<input id="fRmGateUrl" class="field-input" placeholder="https://..." />') +
+    '<div class="muted" style="font-size:11px;margin:10px 0;text-align:center;">' + esc(t('roadmap_attachment_or_divider')) + '</div>' +
+    UI.field(t('roadmap_attachment_file_label'), '<input type="file" id="fRmGateFile" class="field-input" />');
+  UI.openModal(t('roadmap_attachment_gate_title'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('roadmap_mark_done_title'), className: 'btn-primary', onClick: async function () {
+        var url = document.getElementById('fRmGateUrl').value.trim();
+        var fileInput = document.getElementById('fRmGateFile');
+        var file = fileInput.files[0];
+        if (!url && !file) { UI.toast(t('roadmap_attachment_required_error'), 'error'); return; }
+        try {
+          var attachmentUrl = url, attachmentName = url;
+          if (file) {
+            var up = await Api.call('uploadRoadmapItemAttachment', { eventId: eventId, fileBase64: await fileToBase64(file), fileName: file.name, mimeType: file.type });
+            attachmentUrl = up.url; attachmentName = up.fileName;
+          }
+          await Api.call('updateEventRoadmapItem', { itemId: item.id, attachmentUrl: attachmentUrl, attachmentName: attachmentName, done: true });
+          UI.closeModal(); UI.toast(t('toast_saved'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+}
+
 // Ad hoc item added directly on this one Event -- sourceItemId stays blank server-side, so a
-// Regenerate never touches it (see rolloutEventRoadmap_, RoadmapPlans.gs).
+// Regenerate never touches it (see rolloutEventRoadmap_, RoadmapPlans.gs). requiresAttachment is
+// settable here too (task #150) since the same enforcement rule should apply to an ad hoc item just
+// as much as a plan-template one -- otherwise a PM could dodge the rule by adding items by hand.
 function openAddRoadmapItemModal_(eventId) {
   var body =
     UI.field(t('field_item_name'), '<input id="fRmName" class="field-input" maxlength="120" />') +
-    UI.field(t('col_due_date'), '<input id="fRmDue" type="datetime-local" class="field-input" />');
+    UI.field(t('col_due_date'), '<input id="fRmDue" type="datetime-local" class="field-input" />') +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:14px 0 4px;">' +
+      '<input type="checkbox" id="fRmRequiresAttachment" /> ' + esc(t('roadmap_requires_attachment_label')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:0;">' + esc(t('roadmap_requires_attachment_hint')) + '</div>';
   UI.openModal(t('roadmap_add_item_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
@@ -3804,26 +3874,45 @@ function openAddRoadmapItemModal_(eventId) {
         if (!name) { UI.toast(t('field_item_name'), 'error'); return; }
         if (!dueAt) { UI.toast(t('col_due_date'), 'error'); return; }
         try {
-          await Api.call('addEventRoadmapItem', { eventId: eventId, name: name, dueAt: dueAt });
+          await Api.call('addEventRoadmapItem', { eventId: eventId, name: name, dueAt: dueAt, requiresAttachment: document.getElementById('fRmRequiresAttachment').checked });
           UI.closeModal(); UI.toast(t('toast_added'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
       } }
   ]);
 }
 
+// requiresAttachment + the attachment link/file itself are both editable here too, so a PM can
+// attach evidence ahead of time (without going through the Done-toggle gate modal above) or fix a
+// wrong link/re-upload a replacement file after the fact.
 function openEditRoadmapItemModal_(item) {
   var body =
     UI.field(t('field_item_name'), '<input id="fERmName" class="field-input" maxlength="120" value="' + esc(item.name) + '" />') +
-    UI.field(t('col_due_date'), '<input id="fERmDue" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(item.dueAt)) + '" />');
+    UI.field(t('col_due_date'), '<input id="fERmDue" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(item.dueAt)) + '" />') +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:14px 0 4px;">' +
+      '<input type="checkbox" id="fERmRequiresAttachment"' + (item.requiresAttachment ? ' checked' : '') + ' /> ' + esc(t('roadmap_requires_attachment_label')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:0 0 12px;">' + esc(t('roadmap_requires_attachment_hint')) + '</div>' +
+    UI.field(t('roadmap_attachment_link_label'), '<input id="fERmAttachmentUrl" class="field-input" placeholder="https://..." value="' + esc(item.attachmentUrl || '') + '" />') +
+    '<div class="muted" style="font-size:11px;margin:-4px 0 10px;">' + esc(t('roadmap_attachment_or_divider')) + '</div>' +
+    UI.field(t('roadmap_attachment_file_label'), '<input type="file" id="fERmAttachmentFile" class="field-input" />');
   UI.openModal(t('roadmap_edit_item_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
         var name = document.getElementById('fERmName').value.trim();
         var dueAt = document.getElementById('fERmDue').value;
         if (!name) { UI.toast(t('field_item_name'), 'error'); return; }
-        var patch = { itemId: item.id, name: name };
+        var patch = { itemId: item.id, name: name, requiresAttachment: document.getElementById('fERmRequiresAttachment').checked };
         if (dueAt) patch.dueAt = dueAt;
         try {
+          var fileInput = document.getElementById('fERmAttachmentFile');
+          var file = fileInput.files[0];
+          if (file) {
+            var up = await Api.call('uploadRoadmapItemAttachment', { eventId: item.eventId, fileBase64: await fileToBase64(file), fileName: file.name, mimeType: file.type });
+            patch.attachmentUrl = up.url; patch.attachmentName = up.fileName;
+          } else {
+            var urlVal = document.getElementById('fERmAttachmentUrl').value.trim();
+            if (urlVal !== (item.attachmentUrl || '')) { patch.attachmentUrl = urlVal; patch.attachmentName = urlVal; }
+          }
           await Api.call('updateEventRoadmapItem', patch);
           UI.closeModal(); UI.toast(t('toast_saved'), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }
@@ -3841,10 +3930,10 @@ function openEditRoadmapItemModal_(item) {
 // projectTimelineHtml_ (projects.js) already applies at the Project level.
 function eventRoadmapMilestones_(detail, templates, meetings, inspections, roadmapItems) {
   var out = [];
-  function add(iso, colorClass, big, type, label) {
+  function add(iso, colorClass, big, type, label, icon) {
     var ms = new Date(iso).getTime();
     if (isNaN(ms)) return;
-    out.push({ ms: ms, colorClass: colorClass, big: !!big, type: type, label: label });
+    out.push({ ms: ms, colorClass: colorClass, big: !!big, type: type, label: label, icon: icon || '' });
   }
 
   add(detail.event.createdAt, 'tl-dot-gray', false, 'init', t('roadmap_ms_event_initiated', { term: Term('event') }));
@@ -3878,7 +3967,10 @@ function eventRoadmapMilestones_(detail, templates, meetings, inspections, roadm
     var colorClass = it.status === 'Done' ? 'tl-dot-green' : it.overdue ? 'tl-dot-red' : 'tl-dot-indigo';
     var type = it.status === 'Done' ? 'roadmapDone' : it.overdue ? 'roadmapOverdue' : 'roadmapPending';
     var statusLabel = it.status === 'Done' ? t('status_done') : it.overdue ? t('roadmap_overdue_badge') : t('status_pending');
-    add(it.dueAt, colorClass, false, type, t('roadmap_ms_item', { name: it.name, status: statusLabel }));
+    // REQ: "Allow to change dot to icon per item only in Roadmap Plans" -- icon is defined on the
+    // plan-template item and copied down read-only at rollout (rolloutEventRoadmap_, RoadmapPlans.gs),
+    // so it.icon here just reflects whatever the admin picked; ad hoc items never have one.
+    add(it.dueAt, colorClass, false, type, t('roadmap_ms_item', { name: it.name, status: statusLabel }), it.icon);
   });
 
   return out.sort(function (a, b) { return a.ms - b.ms; });
@@ -3909,7 +4001,12 @@ function eventRoadmapHtml_(milestones) {
     var p = pct(m.ms).toFixed(3);
     var fullTitle = esc(m.label + ' — ' + dateTimeText(m.ms));
     leadersHtml += '<div class="rm-leader" data-for="' + i + '" style="left:' + p + '%;height:' + ROADMAP_LEVEL_BASE_PX_ + 'px;"></div>';
-    dotsHtml += '<div class="tl-dot ' + m.colorClass + (m.big ? ' tl-dot-big' : '') + '" style="left:' + p + '%;" title="' + fullTitle + '"></div>';
+    // REQ: "Allow to change dot to icon per item only in Roadmap Plans" -- when the rolled-out item's
+    // template defined an icon (roadmapPlanItemRowHtml_/openRoadmapPlanItemModal_, roadmapPlans.js),
+    // render it centered inside the dot instead of a plain filled circle; tl-dot-icon (styles.css)
+    // switches the dot to an outlined ring using the same status color via currentColor/border, since
+    // a filled circle would hide the icon glyph.
+    dotsHtml += '<div class="tl-dot ' + m.colorClass + (m.big ? ' tl-dot-big' : '') + (m.icon ? ' tl-dot-icon' : '') + '" style="left:' + p + '%;" title="' + fullTitle + '">' + (m.icon || '') + '</div>';
     labelsHtml += '<div class="rm-label" data-idx="' + i + '" data-pct="' + p + '" style="left:' + p + '%;bottom:' + (13 + ROADMAP_LEVEL_BASE_PX_) + 'px;" title="' + fullTitle + '">' + esc(m.label) + '</div>';
     // Dates are day-granularity only (like projectTimelineHtml_'s own date labels) -- several
     // same-day milestones (a morning meeting, an afternoon inspection) collapse into the one date
