@@ -296,6 +296,22 @@ var PERMISSION_REGISTRY_ = {
   'ticket.resolve': {
     module: 'Support', label: 'Mark a support ticket resolved', page: 'support', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'SupportAgent']
+  },
+  // Roadmap Plans (RoadmapPlans.gs) -- REQ: "Add Roadmap sidebar where they will be able to add types
+  // of plan. and configure how it will rollout." Two separate keys, same "admin catalog vs. per-event
+  // use" split as templateLibrary.manage/template.send above: roadmapPlan.manage gates the shared
+  // Settings-level template catalog (Normal Plan/Parachute Plan/etc, GA-wide), roadmapItem.manage
+  // gates working an individual Event's already-rolled-out items (mark done, override a date, add an
+  // ad hoc item, Regenerate) -- deliberately broader (includes ProjectManager/EventManager, the roles
+  // that actually run an event day to day) since that's a much lower-stakes action than redefining the
+  // shared template every future event will roll out from.
+  'roadmapPlan.manage': {
+    module: 'Roadmap', label: 'Create, edit, or delete a Roadmap plan template', page: 'roadmapPlans', crud: ['create', 'update', 'delete'],
+    defaultRoles: ['SystemAdmin', 'GAAdmin']
+  },
+  'roadmapItem.manage': {
+    module: 'Roadmap', label: 'Edit an event\'s rolled-out Roadmap items (mark done, override a date, add/remove, regenerate)', page: 'roadmap', crud: ['create', 'update', 'delete'],
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager', 'ProjectManager']
   }
 };
 

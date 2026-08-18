@@ -46,6 +46,13 @@ var NAV_ITEMS = [
   // were the missing piece -- same default-roles set as 'auditLog.view' (backend/Permissions.gs).
   { path: '/audit-log', icon: LUCIDE_ICONS['clipboard-list'], label: 'nav_audit_log', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
+  // REQ: "Add Roadmap sidebar where they will be able to add types of plan." A standalone sidebar
+  // entry (not a Settings tab, unlike Roles/Icons/Permissions) since the user explicitly asked for
+  // it here -- roles mirror roadmapPlan.manage's own default roles (Permissions.gs) so this doesn't
+  // show for someone who'd just hit a 403 opening it; the RBAC-pilot permission check inside
+  // RoadmapPlans.gs itself is still what actually enforces it either way.
+  { path: '/roadmap-plans', icon: LUCIDE_ICONS['flag'], label: 'nav_roadmap_plans', section: 'section_admin',
+    roles: ['SystemAdmin', 'GAAdmin'] },
   { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 
@@ -69,6 +76,7 @@ var NAV_GROUPS_ = [
   // Items, Inspector Qualifications, Template Library.
   { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/inspector-qualifications', '/template-library'] },
   { section: 'section_admin', paths: ['/audit-log'] },
+  { section: 'section_admin', paths: ['/roadmap-plans'] },
   { section: 'section_admin', paths: ['/settings'] }
 ];
 

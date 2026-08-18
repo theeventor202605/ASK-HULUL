@@ -871,7 +871,13 @@ function permissionPages_() {
     { id: 'organizations', label: t('nav_orgs'), navPath: '/organizations' },
     { id: 'auditLog', label: t('nav_audit_log'), navPath: '/audit-log' },
     { id: 'settings', label: t('nav_settings'), navPath: '/settings' },
-    { id: 'support', label: t('nav_support'), navPath: '/support' }
+    { id: 'support', label: t('nav_support'), navPath: '/support' },
+    // Roadmap Plans (RoadmapPlans.gs) -- 'roadmapPlans' is the shared admin template catalog
+    // (Roadmap Plans sidebar page itself); 'roadmap' is working an individual Event's already-rolled-
+    // out items, whose real UI home is the Event > Roadmap tab, same eventTab-not-navPath convention
+    // as 'findings'/'templates'/etc above.
+    { id: 'roadmapPlans', label: t('nav_roadmap_plans'), navPath: '/roadmap-plans' },
+    { id: 'roadmap', label: t('tab_roadmap'), eventTab: 'roadmap' }
   ];
 }
 

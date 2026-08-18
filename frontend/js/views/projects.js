@@ -264,14 +264,17 @@ async function renderProjectDetail(params) {
   var projectId = params.id;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Projects.
   var canManage = hasPermission('project.manage');
-  var [projects, events, venues, orgs, subEvents, allFindings] = await Promise.all([
+  var [projects, events, venues, orgs, subEvents, allFindings, roadmapPlans] = await Promise.all([
     Api.call('listProjects', {}), Api.call('listEvents', {}), Api.call('listVenues', {}),
     canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]), Api.call('listSubEvents', {}),
     // REQ: "Create a Log photos timeline ... applies to ... project level." No eventId filter --
     // listFindings with no filter already returns everything this user can see (same "no filter =
     // every org-visible row, filtered client-side" pattern this page already uses for events/venues
     // above); filtered down to this project's own linked events below once `linked` exists.
-    Api.call('listFindings', {})
+    Api.call('listFindings', {}),
+    // New Event modal's "Plan Type" dropdown -- same call openNewEventModal's other caller (events.js)
+    // already makes; needed here too since this page has its own "New Event" entry point.
+    Api.call('listRoadmapPlans', {})
   ]);
   var project = projects.filter(function (pr) { return pr.id === projectId; })[0];
   if (!project) { root.innerHTML = '<div class="empty-state">' + esc(t('x_not_found', { term: Term('project') })) + '</div>'; return; }
@@ -333,7 +336,7 @@ async function renderProjectDetail(params) {
   if (!canManage) return;
 
   document.getElementById('editProjectBtn').onclick = function () { openEditProjectModal_(project); };
-  document.getElementById('newProjectEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects, projectId); };
+  document.getElementById('newProjectEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects, projectId, roadmapPlans); };
   document.getElementById('addExistingEventsBtn').onclick = function () { openAddExistingEventsModal_(project, unlinked, venueById); };
   root.querySelectorAll('[data-remove-event]').forEach(function (btn) {
     btn.onclick = async function () {

@@ -21,10 +21,15 @@ async function renderEventsList() {
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Events >
   // "Create or edit an event".
   var canManage = hasPermission('event.manage');
-  var [events, venues, orgs, projects] = await Promise.all([
+  var [events, venues, orgs, projects, roadmapPlans] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}),
     canManage ? Api.call('listOrganizations', {}) : Promise.resolve([]),
-    Api.call('listProjects', {})
+    Api.call('listProjects', {}),
+    // Roadmap Plans (REQ: "Add Roadmap sidebar... configure how it will rollout") -- the Create
+    // Event form's optional "Plan Type" dropdown, see openNewEventModal below. listRoadmapPlans is
+    // open to any authenticated user (same reasoning as listCustomRoles), so this never 403s for a
+    // role that can't manage events -- they just won't see the "New Event" button that uses it.
+    Api.call('listRoadmapPlans', {})
   ]);
   var inspectionCos = orgs.filter(function (o) { return o.type === 'INSPECTION'; });
   var emcOrgs = orgs.filter(function (o) { return o.type === 'EMC'; });
@@ -174,7 +179,7 @@ async function renderEventsList() {
     wrap.querySelectorAll('[data-edit-event]').forEach(function (b) {
       b.onclick = function () {
         var ev = events.filter(function (e) { return e.id === b.getAttribute('data-edit-event'); })[0];
-        openEditEventModal(ev, venueById, emcOrgs, projects);
+        openEditEventModal(ev, venueById, emcOrgs, projects, roadmapPlans);
       };
     });
     wrap.querySelectorAll('[data-del-event]').forEach(function (b) {
@@ -192,7 +197,7 @@ async function renderEventsList() {
     exportEventsCsv(filteredEvents_(), venueById, emcOrgById);
   };
   if (canManage) {
-    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects); };
+    document.getElementById('newEventBtn').onclick = function () { openNewEventModal(venues, inspectionCos, emcOrgs, projects, undefined, roadmapPlans); };
     var importInput = document.getElementById('importCsvInput');
     document.getElementById('importCsvBtn').onclick = function () { importInput.click(); };
     importInput.onchange = function (e) {
@@ -208,7 +213,7 @@ async function renderEventsList() {
 // renderProjectDetail in projects.js) so the new event is immediately grouped under it.
 // emcOrgs: the renting EMC is chosen here independently of the Venue (a Venue isn't connected to
 // any one EMC -- see file header comment) and is required by createEvent (Events.gs).
-function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProjectId) {
+function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProjectId, roadmapPlans) {
   var venueOptions = venues.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + ' (' + esc(v.city) + ')</option>'; }).join('');
   var inspCoOptions = inspectionCos.length
     ? inspectionCos.map(function (o) { return '<option value="' + o.id + '">' + esc(o.name) + '</option>'; }).join('')
@@ -218,6 +223,12 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
     : '<option value="">' + esc(t('no_emc_orgs_found')) + '</option>';
   var projectOptions = '<option value="">' + esc(t('label_no_project', { term: Term('project') })) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === presetProjectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
+  // REQ: "After an event is created, the PM must create the event management plan, they call it
+  // Roadmap ... they have normal plan, they have parachute plan and others." Optional -- picking one
+  // here rolls its items out into dated Roadmap items the instant this event is created (createEvent,
+  // Events.gs); "No plan" is the default so this never blocks creating an event that doesn't need one.
+  var planOptions = '<option value="">' + esc(t('roadmap_no_plan_option')) + '</option>' +
+    (roadmapPlans || []).map(function (rp) { return '<option value="' + rp.id + '">' + esc(rp.name) + '</option>'; }).join('');
   var body =
     UI.field(t('field_x_name', { term: Term('event') }), '<input id="fEventName" class="field-input" />') +
     UI.field(Term('venue'), '<select id="fVenueId" class="field-input">' + venueOptions + '</select>') +
@@ -232,7 +243,9 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
     '</div>' +
     UI.field(t('field_renting_emc'), '<select id="fEmcId" class="field-input">' + emcOptions + '</select>') +
     UI.field(t('field_inspection_co'), '<select id="fInspCo" class="field-input">' + inspCoOptions + '</select>') +
-    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fProjectId" class="field-input">' + projectOptions + '</select>');
+    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fProjectId" class="field-input">' + projectOptions + '</select>') +
+    UI.field(t('field_roadmap_plan'), '<select id="fPlanTypeId" class="field-input">' + planOptions + '</select>') +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('roadmap_plan_field_hint')) + '</div>';
 
   UI.openModal(t('new_x', { term: Term('event') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -249,7 +262,8 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
             endDateTime: document.getElementById('fEnd').value,
             emcId: emcId,
             inspectionCoId: document.getElementById('fInspCo').value,
-            projectId: document.getElementById('fProjectId').value
+            projectId: document.getElementById('fProjectId').value,
+            planTypeId: document.getElementById('fPlanTypeId').value
           });
           UI.closeModal();
           UI.toast(t('x_created', { term: Term('event') }), 'success');
@@ -274,7 +288,7 @@ function openNewEventModal(venues, inspectionCos, emcOrgs, projects, presetProje
 // way to do that being renderProjectDetail's "Add existing events" / "Remove from project". The
 // renting EMC IS editable here (updateEvent accepts emcId) -- unlike Venue/Inspection Co it isn't
 // fixed at creation, since GA may need to re-rent the venue to a different EMC later.
-function openEditEventModal(event, venueById, emcOrgs, projects) {
+function openEditEventModal(event, venueById, emcOrgs, projects, roadmapPlans) {
   if (!event) return;
   var venue = venueById[event.venueId];
   var emcOptions = (emcOrgs || []).map(function (o) {
@@ -282,6 +296,11 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
   }).join('');
   var projectOptions = '<option value="">' + esc(t('label_no_project', { term: Term('project') })) + '</option>' +
     (projects || []).map(function (pr) { return '<option value="' + pr.id + '"' + (pr.id === event.projectId ? ' selected' : '') + '>' + esc(pr.name) + '</option>'; }).join('');
+  // REQ follow-up: lets a wrong initial Plan Type pick be fixed without recreating the event. Doesn't
+  // itself regenerate the Roadmap (see updateEvent, Events.gs) -- the PM re-syncs dates against the
+  // new plan via the "Regenerate" button on Event > Roadmap once they've saved this.
+  var planOptions = '<option value="">' + esc(t('roadmap_no_plan_option')) + '</option>' +
+    (roadmapPlans || []).map(function (rp) { return '<option value="' + rp.id + '"' + (rp.id === event.planTypeId ? ' selected' : '') + '>' + esc(rp.name) + '</option>'; }).join('');
   var body =
     (venue ? '<div class="muted" style="font-size:12px;margin-bottom:12px;">' + esc(t('venue_edit_hint', { venueTerm: Term('venue'), venueName: venue.name })) + '</div>' : '') +
     UI.field(t('field_x_name', { term: Term('event') }), '<input id="fEditName" class="field-input" value="' + esc(event.name) + '" />') +
@@ -294,7 +313,9 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
       UI.field(t('col_end'), '<input id="fEditEnd" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(event.endDateTime)) + '" />') +
     '</div>' +
     UI.field(t('field_renting_emc'), '<select id="fEditEmcId" class="field-input">' + emcOptions + '</select>') +
-    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>');
+    UI.field(t('field_project_optional', { term: Term('project') }), '<select id="fEditProjectId" class="field-input">' + projectOptions + '</select>') +
+    UI.field(t('field_roadmap_plan'), '<select id="fEditPlanTypeId" class="field-input">' + planOptions + '</select>') +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('roadmap_plan_edit_hint')) + '</div>';
   UI.openModal(t('edit_x', { term: Term('event') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
@@ -307,7 +328,8 @@ function openEditEventModal(event, venueById, emcOrgs, projects) {
             startDateTime: document.getElementById('fEditStart').value,
             endDateTime: document.getElementById('fEditEnd').value,
             emcId: document.getElementById('fEditEmcId').value,
-            projectId: document.getElementById('fEditProjectId').value
+            projectId: document.getElementById('fEditProjectId').value,
+            planTypeId: document.getElementById('fEditPlanTypeId').value
           });
           UI.closeModal(); UI.toast(t('x_updated', { term: Term('event') }), 'success'); Router.resolve();
         } catch (err) { UI.error(err); }

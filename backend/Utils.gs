@@ -62,7 +62,13 @@ var SCHEMA = {
   // Computed once at save time even when the PM picks "N days/weeks before start" rather than an
   // absolute date -- so it doesn't silently shift if startDateTime is edited afterward. Blank = no
   // deadline set yet.
-  Events:                 ['id','name','code','project','venueId','address','city','startDateTime','endDateTime','emcId','inspectionCoId','eventManagerId','status','createdBy','createdAt','projectId','templatesDeadlineAt'],
+  // planTypeId appended at the end -- REQ: "the PM must create the event management plan, they call
+  // it Roadmap ... they have normal plan, they have parachute plan and others." Points at a
+  // RoadmapPlans row (see RoadmapPlans.gs) chosen on the Create Event form; the moment the event is
+  // created, every item in that plan template is rolled out into dated EventRoadmapItems rows for
+  // THIS event (rolloutEventRoadmap_). Blank = no plan assigned, same "feature simply doesn't apply"
+  // convention as every other optional Events field here.
+  Events:                 ['id','name','code','project','venueId','address','city','startDateTime','endDateTime','emcId','inspectionCoId','eventManagerId','status','createdBy','createdAt','projectId','templatesDeadlineAt','planTypeId'],
   // A GA-level grouping of several Events (e.g. a multi-venue program) -- see Projects.gs.
   Projects:               ['id','name','description','createdBy','createdAt'],
   SubEvents:              ['id','eventId','name','startDateTime','endDateTime'],
@@ -247,7 +253,37 @@ var SCHEMA = {
   // screenshotUrls appended at the end -- REQ: "a screenshot will be captured and added as large
   // thumbnail image" (# tab/section picker, see EventChat.gs uploadChatScreenshot). Comma-joined
   // Drive thumbnail-endpoint URLs, same convention as every other id-list column on this row.
-  EventChatMessages:      ['id','eventId','authorId','message','mentionedUserIds','mentionedParticipantIds','logRefIds','createdAt','screenshotUrls']
+  EventChatMessages:      ['id','eventId','authorId','message','mentionedUserIds','mentionedParticipantIds','logRefIds','createdAt','screenshotUrls'],
+
+  // Roadmap Plans (see RoadmapPlans.gs) -- REQ: "Add Roadmap sidebar where they will be able to add
+  // types of plan. and configure how it will rollout." An admin-defined, reusable named template
+  // (e.g. "Normal Plan", "Parachute Plan") -- RoadmapPlanItems below holds its ordered milestone
+  // items. Soft-delete like Roles/TemplateLibrary (status -> 'Inactive'), never hard-removed, so a
+  // plan an Event was already rolled out from stays meaningful in the audit trail even after retired.
+  RoadmapPlans:           ['id','name','status','createdBy','createdAt'],
+  // One ordered milestone within a RoadmapPlans template. sortOrder is assignment order (every new
+  // item is appended at the end -- see addRoadmapPlanItem) and doubles as the ordering constraint
+  // rollout relies on: anchorType 'item' may only point at another item already in the same plan,
+  // which (since items are only ever appended) is guaranteed to have a smaller sortOrder already --
+  // no separate cycle/forward-reference check needed. anchorType is 'eventStart' | 'eventEnd' |
+  // 'item' (anchorItemId then names which sibling row). offsetSign is 'before' | 'after';
+  // offsetWeeks/Days/Hours are non-negative integers combined at rollout time (resolveOffsetMs_) --
+  // kept as three separate unit fields rather than one pre-multiplied total so "3 weeks 3 days
+  // before" round-trips through the editor exactly as typed, instead of collapsing to "24 days" and
+  // losing the PM's original phrasing.
+  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status'],
+  // One rolled-out, per-Event instance of a plan item -- REQ: "configure how it will rollout." Created
+  // in bulk by rolloutEventRoadmap_ the moment an Event is created with a planTypeId set (or later via
+  // the Roadmap tab's manual "Regenerate" action). dueAt is the fully resolved absolute instant (same
+  // "compute once, don't silently drift if the anchor changes later" convention as
+  // Events.templatesDeadlineAt -- see that field's comment above). sourceItemId links back to the
+  // RoadmapPlanItems row this came from, blank for an item the PM added ad hoc on this one Event
+  // (regenerate never touches sourceItemId==='' rows). status is 'Pending' or 'Done'; "Overdue" is a
+  // derived display state (Pending + dueAt in the past), not stored. sortOrder mirrors the source
+  // item's sortOrder at generation time so the tab can list them in plan order even though dueAt
+  // (used for the timeline dot placement) may not be perfectly monotonic once a PM manually overrides
+  // one item's date.
+  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt']
 };
 
 var ROLES = {
@@ -524,7 +560,8 @@ var ID_PREFIX = {
   InspectionResults: 'IR', Findings: 'FND', Escalations: 'ESC', Resolutions: 'RES', Participants: 'PAR',
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
   Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
-  TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR'
+  TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
+  RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

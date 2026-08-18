@@ -117,6 +117,8 @@ window.Router = {
     this.add('/support/:id', renderSupportDetail);
     this.add('/audit-log', renderAuditLog);
     this.add('/settings', renderSettings);
+    this.add('/roadmap-plans', renderRoadmapPlans);
+    this.add('/roadmap-plans/:id', renderRoadmapPlanDetail);
     window.addEventListener('hashchange', () => this.resolve());
   }
 };

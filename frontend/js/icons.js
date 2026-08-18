@@ -52,6 +52,9 @@ window.LUCIDE_ICONS = {
   'chevron-left': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m15 18-6-6 6-6" /> </svg>',
   'chevron-right': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m9 18 6-6-6-6" /> </svg>',
   'chevron-down': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m6 9 6 6 6-6" /> </svg>',
+  // Roadmap Plans editor's Move Up/Down row buttons (roadmapPlanItemRowHtml_, roadmapPlans.js) --
+  // chevron-down already existed (tab-group dropdown indicator); this is its missing mirror.
+  'chevron-up': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m18 15-6-6-6 6" /> </svg>',
   'circle-check': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="m9 12 2 2 4-4" /> </svg>',
   'circle-check-big': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M21.801 10A10 10 0 1 1 17 3.335" /> <path d="m9 11 3 3L22 4" /> </svg>',
   'circle-dot': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <circle cx="12" cy="12" r="1" /> </svg>',
@@ -294,6 +297,10 @@ window.ICON_DEFAULTS = {
   // REQ (Venue > Places tab): "Add dropdown checkbox to show place names, and all other options
   // available can be selected per checkbox." Button that opens UI.mapLayersDropdown's checklist panel.
   map_layers: LUCIDE_ICONS['list-checks'],
+  // REQ (Event > Roadmap tab): "Regenerate" button re-syncs a Roadmap plan's dates against the
+  // event's current start/end (generateEventRoadmap, RoadmapPlans.gs) -- same recompute-in-place
+  // idea as reupload_version above, just for the Roadmap tab instead of Template Library.
+  roadmap_regenerate: LUCIDE_ICONS['refresh-cw'],
   open_calendar: LUCIDE_ICONS['calendar'],
   record_results: LUCIDE_ICONS['clipboard-check'],
   export_csv: LUCIDE_ICONS['download'],
@@ -306,6 +313,7 @@ window.ICON_DEFAULTS = {
   page_prev: LUCIDE_ICONS['chevron-left'],
   page_next: LUCIDE_ICONS['chevron-right'],
   chevron_down: LUCIDE_ICONS['chevron-down'], // Event tab bar's grouped-tab dropdown indicator (EVENT_TAB_GROUPS_, eventDetail.js)
+  chevron_up: LUCIDE_ICONS['chevron-up'], // Roadmap Plans editor's "move item up" row button (roadmapPlans.js)
   actions_menu: LUCIDE_ICONS['ellipsis-vertical'],
   mark_read: LUCIDE_ICONS['check'],
   coverage_complete: LUCIDE_ICONS['shield-check'],

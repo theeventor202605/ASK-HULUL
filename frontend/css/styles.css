@@ -422,6 +422,22 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .tl-dot-purple{ background:var(--purple); }
 .tl-dot-blue{ background:var(--info); }
 .tl-dot-amber{ background:var(--warning); }
+/* Roadmap Plan items (REQ: "Add Roadmap sidebar... configure how it will rollout") -- Pending ones
+   get their own color (green/red are already spoken for as "good/bad outcome" by the template dots
+   above); Done/Overdue reuse green/red so they still read as "good/bad" at a glance like everything
+   else on this line. */
+.tl-dot-indigo{ background:#6366f1; }
+
+/* Event > Roadmap tab's checklist card (roadmapChecklistHtml_, eventDetail.js) -- one row per rolled-
+   out/ad hoc item, "Overdue" rows tinted the same red family as tl-dot-red above for consistency. */
+.roadmap-item-row{ display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px solid var(--border); }
+.roadmap-item-row:last-child{ border-bottom:none; }
+.roadmap-item-check{ flex:none; background:none; border:none; padding:0; cursor:pointer; display:flex; color:var(--text-400); }
+.roadmap-item-check.done{ color:#16a34a; }
+.roadmap-item-name{ flex:1; font-size:13px; font-weight:600; }
+.roadmap-item-row.done .roadmap-item-name{ text-decoration:line-through; color:var(--text-400); font-weight:500; }
+.roadmap-item-date{ font-size:11.5px; color:var(--text-600); white-space:nowrap; }
+.roadmap-item-row.overdue .roadmap-item-date{ color:#dc2626; font-weight:700; }
 
 /* Event Roadmap tab (eventDetail.js, tabRoadmap/eventRoadmapHtml_) -- one horizontal line like
    .project-timeline above, but plotting every scheduling milestone within a single event instead of
@@ -647,6 +663,10 @@ table.data-table tr:hover td{ background:#fafbff; }
    looking like an empty box next to a disconnected floating value. minmax(0,1fr) lets both tracks
    actually shrink to the row's real available width, so content wraps/clips in place instead. */
 .form-row{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+/* Roadmap Plans item editor's Weeks/Days/Hours offset row (openRoadmapPlanItemModal_, roadmapPlans.js)
+   -- same minmax(0,1fr) shrink-safety as .form-row above, just three tracks instead of two. */
+.form-row-3{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:12px; }
+@media (max-width:640px){ .form-row-3{ grid-template-columns:1fr; } }
 
 /* ---------- List-page filter + content layout ----------
    Shared by Events/Meetings/Sub-Events/Checklist Items list views: a fixed-width filter/nav card on

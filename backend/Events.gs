@@ -229,12 +229,19 @@ function createEvent(user, p) {
   if (!venue) throw new HululError('NOT_FOUND', 'Venue not found');
   if (p.projectId && !getById('Projects', p.projectId)) throw new HululError('NOT_FOUND', 'Project not found');
   var emcId = assertEmcOrg_(p.emcId).id;
+  // REQ: "After an event is created, the PM must create the event management plan, they call it
+  // Roadmap ... Add Roadmap sidebar where they will be able to add types of plan." planTypeId
+  // (optional -- validated below only if supplied) is picked on this same Create Event form; the
+  // moment the row exists (with real start/end dates to anchor against) its plan's items are rolled
+  // out into dated EventRoadmapItems rows -- see rolloutEventRoadmapOnCreate_ (RoadmapPlans.gs).
+  var planTypeId = p.planTypeId || '';
+  if (planTypeId && !getById('RoadmapPlans', planTypeId)) throw new HululError('NOT_FOUND', 'Roadmap plan not found');
   var event = {
     id: newId('Events'), name: p.name, code: p.code || ('EVT-' + Date.now().toString(36).toUpperCase()),
     project: p.project || '', venueId: p.venueId, address: p.address, city: p.city,
     startDateTime: p.startDateTime, endDateTime: p.endDateTime, emcId: emcId,
     inspectionCoId: p.inspectionCoId, eventManagerId: p.eventManagerId || '', status: 'Planning',
-    createdBy: user.id, createdAt: nowIso_(), projectId: p.projectId || ''
+    createdBy: user.id, createdAt: nowIso_(), projectId: p.projectId || '', planTypeId: planTypeId
   };
   insertRow('Events', event);
   audit(user.id, 'CREATE_EVENT', 'Events', event.id, {});
@@ -242,6 +249,7 @@ function createEvent(user, p) {
   // template library (Templates.gs) is available to send as soon as a Project Manager is ready;
   // see sendTemplates.
   notifyEventStakeholders_(event.id, 'EVENT_CREATED', 'Event ' + event.name + ' created', 'Events', event.id);
+  if (planTypeId) rolloutEventRoadmapOnCreate_(user, event);
   return event;
 }
 
@@ -254,6 +262,13 @@ function updateEvent(user, p) {
   ['name', 'address', 'city', 'startDateTime', 'endDateTime', 'status', 'eventManagerId', 'project', 'projectId'].forEach(function (f) {
     if (p[f] !== undefined) patch[f] = p[f];
   });
+  // Changing the plan type here does NOT auto-regenerate the Roadmap (a PM may already have marked
+  // items Done, or manually adjusted dates) -- Event > Roadmap tab's "Regenerate" button re-reads
+  // whatever planTypeId ends up here and re-rolls it explicitly, on the PM's own action.
+  if (p.planTypeId !== undefined) {
+    if (p.planTypeId && !getById('RoadmapPlans', p.planTypeId)) throw new HululError('NOT_FOUND', 'Roadmap plan not found');
+    patch.planTypeId = p.planTypeId;
+  }
   // REQ (rental model): GA may re-rent the venue to a different EMC without reassigning the venue
   // itself. Changing it invalidates whichever Event Manager was assigned under the old EMC (they
   // very likely don't belong to the new one), so it's cleared unless the caller also supplies a

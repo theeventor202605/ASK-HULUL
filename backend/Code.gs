@@ -104,6 +104,21 @@ var ROUTES = {
   updateRole: function (u, p) { return updateRole(u, p); },
   deleteRole: function (u, p) { return deleteRole(u, p); },
   listParticipantTypes: function (u, p) { return listParticipantTypes(u); },
+  // Roadmap Plans (RoadmapPlans.gs) -- admin-defined plan templates + their per-Event rollout.
+  listRoadmapPlans: function (u, p) { return listRoadmapPlans(u); },
+  getRoadmapPlan: function (u, p) { return getRoadmapPlan(u, p); },
+  createRoadmapPlan: function (u, p) { return createRoadmapPlan(u, p); },
+  updateRoadmapPlan: function (u, p) { return updateRoadmapPlan(u, p); },
+  deleteRoadmapPlan: function (u, p) { return deleteRoadmapPlan(u, p); },
+  addRoadmapPlanItem: function (u, p) { return addRoadmapPlanItem(u, p); },
+  updateRoadmapPlanItem: function (u, p) { return updateRoadmapPlanItem(u, p); },
+  deleteRoadmapPlanItem: function (u, p) { return deleteRoadmapPlanItem(u, p); },
+  moveRoadmapPlanItem: function (u, p) { return moveRoadmapPlanItem(u, p); },
+  listEventRoadmapItems: function (u, p) { return listEventRoadmapItems(u, p); },
+  generateEventRoadmap: function (u, p) { return generateEventRoadmap(u, p); },
+  addEventRoadmapItem: function (u, p) { return addEventRoadmapItem(u, p); },
+  updateEventRoadmapItem: function (u, p) { return updateEventRoadmapItem(u, p); },
+  deleteEventRoadmapItem: function (u, p) { return deleteEventRoadmapItem(u, p); },
 
   // Projects (grouping of several Events)
   listProjects: function (u, p) { return listProjects(u, p); },

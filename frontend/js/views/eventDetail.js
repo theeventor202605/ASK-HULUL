@@ -3661,19 +3661,150 @@ async function tabRoadmap(content, eventId, detail) {
   var results = await Promise.all([
     Api.call('getEventTemplates', { eventId: eventId }),
     Api.call('listMeetings', { eventId: eventId }),
-    Api.call('listInspections', { eventId: eventId })
+    Api.call('listInspections', { eventId: eventId }),
+    // REQ: "the PM must create the event management plan, they call it Roadmap ... configure how it
+    // will rollout." The admin-defined plan template's already-materialized, dated items for THIS
+    // event (RoadmapPlans.gs) -- plotted onto the same timeline as everything else here, plus a
+    // dedicated checklist card below it (roadmapChecklistHtml_) since, unlike every other milestone
+    // on this tab, these are actionable (a PM can mark them Done, add one ad hoc, or fix a date).
+    Api.call('listEventRoadmapItems', { eventId: eventId })
   ]);
-  var templates = results[0], meetings = results[1], inspections = results[2];
-  var milestones = eventRoadmapMilestones_(detail, templates, meetings, inspections);
+  var templates = results[0], meetings = results[1], inspections = results[2], roadmapItems = results[3];
+  var milestones = eventRoadmapMilestones_(detail, templates, meetings, inspections, roadmapItems);
+  var canManageItems = hasPermission('roadmapItem.manage');
 
   content.innerHTML =
     '<div class="card" style="padding:16px 20px;">' +
     '<div class="card-title">' + esc(t('tab_roadmap')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;margin-top:2px;">' + esc(t('roadmap_subtitle')) + '</div>' +
     eventRoadmapHtml_(milestones) +
-    '</div>';
+    '</div>' +
+    roadmapChecklistHtml_(roadmapItems, detail.event, canManageItems);
 
   wireEventRoadmap_(content);
+  wireRoadmapChecklist_(content, eventId, roadmapItems, canManageItems);
+}
+
+// ---- Roadmap Plan checklist (per-event rolled-out items) ------------------
+// REQ: "configure how it will rollout" -- separate from the read-only timeline above (which just
+// plots dates), this card is where a PM actually WORKS the plan: tick items off, fix a date that
+// drifted, add something specific to this one event, or re-sync every date after the event's own
+// start/end changed (Regenerate). See RoadmapPlans.gs's rolloutEventRoadmap_ for how these rows are
+// generated/kept in sync in the first place.
+function roadmapChecklistHtml_(items, event, canManage) {
+  var sorted = (items || []).slice().sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
+  var rowsHtml = sorted.length
+    ? sorted.map(roadmapItemRowHtml_).join('')
+    : '<div class="muted" style="font-size:12px;padding:8px 4px;">' + esc(event.planTypeId ? t('roadmap_no_items_yet') : t('roadmap_no_plan_assigned')) + '</div>';
+
+  return '<div class="card" style="padding:16px 20px;margin-top:16px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">' +
+      '<div>' +
+        '<div class="card-title">' + esc(t('roadmap_plan_section_title')) + '</div>' +
+        '<div class="muted" style="font-size:11.5px;margin-top:2px;">' + esc(t('roadmap_plan_section_subtitle')) + '</div>' +
+      '</div>' +
+      (canManage ? '<div style="display:flex;gap:8px;flex:none;">' +
+        (event.planTypeId ? '<button type="button" class="btn btn-secondary btn-sm" id="regenRoadmapBtn" title="' + esc(t('roadmap_regenerate_hint')) + '">' + ICON('roadmap_regenerate') + ' ' + esc(t('roadmap_regenerate_btn')) + '</button>' : '') +
+        '<button type="button" class="btn btn-primary btn-sm" id="addRoadmapItemBtn">' + esc(t('roadmap_add_item_btn')) + '</button>' +
+      '</div>' : '') +
+    '</div>' +
+    '<div style="margin-top:10px;">' + rowsHtml + '</div>' +
+  '</div>';
+}
+
+function roadmapItemRowHtml_(item) {
+  var done = item.status === 'Done';
+  var rowClass = 'roadmap-item-row' + (done ? ' done' : '') + (item.overdue ? ' overdue' : '');
+  return '<div class="' + rowClass + '" data-item-id="' + esc(item.id) + '">' +
+    '<button type="button" class="roadmap-item-check' + (done ? ' done' : '') + '" data-toggle-done="' + esc(item.id) + '" title="' + esc(done ? t('roadmap_mark_pending_title') : t('roadmap_mark_done_title')) + '">' +
+      (done ? ICON('checklist_done') : ICON('checklist_pending')) +
+    '</button>' +
+    '<span class="roadmap-item-name">' + esc(item.name) + '</span>' +
+    '<span class="roadmap-item-date">' + esc(UI.fmtDate(item.dueAt)) + (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>' +
+    '<span style="display:flex;gap:4px;flex:none;">' +
+      '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(item.id) + '">' + ICON('edit') + '</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-item="' + esc(item.id) + '">' + ICON('delete') + '</button>' +
+    '</span>' +
+  '</div>';
+}
+
+function wireRoadmapChecklist_(content, eventId, items, canManage) {
+  if (!canManage) return;
+  var itemsById = {}; (items || []).forEach(function (it) { itemsById[it.id] = it; });
+
+  var addBtn = content.querySelector('#addRoadmapItemBtn');
+  if (addBtn) addBtn.onclick = function () { openAddRoadmapItemModal_(eventId); };
+
+  var regenBtn = content.querySelector('#regenRoadmapBtn');
+  if (regenBtn) regenBtn.onclick = async function () {
+    try { await Api.call('generateEventRoadmap', { eventId: eventId }); UI.toast(t('toast_roadmap_regenerated'), 'success'); Router.resolve(); }
+    catch (err) { UI.error(err); }
+  };
+
+  content.querySelectorAll('[data-toggle-done]').forEach(function (btn) {
+    btn.onclick = async function () {
+      var itemId = btn.getAttribute('data-toggle-done');
+      var done = !btn.classList.contains('done');
+      try { await Api.call('updateEventRoadmapItem', { itemId: itemId, done: done }); Router.resolve(); }
+      catch (err) { UI.error(err); }
+    };
+  });
+  content.querySelectorAll('[data-edit-item]').forEach(function (btn) {
+    btn.onclick = function () {
+      var itemId = btn.getAttribute('data-edit-item');
+      openEditRoadmapItemModal_(itemsById[itemId] || { id: itemId, name: '', dueAt: '' });
+    };
+  });
+  content.querySelectorAll('[data-delete-item]').forEach(function (btn) {
+    btn.onclick = function () {
+      var itemId = btn.getAttribute('data-delete-item');
+      UI.confirmModal(t('roadmap_delete_item_confirm'), async function () {
+        try { await Api.call('deleteEventRoadmapItem', { itemId: itemId }); UI.toast(t('toast_deleted'), 'success'); Router.resolve(); }
+        catch (err) { UI.error(err); }
+      });
+    };
+  });
+}
+
+// Ad hoc item added directly on this one Event -- sourceItemId stays blank server-side, so a
+// Regenerate never touches it (see rolloutEventRoadmap_, RoadmapPlans.gs).
+function openAddRoadmapItemModal_(eventId) {
+  var body =
+    UI.field(t('field_item_name'), '<input id="fRmName" class="field-input" maxlength="120" />') +
+    UI.field(t('col_due_date'), '<input id="fRmDue" type="datetime-local" class="field-input" />');
+  UI.openModal(t('roadmap_add_item_title'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('create'), className: 'btn-primary', onClick: async function () {
+        var name = document.getElementById('fRmName').value.trim();
+        var dueAt = document.getElementById('fRmDue').value;
+        if (!name) { UI.toast(t('field_item_name'), 'error'); return; }
+        if (!dueAt) { UI.toast(t('col_due_date'), 'error'); return; }
+        try {
+          await Api.call('addEventRoadmapItem', { eventId: eventId, name: name, dueAt: dueAt });
+          UI.closeModal(); UI.toast(t('toast_added'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+}
+
+function openEditRoadmapItemModal_(item) {
+  var body =
+    UI.field(t('field_item_name'), '<input id="fERmName" class="field-input" maxlength="120" value="' + esc(item.name) + '" />') +
+    UI.field(t('col_due_date'), '<input id="fERmDue" type="datetime-local" class="field-input" value="' + esc(normalizeDateTimeLocal(item.dueAt)) + '" />');
+  UI.openModal(t('roadmap_edit_item_title'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
+        var name = document.getElementById('fERmName').value.trim();
+        var dueAt = document.getElementById('fERmDue').value;
+        if (!name) { UI.toast(t('field_item_name'), 'error'); return; }
+        var patch = { itemId: item.id, name: name };
+        if (dueAt) patch.dueAt = dueAt;
+        try {
+          await Api.call('updateEventRoadmapItem', patch);
+          UI.closeModal(); UI.toast(t('toast_saved'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 // Every scheduling milestone this Event has, unsorted-in/sorted-out oldest to newest. Each entry:
@@ -3684,7 +3815,7 @@ async function tabRoadmap(content, eventId, detail) {
 // same way at a glance either way). Anything without a usable date on record (a Sub-Event never given
 // dates, a Template never sent, etc.) is simply skipped -- same "no date, no dot" rule
 // projectTimelineHtml_ (projects.js) already applies at the Project level.
-function eventRoadmapMilestones_(detail, templates, meetings, inspections) {
+function eventRoadmapMilestones_(detail, templates, meetings, inspections, roadmapItems) {
   var out = [];
   function add(iso, colorClass, big, type, label) {
     var ms = new Date(iso).getTime();
@@ -3713,6 +3844,17 @@ function eventRoadmapMilestones_(detail, templates, meetings, inspections) {
 
   (inspections || []).forEach(function (insp) {
     add(insp.scheduledAt, 'tl-dot-amber', false, 'inspection', t('roadmap_ms_inspection', { discipline: insp.disciplineName, term: Term('inspection') }));
+  });
+
+  // Roadmap Plan items -- REQ: "configure how it will rollout." Done/Overdue reuse the same green/
+  // red "good/bad outcome" dots the rest of this line already uses (template evaluated/missed above);
+  // still-Pending-and-not-yet-due ones get their own color (tl-dot-indigo) so they're visually
+  // distinct from those two outcomes while a PM still has to act on them.
+  (roadmapItems || []).forEach(function (it) {
+    var colorClass = it.status === 'Done' ? 'tl-dot-green' : it.overdue ? 'tl-dot-red' : 'tl-dot-indigo';
+    var type = it.status === 'Done' ? 'roadmapDone' : it.overdue ? 'roadmapOverdue' : 'roadmapPending';
+    var statusLabel = it.status === 'Done' ? t('status_done') : it.overdue ? t('roadmap_overdue_badge') : t('status_pending');
+    add(it.dueAt, colorClass, false, type, t('roadmap_ms_item', { name: it.name, status: statusLabel }));
   });
 
   return out.sort(function (a, b) { return a.ms - b.ms; });
@@ -3771,7 +3913,10 @@ var ROADMAP_LEGEND_TYPES_ = [
   ['templateSent', 'tl-dot-blue', 'legend_rm_template_sent'],
   ['templateEvaluated', 'tl-dot-green', 'legend_rm_template_evaluated'],
   ['templateMissed', 'tl-dot-red', 'legend_rm_template_missed'],
-  ['inspection', 'tl-dot-amber', 'legend_rm_inspection']
+  ['inspection', 'tl-dot-amber', 'legend_rm_inspection'],
+  ['roadmapPending', 'tl-dot-indigo', 'legend_rm_roadmap_pending'],
+  ['roadmapDone', 'tl-dot-green', 'legend_rm_roadmap_done'],
+  ['roadmapOverdue', 'tl-dot-red', 'legend_rm_roadmap_overdue']
 ];
 function roadmapLegendHtml_(milestones) {
   var present = {}; milestones.forEach(function (m) { present[m.type] = true; });
