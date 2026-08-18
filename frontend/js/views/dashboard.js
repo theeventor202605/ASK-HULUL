@@ -214,10 +214,17 @@ async function dashboardTabLiveMap_(content) {
         '<div class="muted" style="font-size:11.5px;">' + esc(t('dashboard_live_map_subtitle')) + '</div></div>' +
         '<div class="card-body"><div id="dashboardLiveMap" style="height:500px;border-radius:var(--radius-sm);"></div></div>' +
       '</div>' +
-      '<div class="card" style="flex:1 1 260px;min-width:240px;">' +
-        '<div class="card-header"><div class="card-title">' + esc(t('dashboard_photo_counts_title')) + '</div>' +
-        '<div class="muted" style="font-size:11.5px;">' + esc(t('dashboard_photo_counts_subtitle')) + '</div></div>' +
-        '<div class="card-body" id="dashboardPhotoCounts"><div class="empty-state">' + esc(t('loading')) + '</div></div>' +
+      '<div style="flex:1 1 260px;min-width:240px;display:flex;flex-direction:column;gap:16px;">' +
+        '<div class="card">' +
+          '<div class="card-header"><div class="card-title">' + esc(t('dashboard_online_users_title')) + '</div>' +
+          '<div class="muted" style="font-size:11.5px;">' + esc(t('dashboard_online_users_subtitle')) + '</div></div>' +
+          '<div class="card-body" id="dashboardOnlineUsers"><div class="empty-state">' + esc(t('loading')) + '</div></div>' +
+        '</div>' +
+        '<div class="card">' +
+          '<div class="card-header"><div class="card-title">' + esc(t('dashboard_photo_counts_title')) + '</div>' +
+          '<div class="muted" style="font-size:11.5px;">' + esc(t('dashboard_photo_counts_subtitle')) + '</div></div>' +
+          '<div class="card-body" id="dashboardPhotoCounts"><div class="empty-state">' + esc(t('loading')) + '</div></div>' +
+        '</div>' +
       '</div>' +
     '</div>';
   initDashboardLiveMap_();
@@ -243,6 +250,7 @@ function initDashboardLiveMap_() {
     if (!dashboardLiveMapInstance_) return;
     Api.call('dashboardLiveMapData', {}).then(function (data) {
       if (!dashboardLiveMapInstance_) return; // tab switched away mid-request
+      renderDashboardOnlineUsers_(data.locations || []);
       renderDashboardPhotoCounts_(data.inspectorPhotoCounts || []);
       var seenIds = {};
       (data.locations || []).forEach(function (loc) {
@@ -281,6 +289,26 @@ function initDashboardLiveMap_() {
     Object.keys(markers).forEach(function (id) { if (dashboardLiveMapInstance_) dashboardLiveMapInstance_.removeLayer(markers[id]); });
     markers = {};
   };
+}
+
+// REQ: "Add list to only show online users and in which venue." Reuses the exact same locations[]
+// the map plots each tick (dashboardLiveMapData, LiveLocation.gs already filters to a fresh ping --
+// see USER_LIVE_LOCATION_FRESHNESS_MS_ -- AND a match against a venue boundary), so "online" here
+// means the same thing the dots on the map mean: no separate online/offline concept was introduced.
+function renderDashboardOnlineUsers_(locations) {
+  var holder = document.getElementById('dashboardOnlineUsers');
+  if (!holder) return;
+  if (!locations.length) { holder.innerHTML = '<div class="empty-state">' + esc(t('dashboard_no_online_users')) + '</div>'; return; }
+  var sorted = locations.slice().sort(function (a, b) { return String(a.userName).localeCompare(String(b.userName)); });
+  holder.innerHTML = sorted.map(function (loc) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13px;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(loc.userName) + '</div>' +
+        '<div class="muted" style="font-size:11px;">' + esc(loc.roleLabel) + '</div>' +
+      '</div>' +
+      '<span class="badge badge-neutral" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(loc.venueName) + '</span>' +
+    '</div>';
+  }).join('');
 }
 
 function renderDashboardPhotoCounts_(counts) {
