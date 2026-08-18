@@ -127,6 +127,10 @@ window.HULUL_I18N = {
     toast_remarks_required: 'Remarks are required', toast_evidence_uploading_wait: 'Evidence is still uploading — please wait for it to finish',
     toast_evidence_required: 'A photo or video of the resolution is required', toast_resolution_submitted: 'Resolution submitted',
     toast_x_resolved: '{{term}} resolved', toast_rejection_remarks_required: 'Rejection remarks are required', toast_resolution_rejected: 'Resolution rejected',
+    toast_resolution_rejected_recreated: 'Rejected — a new finding was automatically created to continue tracking this issue',
+    checklist_item_traceability: 'From checklist item: {{description}}',
+    recreated_from_banner_title: 'Automatically recreated', recreated_from_banner_body: 'This finding was automatically created after a previous attempt was rejected twice. Original:',
+    recreated_into_banner_title: 'Superseded', recreated_into_banner_body: 'This finding was rejected twice and is now closed. A new finding was automatically created to continue tracking this issue:',
     risk_critical: 'Critical', risk_high: 'High', risk_medium: 'Medium', risk_low: 'Low', risk_label_suffix: '{{label}} RISK',
 
     // ---- Settings (settings.js) ----
@@ -743,6 +747,10 @@ window.HULUL_I18N = {
     toast_remarks_required: 'الملاحظات مطلوبة', toast_evidence_uploading_wait: 'الدليل ما زال قيد الرفع — يرجى الانتظار حتى ينتهي',
     toast_evidence_required: 'مطلوب صورة أو فيديو للحل', toast_resolution_submitted: 'تم تقديم الحل',
     toast_x_resolved: 'تم حل {{term}}', toast_rejection_remarks_required: 'ملاحظات الرفض مطلوبة', toast_resolution_rejected: 'تم رفض الحل',
+    toast_resolution_rejected_recreated: 'تم الرفض — تم إنشاء عنصر جديد تلقائيًا لمتابعة هذه المشكلة',
+    checklist_item_traceability: 'من عنصر القائمة: {{description}}',
+    recreated_from_banner_title: 'تم الإنشاء تلقائيًا', recreated_from_banner_body: 'تم إنشاء هذا العنصر تلقائيًا بعد رفض محاولة سابقة مرتين. العنصر الأصلي:',
+    recreated_into_banner_title: 'تم استبداله', recreated_into_banner_body: 'تم رفض هذا العنصر مرتين وأُغلق الآن. تم إنشاء عنصر جديد تلقائيًا لمتابعة هذه المشكلة:',
     risk_critical: 'حرج', risk_high: 'مرتفع', risk_medium: 'متوسط', risk_low: 'منخفض', risk_label_suffix: 'خطورة {{label}}',
 
     // ---- Settings (settings.js) ----

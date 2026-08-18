@@ -34,7 +34,11 @@ var FINDING_OPEN_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen'
 var FINDING_EDITABLE_STATUSES_ = ['Open', 'Viewed'];
 
 function findingVisibleTo_(user, finding) {
-  if (user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR) {
+  // BUG FIX: was a hardcoded VENDOR/OPERATOR/EXHIBITOR check -- a self-served custom Place/
+  // Participant type (e.g. "Facilities", Settings > Roles > isParticipantType) fell through to the
+  // "sees everything" branch below instead of being scoped to its own Participant record, unlike
+  // EventChat.gs/Resolutions.gs which already used isParticipantRoleCode_ for this. Now consistent.
+  if (isParticipantRoleCode_(user.role)) {
     // Shared across every account/shift at the same physical spot -- see participantSiblingIds_.
     return participantSiblingIds_(user.id).indexOf(finding.participantId) !== -1;
   }
@@ -44,12 +48,16 @@ function findingVisibleTo_(user, finding) {
 // Adds display-only fields the frontend needs but the raw Findings row doesn't carry: the
 // participant's and discipline's names (participantId/disciplineId alone mean nothing in the UI),
 // and evidenceUrls turned into a real array instead of the raw comma-joined string the sheet stores.
-function enrichFinding_(f, participantsById, disciplinesById) {
+// checklistItemsById (optional) -- REQ: "Any log created through a checklist must be traceable to
+// that specific item in the checklist" -- resolves checklistItemId into a readable description.
+function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById) {
   var pt = participantsById[f.participantId];
   var d = disciplinesById[f.disciplineId];
+  var item = checklistItemsById && f.checklistItemId ? checklistItemsById[f.checklistItemId] : null;
   return Object.assign({}, f, {
     participantName: pt ? pt.name : '',
     disciplineName: d ? d.name : '',
+    checklistItemDescription: item ? item.description : '',
     evidenceUrls: f.evidenceUrls ? String(f.evidenceUrls).split(',').filter(Boolean) : []
   });
 }
@@ -59,7 +67,7 @@ function listFindings(user, p) {
   if (p && p.eventId) all = all.filter(function (f) { return f.eventId === p.eventId; });
   if (p && p.status) all = all.filter(function (f) { return f.status === p.status; });
   if (p && p.disciplineId) all = all.filter(function (f) { return f.disciplineId === p.disciplineId; });
-  if (user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR) {
+  if (isParticipantRoleCode_(user.role)) { // BUG FIX: see findingVisibleTo_'s comment above
     // Shared across every account/shift at the same physical spot (see participantSiblingIds_ in
     // Participants.gs) -- not just this exact login's own Participant row, so a finding recorded
     // against the morning shift is still visible (and resolvable) to the afternoon shift before its
@@ -71,7 +79,9 @@ function listFindings(user, p) {
   getAll('Participants').forEach(function (pt) { participantsById[pt.id] = pt; });
   var disciplinesById = {};
   getAll('Disciplines').forEach(function (d) { disciplinesById[d.id] = d; });
-  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById); });
+  var checklistItemsById = {};
+  getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
+  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById, checklistItemsById); });
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 
@@ -99,7 +109,11 @@ function createFinding(user, p) {
     nextInspectionAt: p.nextInspectionAt || '', participantId: p.participantId,
     subZone: p.subZone || (zone ? zone.name : ''), location: p.location || participant.location || '',
     status: 'Open', evidenceUrls: (p.evidenceUrls || []).join(','),
-    lat: p.lat || participant.lat || '', lng: p.lng || participant.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0
+    lat: p.lat || participant.lat || '', lng: p.lng || participant.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0,
+    // Manually-logged findings (this path) have no single checklist item to point at -- only the
+    // auto-created-from-a-Crossed-item path (recordInspectionResults, Inspections.gs) sets
+    // checklistItemId. p.checklistItemId is still honored if a future caller supplies one explicitly.
+    checklistItemId: p.checklistItemId || '', recreatedFromId: ''
   };
   insertRow('Findings', finding);
   audit(user.id, 'CREATE_FINDING', 'Findings', finding.id, {});
@@ -176,7 +190,7 @@ function viewFinding(user, p) {
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
   if (!findingVisibleTo_(user, finding)) throw new HululError('FORBIDDEN', 'Not your finding');
 
-  var isParticipant = user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR;
+  var isParticipant = isParticipantRoleCode_(user.role); // BUG FIX: see findingVisibleTo_'s comment above
   var isReviewer = user.role === ROLES.INSPECTOR || user.role === ROLES.PROJECT_MANAGER || user.role === ROLES.SYSTEM_ADMIN;
   if (isParticipant && finding.status === 'Open') {
     finding = updateRow('Findings', p.findingId, { status: 'Viewed' });
@@ -193,7 +207,26 @@ function viewFinding(user, p) {
   var resolutions = findWhere('Resolutions', function (r) { return r.findingId === p.findingId; })
     .map(function (r) { return Object.assign({}, r, { evidenceUrls: r.evidenceUrls ? String(r.evidenceUrls).split(',').filter(Boolean) : [] }); })
     .sort(function (a, b) { return new Date(b.submittedAt) - new Date(a.submittedAt); });
-  return { finding: enrichFinding_(finding, participantsById, disciplinesById), resolutions: resolutions };
+
+  var checklistItemsById = {};
+  getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
+  var enriched = enrichFinding_(finding, participantsById, disciplinesById, checklistItemsById);
+
+  // REQ: "A second rejection lands on Rejected ... but automatically creates a new instance from the
+  // rejected log and lands it in Open." Surface BOTH directions of that link on the detail page: the
+  // original (this finding, if it has one) it was recreated from, and -- the reverse, only knowable
+  // by searching -- the newer finding it was recreated INTO, if this one is the rejected original.
+  // A single reverse lookup on one finding's detail view is cheap; deliberately not done in bulk
+  // listFindings (would be an O(n) scan per row there).
+  if (finding.recreatedFromId) {
+    var original = getById('Findings', finding.recreatedFromId);
+    if (original) enriched.recreatedFrom = { id: original.id, description: original.description, status: original.status };
+  }
+  var recreatedInto = findWhere('Findings', function (f) { return f.recreatedFromId === finding.id; })
+    .sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); })[0];
+  if (recreatedInto) enriched.recreatedInto = { id: recreatedInto.id, description: recreatedInto.description, status: recreatedInto.status };
+
+  return { finding: enriched, resolutions: resolutions };
 }
 
 // REQ workflow steps 3/7: Participant submits a resolution -- free-text remarks + at least one
@@ -255,15 +288,44 @@ function reviewFindingResolution(user, p) {
   }
   updateRow('Findings', p.findingId, { status: newStatus, reopenCount: reopenCount });
 
-  if (newStatus === 'Resolved') {
-    // Clear any open escalation recipients tracking (resolvedAt on escalations).
+  var recreatedFinding = null;
+  if (newStatus === 'Resolved' || newStatus === 'Rejected') {
+    // Clear any open escalation recipients tracking (resolvedAt on escalations) -- both terminal
+    // outcomes mean THIS finding row is done escalating; Rejected's replacement (below) starts its
+    // own fresh escalation clock as a brand-new Finding rather than inheriting the old one's.
     findWhere('Escalations', function (e) { return e.findingId === p.findingId && !e.resolvedAt; })
       .forEach(function (e) { updateRow('Escalations', e.id, { resolvedAt: nowIso_() }); });
   }
+
+  if (newStatus === 'Rejected') {
+    // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a new
+    // instance from the rejected log and lands it in Open." Rejected means THIS resolution thread is
+    // exhausted (2 failed attempts), not that the underlying compliance issue is closed -- so a fresh
+    // Finding carries it forward with a clean slate (Open, no resolution history yet, its own new
+    // resolution deadline) while this row stays Rejected forever as the permanent record of what
+    // happened. Linked both ways via recreatedFromId (see viewFinding's recreatedFrom/recreatedInto
+    // enrichment, which resolves the reverse direction by lookup).
+    var srcItem = finding.checklistItemId ? getById('ChecklistItems', finding.checklistItemId) : null;
+    var windowHours = srcItem ? srcItem.defaultWindowHours : 24;
+    recreatedFinding = {
+      id: newId('Findings'), eventId: finding.eventId, inspectionId: finding.inspectionId, disciplineId: finding.disciplineId,
+      category: finding.category, subCategory: finding.subCategory, description: finding.description,
+      suggestedAction: finding.suggestedAction, riskLevel: finding.riskLevel,
+      resolutionWindowAt: new Date(Date.now() + Number(windowHours) * 3600 * 1000).toISOString(),
+      nextInspectionAt: finding.nextInspectionAt || '', participantId: finding.participantId,
+      subZone: finding.subZone, location: finding.location, status: 'Open', evidenceUrls: '',
+      lat: finding.lat, lng: finding.lng, createdBy: finding.createdBy, createdAt: nowIso_(), reopenCount: 0,
+      checklistItemId: finding.checklistItemId || '', recreatedFromId: finding.id
+    };
+    insertRow('Findings', recreatedFinding);
+    audit(user.id, 'AUTO_RECREATE_FINDING', 'Findings', recreatedFinding.id, { recreatedFromId: finding.id });
+    notifyFindingCreated_(recreatedFinding);
+  }
+
   audit(user.id, 'REVIEW_FINDING_RESOLUTION', 'Findings', p.findingId, { decision: p.decision, status: newStatus });
   var updated = getById('Findings', p.findingId);
   notifyFindingStatusChange_(updated, newStatus);
-  return { finding: updated, resolution: getById('Resolutions', pending.id) };
+  return { finding: updated, resolution: getById('Resolutions', pending.id), recreatedFinding: recreatedFinding };
 }
 
 // Groups findings into the 5 summary buckets the Dashboard/Overview KPI cards already have icons for

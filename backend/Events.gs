@@ -333,7 +333,11 @@ function listEvents(user, p) {
   var all = getAll('Events');
   if (user.role === ROLES.GA_ADMIN || user.role === ROLES.GA_USER) {
     // GA sees events for venues under GAs they administer: for simplicity GA sees all (GA is the regulator).
-  } else if (user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR) {
+  } else if (isParticipantRoleCode_(user.role)) {
+    // BUG FIX: was a hardcoded VENDOR/OPERATOR/EXHIBITOR check -- a self-served custom Place/
+    // Participant type (Settings > Roles > isParticipantType, e.g. "Facilities") fell through to no
+    // scoping at all instead of being venue-scoped like the 3 built-ins. Now consistent with
+    // EventChat.gs/Resolutions.gs/Findings.gs, which already use isParticipantRoleCode_ for this.
     // Participant logins (see Places.gs/Participants.gs) are scoped to a Venue, not one Event --
     // they should only see Events held at whichever venue(s) their Participant record(s) belong to.
     var venueIds = findWhere('Participants', function (pt) { return pt.userId === user.id; })
@@ -352,7 +356,7 @@ function listEvents(user, p) {
 function getEventDetail(user, eventId) {
   var event = getById('Events', eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
-  if (user.role === ROLES.VENDOR || user.role === ROLES.OPERATOR || user.role === ROLES.EXHIBITOR) {
+  if (isParticipantRoleCode_(user.role)) { // BUG FIX: see listEvents' comment above
     // Same venue-scoping as listEvents -- also enforced here so a direct link to an event outside
     // their venue doesn't bypass the list filter.
     var myVenueIds = findWhere('Participants', function (pt) { return pt.userId === user.id; })

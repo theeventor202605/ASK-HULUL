@@ -249,6 +249,30 @@ function findingMetaChipHtml_(icon, label, valueHtml) {
   '</div>';
 }
 
+// REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a new
+// instance from the rejected log and lands it in Open." finding.recreatedFrom/recreatedInto (both
+// optional, viewFinding enrichment, Findings.gs) are mutually exclusive in practice -- a finding is
+// either the fresh replacement (recreatedFrom set) or the exhausted original (recreatedInto set,
+// only possible once its own status is already Rejected), never both.
+function findingRecreationBannerHtml_(finding, eventId) {
+  function link_(id) { return '#/events/' + eventId + '/findings/' + id; }
+  if (finding.recreatedFrom) {
+    return '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--info);"><div class="card-body">' +
+      '<div style="font-weight:700;font-size:12.5px;color:var(--info);margin-bottom:4px;">' + esc(t('recreated_from_banner_title')) + '</div>' +
+      '<div style="font-size:13px;">' + esc(t('recreated_from_banner_body')) + ' ' +
+        '<a href="' + link_(finding.recreatedFrom.id) + '">' + esc(finding.recreatedFrom.description || finding.recreatedFrom.id) + '</a>' +
+      '</div></div></div>';
+  }
+  if (finding.recreatedInto) {
+    return '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning);"><div class="card-body">' +
+      '<div style="font-weight:700;font-size:12.5px;color:var(--warning);margin-bottom:4px;">' + esc(t('recreated_into_banner_title')) + '</div>' +
+      '<div style="font-size:13px;">' + esc(t('recreated_into_banner_body')) + ' ' +
+        '<a href="' + link_(finding.recreatedInto.id) + '">' + esc(finding.recreatedInto.description || finding.recreatedInto.id) + '</a>' +
+      '</div></div></div>';
+  }
+  return '';
+}
+
 // One self-contained label+value block -- deliberately NOT built from a shared .form-row (that put
 // every label in one grid track and every value in another once more than 2 fields shared a row,
 // disconnecting labels from their values). Used for the standalone fields below (Suggested action,
@@ -837,6 +861,12 @@ async function renderFindingDetail(params) {
     '<div class="page-subtitle">' + esc(finding.disciplineName || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
 
+    // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a new
+    // instance from the rejected log and lands it in Open." Surfaces both directions of that link --
+    // recreatedFrom (this IS the fresh replacement) and recreatedInto (this IS the exhausted original,
+    // now superseded) -- see viewFinding's enrichment, Findings.gs.
+    findingRecreationBannerHtml_(finding, eventId) +
+
     // REQ (follow-up): "Re-arrange in the following order: Card header: Risk Level and Status (as
     // they are); 1. Participant 2. Zone 3. Discipline 4. Category 5. Logged 6. Resolution Window
     // 7. Description 8. Suggested action 9. Risk Logging Evidence (expand photos to the max when
@@ -862,6 +892,14 @@ async function renderFindingDetail(params) {
           // header comment) but still shown, tacked onto the end, for older records that have one.
           (finding.location ? findingMetaChipHtml_('🧭', t('location'), esc(finding.location)) : '') +
         '</div>' +
+        // REQ: "Any log created through a checklist must be traceable to that specific item in the
+        // checklist." checklistItemDescription (viewFinding enrichment, Findings.gs) is only present
+        // when this finding was auto-created from a Crossed checklist item -- blank on manually
+        // logged findings (Log Finding has no single checklist item to point at), so this line simply
+        // doesn't render for those.
+        (finding.checklistItemDescription
+          ? '<div class="muted" style="font-size:12px;margin:-8px 0 16px;">' + esc(t('checklist_item_traceability', { description: finding.checklistItemDescription })) + '</div>'
+          : '') +
         '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
           '<div class="field-label" style="margin-top:0;">' + esc(t('description')) + '</div>' +
           '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(finding.description || '—') + '</div>' +
@@ -977,8 +1015,14 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
     document.getElementById('confirmRejectBtn').onclick = async function () {
       var comments = document.getElementById('fRejectRemarks').value;
       if (!comments) { UI.toast(t('toast_rejection_remarks_required'), 'error'); return; }
-      try { await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments }); UI.toast(t('toast_resolution_rejected'), 'success'); Router.resolve(); }
-      catch (err) { UI.error(err); }
+      try {
+        var res = await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments });
+        // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a
+        // new instance from the rejected log and lands it in Open." recreatedFinding is only present
+        // on the SECOND rejection (the terminal one) -- the first just moves the finding to ReOpen.
+        UI.toast(res.recreatedFinding ? t('toast_resolution_rejected_recreated') : t('toast_resolution_rejected'), 'success');
+        Router.resolve();
+      } catch (err) { UI.error(err); }
     };
   }
 }

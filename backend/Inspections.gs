@@ -586,7 +586,10 @@ function recordInspectionResults(user, p) {
         suggestedAction: r.suggestedAction || '', riskLevel: riskLevel, resolutionWindowAt: resolutionWindowAt,
         nextInspectionAt: r.nextInspectionAt || '', participantId: r.participantId || p.participantId, subZone: r.subZone || '',
         location: r.location || '', status: 'Open', evidenceUrls: (r.evidenceUrls || []).join(','),
-        lat: r.lat || '', lng: r.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0
+        lat: r.lat || '', lng: r.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0,
+        // REQ: "Any log created through a checklist must be traceable to that specific item in the
+        // checklist." r.checklistItemId is always present here (validated above via getById lookup).
+        checklistItemId: r.checklistItemId || '', recreatedFromId: ''
       };
       insertRow('Findings', finding);
       // Tier 1 escalation target is set at creation time so escalation checks can find it later.

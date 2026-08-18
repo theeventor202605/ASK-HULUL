@@ -120,7 +120,17 @@ var SCHEMA = {
   // results from before per-participant tracking existed read back with participantId === '',
   // which correctly counts toward no one's completion rather than silently miscounting.
   InspectionResults:      ['id','inspectionId','checklistItemId','state','riskLevel','resolutionWindowHours','notes','evidenceUrls','recordedAt','participantId'],
-  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount'],
+  // checklistItemId/recreatedFromId appended at the end (established pattern, see Venues above).
+  // checklistItemId -- REQ: "Any log created through a checklist must be traceable to that specific
+  // item in the checklist." Set only when a Finding is auto-created from a Crossed checklist item
+  // (recordInspectionResults, Inspections.gs); blank on manually-logged findings (Log Finding has no
+  // single checklist item to point at -- see createFinding, Findings.gs). Pre-existing rows read back
+  // with checklistItemId === '', same as any other appended column.
+  // recreatedFromId -- REQ: "A second rejection lands on Rejected, which is terminal, but
+  // automatically creates a new instance from the rejected log and lands it in Open." Points at the
+  // Findings.id this row was auto-cloned from; blank on every normally-created finding. See
+  // reviewFindingResolution, Findings.gs.
+  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId'],
   // toUserIds/ccUserIds/notedUserIds replace the old single recipientUserId -- REQ: "ability to
   // modify the To user role and the Cc: user roles", each tier can now resolve to MULTIPLE users
   // per role (e.g. every EMCManager in the org), and each of them needs their own independent
