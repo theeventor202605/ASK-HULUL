@@ -190,6 +190,15 @@ var PERMISSION_REGISTRY_ = {
     module: 'Inspections', label: 'Remove duplicate checklist catalogue items', page: 'checklistItems', crud: ['delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin']
   },
+  // REQ: "Some inspectors are junior level and could use help. We have created a guide which should
+  // give them a list of descriptions once they select the category and sub-category." Same admin
+  // audience as checklistItem.manage/discipline.manage -- whoever maintains the Categories/Checklists
+  // catalogues also maintains this one. Reading the guide (listFindingGuide, used by every Inspector
+  // logging a finding) has no permission gate of its own, same as listChecklistItems/listDisciplines.
+  'findingGuide.manage': {
+    module: 'Inspections', label: 'Create, edit, or delete a Log Assistance Guide entry', page: 'findingGuide', crud: ['create', 'update', 'delete'],
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
+  },
   'inspection.manage': {
     module: 'Inspections', label: 'Schedule, edit, or delete an inspection visit', page: 'inspectionsTab', crud: ['create', 'update', 'delete'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']

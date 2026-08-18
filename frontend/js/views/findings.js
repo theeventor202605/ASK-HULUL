@@ -284,6 +284,51 @@ function detailField_(label, valueHtml) {
     '<div style="font-size:13.5px;line-height:1.4;margin-top:4px;">' + valueHtml + '</div></div>';
 }
 
+/* ---------------- Log Assistance Guide suggestions (shared by New + Edit Finding) ----------------
+ * REQ: "Some inspectors are junior level and could use help. We have created a guide which should
+ * give them a list of descriptions once they select the category and sub-category." findingGuide is
+ * the full FindingGuide catalogue (listFindingGuide, backend/FindingGuide.gs) -- matched here by
+ * exact string against the selected Discipline's name and the Checklist Type field's value, same
+ * "match by name" convention ChecklistItems.category already uses against Disciplines.
+ */
+// Guide subCategories available under a Discipline name -- unioned into the Checklist Type dropdown
+// (renderChecklistTypeOptions_ in both forms below) alongside whatever real ChecklistItems.checklistType
+// values already exist, so a category with guide coverage but no checklist items yet still offers
+// something to pick.
+function findingGuideTypesFor_(findingGuide, disciplineName) {
+  if (!disciplineName) return [];
+  return Array.from(new Set(findingGuide.filter(function (g) { return g.category === disciplineName; }).map(function (g) { return g.subCategory; }).filter(Boolean)));
+}
+
+// Renders the clickable suggested-description list into #fgSuggestions for the currently selected
+// Discipline + Checklist Type, or hides it when there's nothing to suggest. Clicking a suggestion
+// fills the Description + Suggested Action fields -- both stay fully editable afterward, this is a
+// starting point, not a lock (same "suggestion, not a lock" spirit as the participant-driven
+// Discipline pre-fill above).
+function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistType, descInput, actionInput) {
+  var box = document.getElementById('fgSuggestions');
+  if (!box) return;
+  var matches = (disciplineName && checklistType)
+    ? findingGuide.filter(function (g) { return g.category === disciplineName && g.subCategory === checklistType; })
+    : [];
+  if (!matches.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="finding-guide-suggestions-header">' + esc(t('suggested_descriptions')) + '</div>' +
+    matches.map(function (g, i) {
+      return '<div class="finding-guide-suggestion-item" data-fg-idx="' + i + '">' + esc(g.description) + '</div>';
+    }).join('');
+  box.querySelectorAll('[data-fg-idx]').forEach(function (el) {
+    // mousedown+preventDefault (not click) -- same pattern as the Participant suggest box above,
+    // fires before the textarea's own blur handling.
+    el.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var match = matches[Number(el.getAttribute('data-fg-idx'))];
+      descInput.value = match.description;
+      if (match.suggestion) actionInput.value = match.suggestion;
+    });
+  });
+}
+
 /* ---------------- New Finding page (route: #/events/:id/findings/new) ---------------- */
 // REQ: "Log finding must be tied to a participant. Participant must first be selected from
 // searchable dropdown or live location side map (to be added). Discipline: should pick up as a
@@ -303,7 +348,7 @@ function detailField_(label, valueHtml) {
 async function renderNewFinding(params) {
   var eventId = params.id;
   var root = document.getElementById('viewRoot');
-  var disciplines = [], checklistItems = [], participants = [];
+  var disciplines = [], checklistItems = [], participants = [], findingGuide = [];
   try {
     // getEvent first, on its own -- listParticipants needs the event's venueId to scope the picker
     // to participants actually registered at this event's venue (same { venueId, eventId } pairing
@@ -312,9 +357,12 @@ async function renderNewFinding(params) {
     var detail = await Api.call('getEvent', { eventId: eventId });
     var results = await Promise.all([
       Api.call('listDisciplines', {}), Api.call('listChecklistItems', {}),
-      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' })
+      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' }),
+      // REQ: "Some inspectors are junior level and could use help. We have created a guide which
+      // should give them a list of descriptions once they select the category and sub-category."
+      Api.call('listFindingGuide', {})
     ]);
-    disciplines = results[0]; checklistItems = results[1]; participants = results[2];
+    disciplines = results[0]; checklistItems = results[1]; participants = results[2]; findingGuide = results[3];
   } catch (e) { /* fall back to whichever loaded -- the pickers below just end up with fewer options */ }
   var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
 
@@ -341,6 +389,11 @@ async function renderNewFinding(params) {
         // REQ (follow-up): "Move Checklist Type to be after Discipline."
         UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
         UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
+        // REQ: "Some inspectors are junior level and could use help. We have created a guide which
+        // should give them a list of descriptions once they select the category and sub-category."
+        // Populated by renderFindingGuideSuggestions_ below once both Discipline + Checklist Type are
+        // selected; hidden (via .hidden, set inline below) whenever there's nothing to suggest.
+        '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
         UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
         '<div class="form-row">' +
           UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
@@ -430,12 +483,22 @@ async function renderNewFinding(params) {
     var disciplineId = document.getElementById('fDiscipline').value;
     var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
     var relevant = disciplineName ? checklistItems.filter(function (i) { return i.category === disciplineName; }) : checklistItems;
-    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).filter(Boolean))).sort();
+    // REQ: "...a list of descriptions once they select the category and sub-category." Guide
+    // subCategories for this Discipline are unioned in so a category with Log Assistance Guide
+    // coverage but no real checklist items yet still offers something to pick.
+    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).concat(findingGuideTypesFor_(findingGuide, disciplineName)).filter(Boolean))).sort();
     typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
       types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
     if (types.indexOf(prev) !== -1) typeSelect.value = prev;
+    updateFindingGuideSuggestions_();
+  }
+  function updateFindingGuideSuggestions_() {
+    var disciplineId = document.getElementById('fDiscipline').value;
+    var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
+    renderFindingGuideSuggestions_(findingGuide, disciplineName, document.getElementById('fChecklistType').value, document.getElementById('fDesc'), document.getElementById('fAction'));
   }
   document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
+  document.getElementById('fChecklistType').addEventListener('change', updateFindingGuideSuggestions_);
   renderChecklistTypeOptions_();
 
   /* ---- Evidence: photo or video, camera capture only ---- */
@@ -542,14 +605,15 @@ async function renderEditFinding(params) {
     return;
   }
 
-  var disciplines = [], checklistItems = [], participants = [];
+  var disciplines = [], checklistItems = [], participants = [], findingGuide = [];
   try {
     var detail = await Api.call('getEvent', { eventId: eventId });
     var results = await Promise.all([
       Api.call('listDisciplines', {}), Api.call('listChecklistItems', {}),
-      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' })
+      Api.call('listParticipants', { eventId: eventId, venueId: detail.venue ? detail.venue.id : '' }),
+      Api.call('listFindingGuide', {})
     ]);
-    disciplines = results[0]; checklistItems = results[1]; participants = results[2];
+    disciplines = results[0]; checklistItems = results[1]; participants = results[2]; findingGuide = results[3];
   } catch (e) { /* pickers below just end up with fewer options */ }
   var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
 
@@ -568,6 +632,7 @@ async function renderEditFinding(params) {
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
       UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
       UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
+      '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
       UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
       UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
         ['Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
@@ -621,17 +686,29 @@ async function renderEditFinding(params) {
     var disciplineId = document.getElementById('fDiscipline').value;
     var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
     var relevant = disciplineName ? checklistItems.filter(function (i) { return i.category === disciplineName; }) : checklistItems;
-    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).filter(Boolean))).sort();
+    // REQ: "...a list of descriptions once they select the category and sub-category." Guide
+    // subCategories for this Discipline are unioned in, same as the New Finding form above.
+    var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).concat(findingGuideTypesFor_(findingGuide, disciplineName)).filter(Boolean))).sort();
     typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
       types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
     if (types.indexOf(prev) !== -1) typeSelect.value = prev;
+    updateFindingGuideSuggestions_();
+  }
+  function updateFindingGuideSuggestions_() {
+    var disciplineId = document.getElementById('fDiscipline').value;
+    var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
+    renderFindingGuideSuggestions_(findingGuide, disciplineName, document.getElementById('fChecklistType').value, document.getElementById('fDesc'), document.getElementById('fAction'));
   }
   document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
+  document.getElementById('fChecklistType').addEventListener('change', updateFindingGuideSuggestions_);
   renderChecklistTypeOptions_();
   // A stored category of exactly 'Other' is indistinguishable from "left blank at creation" (both
   // collapse to the same value server-side, see createFinding) -- shown as blank here too, same as
   // the New Finding form's own convention.
   document.getElementById('fChecklistType').value = (finding.category && finding.category !== 'Other') ? finding.category : '';
+  // fChecklistType.value was set directly above (not via the change event renderChecklistTypeOptions_
+  // already fired from), so the suggestion box needs its own explicit refresh here too.
+  updateFindingGuideSuggestions_();
 
   document.getElementById('saveEditFindingBtn').onclick = async function () {
     if (!selectedParticipant) { UI.toast(t('toast_participant_required', { term: Term('participant') }), 'error'); return; }

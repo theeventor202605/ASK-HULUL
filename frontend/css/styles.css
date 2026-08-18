@@ -579,6 +579,19 @@ table.data-table tr:hover td{ background:#fafbff; }
 .chat-suggest-item.active{ background:var(--accent-soft); }
 .chat-suggest-empty{ padding:10px 12px; font-size:12.5px; color:var(--text-400); }
 
+/* Log Assistance Guide suggested-description list (New/Edit Finding forms, findings.js) -- REQ:
+   "Some inspectors are junior level and could use help ... a list of descriptions once they select
+   the category and sub-category." Sits inline between the Description and Suggested Action fields
+   (not absolutely positioned like .chat-suggest-box, which floats over other content) since it's
+   meant to be browsed, not just a transient autocomplete popover. */
+.finding-guide-suggestions{ margin-top:-2px; margin-bottom:4px; border:1px solid var(--border);
+  border-radius:var(--radius-sm); max-height:180px; overflow-y:auto; background:#fbfbfd; }
+.finding-guide-suggestions-header{ padding:6px 10px; font-size:11px; font-weight:600; text-transform:uppercase;
+  letter-spacing:.03em; color:var(--text-400); border-bottom:1px solid var(--border); position:sticky; top:0; background:#fbfbfd; }
+.finding-guide-suggestion-item{ padding:7px 10px; font-size:12.5px; cursor:pointer; border-bottom:1px solid var(--border); }
+.finding-guide-suggestion-item:last-child{ border-bottom:none; }
+.finding-guide-suggestion-item:hover{ background:var(--accent-soft); }
+
 /* Event Chat emoji/icon picker (EMOJI_LIBRARY, emoji.js + ICON_LIBRARY, icons.js) -- opens upward
    from the composer's toolbar row, see tabEventChat/chatEmojiBtn in eventDetail.js. */
 .chat-emoji-popover{ position:absolute; bottom:100%; left:0; margin-bottom:6px; z-index:60; width:300px; max-width:calc(100vw - 40px);

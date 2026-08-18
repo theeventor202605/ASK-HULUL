@@ -228,6 +228,15 @@ var ROUTES = {
   updateChecklistItem: function (u, p) { return updateChecklistItem(u, p); },
   deleteChecklistItem: function (u, p) { return deleteChecklistItem(u, p); },
   dedupeChecklistItems: function (u) { return dedupeChecklistItems(u); },
+
+  // Log Assistance Guide (see FindingGuide.gs) -- REQ: "Some inspectors are junior level and could
+  // use help. We have created a guide which should give them a list of descriptions once they select
+  // the category and sub-category."
+  listFindingGuide: function () { return listFindingGuide(); },
+  createFindingGuideEntry: function (u, p) { return createFindingGuideEntry(u, p); },
+  bulkCreateFindingGuideEntries: function (u, p) { return bulkCreateFindingGuideEntries(u, p); },
+  updateFindingGuideEntry: function (u, p) { return updateFindingGuideEntry(u, p); },
+  deleteFindingGuideEntry: function (u, p) { return deleteFindingGuideEntry(u, p); },
   scheduleInspection: function (u, p) { return scheduleInspection(u, p); },
   updateInspection: function (u, p) { return updateInspection(u, p); },
   deleteInspection: function (u, p) { return deleteInspection(u, p); },

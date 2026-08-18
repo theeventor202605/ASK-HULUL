@@ -11,6 +11,8 @@ function setupHulul() {
   ensureAllSheets();
   seedDisciplines_();
   seedChecklistItems_();
+  backfillFindingGuideDisciplines_();
+  seedFindingGuide_();
   seedConfig_();
   seedFirstAdmin_();
   installEscalationTrigger_();
@@ -627,6 +629,248 @@ function seedChecklistItems_() {
       defaultRisk: r[3], defaultWindowHours: r[4], phase: r[5]
     });
   });
+}
+
+// REQ: "Some inspectors are junior level and could use help. We have created a guide which should
+// give them a list of descriptions once they select the category and sub-category." Seeded verbatim
+// from the user's "ASK - Logs - Summary - 20260802 v0.31.xlsx" ("Log Assistance Guide") -- 176 rows,
+// [category, subCategory, description, suggestion]. Same "only seed if empty" convention as
+// seedDisciplines_/seedChecklistItems_ above, so re-running setupHulul() on an already-live sheet is
+// still safe -- this only fires the first time (when the FindingGuide sheet doesn't exist yet / has
+// no rows). NOTE: category here is the guide author's own category names (e.g. "Security
+// Operations", "Incident & Accident", "Universal Accessibility", "Adverse Weather") -- several of
+// these don't exactly match the live Disciplines catalog's existing names/coverage. See
+// findings.js's suggested-description picker (matches by exact Discipline name) and disciplines.js's
+// new Edit action -- an admin can rename/add Disciplines so the two catalogues line up.
+// One-time backfill: "The ones [Log Assistance Guide categories] that don't exactly match your live
+// Disciplines Catalog just fix them to match it." Most of the guide's 9 categories already line up
+// with the live catalog (confirmed by name for "Emergency & Response" and "Universal Accessibility"
+// via fixDuplicateDisciplineIds' own comment above; "Security"/"Transport & Traffic" match the
+// original seedDisciplines_ defaults, and seedFindingGuide_ below already normalizes the guide's
+// text to those exact names) -- but "Incident & Accident" and "Adverse Weather" have no existing
+// Discipline to rename/match at all, so there's nothing to reconcile them TO. This creates those two
+// (only if missing by exact name -- safe to re-run) so every guide category has a real catalog entry
+// an inspector can actually select. catRef auto-assigned as (current max + 1) since it's now a
+// required field for any newly-created Discipline (see createDiscipline, Disciplines.gs). Run once
+// from the Apps Script editor's function dropdown after redeploying.
+function backfillFindingGuideDisciplines_() {
+  var existing = getAll('Disciplines');
+  var byName = {};
+  existing.forEach(function (d) { byName[(d.name || '').trim().toLowerCase()] = d; });
+  var maxCatRef = existing.reduce(function (max, d) {
+    var n = Number(d.catRef);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  var missing = [
+    ['Incident & Accident', 'INC'],
+    ['Adverse Weather', 'ADV']
+  ].filter(function (d) { return !byName[d[0].toLowerCase()]; });
+  missing.forEach(function (d) {
+    maxCatRef++;
+    insertRow('Disciplines', { id: newId('Disciplines'), name: d[0], code: d[1], catRef: maxCatRef });
+  });
+  Logger.log('backfillFindingGuideDisciplines_: created ' + missing.length + ' discipline(s): ' +
+    missing.map(function (d) { return d[0]; }).join(', ') + (missing.length ? '' : ' (none needed -- already present)'));
+  return { created: missing.map(function (d) { return d[0]; }) };
+}
+
+function seedFindingGuide_() {
+  var existing = getAll('FindingGuide');
+  if (existing.length > 0) return;
+  var rows = [
+  // Health & Safety
+  ['Health & Safety', 'H&S Housekeeping', 'Overflowing waste bins or Skips', 'Empty regularly and provide adequate disposal to stop litter hazards, pests, and poor hygiene.'],
+  ['Health & Safety', 'H&S Housekeeping', 'Debries on the floor', 'Ensure that all floors are free of debris and kept clean to prevent slips, trips, and falls'],
+  ['Health & Safety', 'H&S Housekeeping', 'Cleaning equipment left out (mops, buckets, vacuums)', 'Store safely after use to keep walkways clear and prevent trips'],
+  ['Health & Safety', 'H&S Housekeeping', 'Chemicals misused, improperly stored, or left unsecured', 'Ensure all chemicals are clearly labelled, stored securely, and handled only by trained staff to prevent poisoning, burns, and misuse'],
+  ['Health & Safety', 'H&S Housekeeping', 'Spills (food, beverages, cleaning liquids, or other substances) on floors and walking surface', 'Isolate and clean affected areas immediately using appropriate warning signage to prevent slips, falls, and hygiene concerns.'],
+  ['Health & Safety', 'H&S Electrical', 'Non \'IP rated\' electrical equipment exposed to water or rain', 'Use IP-rated equipment or waterproof covers and keep it off the ground to reduce the risk of electric shock and short circuits'],
+  ['Health & Safety', 'H&S Electrical', 'Unsecure cables', 'Secure loose cables properly to prevent movement, damage, and trip hazards'],
+  ['Health & Safety', 'H&S Electrical', 'Untested or uncertified appliances', 'Use only inspected, tested, and certified electrical appliances to prevent electrical faults, fire, and injury.'],
+  ['Health & Safety', 'H&S Electrical', 'Trailing cables', 'Route cables away from walkways or cover them with cable protectors to prevent trip hazards'],
+  ['Health & Safety', 'H&S Electrical', 'Overloaded sockets or extension leads', 'Use correct load limits and avoid daisy-chaining to prevent overheating and fire'],
+  ['Health & Safety', 'H&S Electrical', 'Damaged or frayed cables', 'Inspect and replace immediately to avoid electric shock and fire risk'],
+  ['Health & Safety', 'H&S Electrical', 'Electrical cabling or connections observed as unsafe or exposed.', 'Secure and rectify by qualified electrician to prevent electrocution'],
+  ['Health & Safety', 'H&S Electrical', 'Inadequate cable management', 'Ensure cables are securely routed, covered, or elevated to prevent movement, damage, trips, and electrical hazards.'],
+  ['Health & Safety', 'H&S Electrical', 'Generators not connected to a verified grounding (earthing) system.', 'Ensure each generator is connected to a compliant earth electrode and tested by a competent person to prevent electric shock, equipment damage, and fire.'],
+  ['Health & Safety', 'H&S Electrical', 'Generator grounding arrangement could not be verified, including the connection method and earth electrode location', 'Identify the grounding system and provide inspection or test evidence confirming effective earthing to prevent electric shock, equipment damage, and fire.'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Obstruction and hazards identified within circulation routes.', 'Remove hazards and improve routing to prevent trips and falls.'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Uneven flooring or loose mats or loose carpeting', 'Secure mats and clearly mark uneven areas to reduce the risk of slips, trips, and falls'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Damaged or uneven stairs', 'Repair damaged steps and ensure stair surfaces are even and safe to use'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Loose or damaged handrails', 'Repair or secure handrails to ensure they are stable and safe to use'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Poor lighting in corridors or stairs', 'Provide adequate lighting to prevent hazards and reduce accidents'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Wet floors', 'Display warning signs and dry the area promptly to prevent slips and falls and reduce the risk of injury.'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Uncovered trench or manhole opening', 'Install a secure cover and temporarily isolate the opening with barriers and warning signage until completed to prevent falls.'],
+  ['Health & Safety', 'H&S Trip & Fall Hazard', 'Damaged, uneven, or displaced trench or manhole cover', 'Repair, replace, or securely reposition the cover to prevent trips and falls'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Damaged or faulty equipment', 'Inspect before use and remove from service to prevent accidents, shocks, or malfunctions'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Improper use of tools and equipment', 'Provide staff and volunteers with appropriate training and operating instructions to prevent misuse and injury.'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Tools or equipment left unattended or improperly stored', 'Store tools and equipment safely after use to prevent trip hazards, damage, or misuse.'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Unsafe use or condition of ladders/access equipment', 'Ensure ladders and access equipment are in good condition, used correctly, and positioned securely.'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Exposed sharp edges or moving parts on tools/equipment', 'Guard, cover, or isolate exposed parts to prevent cuts, entanglement, or other injuries'],
+  ['Health & Safety', 'H&S Tools & Equipment', 'Incorrect storage of tools and equipment', 'Store tools and equipment safely in designated areas after use, or remove them from site, to prevent unauthorised use and trip hazards.'],
+  ['Health & Safety', 'H&S Structural', 'Structural elements incomplete or presenting safety concerns.', 'Restrict access and complete works to prevent accidents or injuries.'],
+  ['Health & Safety', 'H&S Structural', 'Unstable staging or platforms', 'Inspect, secure, and test stability before use to prevent collapse and serious injury'],
+  ['Health & Safety', 'H&S Structural', 'Loose railings or barriers', 'Inspect and secure all fixings to prevent falls from height and protect staff, visitors, contractors, and the public.'],
+  ['Health & Safety', 'H&S Structural', 'Overloaded structures (stages, tents, balconies)', 'Follow load limits and monitor usage to prevent structural failure and collapse'],
+  ['Health & Safety', 'H&S Structural', 'Improperly erected tents and marquees', 'Ensure tents and marquees are erected, anchored, and secured by competent personnel to prevent collapse or movement'],
+  ['Health & Safety', 'H&S Structural', 'Trusses installed without base plates', 'Install suitable base plates to provide stability, distribute load, and reduce the risk of movement or collapse'],
+  ['Health & Safety', 'H&S Structural', 'Unsecured trusses or AVL equipment', 'Secure and stabilise all trusses and AVL equipment to prevent movement, collapse, or falling objects'],
+  ['Health & Safety', 'H&S Communication', 'Language barriers affecting the communication and understanding of safety information.', 'Provide translators, multilingual staff, and clear visual or multilingual signage to ensure all persons understand safety instructions.'],
+  ['Health & Safety', 'H&S Staff Welfare', 'Staff welfare provisions partially available.', 'Improve welfare facilities to ensure they have an area for rest breaks and refreshments.'],
+  ['Health & Safety', 'H&S Staff Welfare', 'Fatigue from long shifts', 'Provide suitable comfort breaks and rota management to maintain alertness and reduces mistakes.'],
+  ['Health & Safety', 'H&S Staff Welfare', 'Exposure to adverse weather conditions (heat, rain, wind)', 'Provide suitable PPE, drinking water, and shelter to protect staff and keep them fit for work'],
+  ['Health & Safety', 'H&S Staff Welfare', 'Stress or mental strain', 'Provide clear roles, regular welfare checks, and appropriate support to protect wellbeing, maintain morale, and prevent stress-related errors.'],
+  ['Health & Safety', 'H&S Staff Welfare', 'Lack of access to food, drinking water, and toilets', 'Provide suitable catering, drinking water, and welfare facilities to support staff health and wellbeing.'],
+  ['Health & Safety', 'H&S Training & Supervision', 'Limited evidence of staff training or supervision.', 'Deliver toolbox talks and supervise to ensure H&S knowledge is shared.'],
+  ['Health & Safety', 'H&S Training & Supervision', 'Lack of supervision for high-risk activities', 'Assign competent supervisors to oversee high-risk activities and prevent unsafe practices'],
+  ['Health & Safety', 'H&S Training & Supervision', 'Unclear responsibilities', 'Clearly define roles and responsibilities in advance to avoid confusion, duplication, or gaps in safety coverage.'],
+  ['Health & Safety', 'H&S General', 'Fire hazards (i.e. smoking)', 'Restrict smoking to designated areas only and provide appropriate signage and fire extinguishers'],
+  ['Health & Safety', 'H&S General', 'Excessive noise levels', 'Monitor noise using a sound level meter (dB meter) and provide suitable hearing protection to prevent hearing damage or loss'],
+  ['Health & Safety', 'H&S General', 'General H&S controls inconsistently applied.', 'Review controls to ensure H&S compliance is reinforced.'],
+  ['Health & Safety', 'H&S General', 'Inadequate smoking arrangements and cigarette-disposal facilities.', 'Ensure suitable controls, signage, and fire-resistant receptacles are in place in accordance with site requirements to prevent improper disposal and fire.'],
+  ['Health & Safety', 'H&S General', 'Unsecured water tank and pump accessible within a public area.', 'Secure or isolate the equipment where required to prevent unauthorised access, contact with moving or electrical components, leakage, and obstruction'],
+  ['Health & Safety', 'H&S General', 'Inadequate cigarette-disposal facilities within the designated smoking area.', 'Ensure suitable fire-resistant or self-extinguishing cigarette receptacles are available to prevent improper disposal and fire.'],
+  ['Health & Safety', 'H&S General', 'Insufficient toilets for General Admission (GA) visitor', 'Ensure sufficient toilets for the expected GA attendance to prevent excessive queues and maintain hygiene.'],
+  // Fire Safety
+  ['Fire Safety', 'FSM Combustibles', 'Waste accumulation', 'Remove waste regularly and use suitable bins to reduce fire risk.'],
+  ['Fire Safety', 'FSM Combustibles', 'Improper storage of fuel, diesel or gas cylinders', 'Store fuel and gas cylinders in approved containers, in well-ventilated areas, away from ignition sources and public access'],
+  ['Fire Safety', 'FSM Combustibles', 'Combustible materials stored unsafely.', 'Remove or segregate combustibles materials to reduce the risk of fire.'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Poorly positioned fire extinguisher', 'Relocate fire extinguishers to visible, accessible locations to ensure they can be reached quickly in an emergency'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Improperly positioned or stored portable fire extinguishers.', 'Relocate extinguishers to clearly visible, accessible, and designated points to ensure immediate availability during an emergency.'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Access blocked to firefighting equipment or fire alarm panels', 'Keep access to firefighting equipment and fire alarm panels clear at all times'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Damaged Fire Extinguisher', 'Remove damaged extinguishers from service and replace or repair them immediately'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Inadequate firefighting equipment within the generator farm.', 'Ensure suitable fire extinguishers are correctly rated, distributed, and accessible, including portable dry powder units near generators, foam units near diesel tanks, and a wheeled dry powder unit where required, to control fires and support emergency response.'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Fire extinguishers missing', 'Provide Fire extinguishers to ensure FFE is easily reachable in case of an emergency'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Fire extinguisher missing inspection tag', 'Ensure all extinguishers have a valid inspection tag showing current service and inspection status.'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Incorrect fire extinguisher provided', 'Provide the correct type of fire extinguisher for the identified fire risk (specify the required extinguisher type in the suggestion)'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Misuse of fire extinguishers (e.g., used as door stops).', 'Keep fire extinguishers secured at their designated points, accessible and unobstructed, to ensure immediate availability during an emergency.'],
+  ['Fire Safety', 'FSM Fire Fighting Equipment', 'Depressurised fire extinguisher', 'Remove the extinguisher from service and replace or service it to ensure it is fully operational'],
+  ['Fire Safety', 'FSM Used Materials', 'Materials used are not confirmed as fire-retardant.', 'Verify the ratings and replace the materials if required to prevent the risk of fire spreading.'],
+  ['Fire Safety', 'FSM Used Materials', 'Overflowing bins containing paper or cardboard', 'Empty bins regularly and use suitable waste containers to reduce the risk of fire.'],
+  ['Fire Safety', 'FSM Used Materials', 'Discarded packaging materials (plastic, wood, and fabric)', 'Remove promptly and store or dispose of them safely in designated areas to prevent ignition and fire spread.'],
+  ['Fire Safety', 'FSM Used Materials', 'Empty chemical or cleaning-product container', 'Dispose of containers in accordance with the Safety Data Sheet (SDS) and approved waste procedures to prevent hazardous residues, vapour build-up, and fire risk.'],
+  ['Fire Safety', 'FSM Used Materials', 'Smoking materials discarded in waste containers', 'Provide designated fire-resistant receptacles and suitable firefighting equipment to prevent smouldering waste and fire.'],
+  ['Fire Safety', 'FSM Used Materials', 'Unverified plastic protective sheeting installed beneath generators, with no confirmed purpose or material specification', 'Clarify its intended purpose and provide the manufacturer’s technical specifications confirming suitability and fire performance to prevent the use of incompatible or combustible materials.'],
+  // Emergency & Response (matches the live Disciplines catalog name verbatim -- see
+  // fixDuplicateDisciplineIds' own comment above, which confirms a live row literally named
+  // "Emergency & Response" -- no rename needed here)
+  ['Emergency & Response', 'ERR Emergency Procedures', 'Emergency procedures not clearly communicated.', 'Ensure staff are briefed on procedures to allow clear correct communication in the event of and emergency.'],
+  ['Emergency & Response', 'ERR Emergency Procedures', 'No emergency drills or rehearsals conducted', 'Conduct emergency drills or rehearsals to test readiness and familiarise staff with emergency procedures.'],
+  ['Emergency & Response', 'ERR Emergency Procedures', 'Failure to communicate with attendees during emergencies', 'Use PA announcements and visual guidance to provide clear instructions and direct attendees safely'],
+  ['Emergency & Response', 'ERR Emergency Signages', 'Incorrect placement of emergency exit signage (too high, too low, or too widely spaced)', 'Position exit signage at clearly visible locations and suitable intervals along all escape routes to maintain continuous guidance and prevent confusion during evacuation.'],
+  ['Emergency & Response', 'ERR Emergency Signages', 'Missing emergency signage', 'Provide emergency signage at all required locations to help occupants identify exits and emergency equipment quickly'],
+  ['Emergency & Response', 'ERR Emergency Signages', 'Medical facilities not clearly identified due to missing or inadequate signage.', 'Ensure clear and visible medical signage is installed to enable rapid identification and access during emergencies.'],
+  ['Emergency & Response', 'ERR Emergency Signages', 'Unclear emergency signage', 'Replace or improve emergency signage to ensure it is clear, visible, and easy to understand'],
+  ['Emergency & Response', 'ERR Incident Command & Control', 'Incident command arrangements unclear.', 'Confirm command structure is clear to ensure staff are aware of the emergency procedures.'],
+  ['Emergency & Response', 'ERR Roles & Responsibilities', 'Staff unaware of their emergency roles', 'Brief all staff on their emergency roles and responsibilities before the event'],
+  ['Emergency & Response', 'ERR Roles & Responsibilities', 'Emergency roles not clearly defined.', 'Clarify roles and responsibilities for staff to ensure that they are aware of what to do in the event of an emergency.'],
+  ['Emergency & Response', 'ERR Site Design', 'Insufficient number of emergency exits', 'Provide an adequate number of exits for the expected occupancy to prevent bottlenecks and ensure safe evacuation'],
+  ['Emergency & Response', 'ERR Site Design', 'Obstructed access for emergency vehicles', 'Keep fire lanes and emergency access roads clear at all times to prevent delays in emergency response.'],
+  ['Emergency & Response', 'ERR Site Design', 'High-risk areas (e.g., generators, DBs, fuel storage, gas cylinders) not segregated from the public', 'Segregate and secure high-risk areas with suitable barriers and access controls to prevent unauthorised public access'],
+  ['Emergency & Response', 'ERR Site Design', 'Poorly marked emergency escape routes', 'Clearly identify and mark all emergency escape routes to support safe and efficient evacuation'],
+  ['Emergency & Response', 'ERR Site Design', 'Crowded or narrow walkways', 'Provide sufficiently wide circulation routes and control crowd flow to prevent overcrowding, crushing, and evacuation delays.'],
+  ['Emergency & Response', 'ERR Site Design', 'Site layout limits emergency response.', 'Review and adjust layout accordingly to ensure that a safe full evacuation can be carried out.'],
+  ['Emergency & Response', 'ERR Staff Allocation', 'Poor staff distribution', 'Deploy staff across exits, escape routes, crowd areas, and other critical locations to ensure adequate coverage.'],
+  ['Emergency & Response', 'ERR Staff Allocation', 'No relief cover for temporary staff absences', 'Ensure trained relief staff are available to maintain continuous coverage during breaks and other temporary absences'],
+  ['Emergency & Response', 'ERR Staff Allocation', 'Emergency staff allocation unclear.', 'Assign and brief staff to ensure that they are in their correct allocated positions.'],
+  ['Emergency & Response', 'ERR Training & Supervision', 'Limited emergency training undertaken.', 'Conduct drills and training for staff to ensure they know what to do in the event of an emergency.'],
+  ['Emergency & Response', 'ERR Unusable Emergency Exit', 'Blocked or obstructed emergency exits', 'Keep all emergency exits clear and inspect them regularly to ensure safe and prompt evacuation.'],
+  ['Emergency & Response', 'ERR Unusable Emergency Exit', 'Locked emergency exit doors', 'Keep emergency exit doors unlocked and easily openable at all times to avoid delays during an emergency'],
+  ['Emergency & Response', 'ERR Unusable Emergency Exit', 'Inadequate or unclear emergency exit signage', 'Provide clear, visible emergency exit signage to help occupants identify exits quickly'],
+  ['Emergency & Response', 'ERR Unusable Emergency Exit', 'Inadequate lighting at emergency exits or escape routes', 'Provide suitable lighting at emergency exits and along escape routes to support safe evacuation'],
+  ['Emergency & Response', 'ERR Unusable Emergency Exit', 'Trip hazards on exit routes', 'Remove trip hazards and keep exit routes level and safe to ensure smooth evacuation'],
+  ['Emergency & Response', 'ERR Unusable Emergency Route', 'Emergency route partially obstructed.', 'Ensure the route is cleared and ready for use at all times.'],
+  // Crowd Safety
+  ['Crowd Safety', 'CSM Barriers', 'Weak, damaged, or unstable barriers', 'Install suitable event-grade barriers and ensure they are stable, secure, and fit for purpose to prevent failure and injury'],
+  ['Crowd Safety', 'CSM Barriers', 'Inadequate or poorly positioned barriers', 'Reposition or upgrade barriers to suit the expected crowd size, flow, and operational requirements'],
+  ['Crowd Safety', 'CSM Barriers', 'Overcrowding at barriers', 'Actively monitor crowd density and relieve pressure points to prevent crush hazards and maintain safety'],
+  ['Crowd Safety', 'CSM Barriers', 'Trip hazards from barrier base plates', 'Cover or clearly highlight barrier base plates to prevent trips and falls, particularly in crowded areas.'],
+  ['Crowd Safety', 'CSM Barriers', 'Insufficient barriers at key points', 'Assess requirements and install suitable barriers at key risk points, referring to the approved Crowd Management Plan where available, to prevent unsafe crowd movement, unauthorised access, and surges.'],
+  ['Crowd Safety', 'CSM Operational Readiness', 'Queuing system not inspected before opening', 'Inspect all queuing systems before opening to ensure they are safe, functional, and ready for use'],
+  ['Crowd Safety', 'CSM Operational Readiness', 'Crowd management staff not deployed before opening', 'Ensure all crowd management staff are in their designated positions before the venue opens'],
+  ['Crowd Safety', 'CSM Operational Readiness', 'Staff briefing or drills not conducted before opening', 'Conduct pre-event briefings and emergency drills, where required, to ensure staff are prepared for normal and emergency operations'],
+  ['Crowd Safety', 'CSM Organisational Management', 'Crowd management coordination limited.', 'Improve management coordination to ensure the full team are aware and compliant.'],
+  ['Crowd Safety', 'CSM Organisational Management', 'No system to monitor live venue capacity', 'Implement a reliable system to monitor live occupancy and ensure the venue remains within its approved capacity'],
+  ['Crowd Safety', 'CSM Organisational Management', 'Responsible decision-makers not clearly identified or available', 'Clearly identify responsible decision-makers, maintain up-to-date contact details, and ensure they remain available or have an authorised delegate throughout the event'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Queue and flow management insufficient.', 'Improve queuing systems to ensure that it’s sufficient to handle the number of attendees.'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Uncontrolled queues', 'Ensure trained staff, barriers, signage, and PA/loud hailers are used to maintain orderly queues and reduce congestion'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Queues blocking exits or routes', 'Ensure the crowd management plan includes a queuing system that keeps exits and emergency routes clear and prevents overcrowding'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Vendor or F&B queues obstructing pedestrian routes', 'Implement designated queuing systems to prevent obstruction of pedestrian routes and maintain safe crowd flow'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Overcrowding', 'Monitor venue capacity, control entry, and manage crowd flow to prevent overcrowding, crowd crushing, and related injuries'],
+  ['Crowd Safety', 'CSM Queue & Flow Management', 'Unpredictable crowd surges', 'Implement staggered entry, suitable barriers, and trained crowd management staff to regulate queues, maintain safe crowd flow, and prevent injuries or fatalities.'],
+  ['Crowd Safety', 'CSM Site Design', 'Site layout creates crowd congestion risk.', 'Modify layout to ensure an improved crowd flow is achieved.'],
+  ['Crowd Safety', 'CSM Site Design', 'High-risk areas not segregated', 'Use barriers, signage and stewards to direct the public to ensure unauthorised (non-public) areas are kept secure'],
+  ['Crowd Safety', 'CSM Site Design', 'Inadequate prayer-area capacity causing overcrowding and obstruction of pedestrian routes', 'Ensure sufficient prayer space or additional designated areas to prevent congestion and maintain clear circulation routes.'],
+  ['Crowd Safety', 'CSM Site Design', 'Prayer area inadequately located or sized, causing overcrowding and obstruction of pedestrian routes', 'Relocate or expand the prayer area to prevent congestion and maintain clear circulation routes.'],
+  ['Crowd Safety', 'CSM Site Design', 'The designated prayer area is insufficient for the expected number of visitors, causing overcrowding and obstruction of pedestrian routes', 'Expand or relocate the prayer area, or establish additional designated prayer spaces with mats, to prevent congestion and maintain clear circulation routes.'],
+  ['Crowd Safety', 'CSM Staff Allocation', 'Staff unclear on their roles and responsibilities', 'Ensure all staff receive a comprehensive briefing on their roles and responsibilities before commencing duties'],
+  ['Crowd Safety', 'CSM Staff Allocation', 'Crowd staffing levels insufficient.', 'Increase staff deployment to ensure that there is a sufficient number of staff to deal with the attendees.'],
+  ['Crowd Safety', 'CSM Tools & Equipment', 'Insufficient radios for staff', 'Provide sufficient radios, spare units, and charged batteries to ensure reliable communication and emergency coordination'],
+  ['Crowd Safety', 'CSM Tools & Equipment', 'Broken lighting along walkways', 'Provide temporary lighting and repair defective units promptly to prevent trips and maintain safe emergency routes.'],
+  ['Crowd Safety', 'CSM Tools & Equipment', 'Unsecured temporary structures', 'Inspect and secure all temporary structures to prevent collapse and injury.'],
+  ['Crowd Safety', 'CSM Tools & Equipment', 'Insufficient or unavailable people-counting devices', 'Provide suitable people-counting devices (e.g., clickers or electronic counters) at designated entry points'],
+  ['Crowd Safety', 'CSM Training & Supervision', 'Limited crowd safety training evident', 'Ensure all staff receive appropriate crowd safety training and event-specific briefings before commencing duties'],
+  ['Crowd Safety', 'CSM Training & Supervision', 'Inadequate supervisory presence', 'Ensure competent supervisors are continuously present in operational areas to monitor activities, support staff, and respond promptly to issues'],
+  ['Crowd Safety', 'CSM Wayfinding', 'Signage not provided in multiple languages.', 'Provide multilingual and visual signage to prevent misunderstanding, crowd confusion, congestion, and evacuation delays.'],
+  ['Crowd Safety', 'CSM Wayfinding', 'Incorrect directional signage', 'Review and correct wayfinding signage to ensure all directions accurately guide staff and attendees to the intended destinations'],
+  ['Crowd Safety', 'CSM Wayfinding', 'Insufficient wayfinding signage', 'Install clear and visible wayfinding signage to assist staff and attendees with navigation'],
+  ['Crowd Safety', 'CSM Wayfinding', 'Signage positioned too high or too low', 'Position signage at eye level and clear sightlines to prevent confusion and maintain effective crowd guidance.'],
+  ['Crowd Safety', 'CSM Wayfinding', 'Missing or insufficient site maps', 'Provide clear site maps at key locations to help attendees navigate the venue and locate facilities, attractions, and emergency exits'],
+  // Security (normalized to match the live Disciplines catalog name -- guide said "Security Operations")
+  ['Security', 'SOM Entry System Management', 'Missing or inadequate prohibited items signage', 'Display clear and visible prohibited items signage at all entry points to inform attendees before screening'],
+  ['Security', 'SOM Entry System Management', 'Entry screening inconsistently applied.', 'Ensure all security staff consistently apply the approved entry screening procedures.'],
+  ['Security', 'SOM On-site Security Management', 'On-site security coverage inconsistent.', 'Ensure adequate security patrols and monitoring are maintained across all operational areas.'],
+  ['Security', 'SOM Operational Readiness', 'Security readiness not fully confirmed.', 'Complete and document all pre-opening security checks to confirm operational readiness'],
+  ['Security', 'SOM Organisational Management', 'Security command arrangements unclear.', 'Clearly define the security command structure and communication channels to ensure effective decision-making.'],
+  ['Security', 'SOM Perimeter Management', 'Perimeter controls incomplete.', 'Strengthen perimeter controls to prevent unauthorised access and maintain site security.'],
+  ['Security', 'SOM Staff Allocation', 'Security staffing not aligned to requirements.', 'Deploy sufficient security personnel to all designated operational areas.'],
+  ['Security', 'SOM Tools & Equipment', 'Security equipment unavailable or faulty.', 'Ensure all required security equipment is available, operational, and fit for purpose.'],
+  ['Security', 'SOM Tools & Equipment', 'Lack of search equipment (wands or scanners', 'Provide sufficient functional search equipment to prevent entry delays, ineffective screening, and increased security risks.'],
+  ['Security', 'SOM Training & Supervision', 'Limited security training evident.', 'Ensure all security personnel receive appropriate training and event-specific briefings before deployment.'],
+  // Transport & Traffic (normalized to match the live Disciplines catalog name -- guide said
+  // "Traffic & Transport")
+  ['Transport & Traffic', 'TTM Operational Readiness', 'Loose kerbstones, concrete blocks, or similar materials obstructing vehicle routes.', 'Remove or secure all obstructions to prevent vehicle damage and maintain safe traffic movement.'],
+  ['Transport & Traffic', 'TTM Operational Readiness', 'Traffic plan not fully tested.', 'Complete pre-opening traffic readiness checks to verify that all traffic management arrangements are operational.'],
+  ['Transport & Traffic', 'TTM Organisational Management', 'Traffic coordination limited.', 'Establish clear coordination and communication between all traffic management stakeholders to support safe and efficient operations.'],
+  ['Transport & Traffic', 'TTM Site Design', 'Inadequately lit vehicle areas', 'Ensure adequate lighting in car parks and vehicle access routes to prevent collisions and pedestrian incidents.'],
+  ['Transport & Traffic', 'TTM Site Design', 'Vehicle and pedestrian routes unclear.', 'Clearly define and segregate vehicle and pedestrian routes to reduce the risk of collisions.'],
+  ['Transport & Traffic', 'TTM Staff Allocation', 'Traffic marshal numbers insufficient.', 'Deploy sufficient traffic marshals at key locations and peak periods to maintain safe and efficient traffic flow.'],
+  ['Transport & Traffic', 'TTM Tools & Equipment', 'Insufficient temporary lighting in dark traffic areas.', 'Ensure suitable lighting towers or floodlights are installed and operational to improve visibility and prevent vehicle and pedestrian incidents.'],
+  ['Transport & Traffic', 'TTM Tools & Equipment', 'Traffic equipment inadequate.', 'Ensure all traffic management equipment is available, operational, and fit for purpose.'],
+  ['Transport & Traffic', 'TTM Traffic Management', 'Traffic controls partially implemented.', 'Ensure all traffic management controls are fully implemented and maintained throughout the event.'],
+  ['Transport & Traffic', 'TTM Training & Supervision', 'Limited traffic training evident.', 'Ensure all traffic management personnel receive appropriate training and event-specific briefings before deployment.'],
+  ['Transport & Traffic', 'TTM Wayfinding & Signage', 'Lack of guidance at drop-off and pick-up points', 'Ensure designated points, visible signage, and trained traffic marshals are in place to maintain safe and orderly traffic flow'],
+  ['Transport & Traffic', 'TTM Wayfinding & Signage', 'Confusing pedestrian or vehicle routes', 'Ensure pedestrian and vehicle routes are separated and clearly marked to prevent collisions and congestion.'],
+  // Incident & Accident
+  ['Incident & Accident', 'I&A Drowning', 'Drowning or water-related incident recorded.', 'Investigate the incident and strengthen water safety and emergency response measures to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Electrocution', 'Electrical incident or near miss recorded.', 'Isolate the hazard, investigate the incident, and implement corrective actions to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Fire', 'Fire-related incident or near miss recorded.', 'Investigate the incident and strengthen fire safety controls to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Harassment', 'Harassment incident reported.', 'Investigate the incident and implement appropriate safeguarding and corrective measures to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Medical', 'Medical incident recorded on site.', 'Investigate the incident, identify root causes, and implement corrective actions to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Other', 'Incident recorded on site.', 'Investigate the incident, identify root causes, and implement corrective actions to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Physical aggression', 'Physical aggression incident recorded.', 'Investigate the incident and review security measures to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Trip, Slip and Fall', 'Slip, trip, or fall incident recorded.', 'Investigate the incident, eliminate hazards, and implement corrective actions to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Vehicle-Pedestrian', 'Vehicle–pedestrian incident recorded.', 'Investigate the incident and strengthen pedestrian and vehicle segregation to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Vehicle-Vehicle', 'Vehicle collision incident recorded.', 'Investigate the incident and review traffic management controls to prevent recurrence.'],
+  ['Incident & Accident', 'I&A Verbal aggression', 'Verbal aggression incident recorded.', 'Investigate the incident and implement appropriate measures to prevent recurrence.'],
+  // Universal Accessibility
+  ['Universal Accessibility', 'UAM General', 'General accessibility issues observed.', 'Review and address accessibility deficiencies to ensure equitable access throughout the venue.'],
+  ['Universal Accessibility', 'UAM Points of Access', 'Accessible access points restricted.', 'Ensure accessible entrances, exits, and routes remain unobstructed and easily accessible.'],
+  ['Universal Accessibility', 'UAM Ramps', 'Ramps not fully accessible.', 'Ensure ramps comply with accessibility requirements to provide safe and independent access.'],
+  ['Universal Accessibility', 'UAM Sanitary Facilities', 'Accessible toilets limited.', 'Provide sufficient accessible toilet facilities to meet the needs of attendees.'],
+  ['Universal Accessibility', 'UAM Signages', 'Accessibility signage insufficient.', 'Provide clear, visible, and accessible signage to assist attendees in locating accessible routes and facilities.'],
+  ['Universal Accessibility', 'UAM Training & Supervision', 'Accessibility training and supervision insufficient.', 'Ensure staff receive appropriate accessibility awareness training to provide effective assistance to attendees.'],
+  // Adverse Weather
+  ['Adverse Weather', 'ADV Rain Damage', 'Rain affecting site safety.', 'Implement drainage and controls to prevent flooding.'],
+  ['Adverse Weather', 'ADV Rain Damage', 'Rainwater damage to staging or temporary structures', 'Inspect and repair affected structures and ensure suitable weatherproofing to prevent instability, collapse, and injury'],
+  ['Adverse Weather', 'ADV Wind Damage', 'Wind impacting structures.', 'Secure and monitor structures to ensure structure stability.'],
+  ['Adverse Weather', 'ADV Preventive Actions Taken', 'Weather controls partially implemented.', 'Enhance preventive measures to reduce the risk of potential damage to structures, staff and attendees.'],
+  ['Adverse Weather', 'General', 'Weather impacting operations.', 'Monitor conditions and adapt to reduce the risk of potential damage to structures, staff and attendees.']
+  ];
+  rows.forEach(function (r) {
+    insertRow('FindingGuide', { id: newId('FindingGuide'), category: r[0], subCategory: r[1], description: r[2], suggestion: r[3] });
+  });
+  Logger.log('seedFindingGuide_: seeded ' + rows.length + ' Log Assistance Guide row(s).');
 }
 
 function seedConfig_() {

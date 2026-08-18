@@ -141,6 +141,17 @@ var SCHEMA = {
   // Findings.id this row was auto-cloned from; blank on every normally-created finding. See
   // reviewFindingResolution, Findings.gs.
   Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId'],
+  // REQ: "Some inspectors are junior level and could use help. We have created a guide which should
+  // give them a list of descriptions once they select the category and sub-category." A reference
+  // catalogue (seeded once from the user's "Log Assistance Guide" spreadsheet, see
+  // seedFindingGuide_ in Setup.gs) that the New/Edit Finding form (findings.js) uses to suggest a
+  // pre-written Description + Suggestion once the inspector picks a Discipline (category) and
+  // Checklist Type (subCategory) -- see findingGuide.js for the admin CRUD/CSV page that keeps it
+  // maintainable going forward. category/subCategory are plain text, matched against
+  // Disciplines.name / the Checklist Type field by exact string (case-insensitive) at read time in
+  // the frontend, not a foreign key -- same "match by name" convention ChecklistItems.category
+  // already uses for Disciplines.
+  FindingGuide:           ['id','category','subCategory','description','suggestion'],
   // toUserIds/ccUserIds/notedUserIds replace the old single recipientUserId -- REQ: "ability to
   // modify the To user role and the Cc: user roles", each tier can now resolve to MULTIPLE users
   // per role (e.g. every EMCManager in the org), and each of them needs their own independent
@@ -612,7 +623,8 @@ var ID_PREFIX = {
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
   Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
   TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
-  RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT'
+  RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
+  FindingGuide: 'FGD'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

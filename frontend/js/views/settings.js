@@ -858,6 +858,7 @@ function permissionPages_() {
     { id: 'inspectionsTab', label: t('tab_inspections'), eventTab: 'inspections' },
     { id: 'completedChecklists', label: t('tab_completed_checklists'), navPath: '/completed-checklists' },
     { id: 'checklistItems', label: Term('checklistItem_plural'), navPath: '/checklist-items' },
+    { id: 'findingGuide', label: t('finding_guide_title'), navPath: '/finding-guide' },
     { id: 'findings', label: t('tab_findings'), eventTab: 'findings' },
     { id: 'escalations', label: Term('escalation_plural'), eventTab: 'escalations' },
     { id: 'participants', label: Term('participant_plural'), eventTab: 'participants' },
