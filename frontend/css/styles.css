@@ -438,6 +438,13 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .roadmap-item-row.done .roadmap-item-name{ text-decoration:line-through; color:var(--text-400); font-weight:500; }
 .roadmap-item-date{ font-size:11.5px; color:var(--text-600); white-space:nowrap; }
 .roadmap-item-row.overdue .roadmap-item-date{ color:#dc2626; font-weight:700; }
+/* REQ: "Add 'Planed Date', and when checked add 'Actual Date' of check." Planned/Actual stack as two
+   right-aligned lines instead of the single date this used to be -- Actual only ever renders once an
+   item is Done (roadmapItemRowHtml_, eventDetail.js), tinted the same green "good outcome" family as
+   the rest of this tab (tl-dot-green) so it reads as a completed fact, not just another due date. */
+.roadmap-item-dates{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:none; }
+.roadmap-item-date-label{ color:var(--text-400); font-weight:600; }
+.roadmap-item-date.actual{ color:#16a34a; }
 
 /* Event Roadmap tab (eventDetail.js, tabRoadmap/eventRoadmapHtml_) -- one horizontal line like
    .project-timeline above, but plotting every scheduling milestone within a single event instead of

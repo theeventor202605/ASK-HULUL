@@ -3715,12 +3715,22 @@ function roadmapChecklistHtml_(items, event, canManage) {
 function roadmapItemRowHtml_(item) {
   var done = item.status === 'Done';
   var rowClass = 'roadmap-item-row' + (done ? ' done' : '') + (item.overdue ? ' overdue' : '');
+  // REQ: "Add 'Planed Date', and when checked add 'Actual Date' of check." Planned (dueAt) always
+  // shows; Actual only appears once the item is actually marked Done -- completedAt is stamped by
+  // updateEventRoadmapItem (RoadmapPlans.gs) the moment the checkbox below is toggled on, so this is
+  // just displaying data that already exists rather than needing anything new from the backend.
+  var datesHtml = '<span class="roadmap-item-dates">' +
+    '<span class="roadmap-item-date"><span class="roadmap-item-date-label">' + esc(t('col_due_date')) + ':</span> ' +
+      esc(UI.fmtDate(item.dueAt)) + (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>' +
+    (done ? '<span class="roadmap-item-date actual"><span class="roadmap-item-date-label">' + esc(t('roadmap_actual_date_label')) + ':</span> ' +
+      esc(UI.fmtDate(item.completedAt)) + '</span>' : '') +
+  '</span>';
   return '<div class="' + rowClass + '" data-item-id="' + esc(item.id) + '">' +
     '<button type="button" class="roadmap-item-check' + (done ? ' done' : '') + '" data-toggle-done="' + esc(item.id) + '" title="' + esc(done ? t('roadmap_mark_pending_title') : t('roadmap_mark_done_title')) + '">' +
       (done ? ICON('checklist_done') : ICON('checklist_pending')) +
     '</button>' +
     '<span class="roadmap-item-name">' + esc(item.name) + '</span>' +
-    '<span class="roadmap-item-date">' + esc(UI.fmtDate(item.dueAt)) + (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>' +
+    datesHtml +
     '<span style="display:flex;gap:4px;flex:none;">' +
       '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(item.id) + '">' + ICON('edit') + '</button>' +
       '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-item="' + esc(item.id) + '">' + ICON('delete') + '</button>' +
