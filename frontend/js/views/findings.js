@@ -315,7 +315,7 @@ async function renderNewFinding(params) {
         UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
           disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
         // REQ (follow-up): "Move Checklist Type to be after Discipline."
-        UI.field(t('checklist_type'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
+        UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
         UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
         UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
         '<div class="form-row">' +
@@ -542,7 +542,7 @@ async function renderEditFinding(params) {
       '</div>' +
       UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
-      UI.field(t('checklist_type'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
+      UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
       UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
       UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
       UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
@@ -850,7 +850,12 @@ async function renderFindingDetail(params) {
           findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
           findingMetaChipHtml_('📍', t('sub_x', { term: Term('zone').toLowerCase() }), esc(finding.subZone || '—')) +
           findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
-          findingMetaChipHtml_('📋', t('category'), esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
+          // REQ: "Throughout the platform change: Discipline to Category." Discipline now displays as
+          // "Category" (chip above), so this chip -- which actually shows finding.category (the New
+          // Finding form's own Checklist Type field, see the REQ log at eventDetail.js's findings
+          // table below) -- is relabeled to Term('checklistType') too, both to stay consistent with
+          // what it really holds and to avoid two differently-meaning chips both saying "Category".
+          findingMetaChipHtml_('📋', Term('checklistType'), esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
           findingMetaChipHtml_('🕓', t('logged'), UI.fmtDate(finding.createdAt)) +
           findingMetaChipHtml_('⏱️', t('resolution_window'), UI.fmtDate(finding.resolutionWindowAt)) +
           // Not in the requested list (no Location field going forward -- see createFinding's own

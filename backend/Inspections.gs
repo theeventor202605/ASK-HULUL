@@ -37,7 +37,7 @@ function createChecklistItem(user, p) {
   };
   var key = checklistItemDupKey_(row);
   var dup = findWhere('ChecklistItems', function (c) { return c.status !== 'Deleted' && checklistItemDupKey_(c) === key; })[0];
-  if (dup) throw new HululError('BAD_REQUEST', 'A checklist item with this Description, Phase, Checklist Type, and Discipline already exists.');
+  if (dup) throw new HululError('BAD_REQUEST', 'A checklist item with this Description, Phase, Sub-Category, and Category already exists.');
   insertRow('ChecklistItems', row);
   audit(user.id, 'CREATE_CHECKLIST_ITEM', 'ChecklistItems', row.id, {});
   return row;
@@ -116,7 +116,7 @@ function updateChecklistItem(user, p) {
   var merged = Object.assign({}, item, patch);
   var key = checklistItemDupKey_(merged);
   var dup = findWhere('ChecklistItems', function (c) { return c.id !== p.itemId && c.status !== 'Deleted' && checklistItemDupKey_(c) === key; })[0];
-  if (dup) throw new HululError('BAD_REQUEST', 'A checklist item with this Description, Phase, Checklist Type, and Discipline already exists.');
+  if (dup) throw new HululError('BAD_REQUEST', 'A checklist item with this Description, Phase, Sub-Category, and Category already exists.');
   var updated = updateRow('ChecklistItems', p.itemId, patch);
   audit(user.id, 'UPDATE_CHECKLIST_ITEM', 'ChecklistItems', p.itemId, patch);
   return updated;
@@ -171,7 +171,7 @@ function scheduleInspection(user, p) {
   var isAssigned = findWhere('InspectorAssignments', function (a) {
     return a.eventId === p.eventId && a.disciplineId === p.disciplineId && a.inspectorId === p.inspectorId;
   }).length > 0;
-  if (!isAssigned) throw new HululError('FORBIDDEN', 'This inspector is not assigned to this discipline for this event yet — assign them first in Disciplines & Inspectors.');
+  if (!isAssigned) throw new HululError('FORBIDDEN', 'This inspector is not assigned to this category for this event yet — assign them first in Assignments.');
   var discipline = getById('Disciplines', p.disciplineId);
   var inspection = {
     id: newId('Inspections'), eventId: p.eventId, disciplineId: p.disciplineId, inspectorId: p.inspectorId,
@@ -205,7 +205,7 @@ function updateInspection(user, p) {
   var isAssigned = findWhere('InspectorAssignments', function (a) {
     return a.eventId === p.eventId && a.disciplineId === disciplineId && a.inspectorId === inspectorId;
   }).length > 0;
-  if (!isAssigned) throw new HululError('FORBIDDEN', 'This inspector is not assigned to this discipline for this event yet — assign them first in Disciplines & Inspectors.');
+  if (!isAssigned) throw new HululError('FORBIDDEN', 'This inspector is not assigned to this category for this event yet — assign them first in Assignments.');
   var patch = { disciplineId: disciplineId, inspectorId: inspectorId, phase: phase, scheduledAt: scheduledAt };
   var updated = updateRow('Inspections', p.inspectionId, patch);
   audit(user.id, 'UPDATE_INSPECTION', 'Inspections', p.inspectionId, patch);

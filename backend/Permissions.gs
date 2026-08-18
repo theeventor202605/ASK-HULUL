@@ -14,7 +14,7 @@
  *
  * Rollout status: started as foundation + ONE pilot module (Findings/Risk Logging) as a working
  * end-to-end proof, then grown module-by-module across most of the app (Events/Venues/Zones,
- * Participants/Places, Disciplines, Inspections, Accounts/Organizations, Notifications, Escalations,
+ * Participants/Places, Categories, Inspections, Accounts/Organizations, Notifications, Escalations,
  * Projects, Venue Approval, Reassignment, Support, Reports, Templates/Meetings -- see the `requirePermission(user, '...')`
  * call sites throughout backend/*.gs for the current, authoritative list; PERMISSION_REGISTRY_ below
  * is kept in sync with exactly those). A small number of requireRole call sites are DELIBERATELY left
@@ -89,7 +89,7 @@ var PERMISSION_REGISTRY_ = {
     defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager', 'Inspector']
   },
   'participant.assignDisciplines': {
-    module: 'Participants', label: 'Assign disciplines to participants (bulk)', page: 'participantDisciplines', crud: ['update'],
+    module: 'Participants', label: 'Assign categories to participants (bulk)', page: 'participantDisciplines', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'participant.dedupe': {
@@ -209,20 +209,24 @@ var PERMISSION_REGISTRY_ = {
     module: 'Inspections', label: 'View completed checklists across every event', page: 'completedChecklists', crud: ['read'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'Inspector']
   },
+  // REQ: "Throughout the platform change: Discipline to Category." This Settings > Permissions
+  // matrix is plain static English metadata (unlike the frontend's Term() system, it isn't org-
+  // configurable/localized), so it's updated by hand here to stay consistent with the new default
+  // label -- the permission KEYS themselves ('discipline.manage', etc.) are untouched.
   'discipline.manage': {
-    module: 'Disciplines', label: 'Add a discipline to the catalogue', page: 'disciplinesCatalog', crud: ['create'],
+    module: 'Categories', label: 'Add a category to the catalogue', page: 'disciplinesCatalog', crud: ['create'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin']
   },
   'discipline.identify': {
-    module: 'Disciplines', label: 'Identify which disciplines apply to an event', page: 'disciplinesTab', crud: ['update'],
+    module: 'Categories', label: 'Identify which categories apply to an event', page: 'disciplinesTab', crud: ['update'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'inspectorQualification.manage': {
-    module: 'Disciplines', label: 'Set an inspector\'s qualification profile', page: 'inspectorQualifications', crud: ['create', 'update'],
+    module: 'Categories', label: 'Set an inspector\'s qualification profile', page: 'inspectorQualifications', crud: ['create', 'update'],
     defaultRoles: ['InspectionAdmin', 'SystemAdmin', 'ProjectManager']
   },
   'inspectorAssignment.manage': {
-    module: 'Disciplines', label: 'Assign or remove an inspector on a discipline', page: 'disciplinesTab', crud: ['create', 'update', 'delete'],
+    module: 'Categories', label: 'Assign or remove an inspector on a category', page: 'disciplinesTab', crud: ['create', 'update', 'delete'],
     defaultRoles: ['ProjectManager', 'SystemAdmin']
   },
   'escalation.create': {

@@ -1669,7 +1669,7 @@ async function tabDisciplines(content, eventId, detail) {
 function renderCoverageGapsCard_(gaps, canManage) {
   var body;
   if (!gaps || !gaps.items || !gaps.items.length) {
-    body = '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_discipline_covered')) + (gaps && gaps.zoneMode ? esc(t('across_all_zones_suffix')) : '.') + '</div>';
+    body = '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_discipline_covered', { term: Term('discipline').toLowerCase() })) + (gaps && gaps.zoneMode ? esc(t('across_all_zones_suffix')) : '.') + '</div>';
   } else {
     body = gaps.items.map(function (item) {
       var whereText = gaps.zoneMode
@@ -1770,7 +1770,7 @@ function computeInspectionGaps_(assignments, inspections, checklistItems) {
 // (it's just information), "Quick schedule" only for roles that can act on it.
 function renderInspectionGapsCard_(gaps, canSchedule) {
   var body = !gaps.length
-    ? '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_x_scheduled_hint', { inspector: Term('inspector').toLowerCase(), inspection: Term('inspection').toLowerCase() })) + '</div>'
+    ? '<div class="muted" style="font-size:13px;">' + ICON('coverage_complete') + ' ' + esc(t('every_x_scheduled_hint', { inspector: Term('inspector').toLowerCase(), inspection: Term('inspection').toLowerCase(), discipline: Term('discipline').toLowerCase() })) + '</div>'
     : gaps.map(function (g) {
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13px;">' +
           '<div><strong>' + esc(g.disciplineName) + '</strong> · ' + esc(g.inspectorName) + ' <span class="muted">— ' + esc(g.phase) + esc(t('not_yet_scheduled_suffix')) + '</span></div>' +
@@ -2567,11 +2567,11 @@ function openChecklistTypeStep_(eventId, inspection, participant, scope, byType,
   function doneOf(list) { return list.filter(function (i) { return existingByItemId[i.id]; }).length; }
   var body =
     '<div class="muted" style="font-size:12.5px;margin-bottom:10px;">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div>' +
-    UI.field(t('field_checklist_type'), '<select id="fRecordType" class="field-input">' +
+    UI.field(Term('checklistType'), '<select id="fRecordType" class="field-input">' +
       typeNames.map(function (name) {
         return '<option value="' + esc(name) + '">' + esc(name || '(untyped)') + esc(t('x_done_of_total_suffix', { done: doneOf(byType[name]), total: byType[name].length })) + '</option>';
       }).join('') +
-      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">' + esc(t('all_checklist_types_option')) + esc(t('x_done_of_total_suffix', { done: doneOf(scope), total: scope.length })) + '</option>' : '') +
+      (typeNames.length > 1 ? '<option value="' + ALL_KEY + '">' + esc(t('all_checklist_types_option', { term: Term('checklistType_plural').toLowerCase() })) + esc(t('x_done_of_total_suffix', { done: doneOf(scope), total: scope.length })) + '</option>' : '') +
     '</select>') +
     '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('checklist_type_pick_hint')) + '</div>';
 
@@ -3075,7 +3075,7 @@ async function tabFindings(content, eventId) {
     // is purely about not showing a button that would just come back as a FORBIDDEN error.
     '<div class="card-body">' + UI.table([
       { key: 'participantName', label: Term('participant') },
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: t('col_checklist_type') },
+      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: Term('checklistType') },
       { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'description', label: t('field_description') },

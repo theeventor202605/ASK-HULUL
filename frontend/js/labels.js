@@ -16,9 +16,17 @@ window.HULUL_LABEL_DEFAULTS = {
     venue: 'Venue', venue_plural: 'Venues',
     zone: 'Zone', zone_plural: 'Zones',
     meeting: 'Meeting', meeting_plural: 'Meetings',
-    discipline: 'Discipline', discipline_plural: 'Disciplines',
+    // REQ: "Throughout the platform change: Discipline to Category." Same entity (the Disciplines
+    // sheet/inspector specialty), just a new default display word -- data model, routes, and field
+    // names (disciplineId, etc.) are untouched, per this whole Term() system's own design.
+    discipline: 'Category', discipline_plural: 'Categories',
     inspector: 'Inspector', inspector_plural: 'Inspectors',
     checklistItem: 'Checklist Item', checklistItem_plural: 'Checklist Items',
+    // REQ: "Throughout the platform change: Checklist Type to Sub-Category." New term (checklistType
+    // wasn't previously part of this pluggable-terminology system -- it was hardcoded i18n text in a
+    // handful of places) added here purely so it can rename consistently with (and the same way as)
+    // discipline above, and so an org could independently rename it later from Settings > Terminology.
+    checklistType: 'Sub-Category', checklistType_plural: 'Sub-Categories',
     finding: 'Risk Log', finding_plural: 'Risk Logs',
     inspection: 'Inspection', inspection_plural: 'Inspections',
     template: 'Template', template_plural: 'Templates',
@@ -34,9 +42,10 @@ window.HULUL_LABEL_DEFAULTS = {
     venue: 'موقع', venue_plural: 'المواقع',
     zone: 'منطقة', zone_plural: 'المناطق',
     meeting: 'اجتماع', meeting_plural: 'الاجتماعات',
-    discipline: 'تخصص', discipline_plural: 'التخصصات',
+    discipline: 'الفئة', discipline_plural: 'الفئات',
     inspector: 'مفتش', inspector_plural: 'المفتشون',
     checklistItem: 'عنصر قائمة مراجعة', checklistItem_plural: 'عناصر قوائم المراجعة',
+    checklistType: 'الفئة الفرعية', checklistType_plural: 'الفئات الفرعية',
     finding: 'سجل المخاطر', finding_plural: 'سجلات المخاطر',
     inspection: 'تفتيش', inspection_plural: 'عمليات التفتيش',
     template: 'قالب', template_plural: 'القوالب',
@@ -58,6 +67,7 @@ window.HULUL_LABEL_FIELDS = [
   { key: 'discipline', desc: 'An inspection specialty (Fire Safety, Security, ...)' },
   { key: 'inspector', desc: 'A person who performs inspections' },
   { key: 'checklistItem', desc: 'A single line item on an inspection checklist' },
+  { key: 'checklistType', desc: 'A sub-classification of a checklist item within its Category (Restaurants, Food Truck, ...)' },
   { key: 'inspection', desc: 'A scheduled inspection visit' },
   { key: 'finding', desc: 'A logged non-compliance / risk' },
   { key: 'template', desc: 'A readiness template document' },

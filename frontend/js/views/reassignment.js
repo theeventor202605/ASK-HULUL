@@ -182,7 +182,7 @@ function unavailableUserCardHtml_(u, assignments, suggestionsByAssignment, event
             '<button class="btn btn-primary btn-sm" data-reassign-btn="' + esc(a.id) + '">' + esc(t('reassign_btn')) + '</button>' +
           '</div>' +
           '<div class="reassign-conflict-note" data-for="' + esc(a.id) + '" style="font-size:11.5px;margin-top:6px;display:none;"></div>'
-        : '<div class="muted" style="font-size:12px;margin-top:6px;color:var(--danger);">' + esc(t('no_qualified_replacement')) + '</div>') +
+        : '<div class="muted" style="font-size:12px;margin-top:6px;color:var(--danger);">' + esc(t('no_qualified_replacement', { term: Term('discipline').toLowerCase() })) + '</div>') +
       '</div>';
   }).join('');
 

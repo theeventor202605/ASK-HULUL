@@ -5,13 +5,15 @@
  * inspection/finding that already referenced it keeps resolving, it's just hidden from the
  * catalogue and from inspectionScopeItems_ going forward; same pattern as Venues/Zones deletion).
  * Two stacked lists on the left narrow the set down: Phase (Opening/Operational), then
- * Discipline within that phase. Checklist Type is a tab bar on the right, since a given
- * Phase+Discipline combo can still span several checklist types (Restaurants, Food Truck, …).
- * "Discipline" here is stored on the backend as the item's `category` field (unchanged, to avoid a
- * data migration) but the New/Edit Item form picks it from the real Disciplines list via dropdown
- * instead of free text -- free text let a typo'd/differently-cased category silently diverge from
- * the actual discipline name, which inspectionScopeItems_ (Inspections.gs) matches on exactly, so a
- * mismatch meant those items would never show up for any inspection at all.
+ * Category (Term('discipline')) within that phase. Sub-Category (Term('checklistType')) is a tab
+ * bar on the right, since a given Phase+Category combo can still span several sub-categories
+ * (Restaurants, Food Truck, …).
+ * Category here is stored on the backend as the item's `category` field, and Sub-Category as
+ * `checklistType` (both unchanged, to avoid a data migration -- see labels.js for the display-label
+ * rename itself) but the New/Edit Item form picks Category from the real Disciplines list via
+ * dropdown instead of free text -- free text let a typo'd/differently-cased category silently
+ * diverge from the actual discipline name, which inspectionScopeItems_ (Inspections.gs) matches on
+ * exactly, so a mismatch meant those items would never show up for any inspection at all.
  */
 async function renderChecklistItems() {
   var root = document.getElementById('viewRoot');
@@ -60,7 +62,7 @@ async function renderChecklistItems() {
     // risk/Window — matches createChecklistItem's dedup check, which blocks new duplicates from
     // being created in the first place. This just cleans up existing ones.
     UI.confirmModal(
-      t('checklist_dedupe_confirm'),
+      t('checklist_dedupe_confirm', { typeTerm: Term('checklistType'), categoryTerm: Term('discipline') }),
       async function () {
         try {
           var res = await Api.call('dedupeChecklistItems', {});
@@ -246,7 +248,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
     UI.field(Term('discipline'), disciplines.length
       ? '<select id="fCiCategory" class="field-input">' + disciplineOptions + '</select>'
       : '<select id="fCiCategory" class="field-input" disabled><option value="">' + esc(t('create_x_first_page_hint', { term: Term('discipline').toLowerCase(), termPlural: Term('discipline_plural') })) + '</option></select>') +
-    UI.field(t('field_checklist_type'),
+    UI.field(Term('checklistType'),
       '<select id="fCiTypeSelect" class="field-input">' + typeSelectHtml_(initialTypes, initial.checklistType) + '</select>' +
       '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />'
     ) +
@@ -264,7 +266,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
         if (!disciplines.length) { UI.toast(t('toast_create_x_first', { term: Term('discipline').toLowerCase() }), 'error'); return; }
         var typeSelect = document.getElementById('fCiTypeSelect');
         var checklistType = typeSelect.value === '__new__' ? document.getElementById('fCiTypeNew').value.trim() : typeSelect.value;
-        if (!checklistType) { UI.toast(t('toast_checklist_type_required'), 'error'); return; }
+        if (!checklistType) { UI.toast(t('toast_checklist_type_required', { term: Term('checklistType') }), 'error'); return; }
         var payload = {
           checklistType: checklistType, category: document.getElementById('fCiCategory').value,
           description: document.getElementById('fCiDesc').value, defaultRisk: document.getElementById('fCiRisk').value,
@@ -295,7 +297,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
 /* ---------------- CSV export / import ----------------
  * Reuses csvEscape_, parseCsv_, and showImportResults_ from events.js (loaded on the same page). */
 function exportChecklistItemsCsv(rows) {
-  var headers = ['Checklist Type', 'Discipline', 'Description', 'Default Risk', 'Window Hours', 'Phase'];
+  var headers = [Term('checklistType'), Term('discipline'), 'Description', 'Default Risk', 'Window Hours', 'Phase'];
   var lines = [headers.map(csvEscape_).join(',')];
   rows.forEach(function (r) {
     lines.push([r.checklistType, r.category, r.description, r.defaultRisk, r.defaultWindowHours, r.phase].map(csvEscape_).join(','));
@@ -321,16 +323,23 @@ async function importChecklistItemsCsv(file, disciplines) {
   if (!rows.length) { UI.toast(t('empty_csv'), 'error'); return; }
   var headers = rows[0].map(function (h) { return h.trim().toLowerCase(); });
   var col = function (name) { return headers.indexOf(name); };
-  var idxType = col('checklist type') !== -1 ? col('checklist type') : col('checklisttype');
-  // Accepts either header name -- 'discipline' going forward, 'category' for older exports/sheets
-  // made before this column was renamed.
-  var idxCategory = col('discipline') !== -1 ? col('discipline') : col('category');
+  // REQ: "Throughout the platform change: Checklist Type to Sub-Category." Accepts the new header
+  // name going forward ('sub-category'/'subcategory', matching exportChecklistItemsCsv's own new
+  // Term('checklistType') header) while still recognizing the older 'checklist type'/'checklisttype'
+  // header so CSVs exported before this rename still re-import cleanly.
+  var idxType = col('sub-category') !== -1 ? col('sub-category')
+    : col('subcategory') !== -1 ? col('subcategory')
+    : col('checklist type') !== -1 ? col('checklist type') : col('checklisttype');
+  // Accepts either header name -- 'category' going forward (matching the new Term('discipline')
+  // default), 'discipline' from the in-between rename, or 'category' from even older exports/sheets
+  // made before any of this was renamed.
+  var idxCategory = col('category') !== -1 ? col('category') : col('discipline');
   var idxDesc = col('description');
   var idxRisk = col('default risk') !== -1 ? col('default risk') : col('defaultrisk');
   var idxWindow = col('window hours') !== -1 ? col('window hours') : col('defaultwindowhours');
   var idxPhase = col('phase');
   if (idxType === -1 || idxCategory === -1 || idxDesc === -1) {
-    UI.toast(t('checklist_csv_columns_required'), 'error');
+    UI.toast(t('checklist_csv_columns_required', { typeTerm: Term('checklistType'), categoryTerm: Term('discipline') }), 'error');
     return;
   }
   // Same reasoning as the New Item form's dropdown: a Discipline value that doesn't exactly match
@@ -351,11 +360,11 @@ async function importChecklistItemsCsv(file, disciplines) {
     var description = (row[idxDesc] || '').trim();
     var label = description || checklistType || '(unnamed)';
     if (!checklistType || !category || !description) {
-      results.failed.push({ row: r + 1, name: label, reason: 'Checklist Type, Discipline, and Description are required' });
+      results.failed.push({ row: r + 1, name: label, reason: Term('checklistType') + ', ' + Term('discipline') + ', and Description are required' });
       continue;
     }
     if (!validNames[category]) {
-      results.failed.push({ row: r + 1, name: label, reason: 'Discipline "' + category + '" doesn\'t match an existing discipline name exactly (see the Disciplines page)' });
+      results.failed.push({ row: r + 1, name: label, reason: Term('discipline') + ' "' + category + '" doesn\'t match an existing ' + Term('discipline').toLowerCase() + ' name exactly (see the ' + Term('discipline_plural') + ' page)' });
       continue;
     }
     toSend.push({

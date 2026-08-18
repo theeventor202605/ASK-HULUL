@@ -111,7 +111,7 @@ function assignInspector(user, p) {
   requirePermission(user, 'inspectorAssignment.manage', event.inspectionCoId); // RBAC pilot -- same default roles as before, no behavior change
   var quals = inspectorQualifications_(p.inspectorId);
   if (quals.indexOf(p.disciplineId) === -1) {
-    throw new HululError('FORBIDDEN', 'Inspector is not qualified in this discipline');
+    throw new HululError('FORBIDDEN', 'Inspector is not qualified in this category');
   }
   var venueZones = activeZonesForVenue_(event.venueId);
   var zoneIds = p.zoneIds || [];

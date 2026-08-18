@@ -56,7 +56,7 @@ function mapParticipantRole_(type) {
 function bulkAssignParticipantDisciplines(user, p) {
   requirePermission(user, 'participant.assignDisciplines');
   if (!p.participantIds || !p.participantIds.length) throw new HululError('BAD_REQUEST', 'Select at least one participant');
-  if (!p.disciplineIds || !p.disciplineIds.length) throw new HululError('BAD_REQUEST', 'Select at least one discipline to apply');
+  if (!p.disciplineIds || !p.disciplineIds.length) throw new HululError('BAD_REQUEST', 'Select at least one category to apply');
 
   var disciplineIds = Array.from(new Set(p.disciplineIds));
   var updated = p.participantIds.map(function (participantId) {

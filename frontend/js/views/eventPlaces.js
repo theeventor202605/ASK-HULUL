@@ -305,10 +305,10 @@ async function tabParticipantDisciplines(content, eventId, detail) {
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
       { label: t('apply_btn'), className: 'btn-primary', onClick: async function () {
           var disciplineIds = Array.from(document.querySelectorAll('.apply-disc-check:checked')).map(function (cb) { return cb.value; });
-          if (!disciplineIds.length) { UI.toast(t('toast_select_at_least_one_discipline'), 'error'); return; }
+          if (!disciplineIds.length) { UI.toast(t('toast_select_at_least_one_discipline', { term: Term('discipline').toLowerCase() }), 'error'); return; }
           try {
             await Api.call('bulkAssignParticipantDisciplines', { participantIds: participantIds, disciplineIds: disciplineIds });
-            UI.closeModal(); UI.toast(t('toast_disciplines_applied'), 'success'); Router.resolve();
+            UI.closeModal(); UI.toast(t('toast_disciplines_applied', { term: Term('discipline_plural') }), 'success'); Router.resolve();
           } catch (err) { UI.error(err); }
         } }
     ]);
