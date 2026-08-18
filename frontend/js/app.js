@@ -109,27 +109,50 @@ async function showApp() {
 // pings while an Inspector has that one screen open. Guarded by HululState.locationPingStarted since
 // showApp() itself re-runs on every navigation, not just login.
 //
-// Deliberately never PROMPTS for geolocation permission here -- only starts pinging once the browser
-// already reports it as 'granted' (typically from some earlier, purposeful request elsewhere in the
-// app, e.g. Log Finding's "Your location" or live inspection tracking). Simply loading the Dashboard
-// or any other page should never surprise a desk-bound user with a permission popup of its own.
+// BUG FIX (reported: an ASK Inspector logged in at a venue but never showed on the Live Map, despite
+// having granted location access before): the original version only ever pinged after confirming
+// navigator.permissions.query({name:'geolocation'}) resolved to 'granted' -- deliberately avoiding an
+// unsolicited prompt for desk-bound users. Turns out Safari (desktop and iOS, which is what most
+// field Inspectors are actually on) has never reliably implemented that Permissions API query for
+// geolocation -- it silently rejects/misreports, so the .catch() below used to just give up and never
+// ping at all, even when the OS-level permission genuinely was granted. Confirmed by the user this is
+// exactly what happened. Fix: when the permissions-query path is unavailable or errors, fall back to
+// calling getCurrentPosition() directly -- on Chrome/Firefox/etc. (where permissions.query works) this
+// path is never used, so their no-surprise-popup behavior is unchanged. On Safari/other browsers
+// without reliable query support, this does mean a first-time user may see one native one-time
+// permission prompt instead of the feature just silently never working -- accepted tradeoff (Q: applies
+// to every role, not just Inspectors -- so all Safari users may see it once, not just field staff).
 function startUserLocationPing_() {
   if (HululState.locationPingStarted) return;
   HululState.locationPingStarted = true;
-  if (!navigator.geolocation || !navigator.permissions || !navigator.permissions.query) return;
-  navigator.permissions.query({ name: 'geolocation' }).then(function (status) {
-    function pingIfGranted() {
-      if (status.state !== 'granted') return;
-      navigator.geolocation.getCurrentPosition(function (pos) {
-        Api.call('pingUserLocation', { lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(function () {});
-      }, function () { /* transient GPS failure -- next tick retries */ }, { maximumAge: 25000, timeout: 10000 });
-    }
-    pingIfGranted();
-    HululState.locationPingIntervalId = setInterval(pingIfGranted, 30000);
-    // Permission granted mid-session (e.g. the user just approved some other feature's own prompt) ->
-    // start pinging right away instead of waiting for the next full page load.
-    status.onchange = pingIfGranted;
-  }).catch(function () { /* permissions API unsupported/blocked -- simply never pings, no prompt forced */ });
+  if (!navigator.geolocation) return;
+
+  function pingOnce() {
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      Api.call('pingUserLocation', { lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(function () {});
+    }, function () { /* denied or transient GPS failure -- next tick retries; browsers don't re-prompt once denied, so this is a harmless no-op */ }, { maximumAge: 25000, timeout: 10000 });
+  }
+
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then(function (status) {
+      function pingIfGranted() { if (status.state === 'granted') pingOnce(); }
+      pingIfGranted();
+      HululState.locationPingIntervalId = setInterval(pingIfGranted, 30000);
+      // Permission granted mid-session (e.g. the user just approved some other feature's own prompt) ->
+      // start pinging right away instead of waiting for the next full page load.
+      status.onchange = pingIfGranted;
+    }).catch(function () {
+      // Permissions API unsupported or errored (Safari) -- fall back to calling getCurrentPosition
+      // directly. If permission was already granted, this pings silently with no UI at all; if it
+      // hasn't been decided yet, the browser shows its native one-time prompt.
+      pingOnce();
+      HululState.locationPingIntervalId = setInterval(pingOnce, 30000);
+    });
+  } else {
+    // No Permissions API at all -- same direct fallback.
+    pingOnce();
+    HululState.locationPingIntervalId = setInterval(pingOnce, 30000);
+  }
 }
 
 // Loads the SystemAdmin's sidebar icon overrides (Settings > Icons) once per session -- same

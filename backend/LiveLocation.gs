@@ -89,7 +89,11 @@ function dashboardLiveMapData(user, p) {
     Object.keys(venuesById).forEach(function (vid) {
       if (matched) return;
       var v = venuesById[vid];
-      if (v.boundary && pointInPolygon_(lat, lng, v.boundary)) matched = v;
+      // BUG FIX: was a strict pointInPolygon_ check, inconsistent with the 5m tolerance
+      // pingUserLocation/VENUE_ATTENDANCE_TOLERANCE_M_ uses to record attendance -- a user right at a
+      // boundary edge (GPS jitter, or genuinely standing just outside) could show up in
+      // VenueAttendance but never get a dot on the live map. Now uses the same tolerance both places.
+      if (v.boundary && insideOrNearBoundary_(lat, lng, v.boundary, VENUE_ATTENDANCE_TOLERANCE_M_)) matched = v;
     });
     if (!matched) return; // not inside any venue this caller can see -- same filtering listActiveInspectorLocations applies
     locations.push({
