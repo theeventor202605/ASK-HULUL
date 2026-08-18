@@ -330,10 +330,12 @@ function exportChecklistItemsCsv(rows) {
   // formatter (padRef_), same reasoning as Default Risk/Window Hours already being plain values here.
   // (Cat Ref. isn't a ChecklistItems field -- it lives on the Disciplines/Categories catalog itself,
   // see disciplines.js -- so it has no place in this CSV.)
-  var headers = [Term('checklistType'), 'Sub Ref.', Term('discipline'), 'Description', 'Default Risk', 'Window Hours', 'Phase', 'Item Ref.'];
+  // REQ: "arrange columns: Category, Sub Ref., Sub-Category, Item Ref., Description, Default Risk,
+  // Window Hours, Phase."
+  var headers = [Term('discipline'), 'Sub Ref.', Term('checklistType'), 'Item Ref.', 'Description', 'Default Risk', 'Window Hours', 'Phase'];
   var lines = [headers.map(csvEscape_).join(',')];
   rows.forEach(function (r) {
-    lines.push([r.checklistType, r.subRef, r.category, r.description, r.defaultRisk, r.defaultWindowHours, r.phase, r.itemRef].map(csvEscape_).join(','));
+    lines.push([r.category, r.subRef, r.checklistType, r.itemRef, r.description, r.defaultRisk, r.defaultWindowHours, r.phase].map(csvEscape_).join(','));
   });
   // Leading UTF-8 BOM so Excel renders non-Latin text (Arabic descriptions, etc.) correctly instead of mojibake.
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
