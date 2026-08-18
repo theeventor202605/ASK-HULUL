@@ -21,7 +21,13 @@ window.HULUL_LABEL_DEFAULTS = {
     // names (disciplineId, etc.) are untouched, per this whole Term() system's own design.
     discipline: 'Category', discipline_plural: 'Categories',
     inspector: 'Inspector', inspector_plural: 'Inspectors',
-    checklistItem: 'Checklist Item', checklistItem_plural: 'Checklist Items',
+    // REQ: "Rename Checklist Items left sidebar and Checklist Items page to just 'Checklists'."
+    // Same Term() mechanism as discipline/checklistType above -- both the sidebar nav label
+    // (app.js NAV_ITEMS' entityLabel) and the page's own title (checklistItems.js) already read
+    // this one value, so changing it here keeps every other place it appears (New/Edit/Delete
+    // modals on that same page, the Completed Checklists progress column, Settings > Permissions'
+    // module list) consistent instead of just the two REQ'd spots.
+    checklistItem: 'Checklist', checklistItem_plural: 'Checklists',
     // REQ: "Throughout the platform change: Checklist Type to Sub-Category." New term (checklistType
     // wasn't previously part of this pluggable-terminology system -- it was hardcoded i18n text in a
     // handful of places) added here purely so it can rename consistently with (and the same way as)
@@ -44,7 +50,7 @@ window.HULUL_LABEL_DEFAULTS = {
     meeting: 'اجتماع', meeting_plural: 'الاجتماعات',
     discipline: 'الفئة', discipline_plural: 'الفئات',
     inspector: 'مفتش', inspector_plural: 'المفتشون',
-    checklistItem: 'عنصر قائمة مراجعة', checklistItem_plural: 'عناصر قوائم المراجعة',
+    checklistItem: 'قائمة المراجعة', checklistItem_plural: 'قوائم المراجعة',
     checklistType: 'الفئة الفرعية', checklistType_plural: 'الفئات الفرعية',
     finding: 'سجل المخاطر', finding_plural: 'سجلات المخاطر',
     inspection: 'تفتيش', inspection_plural: 'عمليات التفتيش',

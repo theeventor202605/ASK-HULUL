@@ -104,11 +104,21 @@ var SCHEMA = {
   // status: 'Scheduled' (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs,
   // same pattern as ChecklistItems' status:'Deleted').
   Meetings:               ['id','eventId','subEventId','type','scheduledAt','toJson','ccJson','meetingLink','notes','status','createdBy','createdAt','updatedBy','updatedAt'],
-  Disciplines:            ['id','name','code'],
+  // catRef appended at the end (established pattern, see Venues above) -- REQ: "Add new column
+  // name it 'Cat Ref.' This holds reference number for this specific category but should be
+  // displayed in Roman values." Stored as a plain whole number; the Roman-numeral conversion is
+  // display-only, done client-side (disciplines.js's toRoman_) so sorting/CSV/etc. stay numeric.
+  // Blank on any pre-existing row created before this field existed.
+  Disciplines:            ['id','name','code','catRef'],
   EventDisciplines:       ['id','eventId','disciplineId','venueId','identifiedBy','createdAt'],
   InspectorQualifications:['id','userId','disciplineId'],
   InspectorAssignments:   ['id','eventId','disciplineId','inspectorId','assignedBy','assignedAt','zoneIds'],
-  ChecklistItems:         ['id','checklistType','category','description','defaultRisk','defaultWindowHours','phase','status'],
+  // subRef/itemRef appended at the end (established pattern, see Venues above) -- REQ: "Sub-Category
+  // must also have 'Sub Ref.' which is a whole number but always displayed as two digits ... each
+  // item in the checklist must have 'Item Ref.' ... always displayed as three digits." Both stored
+  // as plain whole numbers; the zero-padded display formatting is done client-side (checklistItems.js)
+  // so sorting/CSV/etc. stay numeric. Blank on any pre-existing row created before these fields existed.
+  ChecklistItems:         ['id','checklistType','category','description','defaultRisk','defaultWindowHours','phase','status','subRef','itemRef'],
   // lastLat/lastLng/lastSeenAt appended at the end (established pattern, see Venues above) -- REQ:
   // "Inspectors live location as they start inspections. This applies to all maps." Written by
   // pingInspectionLocation (Inspections.gs), called periodically from the inspector's own device

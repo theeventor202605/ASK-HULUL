@@ -15,6 +15,16 @@
  * diverge from the actual discipline name, which inspectionScopeItems_ (Inspections.gs) matches on
  * exactly, so a mismatch meant those items would never show up for any inspection at all.
  */
+// Zero-pads Sub Ref./Item Ref. to at least `digits` characters for display (e.g. padRef_(3, 2) ->
+// '03', padRef_(5, 3) -> '005') -- REQ, see file header. A value with more digits than the minimum
+// (e.g. 123 at digits=2) is shown in full rather than truncated.
+function padRef_(value, digits) {
+  if (value === '' || value === null || value === undefined) return '—';
+  var n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0) return '—';
+  return String(n).padStart(digits, '0');
+}
+
 async function renderChecklistItems() {
   var root = document.getElementById('viewRoot');
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Inspections.
@@ -169,7 +179,12 @@ async function renderChecklistItems() {
     var wrap = document.getElementById('ciTableWrap');
     wrap.innerHTML = '<div class="card"><div class="card-body">' + UI.table([
       { key: 'description', label: t('field_description') }, { key: 'defaultRisk', label: t('col_default_risk'), render: r => UI.riskBadge(r.defaultRisk) },
-      { key: 'defaultWindowHours', label: t('col_window_hours') }
+      { key: 'defaultWindowHours', label: t('col_window_hours') },
+      // REQ: "Sub-Category must also have 'Sub Ref.' ... always displayed as two digits" / "each item
+      // ... must have 'Item Ref.' ... always displayed as three digits." Stored as plain numbers
+      // (createChecklistItem, Inspections.gs); zero-padding is purely a display formatter here.
+      { key: 'subRef', label: t('col_sub_ref'), render: r => esc(padRef_(r.subRef, 2)) },
+      { key: 'itemRef', label: t('col_item_ref'), render: r => esc(padRef_(r.itemRef, 3)) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
         UI.actionsCell(
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-ci="' + r.id + '">' + ICON('edit') + '</button> ' +
@@ -252,6 +267,13 @@ function openChecklistItemForm_(items, disciplines, opts) {
       '<select id="fCiTypeSelect" class="field-input">' + typeSelectHtml_(initialTypes, initial.checklistType) + '</select>' +
       '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />'
     ) +
+    // REQ: "Sub-Category must also have 'Sub Ref.' ... each item ... must have 'Item Ref.'" -- plain
+    // whole-number inputs; padRef_ formats them for display everywhere else (table, CSV export text
+    // stays the raw number for clean re-import).
+    '<div class="form-row">' +
+    UI.field(t('col_sub_ref'), '<input id="fCiSubRef" type="number" min="0" step="1" class="field-input" value="' + (initial.subRef != null && initial.subRef !== '' ? initial.subRef : '') + '" />') +
+    UI.field(t('col_item_ref'), '<input id="fCiItemRef" type="number" min="0" step="1" class="field-input" value="' + (initial.itemRef != null && initial.itemRef !== '' ? initial.itemRef : '') + '" />') +
+    '</div>' +
     UI.field(t('field_description'), '<textarea id="fCiDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>') +
     '<div class="form-row">' +
     UI.field(t('col_default_risk'), '<select id="fCiRisk" class="field-input">' +
@@ -267,10 +289,16 @@ function openChecklistItemForm_(items, disciplines, opts) {
         var typeSelect = document.getElementById('fCiTypeSelect');
         var checklistType = typeSelect.value === '__new__' ? document.getElementById('fCiTypeNew').value.trim() : typeSelect.value;
         if (!checklistType) { UI.toast(t('toast_checklist_type_required', { term: Term('checklistType') }), 'error'); return; }
+        var subRefRaw = document.getElementById('fCiSubRef').value;
+        var itemRefRaw = document.getElementById('fCiItemRef').value;
+        var subRef = Number(subRefRaw), itemRef = Number(itemRefRaw);
+        if (subRefRaw === '' || !Number.isInteger(subRef) || subRef < 0) { UI.toast(t('toast_sub_ref_required'), 'error'); return; }
+        if (itemRefRaw === '' || !Number.isInteger(itemRef) || itemRef < 0) { UI.toast(t('toast_item_ref_required'), 'error'); return; }
         var payload = {
           checklistType: checklistType, category: document.getElementById('fCiCategory').value,
           description: document.getElementById('fCiDesc').value, defaultRisk: document.getElementById('fCiRisk').value,
-          defaultWindowHours: Number(document.getElementById('fCiWindow').value), phase: document.getElementById('fCiPhase').value
+          defaultWindowHours: Number(document.getElementById('fCiWindow').value), phase: document.getElementById('fCiPhase').value,
+          subRef: subRef, itemRef: itemRef
         };
         try { await opts.onSubmit(payload); } catch (err) { UI.error(err); }
       } }
@@ -297,10 +325,15 @@ function openChecklistItemForm_(items, disciplines, opts) {
 /* ---------------- CSV export / import ----------------
  * Reuses csvEscape_, parseCsv_, and showImportResults_ from events.js (loaded on the same page). */
 function exportChecklistItemsCsv(rows) {
-  var headers = [Term('checklistType'), Term('discipline'), 'Description', 'Default Risk', 'Window Hours', 'Phase'];
+  // Sub Ref/Item Ref exported as their raw numbers (not zero-padded) so re-import via
+  // importChecklistItemsCsv below round-trips cleanly -- the zero-padded form is a display-only
+  // formatter (padRef_), same reasoning as Default Risk/Window Hours already being plain values here.
+  // (Cat Ref. isn't a ChecklistItems field -- it lives on the Disciplines/Categories catalog itself,
+  // see disciplines.js -- so it has no place in this CSV.)
+  var headers = [Term('checklistType'), 'Sub Ref.', Term('discipline'), 'Description', 'Default Risk', 'Window Hours', 'Phase', 'Item Ref.'];
   var lines = [headers.map(csvEscape_).join(',')];
   rows.forEach(function (r) {
-    lines.push([r.checklistType, r.category, r.description, r.defaultRisk, r.defaultWindowHours, r.phase].map(csvEscape_).join(','));
+    lines.push([r.checklistType, r.subRef, r.category, r.description, r.defaultRisk, r.defaultWindowHours, r.phase, r.itemRef].map(csvEscape_).join(','));
   });
   // Leading UTF-8 BOM so Excel renders non-Latin text (Arabic descriptions, etc.) correctly instead of mojibake.
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -338,7 +371,13 @@ async function importChecklistItemsCsv(file, disciplines) {
   var idxRisk = col('default risk') !== -1 ? col('default risk') : col('defaultrisk');
   var idxWindow = col('window hours') !== -1 ? col('window hours') : col('defaultwindowhours');
   var idxPhase = col('phase');
-  if (idxType === -1 || idxCategory === -1 || idxDesc === -1) {
+  // REQ: "Sub-Category must also have 'Sub Ref.' ... each item ... must have 'Item Ref.'" -- required
+  // going forward, same gate as Sub-Category/Category/Description below (older CSVs exported before
+  // this REQ won't have these columns and will correctly be rejected up front with a clear message,
+  // rather than every row silently failing server-side one at a time).
+  var idxSubRef = col('sub ref.') !== -1 ? col('sub ref.') : col('subref');
+  var idxItemRef = col('item ref.') !== -1 ? col('item ref.') : col('itemref');
+  if (idxType === -1 || idxCategory === -1 || idxDesc === -1 || idxSubRef === -1 || idxItemRef === -1) {
     UI.toast(t('checklist_csv_columns_required', { typeTerm: Term('checklistType'), categoryTerm: Term('discipline') }), 'error');
     return;
   }
@@ -367,11 +406,18 @@ async function importChecklistItemsCsv(file, disciplines) {
       results.failed.push({ row: r + 1, name: label, reason: Term('discipline') + ' "' + category + '" doesn\'t match an existing ' + Term('discipline').toLowerCase() + ' name exactly (see the ' + Term('discipline_plural') + ' page)' });
       continue;
     }
+    var subRefRaw = (row[idxSubRef] || '').trim(), itemRefRaw = (row[idxItemRef] || '').trim();
+    var subRef = Number(subRefRaw), itemRef = Number(itemRefRaw);
+    if (subRefRaw === '' || !Number.isInteger(subRef) || subRef < 0 || itemRefRaw === '' || !Number.isInteger(itemRef) || itemRef < 0) {
+      results.failed.push({ row: r + 1, name: label, reason: 'Sub Ref. and Item Ref. are required and must be whole numbers' });
+      continue;
+    }
     toSend.push({
       row: r + 1, checklistType: checklistType, category: category, description: description,
       defaultRisk: idxRisk !== -1 ? (row[idxRisk] || '').trim() : '',
       defaultWindowHours: idxWindow !== -1 && row[idxWindow] && row[idxWindow].trim() ? Number(row[idxWindow]) : undefined,
-      phase: idxPhase !== -1 ? (row[idxPhase] || '').trim() : ''
+      phase: idxPhase !== -1 ? (row[idxPhase] || '').trim() : '',
+      subRef: subRef, itemRef: itemRef
     });
   }
 

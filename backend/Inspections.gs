@@ -22,6 +22,15 @@ function checklistItemDupKey_(c) {
     String(c.checklistType || '').trim().toLowerCase() + '|' + String(c.category || '').trim().toLowerCase();
 }
 
+// Whole-number validation shared by createChecklistItem/updateChecklistItem/bulkCreateChecklistItems
+// -- REQ: "Sub-Category must also have 'Sub Ref.' which is a whole number ... each item in the
+// checklist must have 'Item Ref.'" Both required, >= 0 (unlike Cat Ref/Disciplines, 0 is allowed here
+// since these are just ordinal position numbers, not Roman-numeral-formatted).
+function validChecklistRefNumber_(v) {
+  var n = Number(v);
+  return v !== undefined && v !== null && v !== '' && Number.isInteger(n) && n >= 0;
+}
+
 // Admin-maintained reference data: checklist item catalogue (Setup.gs seeds the defaults). The dup
 // check only looks at active items -- recreating an item with the same key as a previously
 // soft-deleted one is allowed.
@@ -30,10 +39,12 @@ function createChecklistItem(user, p) {
   ['checklistType', 'category', 'description'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
+  if (!validChecklistRefNumber_(p.subRef)) throw new HululError('BAD_REQUEST', 'Sub Ref. is required and must be a whole number.');
+  if (!validChecklistRefNumber_(p.itemRef)) throw new HululError('BAD_REQUEST', 'Item Ref. is required and must be a whole number.');
   var row = {
     id: newId('ChecklistItems'), checklistType: p.checklistType, category: p.category, description: p.description,
     defaultRisk: p.defaultRisk || 'Medium', defaultWindowHours: p.defaultWindowHours || 24, phase: p.phase || 'Opening',
-    status: 'Active'
+    status: 'Active', subRef: Number(p.subRef), itemRef: Number(p.itemRef)
   };
   var key = checklistItemDupKey_(row);
   var dup = findWhere('ChecklistItems', function (c) { return c.status !== 'Deleted' && checklistItemDupKey_(c) === key; })[0];
@@ -72,10 +83,14 @@ function bulkCreateChecklistItems(user, p) {
       failed.push({ row: raw.row, name: label, reason: missing.join(', ') + ' required' });
       return;
     }
+    if (!validChecklistRefNumber_(raw.subRef) || !validChecklistRefNumber_(raw.itemRef)) {
+      failed.push({ row: raw.row, name: label, reason: 'Sub Ref. and Item Ref. are required and must be whole numbers' });
+      return;
+    }
     var row = {
       checklistType: raw.checklistType, category: raw.category, description: raw.description,
       defaultRisk: raw.defaultRisk || 'Medium', defaultWindowHours: raw.defaultWindowHours || 24,
-      phase: raw.phase || 'Opening', status: 'Active'
+      phase: raw.phase || 'Opening', status: 'Active', subRef: Number(raw.subRef), itemRef: Number(raw.itemRef)
     };
     var key = checklistItemDupKey_(row);
     if (existingKeys[key] || batchKeys[key]) {
@@ -107,12 +122,20 @@ function updateChecklistItem(user, p) {
   var item = getById('ChecklistItems', p.itemId);
   if (!item) throw new HululError('NOT_FOUND', 'Checklist item not found');
   var patch = {};
-  ['checklistType', 'category', 'description', 'defaultRisk', 'defaultWindowHours', 'phase'].forEach(function (f) {
+  ['checklistType', 'category', 'description', 'defaultRisk', 'defaultWindowHours', 'phase', 'subRef', 'itemRef'].forEach(function (f) {
     if (p[f] !== undefined) patch[f] = p[f];
   });
   ['checklistType', 'category', 'description'].forEach(function (f) {
     if (patch[f] !== undefined && !String(patch[f]).trim()) throw new HululError('BAD_REQUEST', f + ' is required');
   });
+  if (patch.subRef !== undefined) {
+    if (!validChecklistRefNumber_(patch.subRef)) throw new HululError('BAD_REQUEST', 'Sub Ref. must be a whole number.');
+    patch.subRef = Number(patch.subRef);
+  }
+  if (patch.itemRef !== undefined) {
+    if (!validChecklistRefNumber_(patch.itemRef)) throw new HululError('BAD_REQUEST', 'Item Ref. must be a whole number.');
+    patch.itemRef = Number(patch.itemRef);
+  }
   var merged = Object.assign({}, item, patch);
   var key = checklistItemDupKey_(merged);
   var dup = findWhere('ChecklistItems', function (c) { return c.id !== p.itemId && c.status !== 'Deleted' && checklistItemDupKey_(c) === key; })[0];

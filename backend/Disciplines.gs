@@ -8,10 +8,18 @@ function listDisciplines() {
 }
 
 // Admin-maintained reference data: compliance disciplines catalogue (Setup.gs seeds the defaults).
+// REQ: "Code can not be less or more than 3 characters." + "Add new column name it 'Cat Ref.' This
+// holds reference number for this specific category but should be displayed in Roman values."
 function createDiscipline(user, p) {
   requirePermission(user, 'discipline.manage'); // RBAC pilot -- same default roles as before, no behavior change
   if (!p.name || !p.code) throw new HululError('BAD_REQUEST', 'name and code are required');
-  var row = { id: newId('Disciplines'), name: p.name, code: p.code };
+  var code = String(p.code).trim();
+  if (code.length !== 3) throw new HululError('BAD_REQUEST', 'Code must be exactly 3 characters.');
+  var catRef = Number(p.catRef);
+  if (p.catRef === undefined || p.catRef === null || p.catRef === '' || !Number.isInteger(catRef) || catRef < 1) {
+    throw new HululError('BAD_REQUEST', 'Cat Ref. is required and must be a whole number of 1 or more.');
+  }
+  var row = { id: newId('Disciplines'), name: p.name, code: code, catRef: catRef };
   insertRow('Disciplines', row);
   audit(user.id, 'CREATE_DISCIPLINE', 'Disciplines', row.id, {});
   return row;

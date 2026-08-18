@@ -41,7 +41,10 @@ window.HULUL_I18N = {
     nav_notifications: 'Notifications', nav_settings: 'Settings', nav_logout: 'Log out', nav_support: 'Support',
     nav_reassignment: 'Re-assignment',
     nav_venues: 'Venues', nav_subevents: 'Sub-Events', nav_meetings: 'Meetings', nav_disciplines: 'Categories',
-    nav_checklist: 'Checklist Items', nav_qualifications: 'Inspector Qualifications', nav_completed_checklists: 'Completed Checklists',
+    // Not actually rendered -- app.js's NAV_ITEMS entry for this page sets entityLabel:
+    // 'checklistItem_plural', which itemLabel_ prioritizes over this t() fallback (see labels.js's
+    // Term() system). Kept in sync anyway so it's never misleading if that ever changes.
+    nav_checklist: 'Checklists', nav_qualifications: 'Inspector Qualifications', nav_completed_checklists: 'Completed Checklists',
     nav_template_library: 'Template Library',
     // Collapsible sidebar sub-group headers (NAV_GROUPS_, app.js) -- purely a label for the
     // collapsed parent, same as the tab_group_x keys already used for Event-workspace tab groups.
@@ -79,6 +82,9 @@ window.HULUL_I18N = {
 
     // ---- generic table columns / row actions (reused across most list views) ----
     col_code: 'Code', col_city: 'City', col_start: 'Start', col_end: 'End', col_address: 'Address',
+    // REQ: "Code can not be less or more than 3 characters. Add new column name it 'Cat Ref.'"
+    col_cat_ref: 'Cat Ref.', cat_ref_hint: 'A whole number -- shown as a Roman numeral (e.g. 2 -> II).',
+    toast_code_must_be_3: 'Code must be exactly 3 characters', toast_cat_ref_required: 'Cat Ref. is required and must be a whole number of 1 or more',
     action_open: 'Open', action_edit: 'Edit', action_delete: 'Delete', ok: 'OK', delete: 'Delete',
 
     // ---- Events list + New/Edit Event modal (events.js) ----
@@ -446,6 +452,10 @@ window.HULUL_I18N = {
     new_item_btn: '+ New item', checklist_dedupe_confirm: 'Scan the whole catalogue for items with the same Description, Phase, {{typeTerm}}, and {{categoryTerm}}, and delete every duplicate beyond the first? This cannot be undone.',
     col_phase: 'Phase', no_x_under_phase: 'No {{term}} under this phase.', col_default_risk: 'Default risk',
     col_window_hours: 'Window (h)', delete_checklist_item_confirm: 'Delete this {{term}}? It\'s removed from the catalogue and from future {{inspectionPluralTerm}}, but any {{inspectionTerm}} or finding that already referenced it keeps working.',
+    // REQ: "Sub-Category must also have 'Sub Ref.' ... always displayed as two digits" / "each item
+    // ... must have 'Item Ref.' ... always displayed as three digits."
+    col_sub_ref: 'Sub Ref.', col_item_ref: 'Item Ref.',
+    toast_sub_ref_required: 'Sub Ref. is required and must be a whole number', toast_item_ref_required: 'Item Ref. is required and must be a whole number',
     add_new_type_option: '+ Add new type…',
     create_x_first_page_hint: 'Create a {{term}} first ({{termPlural}} page)', field_default_window_hours: 'Default window (hours)',
     toast_create_x_first: 'Create a {{term}} first', toast_checklist_type_required: '{{term}} is required',
@@ -670,7 +680,7 @@ window.HULUL_I18N = {
     nav_notifications: 'الإشعارات', nav_settings: 'الإعدادات', nav_logout: 'تسجيل الخروج', nav_support: 'الدعم الفني',
     nav_reassignment: 'إعادة التكليف',
     nav_venues: 'المواقع', nav_subevents: 'الفعاليات الفرعية', nav_meetings: 'الاجتماعات', nav_disciplines: 'الفئات',
-    nav_checklist: 'عناصر قوائم المراجعة', nav_qualifications: 'تأهيل المفتشين', nav_completed_checklists: 'القوائم المكتملة',
+    nav_checklist: 'قوائم المراجعة', nav_qualifications: 'تأهيل المفتشين', nav_completed_checklists: 'القوائم المكتملة',
     nav_template_library: 'مكتبة القوالب',
     nav_group_events: 'الفعاليات', nav_group_accounts: 'الحسابات', nav_group_inspection_setup: 'إعداد التفتيش',
     section_main: 'الرئيسية', section_admin: 'الإدارة',
@@ -703,6 +713,8 @@ window.HULUL_I18N = {
 
     // ---- generic table columns / row actions (reused across most list views) ----
     col_code: 'الرمز', col_city: 'المدينة', col_start: 'البداية', col_end: 'النهاية', col_address: 'العنوان',
+    col_cat_ref: 'مرجع الفئة', cat_ref_hint: 'رقم صحيح -- يُعرض كرقم روماني (مثال: 2 تصبح II).',
+    toast_code_must_be_3: 'يجب أن يتكون الرمز من 3 أحرف بالضبط', toast_cat_ref_required: 'مرجع الفئة مطلوب ويجب أن يكون رقمًا صحيحًا 1 أو أكثر',
     action_open: 'فتح', action_edit: 'تعديل', action_delete: 'حذف', ok: 'موافق', delete: 'حذف',
 
     // ---- Events list + New/Edit Event modal (events.js) ----
@@ -1060,6 +1072,8 @@ window.HULUL_I18N = {
     new_item_btn: '+ عنصر جديد', checklist_dedupe_confirm: 'فحص الكتالوج بالكامل بحثًا عن عناصر بنفس الوصف والمرحلة و{{typeTerm}} و{{categoryTerm}}، وحذف كل نسخة زائدة عن الأولى؟ لا يمكن التراجع عن هذا الإجراء.',
     col_phase: 'المرحلة', no_x_under_phase: 'لا توجد {{term}} ضمن هذه المرحلة.', col_default_risk: 'الخطورة الافتراضية',
     col_window_hours: 'النافذة (ساعات)', delete_checklist_item_confirm: 'هل تريد حذف هذا {{term}}؟ سيُزال من الكتالوج ومن {{inspectionPluralTerm}} المستقبلية، لكن أي {{inspectionTerm}} أو ملاحظة أشارت إليه سابقًا ستستمر بالعمل.',
+    col_sub_ref: 'مرجع الفئة الفرعية', col_item_ref: 'مرجع العنصر',
+    toast_sub_ref_required: 'مرجع الفئة الفرعية مطلوب ويجب أن يكون رقمًا صحيحًا', toast_item_ref_required: 'مرجع العنصر مطلوب ويجب أن يكون رقمًا صحيحًا',
     add_new_type_option: '+ إضافة نوع جديد…',
     create_x_first_page_hint: 'أنشئ {{term}} أولاً (صفحة {{termPlural}})', field_default_window_hours: 'النافذة الافتراضية (ساعات)',
     toast_create_x_first: 'أنشئ {{term}} أولاً', toast_checklist_type_required: '{{term}} مطلوب',
