@@ -3691,10 +3691,24 @@ async function tabRoadmap(content, eventId, detail) {
 // drifted, add something specific to this one event, or re-sync every date after the event's own
 // start/end changed (Regenerate). See RoadmapPlans.gs's rolloutEventRoadmap_ for how these rows are
 // generated/kept in sync in the first place.
+// REQ follow-up: "Add 'Planned Date' in a column, and when checked add 'Actual Date' of check in a
+// column." -- was a single stacked date per row; now a real table with its own Planned Date/Actual
+// Date columns, same UI.table helper every other list page in this app uses (toolbar:false since this
+// is a compact per-event checklist, not a primary list page -- no search/sort/export needed, though
+// pagination still kicks in for free past 10 rows, same as everywhere else).
 function roadmapChecklistHtml_(items, event, canManage) {
   var sorted = (items || []).slice().sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
   var rowsHtml = sorted.length
-    ? sorted.map(roadmapItemRowHtml_).join('')
+    ? UI.table([
+        { key: 'status', label: '', sortable: false, exportable: false, render: r => roadmapItemCheckCellHtml_(r) },
+        { key: 'name', label: t('field_item_name'), render: r => roadmapItemNameCellHtml_(r) },
+        { key: 'dueAt', label: t('col_due_date'), render: r => roadmapItemPlannedDateCellHtml_(r) },
+        { key: 'completedAt', label: t('roadmap_actual_date_label'), render: r => roadmapItemActualDateCellHtml_(r) }
+      ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
+          UI.actionsCell(
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-item="' + esc(r.id) + '">' + ICON('delete') + '</button>') }] : []),
+        sorted, { toolbar: false })
     : '<div class="muted" style="font-size:12px;padding:8px 4px;">' + esc(event.planTypeId ? t('roadmap_no_items_yet') : t('roadmap_no_plan_assigned')) + '</div>';
 
   return '<div class="card" style="padding:16px 20px;margin-top:16px;">' +
@@ -3712,30 +3726,30 @@ function roadmapChecklistHtml_(items, event, canManage) {
   '</div>';
 }
 
-function roadmapItemRowHtml_(item) {
+function roadmapItemCheckCellHtml_(item) {
   var done = item.status === 'Done';
-  var rowClass = 'roadmap-item-row' + (done ? ' done' : '') + (item.overdue ? ' overdue' : '');
-  // REQ: "Add 'Planed Date', and when checked add 'Actual Date' of check." Planned (dueAt) always
-  // shows; Actual only appears once the item is actually marked Done -- completedAt is stamped by
-  // updateEventRoadmapItem (RoadmapPlans.gs) the moment the checkbox below is toggled on, so this is
-  // just displaying data that already exists rather than needing anything new from the backend.
-  var datesHtml = '<span class="roadmap-item-dates">' +
-    '<span class="roadmap-item-date"><span class="roadmap-item-date-label">' + esc(t('col_due_date')) + ':</span> ' +
-      esc(UI.fmtDate(item.dueAt)) + (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>' +
-    (done ? '<span class="roadmap-item-date actual"><span class="roadmap-item-date-label">' + esc(t('roadmap_actual_date_label')) + ':</span> ' +
-      esc(UI.fmtDate(item.completedAt)) + '</span>' : '') +
-  '</span>';
-  return '<div class="' + rowClass + '" data-item-id="' + esc(item.id) + '">' +
-    '<button type="button" class="roadmap-item-check' + (done ? ' done' : '') + '" data-toggle-done="' + esc(item.id) + '" title="' + esc(done ? t('roadmap_mark_pending_title') : t('roadmap_mark_done_title')) + '">' +
-      (done ? ICON('checklist_done') : ICON('checklist_pending')) +
-    '</button>' +
-    '<span class="roadmap-item-name">' + esc(item.name) + '</span>' +
-    datesHtml +
-    '<span style="display:flex;gap:4px;flex:none;">' +
-      '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(item.id) + '">' + ICON('edit') + '</button>' +
-      '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-item="' + esc(item.id) + '">' + ICON('delete') + '</button>' +
-    '</span>' +
-  '</div>';
+  return '<button type="button" class="roadmap-item-check' + (done ? ' done' : '') + '" data-toggle-done="' + esc(item.id) + '" title="' + esc(done ? t('roadmap_mark_pending_title') : t('roadmap_mark_done_title')) + '">' +
+    (done ? ICON('checklist_done') : ICON('checklist_pending')) +
+  '</button>';
+}
+
+function roadmapItemNameCellHtml_(item) {
+  var done = item.status === 'Done';
+  return '<span class="roadmap-item-name' + (done ? ' done' : '') + '">' + esc(item.name) + '</span>';
+}
+
+function roadmapItemPlannedDateCellHtml_(item) {
+  return '<span class="roadmap-item-date' + (item.overdue ? ' overdue' : '') + '">' + esc(UI.fmtDate(item.dueAt)) +
+    (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>';
+}
+
+// REQ: "when checked add 'Actual Date' of check." Blank until the item is actually marked Done --
+// completedAt is stamped by updateEventRoadmapItem (RoadmapPlans.gs) the moment the checkbox in the
+// status column is toggled on, so this is just displaying data that already exists rather than
+// needing anything new from the backend.
+function roadmapItemActualDateCellHtml_(item) {
+  if (item.status !== 'Done' || !item.completedAt) return '<span class="muted">—</span>';
+  return '<span class="roadmap-item-date actual">' + esc(UI.fmtDate(item.completedAt)) + '</span>';
 }
 
 function wireRoadmapChecklist_(content, eventId, items, canManage) {
