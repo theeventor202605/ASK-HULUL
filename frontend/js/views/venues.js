@@ -1799,55 +1799,87 @@ async function suggestNameFromMap_(fieldId, lat, lng) {
  * bulkImportPlaces (Places.gs).
  */
 
-// REQ bug report: "Detect places in boundary" -> "OpenStreetMap lookup failed (HTTP 504)". The
-// single hardcoded overpass-api.de endpoint is a free, shared public instance that regularly queues
-// or times out under its own load -- a 504 there usually says nothing about our query (it's already
-// bounded by [timeout:25] below), just that that one server was too busy right now. OSM_MIRRORS_
-// lists the other well-known public Overpass mirrors (same API, independently run/funded) to fall
-// back through in order; a per-mirror AbortController timeout keeps one slow/dead mirror from
-// stalling the whole button click before the next one gets a turn.
+// REQ bug report: "Detect places in boundary" -> "OpenStreetMap lookup failed (HTTP 504)", and a
+// follow-up report of still-intermittent "OpenStreetMap lookup timed out" errors. The single
+// hardcoded overpass-api.de endpoint is a free, shared public instance that regularly queues or times
+// out under its own load -- a 504 there usually says nothing about our query (it's already bounded by
+// [timeout:25] below), just that that one server was too busy right now. OSM_OVERPASS_MIRRORS_ lists
+// the other well-known public Overpass mirrors (same API, independently run/funded) -- queryOsmPlacesInBoundary_
+// below races all of them at once (not one-then-the-next) so one slow/overloaded mirror no longer adds
+// its own full timeout on top of the others' before the PM sees a result.
 var OSM_OVERPASS_MIRRORS_ = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.openstreetmap.ru/api/interpreter'
 ];
-var OSM_OVERPASS_MIRROR_TIMEOUT_MS_ = 20000;
+// BUG FIX (follow-up report): this used to be 20000ms -- LESS than the query's own embedded
+// [timeout:25] (25000ms) below, so a mirror that was genuinely about to succeed at, say, 22s got
+// aborted client-side and counted as a failure before the server's own timeout ever had a chance to
+// fire. Now safely above it, so a legitimately-slow-but-successful response isn't thrown away.
+var OSM_OVERPASS_MIRROR_TIMEOUT_MS_ = 30000;
 
 // Overpass' `poly` filter wants "lat lon lat lon ..." (space-separated, polygon not explicitly
 // closed). Queries both nodes and ways with a name tag -- most POIs are nodes, but some (e.g. a
-// whole named building) are mapped as ways, whose centroid `out center` provides directly. Tries each
-// mirror in OSM_OVERPASS_MIRRORS_ in turn, only throwing (a network/HTTP failure) once every mirror
-// has failed, so the caller can show a real error instead of silently finding nothing.
+// whole named building) are mapped as ways, whose centroid `out center` provides directly.
+//
+// BUG FIX (follow-up report, "sometimes get ... OpenStreetMap lookup timed out"): every mirror in
+// OSM_OVERPASS_MIRRORS_ is now queried IN PARALLEL (not tried one at a time) -- whichever responds
+// successfully first wins, and the rest are aborted. The old sequential fallback meant a dead/slow
+// first mirror added its own full OSM_OVERPASS_MIRROR_TIMEOUT_MS_ delay before the second mirror even
+// got a chance to try, compounding worst-case wait time to 3x the per-mirror timeout and giving up
+// entirely if the LAST mirror tried happened to be having a bad moment. Racing them bounds the total
+// wait to one timeout period and only fails if ALL THREE are down/slow at once, at the cost of some
+// wasted requests against mirrors that lose the race -- acceptable for a free public API used this
+// infrequently (one click at a time, by a PM setting up a venue).
 async function queryOsmPlacesInBoundary_(boundary) {
   var polyStr = boundary.map(function (pt) { return pt.lat + ' ' + pt.lng; }).join(' ');
   var query = '[out:json][timeout:25];(node["name"](poly:"' + polyStr + '");way["name"](poly:"' + polyStr + '"););out center tags;';
 
-  var lastErr = null;
-  for (var i = 0; i < OSM_OVERPASS_MIRRORS_.length; i++) {
-    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, OSM_OVERPASS_MIRROR_TIMEOUT_MS_) : null;
-    try {
-      var res = await fetch(OSM_OVERPASS_MIRRORS_[i], {
-        method: 'POST', body: 'data=' + encodeURIComponent(query),
-        signal: controller ? controller.signal : undefined
-      });
-      if (timer) clearTimeout(timer);
-      if (!res.ok) { lastErr = new Error('OpenStreetMap lookup failed (HTTP ' + res.status + ')'); continue; } // try the next mirror
-      var data = await res.json();
-      return (data.elements || []).map(function (el) {
-        var lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
-        var lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
-        var tags = el.tags || {};
-        if (lat == null || lng == null || !tags.name) return null;
-        return { name: tags.name, lat: lat, lng: lng, tags: tags };
-      }).filter(Boolean);
-    } catch (err) {
-      if (timer) clearTimeout(timer);
-      lastErr = (err && err.name === 'AbortError') ? new Error('OpenStreetMap lookup timed out') : err;
-      // fall through to the next mirror
-    }
+  function parseElements_(data) {
+    return (data.elements || []).map(function (el) {
+      var lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
+      var lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
+      var tags = el.tags || {};
+      if (lat == null || lng == null || !tags.name) return null;
+      return { name: tags.name, lat: lat, lng: lng, tags: tags };
+    }).filter(Boolean);
   }
-  throw lastErr || new Error('OpenStreetMap lookup failed');
+
+  var controllers = OSM_OVERPASS_MIRRORS_.map(function () { return (typeof AbortController !== 'undefined') ? new AbortController() : null; });
+  function abortOthers_(winnerIdx) {
+    controllers.forEach(function (c, idx) { if (c && idx !== winnerIdx) c.abort(); });
+  }
+
+  var attempts = OSM_OVERPASS_MIRRORS_.map(function (url, idx) {
+    var controller = controllers[idx];
+    var timer = controller ? setTimeout(function () { controller.abort(); }, OSM_OVERPASS_MIRROR_TIMEOUT_MS_) : null;
+    return fetch(url, {
+      method: 'POST', body: 'data=' + encodeURIComponent(query),
+      signal: controller ? controller.signal : undefined
+    }).then(function (res) {
+      if (timer) clearTimeout(timer);
+      if (!res.ok) throw new Error('OpenStreetMap lookup failed (HTTP ' + res.status + ')');
+      return res.json();
+    }).then(function (data) {
+      abortOthers_(idx); // we have a winner -- stop the other mirrors' still-in-flight requests
+      return parseElements_(data);
+    }).catch(function (err) {
+      if (timer) clearTimeout(timer);
+      throw (err && err.name === 'AbortError') ? new Error('OpenStreetMap lookup timed out') : err;
+    });
+  });
+
+  return new Promise(function (resolve, reject) {
+    var pending = attempts.length;
+    var lastErr = null;
+    attempts.forEach(function (p) {
+      p.then(resolve, function (err) {
+        lastErr = err;
+        pending--;
+        if (pending === 0) reject(lastErr || new Error('OpenStreetMap lookup failed')); // every mirror failed
+      });
+    });
+  });
 }
 
 // Best-effort OSM-tag -> PLACE_TYPES guess -- purely a starting point shown (and editable) per row in
@@ -1918,7 +1950,16 @@ async function openDetectPlacesModal_(venue, zones, existingPlaces) {
     candidates = await queryOsmPlacesInBoundary_(boundary);
   } catch (err) {
     UI.closeModal();
-    UI.error(err);
+    // REQ bug report: "sometimes get an Error OpenStreetMap lookup timed out" -- even with every
+    // mirror raced in parallel (queryOsmPlacesInBoundary_), a free public API can still have every
+    // mirror briefly overloaded at once. A one-click Retry here beats making the PM re-find and
+    // re-click the button from scratch.
+    UI.openModal(t('error_title'),
+      '<div style="font-size:13.5px;line-height:1.6;">' + esc(err && err.message ? err.message : t('something_went_wrong')) + '</div>',
+      [
+        { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+        { label: t('retry_now_btn'), className: 'btn-primary', onClick: function () { UI.closeModal(); openDetectPlacesModal_(venue, zones, existingPlaces); } }
+      ]);
     return;
   }
   candidates.forEach(function (c) { c._type = osmCandidateType_(c.tags); });
