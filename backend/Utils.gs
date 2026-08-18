@@ -21,7 +21,13 @@ var SCHEMA = {
   // marking someone unavailable is a temporary scheduling signal, not an account suspension; an
   // absent Inspector should still be able to log in and see their own assignments, just not be
   // assignable to new ones while flagged.
-  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince'],
+  // lastLat/lastLng/lastSeenAt appended at the end -- REQ (Dashboard): "Live map showing all
+  // inspector locations." General-purpose location ping, not tied to any one Inspection/Event like
+  // Inspections.lastLat/lastLng/lastSeenAt already is (see pingInspectionLocation) -- this one covers
+  // ANY logged-in user regardless of role, so a future custom role (e.g. "Cluster") is tracked the
+  // same way with no code change, see pingUserLocation (LiveLocation.gs). Blank until a device has
+  // ever sent one.
+  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince','lastLat','lastLng','lastSeenAt'],
   Sessions:               ['token','userId','createdAt','expiresAt'],
   // lat/lng/status appended at the end (not inserted mid-schema) so existing Venues rows in the
   // live sheet -- whose data sits in fixed physical columns -- don't get silently reread under the
@@ -298,7 +304,17 @@ var SCHEMA = {
   // link to an external doc or another page inside HULUL itself) -- rolloutEventRoadmap_ never
   // touches these on an upsert, so re-generating the Roadmap can't silently wipe an attachment a PM
   // already attached.
-  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon']
+  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon'],
+  // REQ (Dashboard): "add another tab to show venue attendance -- first time inspector or user ...
+  // attended venue must be inside boundary or no more than 5 meters outside venue boundaries. also
+  // the same for last date time user left venue boundaries." One row per (userId, venueId) pair,
+  // upserted by pingUserLocation (LiveLocation.gs) every time that user's ping lands inside-or-near
+  // (see insideOrNearBoundary_ below) that venue's drawn boundary: firstAttendedAt is set once and
+  // never touched again, lastSeenInsideAt is overwritten on every matching ping. There's no discrete
+  // "exit" event to observe (pings are periodic, not continuous) -- lastSeenInsideAt IS the
+  // "last time seen inside/near" timestamp, which doubles as the practical answer to "when did they
+  // leave": some time after that moment, since no later ping ever matched this venue again.
+  VenueAttendance:        ['id','userId','venueId','firstAttendedAt','lastSeenInsideAt','createdAt']
 };
 
 var ROLES = {
@@ -576,7 +592,7 @@ var ID_PREFIX = {
   Reports: 'RPT', Notifications: 'NTF', AuditLog: 'AUD', OrgLabels: 'LBL', TemplateLibrary: 'TLB', Places: 'PLC',
   Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
   TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
-  RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI'
+  RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in
@@ -737,4 +753,41 @@ function pointInPolygon_(lat, lng, points) {
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+// REQ (Dashboard > Venue Attendance): "must be inside boundary or no more than 5 meters outside
+// venue boundaries." pointInPolygon_ alone only answers inside-or-not; this adds the "how far
+// outside" half. Projects every point to local meters using a flat equirectangular approximation
+// centered on (lat,lng) itself -- accurate to a few centimeters at the scale this ever gets used at
+// (tens/hundreds of meters, one venue), so there's no need for full geodesic segment math. Returns
+// the shortest distance in meters from (lat,lng) to any edge of the polygon.
+function distanceToBoundaryMeters_(lat, lng, points) {
+  if (!points || points.length < 3) return Infinity;
+  var metersPerDegLat = 111320;
+  var metersPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+  function toXY_(pt) { return { x: (Number(pt.lng) - lng) * metersPerDegLng, y: (Number(pt.lat) - lat) * metersPerDegLat }; }
+  var minDist = Infinity;
+  for (var i = 0, j = points.length - 1; i < points.length; j = i++) {
+    var a = toXY_(points[j]), b = toXY_(points[i]);
+    minDist = Math.min(minDist, distanceToSegmentMeters_(0, 0, a.x, a.y, b.x, b.y));
+  }
+  return minDist;
+}
+// Shortest distance from point (px,py) to segment (ax,ay)-(bx,by), all already in the same flat
+// meters-based coordinate space -- standard "project onto segment, clamp to its ends" formula.
+function distanceToSegmentMeters_(px, py, ax, ay, bx, by) {
+  var dx = bx - ax, dy = by - ay;
+  var lenSq = dx * dx + dy * dy;
+  var t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  var cx = ax + t * dx, cy = ay + t * dy;
+  return Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+}
+// The actual "attended this venue" test: inside the drawn boundary, or within toleranceM of it.
+// No boundary drawn yet -> can't determine attendance at all (false), same "feature simply doesn't
+// apply without a boundary" fallback every other boundary check in this app already uses.
+function insideOrNearBoundary_(lat, lng, points, toleranceM) {
+  if (!points || points.length < 3) return false;
+  if (pointInPolygon_(lat, lng, points)) return true;
+  return distanceToBoundaryMeters_(lat, lng, points) <= toleranceM;
 }

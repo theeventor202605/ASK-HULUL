@@ -100,6 +100,36 @@ async function showApp() {
   refreshNotifBadge();
   refreshEscalationAlert();
   loadOrgLogo();
+  startUserLocationPing_();
+}
+
+// REQ (Dashboard): "Live map showing all inspector locations ... venue attendance." Generalized to
+// ANY logged-in user/role (see LiveLocation.gs's own header comment for the reasoning), unlike the
+// existing per-Inspection live tracking (startLiveInspectionTracking_, eventDetail.js) which only
+// pings while an Inspector has that one screen open. Guarded by HululState.locationPingStarted since
+// showApp() itself re-runs on every navigation, not just login.
+//
+// Deliberately never PROMPTS for geolocation permission here -- only starts pinging once the browser
+// already reports it as 'granted' (typically from some earlier, purposeful request elsewhere in the
+// app, e.g. Log Finding's "Your location" or live inspection tracking). Simply loading the Dashboard
+// or any other page should never surprise a desk-bound user with a permission popup of its own.
+function startUserLocationPing_() {
+  if (HululState.locationPingStarted) return;
+  HululState.locationPingStarted = true;
+  if (!navigator.geolocation || !navigator.permissions || !navigator.permissions.query) return;
+  navigator.permissions.query({ name: 'geolocation' }).then(function (status) {
+    function pingIfGranted() {
+      if (status.state !== 'granted') return;
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        Api.call('pingUserLocation', { lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(function () {});
+      }, function () { /* transient GPS failure -- next tick retries */ }, { maximumAge: 25000, timeout: 10000 });
+    }
+    pingIfGranted();
+    HululState.locationPingIntervalId = setInterval(pingIfGranted, 30000);
+    // Permission granted mid-session (e.g. the user just approved some other feature's own prompt) ->
+    // start pinging right away instead of waiting for the next full page load.
+    status.onchange = pingIfGranted;
+  }).catch(function () { /* permissions API unsupported/blocked -- simply never pings, no prompt forced */ });
 }
 
 // Loads the SystemAdmin's sidebar icon overrides (Settings > Icons) once per session -- same

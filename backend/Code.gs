@@ -297,5 +297,8 @@ var ROUTES = {
   setConfig: function (u, p) { return setConfigEntry(u, p); },
 
   // Dashboard
-  dashboardSummary: function (u, p) { return dashboardSummary(u, p); }
+  dashboardSummary: function (u, p) { return dashboardSummary(u, p); },
+  dashboardLiveMapData: function (u, p) { return dashboardLiveMapData(u, p); },
+  dashboardVenueAttendance: function (u, p) { return dashboardVenueAttendance(u, p); },
+  pingUserLocation: function (u, p) { return pingUserLocation(u, p); }
 };
