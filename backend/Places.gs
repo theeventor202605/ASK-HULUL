@@ -50,7 +50,21 @@ var EVENT_PLACE_MANAGE_ROLES = ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventM
 function listPlaces(user, p) {
   var places;
   if (p && p.eventId) {
-    places = findWhere('Places', function (pl) { return pl.eventId === p.eventId; });
+    // REQ: "Places added under Venues -> Places should all appear under Event -> Participants and
+    // marked so user knows that this was created through places tab not through participants tab."
+    // Used to be event-scoped Places only (pl.eventId === p.eventId). Now also folds in the venue's
+    // permanent catalog (blank eventId) for whichever Venue this Event is actually held at -- same
+    // "permanent + this event's own temporary ones" merge listParticipants (Participants.gs) already
+    // does for the People list, just applied to the Places/accounts table too. isVenueWide (added
+    // below) tells the frontend which rows came from the venue catalog vs this event's own "New" form,
+    // so it can badge them and withhold delete/add-account actions (deleting a shared venue-wide Place
+    // from inside one Event's page would affect every other Event at that venue too -- manage those
+    // from Venues > Places instead).
+    var event = getById('Events', p.eventId);
+    var eventVenueId = event ? event.venueId : null;
+    places = findWhere('Places', function (pl) {
+      return pl.eventId === p.eventId || (eventVenueId && pl.venueId === eventVenueId && !pl.eventId);
+    });
   } else {
     if (!p || !p.venueId) throw new HululError('BAD_REQUEST', 'venueId or eventId is required');
     // Venue Places page only ever shows the permanent catalog -- an Event's own temporary Places
@@ -84,7 +98,10 @@ function listPlaces(user, p) {
     // Auth.gs), which misses creators from other orgs (e.g. an Inspector whose org is an
     // Inspection Company, not the Event's EMC), leaving Created By showing a raw id instead.
     var createdByName = pl.createdBy && usersById[pl.createdBy] ? usersById[pl.createdBy].name : '';
-    return Object.assign({}, pl, { accounts: accounts, openFindingsCount: openFindingsCount, createdByName: createdByName });
+    // See the eventId-branch comment above -- only meaningful when this call merged in venue-wide
+    // Places; harmless (always false) on the plain venueId-scoped call used by Venues > Places itself.
+    var isVenueWide = !!(p && p.eventId) && !pl.eventId;
+    return Object.assign({}, pl, { accounts: accounts, openFindingsCount: openFindingsCount, createdByName: createdByName, isVenueWide: isVenueWide });
   });
 }
 

@@ -80,7 +80,14 @@ async function tabParticipants(content, eventId, detail) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('participant_plural')) + '</div>' +
     (canDedupe ? '<button class="btn btn-secondary btn-sm" id="dedupeParticipantsBtn">' + esc(t('remove_duplicates_btn')) + '</button>' : '') +
     '</div><div class="card-body"><div id="eventPlaceParticipantsListWrap">' + UI.table([
-      { key: 'name', label: t('col_name') },
+      // REQ: "Places added under Venues -> Places should all appear under Event -> Participants and
+      // marked so user knows that this was created through places tab not through participants tab."
+      // isVenueWide (listPlaces, Places.gs) is only true for rows folded in from the venue's permanent
+      // catalog -- badged here so it's obvious at a glance which rows came from Venues > Places vs
+      // this event's own "New" form.
+      { key: 'name', label: t('col_name'), render: r => esc(r.name) + (r.isVenueWide
+          ? ' <span class="badge badge-neutral" style="margin-left:6px;font-weight:600;">' + esc(t('venue_wide_badge')) + '</span>'
+          : '') },
       { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
       { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' },
@@ -96,10 +103,15 @@ async function tabParticipants(content, eventId, detail) {
       { key: 'createdAt', label: t('col_created'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'createdBy', label: t('col_created_by'), render: r => r.createdByName ? esc(r.createdByName) : (r.createdBy || '—') }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
-        UI.actionsCell(
-          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
-          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
-        ) }] : []),
+        // A venue-wide row is shared by every Event at that venue -- deleting/adding an account to it
+        // from inside THIS Event's page would silently affect all the others too, so those actions are
+        // withheld here; manage it from Venues > Places instead (same permission there either way).
+        r.isVenueWide
+          ? '<span class="muted" style="font-size:11.5px;">' + esc(t('manage_from_venue_places_hint')) + '</span>'
+          : UI.actionsCell(
+              '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('add_another_account_label')) + '" data-add-account="' + esc(r.id) + '">' + ICON('add_account') + '</button> ' +
+              '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-place="' + esc(r.id) + '">' + ICON('delete') + '</button>'
+            ) }] : []),
       places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div></div>';
 
   if (canAddParticipant) {
