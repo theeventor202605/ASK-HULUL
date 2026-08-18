@@ -15,6 +15,16 @@ var NAV_ITEMS = [
   // unchanged (still just SystemAdmin/EMCAdmin/EMCManager), only its section/position moved.
   { path: '/venues', icon: LUCIDE_ICONS['map-pin'], label: 'nav_venues', entityLabel: 'venue_plural', section: 'section_main',
     roles: ['SystemAdmin', 'EMCAdmin', 'EMCManager'] },
+  // REQ: "Add Roadmap sidebar where they will be able to add types of plan." A standalone sidebar
+  // entry (not a Settings tab, unlike Roles/Icons/Permissions); roles mirror roadmapPlan.manage's
+  // own default roles (Permissions.gs) so this doesn't show for someone who'd just hit a 403 opening
+  // it -- the RBAC-pilot permission check inside RoadmapPlans.gs itself is still what actually
+  // enforces it either way. REQ follow-up: "Move Roadmap one level up in sidebar" -- was under
+  // Administration; same "promote into Main, right after the other Events-adjacent entries"
+  // treatment Venues got above (see its own comment); roles/enforcement unchanged, only its
+  // section/position moved.
+  { path: '/roadmap-plans', icon: LUCIDE_ICONS['flag'], label: 'nav_roadmap_plans', section: 'section_main',
+    roles: ['SystemAdmin', 'GAAdmin'] },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as the reassignment.manage
@@ -46,13 +56,6 @@ var NAV_ITEMS = [
   // were the missing piece -- same default-roles set as 'auditLog.view' (backend/Permissions.gs).
   { path: '/audit-log', icon: LUCIDE_ICONS['clipboard-list'], label: 'nav_audit_log', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
-  // REQ: "Add Roadmap sidebar where they will be able to add types of plan." A standalone sidebar
-  // entry (not a Settings tab, unlike Roles/Icons/Permissions) since the user explicitly asked for
-  // it here -- roles mirror roadmapPlan.manage's own default roles (Permissions.gs) so this doesn't
-  // show for someone who'd just hit a 403 opening it; the RBAC-pilot permission check inside
-  // RoadmapPlans.gs itself is still what actually enforces it either way.
-  { path: '/roadmap-plans', icon: LUCIDE_ICONS['flag'], label: 'nav_roadmap_plans', section: 'section_admin',
-    roles: ['SystemAdmin', 'GAAdmin'] },
   { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 
@@ -68,6 +71,8 @@ var NAV_GROUPS_ = [
   { section: 'section_main', key: 'eventsGroup', labelKey: 'nav_group_events', paths: ['/projects', '/events', '/sub-events', '/meetings'] },
   // REQ: "Move Venues to Main section above Notifications."
   { section: 'section_main', paths: ['/venues'] },
+  // REQ follow-up: "Move Roadmap one level up in sidebar" -- promoted out of Administration.
+  { section: 'section_main', paths: ['/roadmap-plans'] },
   { section: 'section_main', paths: ['/notifications'] },
   { section: 'section_main', paths: ['/reassignment'] },
   { section: 'section_main', paths: ['/support'] },
@@ -76,7 +81,6 @@ var NAV_GROUPS_ = [
   // Items, Inspector Qualifications, Template Library.
   { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/inspector-qualifications', '/template-library'] },
   { section: 'section_admin', paths: ['/audit-log'] },
-  { section: 'section_admin', paths: ['/roadmap-plans'] },
   { section: 'section_admin', paths: ['/settings'] }
 ];
 
