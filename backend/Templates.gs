@@ -705,15 +705,45 @@ function maybeAutoCreateVersion2_(eventId) {
   }
 }
 
+// Bug fix: the Templates tab fires getEventTemplates and listTemplateDeadlineVersions together
+// (Promise.all, eventDetail.js), and BOTH lazily call processTemplateDeadlineTransition_ below. If a
+// deadline had just passed, two concurrent Apps Script executions could each read
+// TemplateVersionSnapshots, both see "nothing archived for this version yet" (the other execution's
+// insert hadn't landed/invalidated the cache yet), and both insert -- one full duplicate set of
+// snapshot rows per race, exactly what showed up as every row appearing twice in Version History.
+// The same race could double-insert a TemplateDeadlineVersions row for version 2. LockService
+// serializes every transition attempt (across ALL events -- simplest correct option; this only ever
+// runs right as a deadline passes, so contention is rare and brief) so only one execution can ever
+// pass the "does this already exist?" check before performing the corresponding insert.
+function withTemplateDeadlineLock_(fn) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    // Another execution is already mid-transition -- safe to skip. Whoever holds the lock either
+    // just finished (so the data this caller would read is already current) or will finish within
+    // the 10s window; nothing here needs to block the caller's own response on it.
+    return;
+  }
+  try {
+    fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // Called at the top of every read that needs an up-to-date lock/version state (getEventTemplates,
 // listTemplateDeadlineVersions) so a page load reflects a just-passed deadline immediately instead
 // of waiting for the next periodic sweep (scheduledEscalationCheck, Setup.gs -- default every 5
-// min). Both steps are idempotent, safe to call on every read.
+// min). Both steps are idempotent, safe to call on every read -- and now lock-protected against the
+// concurrent-request race described above.
 function processTemplateDeadlineTransition_(eventId) {
-  var latest = templateDeadlineVersionsForEvent_(eventId).slice(-1)[0];
-  if (!latest || new Date(latest.deadlineAt) > new Date()) return;
-  snapshotOverdueVersionsIfNeeded_(eventId, latest.versionNumber);
-  maybeAutoCreateVersion2_(eventId);
+  withTemplateDeadlineLock_(function () {
+    var latest = templateDeadlineVersionsForEvent_(eventId).slice(-1)[0];
+    if (!latest || new Date(latest.deadlineAt) > new Date()) return;
+    snapshotOverdueVersionsIfNeeded_(eventId, latest.versionNumber);
+    maybeAutoCreateVersion2_(eventId);
+  });
 }
 
 // Read-only -- the Templates tab needs the full version list + which one is current + whether
@@ -822,30 +852,40 @@ function createNextTemplateDeadlineVersion(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   requirePermission(user, 'template.setDeadline', event.inspectionCoId); // RBAC pilot -- same role as the 1st deadline, see REQ
-  var versions = templateDeadlineVersionsForEvent_(p.eventId);
-  if (!versions.length) throw new HululError('BAD_REQUEST', 'Set the first documents deadline before creating another version');
-  var latest = versions[versions.length - 1];
-  if (new Date(latest.deadlineAt) > new Date()) {
-    throw new HululError('BAD_REQUEST', 'Version ' + latest.versionNumber + ' is still active -- a new version can only be created once its deadline has passed');
-  }
   if (!p.deadlineAt) throw new HululError('BAD_REQUEST', 'deadlineAt is required');
   var d = new Date(p.deadlineAt);
   if (isNaN(d)) throw new HululError('BAD_REQUEST', 'deadlineAt is not a valid date');
-  if (d <= new Date(latest.deadlineAt)) throw new HululError('BAD_REQUEST', 'The new deadline must be after version ' + latest.versionNumber + '\'s deadline');
-  snapshotOverdueVersionsIfNeeded_(p.eventId, latest.versionNumber);
-  var nextVersionNumber = latest.versionNumber + 1;
-  var row = {
-    id: newId('TemplateDeadlineVersions'), eventId: p.eventId, versionNumber: nextVersionNumber, deadlineAt: d.toISOString(),
-    autoCreated: false, createdBy: user.id, createdAt: nowIso_()
-  };
-  insertRow('TemplateDeadlineVersions', row);
-  resetTemplatesForNewVersion_(p.eventId, nextVersionNumber);
-  updateRow('Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
-  audit(user.id, 'CREATE_TEMPLATE_DEADLINE_VERSION', 'Events', p.eventId, { versionNumber: nextVersionNumber, deadlineAt: d.toISOString() });
-  notifyEventStakeholders_(p.eventId, 'TEMPLATES_DEADLINE_SET',
-    'Documents deadline (version ' + nextVersionNumber + ') set for ' + event.name + ': ' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm'),
-    'Events', p.eventId);
-  return row;
+  // Locked (not silently skipped like withTemplateDeadlineLock_'s lazy-read use) -- this is a
+  // user-initiated mutation expecting a definite result, so a double-click (or two concurrent
+  // requests) must have the second one either wait its turn or fail loudly, never silently no-op
+  // and return nothing while duplicating the version-2+ row the first click already created.
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var versions = templateDeadlineVersionsForEvent_(p.eventId);
+    if (!versions.length) throw new HululError('BAD_REQUEST', 'Set the first documents deadline before creating another version');
+    var latest = versions[versions.length - 1];
+    if (new Date(latest.deadlineAt) > new Date()) {
+      throw new HululError('BAD_REQUEST', 'Version ' + latest.versionNumber + ' is still active -- a new version can only be created once its deadline has passed');
+    }
+    if (d <= new Date(latest.deadlineAt)) throw new HululError('BAD_REQUEST', 'The new deadline must be after version ' + latest.versionNumber + '\'s deadline');
+    snapshotOverdueVersionsIfNeeded_(p.eventId, latest.versionNumber);
+    var nextVersionNumber = latest.versionNumber + 1;
+    var row = {
+      id: newId('TemplateDeadlineVersions'), eventId: p.eventId, versionNumber: nextVersionNumber, deadlineAt: d.toISOString(),
+      autoCreated: false, createdBy: user.id, createdAt: nowIso_()
+    };
+    insertRow('TemplateDeadlineVersions', row);
+    resetTemplatesForNewVersion_(p.eventId, nextVersionNumber);
+    updateRow('Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
+    audit(user.id, 'CREATE_TEMPLATE_DEADLINE_VERSION', 'Events', p.eventId, { versionNumber: nextVersionNumber, deadlineAt: d.toISOString() });
+    notifyEventStakeholders_(p.eventId, 'TEMPLATES_DEADLINE_SET',
+      'Documents deadline (version ' + nextVersionNumber + ') set for ' + event.name + ': ' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm'),
+      'Events', p.eventId);
+    return row;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // REQ: version-deadline lock/archive sweep -- run every few minutes off the same trigger as the
@@ -860,11 +900,15 @@ function checkTemplateDeadlines() {
   var eventIds = Array.from(new Set(getAll('TemplateDeadlineVersions').map(function (v) { return v.eventId; })));
   var processed = 0;
   eventIds.forEach(function (eventId) {
-    var latest = templateDeadlineVersionsForEvent_(eventId).slice(-1)[0];
-    if (!latest || new Date(latest.deadlineAt) > new Date()) return;
-    snapshotOverdueVersionsIfNeeded_(eventId, latest.versionNumber);
-    maybeAutoCreateVersion2_(eventId);
-    processed++;
+    // Lock-protected (withTemplateDeadlineLock_) same as the lazy per-request path -- this sweep
+    // and a user's page load can otherwise land on the same just-passed deadline at the same time.
+    withTemplateDeadlineLock_(function () {
+      var latest = templateDeadlineVersionsForEvent_(eventId).slice(-1)[0];
+      if (!latest || new Date(latest.deadlineAt) > new Date()) return;
+      snapshotOverdueVersionsIfNeeded_(eventId, latest.versionNumber);
+      maybeAutoCreateVersion2_(eventId);
+      processed++;
+    });
   });
   return { eventsChecked: processed };
 }

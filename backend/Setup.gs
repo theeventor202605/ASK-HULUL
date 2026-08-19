@@ -197,6 +197,45 @@ function backfillTemplateDocTypes() {
   return { updated: updated };
 }
 
+// One-time cleanup for the concurrent-request race fixed by withTemplateDeadlineLock_ (Templates.gs):
+// the Readiness Templates tab fires getEventTemplates and listTemplateDeadlineVersions together, and
+// both used to lazily archive/auto-open a just-passed deadline version without any locking -- if a
+// deadline lapsed while both requests were in flight, each could pass the "does this already exist?"
+// check before the other's insert landed, duplicate-writing an entire set of TemplateVersionSnapshots
+// rows (every row in Version History showing up twice, exactly as reported) and, in the worst case, a
+// duplicate TemplateDeadlineVersions row for the auto-opened version 2. This removes the duplicates:
+// for TemplateVersionSnapshots, keeps the earliest row per (eventId, templateId, versionNumber); for
+// TemplateDeadlineVersions, keeps the earliest row per (eventId, versionNumber). Idempotent -- safe to
+// re-run, matches nothing once already deduped. Run once from the Apps Script editor's function
+// dropdown after pushing the lock fix; check the Execution log for counts.
+function dedupeTemplateDeadlineVersioningRows() {
+  var removedSnapshots = 0, removedVersions = 0;
+
+  var snapshots = getAll('TemplateVersionSnapshots').slice().sort(function (a, b) {
+    return new Date(a.snapshotAt) - new Date(b.snapshotAt);
+  });
+  var seenSnap = {};
+  snapshots.forEach(function (s) {
+    var key = s.eventId + '|' + s.templateId + '|' + s.versionNumber;
+    if (seenSnap[key]) { deleteRow('TemplateVersionSnapshots', s.id); removedSnapshots++; }
+    else seenSnap[key] = true;
+  });
+
+  var versions = getAll('TemplateDeadlineVersions').slice().sort(function (a, b) {
+    return new Date(a.createdAt) - new Date(b.createdAt);
+  });
+  var seenVer = {};
+  versions.forEach(function (v) {
+    var key = v.eventId + '|' + v.versionNumber;
+    if (seenVer[key]) { deleteRow('TemplateDeadlineVersions', v.id); removedVersions++; }
+    else seenVer[key] = true;
+  });
+
+  Logger.log('dedupeTemplateDeadlineVersioningRows: removed ' + removedSnapshots +
+    ' duplicate TemplateVersionSnapshots row(s), ' + removedVersions + ' duplicate TemplateDeadlineVersions row(s).');
+  return { removedSnapshots: removedSnapshots, removedVersions: removedVersions };
+}
+
 // Diagnostic for "backfillTemplateDocTypes: updated 0 row(s)" when a row is still visibly missing
 // its Score button -- logs exactly why each docType-less Templates row wasn't (or couldn't be)
 // backfilled, instead of guessing. Read-only, safe to run any time. Check the Execution log after
