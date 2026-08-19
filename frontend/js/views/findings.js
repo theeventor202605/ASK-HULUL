@@ -10,10 +10,10 @@
  * it -- all of that never fit a modal without scrolling inside a scrolling box.
  *
  * The status workflow itself lives server-side (Findings.gs -- see its header comment for the full
- * Open -> Viewed -> Submitted -> InReview -> Resolved/ReOpen -> Resubmitted -> Resolved/Rejected
- * state machine). This file only renders whatever viewFinding/resolveFinding/reviewFindingResolution
- * return and offers whichever single action applies to the current viewer + the finding's current
- * status -- it never sets status directly.
+ * Open -> Viewed -> Submitted -> InReview -> Resolved/ReOpen -> Resubmitted -> InReview -> ...
+ * state machine -- every rejection loops back to ReOpen, however many times). This file only renders
+ * whatever viewFinding/resolveFinding/reviewFindingResolution return and offers whichever single
+ * action applies to the current viewer + the finding's current status -- it never sets status directly.
  *
  * Depends on globals defined in eventDetail.js (uploadEvidenceFile_/renderEvidenceList_/
  * retryEvidenceEntry_/EVIDENCE_MAX_UPLOAD_BYTES_) and evidence.js (EvidenceCapture) -- load this
@@ -1103,11 +1103,11 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
       var comments = document.getElementById('fRejectRemarks').value;
       if (!comments) { UI.toast(t('toast_rejection_remarks_required'), 'error'); return; }
       try {
-        var res = await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments });
-        // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a
-        // new instance from the rejected log and lands it in Open." recreatedFinding is only present
-        // on the SECOND rejection (the terminal one) -- the first just moves the finding to ReOpen.
-        UI.toast(res.recreatedFinding ? t('toast_resolution_rejected_recreated') : t('toast_resolution_rejected'), 'success');
+        // REQ follow-up: "keep all rejections going back to re-open" -- every rejection lands on
+        // ReOpen now (Findings.gs reviewFindingResolution), however many times a finding has already
+        // been rejected, so there's just the one outcome/toast here.
+        await Api.call('reviewFindingResolution', { findingId: finding.id, decision: 'Rejected', comments: comments });
+        UI.toast(t('toast_resolution_rejected'), 'success');
         Router.resolve();
       } catch (err) { UI.error(err); }
     };

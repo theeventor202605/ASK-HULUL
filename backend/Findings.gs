@@ -12,20 +12,26 @@
  *                  no plain file picker) -- same pattern as the Record Results evidence field.
  *   InReview    -- Inspector/PM/SysAdmin opened a Submitted/Resubmitted log (auto, on view).
  *   Resolved    -- Inspector accepted the resolution (terminal, success).
- *   ReOpen      -- Inspector rejected the FIRST resolution attempt (rejection remarks required).
- *                  Participant can resubmit from here.
- *   Resubmitted -- Participant resubmitted (2nd photo + remarks) after a ReOpen.
- *   Rejected    -- Inspector rejected the SECOND resolution attempt (terminal, no further
- *                  participant action from the app -- needs manual/escalated follow-up).
- * reopenCount on the Findings row tracks how many times a resolution has been rejected, so
- * reviewFindingResolution knows whether a fresh rejection should land on ReOpen (first time) or
- * Rejected (second time, terminal) without needing a separate review-cycle table.
+ *   ReOpen      -- Inspector rejected a resolution attempt (rejection remarks required).
+ *                  Participant can resubmit from here. Every rejection lands here, no matter how
+ *                  many times a finding has already been rejected -- see reopenCount below (REQ
+ *                  follow-up: "keep all rejections going back to re-open", superseding the earlier
+ *                  first-rejection-only rule and its second-rejection auto-recreate).
+ *   Resubmitted -- Participant resubmitted (another photo + remarks) after a ReOpen.
+ *   Rejected    -- legacy terminal state from before the above change. No longer reachable from
+ *                  reviewFindingResolution, but still a valid value on any finding that already
+ *                  landed there, and its recreatedFromId/recreatedInto linkage (viewFinding) still
+ *                  resolves for that historical data.
+ * reopenCount on the Findings row counts how many times a resolution has been rejected -- now a
+ * plain visible counter (Risk Logging list's Rejection count column), not a branch condition.
  */
 
 var FINDING_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'Resolved', 'ReOpen', 'Resubmitted', 'Rejected'];
-// "Still outstanding" -- everything except the two terminal states. Used by the escalation engine
+// "Still outstanding" -- everything except the terminal states. Used by the escalation engine
 // (Resolutions.gs runEscalationCheck) so a finding stuck mid-workflow (e.g. Viewed but never
 // resolved, or ReOpen but never resubmitted) still escalates once its resolutionWindowAt lapses.
+// Rejected stays out of this list (still terminal wherever it exists) even though it's no longer
+// producible going forward.
 var FINDING_OPEN_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted'];
 // REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Once a
 // Participant has submitted a resolution (or beyond), the finding is part of a workflow other people
@@ -272,9 +278,14 @@ function resolveFinding(user, p) {
 }
 
 // REQ workflow steps 5/6/8: Inspector/PM/SysAdmin accepts or rejects the latest pending resolution.
-// Only valid from InReview. Accept -> Resolved (terminal). Reject requires rejection remarks; the
-// first rejection on a finding -> ReOpen (participant can retry), the second -> Rejected (terminal)
-// -- tracked via reopenCount (see module header comment).
+// Only valid from InReview. Accept -> Resolved (terminal). Reject requires rejection remarks and
+// always -> ReOpen (participant can retry again), no matter how many times a finding has already
+// been rejected -- there is no longer a terminal "Rejected" outcome or auto-recreated replacement
+// finding on this path (REQ follow-up: "keep all rejections going back to re-open"). reopenCount on
+// the Findings row still increments on every rejection purely as a visible counter (Risk Logging
+// list's own Rejection count column) -- it no longer changes which status a rejection lands on.
+// 'Rejected'/recreatedFromId/recreatedInto stay valid and displayed for any finding that already
+// reached that state before this change; new reviews just never produce one going forward.
 function reviewFindingResolution(user, p) {
   requirePermission(user, 'finding.review');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
@@ -295,49 +306,22 @@ function reviewFindingResolution(user, p) {
   if (p.decision === 'Approved') {
     newStatus = 'Resolved';
   } else {
-    newStatus = reopenCount === 0 ? 'ReOpen' : 'Rejected';
+    newStatus = 'ReOpen';
     reopenCount++;
   }
   updateRow('Findings', p.findingId, { status: newStatus, reopenCount: reopenCount });
 
-  var recreatedFinding = null;
-  if (newStatus === 'Resolved' || newStatus === 'Rejected') {
-    // Clear any open escalation recipients tracking (resolvedAt on escalations) -- both terminal
-    // outcomes mean THIS finding row is done escalating; Rejected's replacement (below) starts its
-    // own fresh escalation clock as a brand-new Finding rather than inheriting the old one's.
+  if (newStatus === 'Resolved') {
+    // Clear any open escalation recipients tracking (resolvedAt on escalations) -- terminal outcome
+    // means this finding row is done escalating.
     findWhere('Escalations', function (e) { return e.findingId === p.findingId && !e.resolvedAt; })
       .forEach(function (e) { updateRow('Escalations', e.id, { resolvedAt: nowIso_() }); });
-  }
-
-  if (newStatus === 'Rejected') {
-    // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a new
-    // instance from the rejected log and lands it in Open." Rejected means THIS resolution thread is
-    // exhausted (2 failed attempts), not that the underlying compliance issue is closed -- so a fresh
-    // Finding carries it forward with a clean slate (Open, no resolution history yet, its own new
-    // resolution deadline) while this row stays Rejected forever as the permanent record of what
-    // happened. Linked both ways via recreatedFromId (see viewFinding's recreatedFrom/recreatedInto
-    // enrichment, which resolves the reverse direction by lookup).
-    var srcItem = finding.checklistItemId ? getById('ChecklistItems', finding.checklistItemId) : null;
-    var windowHours = srcItem ? srcItem.defaultWindowHours : 24;
-    recreatedFinding = {
-      id: newId('Findings'), eventId: finding.eventId, inspectionId: finding.inspectionId, disciplineId: finding.disciplineId,
-      category: finding.category, subCategory: finding.subCategory, description: finding.description,
-      suggestedAction: finding.suggestedAction, riskLevel: finding.riskLevel,
-      resolutionWindowAt: new Date(Date.now() + Number(windowHours) * 3600 * 1000).toISOString(),
-      nextInspectionAt: finding.nextInspectionAt || '', participantId: finding.participantId,
-      subZone: finding.subZone, location: finding.location, status: 'Open', evidenceUrls: '',
-      lat: finding.lat, lng: finding.lng, createdBy: finding.createdBy, createdAt: nowIso_(), reopenCount: 0,
-      checklistItemId: finding.checklistItemId || '', recreatedFromId: finding.id
-    };
-    insertRow('Findings', recreatedFinding);
-    audit(user.id, 'AUTO_RECREATE_FINDING', 'Findings', recreatedFinding.id, { recreatedFromId: finding.id });
-    notifyFindingCreated_(recreatedFinding);
   }
 
   audit(user.id, 'REVIEW_FINDING_RESOLUTION', 'Findings', p.findingId, { decision: p.decision, status: newStatus });
   var updated = getById('Findings', p.findingId);
   notifyFindingStatusChange_(updated, newStatus);
-  return { finding: updated, resolution: getById('Resolutions', pending.id), recreatedFinding: recreatedFinding };
+  return { finding: updated, resolution: getById('Resolutions', pending.id), recreatedFinding: null };
 }
 
 // Groups findings into the 5 summary buckets the Dashboard/Overview KPI cards already have icons for

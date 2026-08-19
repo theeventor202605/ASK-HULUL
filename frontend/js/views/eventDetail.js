@@ -3208,6 +3208,11 @@ async function tabFindings(content, eventId) {
     // (updateFinding/deleteFinding, Findings.gs) enforces the same status gate independently, so this
     // is purely about not showing a button that would just come back as a FORBIDDEN error.
     '<div class="card-body">' + UI.table([
+      // REQ follow-up: "Add column to show Log ID." A finding IS a Risk Log entry (this whole page
+      // is the "Risk Logging" tab -- see findings.js's header comment), so the finding's own id is
+      // shown up front as the log's identifier, same column-1 placement listFindings/UI.table already
+      // gives row.id elsewhere in the app.
+      { key: 'id', label: t('col_log_id') },
       { key: 'participantName', label: Term('participant') },
       { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: Term('checklistType') },
       // REQ follow-up: "are logs traceable back to that checklist item?" -- inserted right after
@@ -3220,6 +3225,10 @@ async function tabFindings(content, eventId) {
         : '—' },
       { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
+      // REQ follow-up: "Add ... another to show rejection count." reopenCount (Findings.gs) now
+      // increments on every rejection regardless of outcome (every rejection lands back on ReOpen,
+      // see reviewFindingResolution) -- this is the one visible place it's surfaced as a plain count.
+      { key: 'reopenCount', label: t('col_rejection_count'), render: r => r.reopenCount || 0 },
       { key: 'description', label: t('field_description') },
       { key: 'actions', label: t('actions'), render: r => {
         var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
