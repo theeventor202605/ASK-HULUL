@@ -169,6 +169,7 @@ var ROUTES = {
   submitEventTemplate: function (u, p) { return submitEventTemplate(u, p); },
   reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
   setTemplatesDeadline: function (u, p) { return setTemplatesDeadline(u, p); },
+  extendTemplateDeadlineVersion: function (u, p) { return extendTemplateDeadlineVersion(u, p); },
   createNextTemplateDeadlineVersion: function (u, p) { return createNextTemplateDeadlineVersion(u, p); },
   listTemplateDeadlineVersions: function (u, p) { return listTemplateDeadlineVersions(u, p); },
   listTemplateVersionSnapshots: function (u, p) { return listTemplateVersionSnapshots(u, p); },

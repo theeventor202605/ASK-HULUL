@@ -778,6 +778,41 @@ function setTemplatesDeadline(user, p) {
   return { deadlineAt: d.toISOString(), versionNumber: 1 };
 }
 
+// REQ follow-up: "Add the ability to extend a deadline." Same permission as setting one in the
+// first place. Works on whichever version is currently the latest, for ANY version number -- not
+// just version 1 (which setTemplatesDeadline could already re-edit in place); version 2+ previously
+// had no way to change its deadline at all once created. Only usable while that version is still
+// open (its own deadline hasn't passed yet) and only to push it LATER, never earlier -- once a
+// version has actually locked, extending in place isn't offered here; createNextTemplateDeadlineVersion
+// is the intended path once locked (REQ: "can be created manually by responsible role"), which also
+// archives the locked round into TemplateVersionSnapshots. Nothing to archive here since the
+// deadline being extended was never locked in the first place.
+function extendTemplateDeadlineVersion(user, p) {
+  var event = getById('Events', p.eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  requirePermission(user, 'template.setDeadline', event.inspectionCoId); // RBAC pilot -- same role as setting/creating a deadline
+  var versions = templateDeadlineVersionsForEvent_(p.eventId);
+  if (!versions.length) throw new HululError('BAD_REQUEST', 'Set the documents deadline before trying to extend it');
+  var latest = versions[versions.length - 1];
+  if (new Date(latest.deadlineAt) <= new Date()) {
+    throw new HululError('BAD_REQUEST', 'Version ' + latest.versionNumber + ' has already passed -- use "Create next version" to open a new round instead.');
+  }
+  if (!p.deadlineAt) throw new HululError('BAD_REQUEST', 'deadlineAt is required');
+  var d = new Date(p.deadlineAt);
+  if (isNaN(d)) throw new HululError('BAD_REQUEST', 'deadlineAt is not a valid date');
+  if (d <= new Date(latest.deadlineAt)) {
+    throw new HululError('BAD_REQUEST', 'The new deadline must be after the current one (' +
+      Utilities.formatDate(new Date(latest.deadlineAt), Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm') + ')');
+  }
+  updateRow('TemplateDeadlineVersions', latest.id, { deadlineAt: d.toISOString() });
+  updateRow('Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
+  audit(user.id, 'EXTEND_TEMPLATE_DEADLINE_VERSION', 'Events', p.eventId, { versionNumber: latest.versionNumber, deadlineAt: d.toISOString() });
+  notifyEventStakeholders_(p.eventId, 'TEMPLATES_DEADLINE_SET',
+    'Documents deadline (version ' + latest.versionNumber + ') extended for ' + event.name + ': ' +
+    Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm'), 'Events', p.eventId);
+  return { deadlineAt: d.toISOString(), versionNumber: latest.versionNumber };
+}
+
 // REQ: "A third or fourth version deadline can be created manually by responsible role." Same
 // permission/role as setting the very first deadline ('template.setDeadline' -- Project Manager /
 // SystemAdmin). Only usable once the current latest version's deadline has actually passed (i.e.

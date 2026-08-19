@@ -647,6 +647,30 @@ async function tabTemplates(content, eventId, detail) {
         UI.toast(t('toast_deadline_saved'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
+    // REQ follow-up: "Add the ability to extend a deadline." Only rendered (see
+    // templatesDeadlineCardHtml_) once a version already exists and is still open -- covers version 1
+    // or any later version.
+    var extendDeadlineBtn = document.getElementById('extendDeadlineBtn');
+    if (extendDeadlineBtn) extendDeadlineBtn.onclick = async function () {
+      var n = document.getElementById('fExtendDeadlineN').value;
+      var unit = document.getElementById('fExtendDeadlineUnit').value;
+      var absVal = document.getElementById('fExtendDeadlineAbs').value;
+      var deadlineAt;
+      if (n && Number(n) > 0) {
+        if (!detail.event.startDateTime) { UI.toast(t('toast_no_start_date_yet'), 'error'); return; }
+        var offsetMs = Number(n) * (unit === 'weeks' ? 7 : 1) * 24 * 3600 * 1000;
+        deadlineAt = new Date(new Date(detail.event.startDateTime).getTime() - offsetMs).toISOString();
+      } else if (absVal) {
+        deadlineAt = new Date(absVal).toISOString();
+      } else {
+        UI.toast(t('toast_pick_deadline'), 'error');
+        return;
+      }
+      try {
+        await Api.call('extendTemplateDeadlineVersion', { eventId: eventId, deadlineAt: deadlineAt });
+        UI.toast(t('toast_deadline_extended'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
     // REQ: "A third or fourth version deadline can be created manually by responsible role." Only
     // rendered (see templatesDeadlineCardHtml_) once the current version is actually locked.
     var createNextVersionBtn = document.getElementById('createNextVersionBtn');
@@ -687,8 +711,9 @@ function templateScoreCellHtml_(summary, field, isQualityCol) {
 // Three states:
 //  - no version yet: original "set first deadline" picker (unchanged from before versioning existed).
 //  - current version still open (not locked): version 1 stays editable in place (matches
-//    setTemplatesDeadline, which only ever touches version 1); version 2+ is shown read-only since
-//    there's no "edit a later version's deadline" endpoint -- only create-the-next-one.
+//    setTemplatesDeadline for the very first one, extendTemplateDeadlineVersion to push out
+//    whichever version is currently open -- REQ follow-up: "Add the ability to extend a deadline",
+//    works for version 1 or any later version, as long as it hasn't locked yet).
 //  - current version locked (its deadline passed): REQ's lock banner, plus (if the viewer can manage
 //    it) the "create next version" picker calling createNextTemplateDeadlineVersion.
 function templatesDeadlineCardHtml_(event, canManage, versionData) {
@@ -727,17 +752,24 @@ function templatesDeadlineCardHtml_(event, canManage, versionData) {
         UI.field(t('field_next_version_deadline'), '<input type="datetime-local" id="fNextVersionDeadline" class="field-input" />') +
       '</div>' +
       '<button class="btn btn-primary btn-sm" id="createNextVersionBtn" style="margin-top:8px;">' + esc(t('create_next_version_btn')) + '</button>';
-  } else if (!current || current.versionNumber === 1) {
-    // No version yet, or version 1 still open -- setTemplatesDeadline only ever manages version 1.
+  } else if (!current) {
+    // No version yet -- bootstrap version 1 via setTemplatesDeadline.
     formHtml = '<div class="muted" style="font-size:11.5px;">' + esc(t('one_deadline_hint')) + '</div>' +
       '<div class="form-row" style="margin-top:10px;">' +
-        UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input"' + (current ? ' value="' + toDatetimeLocalValue_(current.deadlineAt) + '"' : '') + ' />') +
+        UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input" />') +
         UI.field(t('field_or_before_event_start'), '<div style="display:flex;gap:6px;"><input type="number" id="fTplDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fTplDeadlineUnit" class="field-input"><option value="days">' + esc(t('option_days')) + '</option><option value="weeks">' + esc(t('option_weeks')) + '</option></select></div>') +
       '</div>' +
       '<button class="btn btn-primary btn-sm" id="saveTplDeadlineBtn" style="margin-top:8px;">' + esc(t('save_deadline_btn')) + '</button>';
   } else {
-    // Version 2+ still open -- its deadline was fixed at creation, no edit endpoint for it.
-    formHtml = '<div class="muted" style="font-size:11.5px;">' + esc(t('version_deadline_fixed_hint')) + '</div>';
+    // A version already exists and is still open (version 1 or later) -- REQ follow-up: "Add the
+    // ability to extend a deadline." Prefilled with the current deadline; extendTemplateDeadlineVersion
+    // requires the new one to be strictly later.
+    formHtml = '<div class="muted" style="font-size:11.5px;">' + esc(t('extend_deadline_hint')) + '</div>' +
+      '<div class="form-row" style="margin-top:10px;">' +
+        UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fExtendDeadlineAbs" class="field-input" value="' + toDatetimeLocalValue_(current.deadlineAt) + '" />') +
+        UI.field(t('field_or_before_event_start'), '<div style="display:flex;gap:6px;"><input type="number" id="fExtendDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fExtendDeadlineUnit" class="field-input"><option value="days">' + esc(t('option_days')) + '</option><option value="weeks">' + esc(t('option_weeks')) + '</option></select></div>') +
+      '</div>' +
+      '<button class="btn btn-primary btn-sm" id="extendDeadlineBtn" style="margin-top:8px;">' + esc(t('extend_deadline_btn')) + '</button>';
   }
 
   return '<div class="card" style="margin-bottom:16px;">' + headerHtml + '<div class="card-body">' + statusHtml + lockBannerHtml + formHtml + '</div></div>';
