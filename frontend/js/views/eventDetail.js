@@ -479,7 +479,7 @@ var TEMPLATE_BOARD_BORDER = {
 // uploaderRoles/reviewerRoles come from getTemplateProcessRoles (see tabTemplates below) --
 // configurable per REQ: "role assignments... Inspection Analyst and Event Manager, where I can
 // change them and allow one or multiple role assignment" (Configuration > Process).
-function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline, scoredDocTypes) {
+function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline, scoredDocTypes, isLocked) {
   var role = HululState.user.role;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
   // "Send readiness templates to an event".
@@ -487,21 +487,27 @@ function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline, sc
   var isEM = role === 'SystemAdmin' || uploaderRoles.indexOf(role) !== -1;
   var isAnalyst = role === 'SystemAdmin' || reviewerRoles.indexOf(role) !== -1;
   var parts = [];
-  if (tpl.status === 'Not Sent' && isPM) {
-    // REQ: "No Template can be sent unless Deadline date time is set." -- disabled (not hidden) so
-    // the PM can still see the Send action exists and understands why it's blocked; sendTemplates
-    // enforces the same rule server-side (see Templates.gs) so this can't be bypassed.
-    parts.push(hasDeadline
-      ? '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_send')) + '" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>'
-      : '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_set_deadline_first')) + '" disabled>' + ICON('send') + '</button>');
-  }
-  if (isEM && ['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) !== -1) {
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_upload')) + '" data-upload-template="' + tpl.id + '">' + ICON('upload') + '</button>');
-    parts.push('<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_submit')) + '" data-submit-template="' + tpl.id + '">' + ICON('submit') + '</button>');
-  }
-  if (isAnalyst && ['Submitted', 'Under Review'].indexOf(tpl.status) !== -1) {
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_evaluated')) + '" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
-    parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_missed')) + '" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
+  // REQ: "Lock all documents no editing allowed no upload allowed" once the current version's
+  // deadline has passed -- send/upload/submit/review are all blocked server-side too (Templates.gs),
+  // this just hides the now-useless buttons instead of letting the user hit a FORBIDDEN toast. The
+  // Score action (below, outside this guard) stays available -- evaluation isn't gated by REQ.
+  if (!isLocked) {
+    if (tpl.status === 'Not Sent' && isPM) {
+      // REQ: "No Template can be sent unless Deadline date time is set." -- disabled (not hidden) so
+      // the PM can still see the Send action exists and understands why it's blocked; sendTemplates
+      // enforces the same rule server-side (see Templates.gs) so this can't be bypassed.
+      parts.push(hasDeadline
+        ? '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_send')) + '" data-send-template="' + tpl.libraryTemplateId + '">' + ICON('send') + '</button>'
+        : '<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_set_deadline_first')) + '" disabled>' + ICON('send') + '</button>');
+    }
+    if (isEM && ['Sent', 'In Progress', 'Missed'].indexOf(tpl.status) !== -1) {
+      parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_upload')) + '" data-upload-template="' + tpl.id + '">' + ICON('upload') + '</button>');
+      parts.push('<button class="btn btn-primary btn-sm btn-icon" title="' + esc(t('title_submit')) + '" data-submit-template="' + tpl.id + '">' + ICON('submit') + '</button>');
+    }
+    if (isAnalyst && ['Submitted', 'Under Review'].indexOf(tpl.status) !== -1) {
+      parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_evaluated')) + '" data-approve-template="' + tpl.id + '">' + ICON('approve') + '</button>');
+      parts.push('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_mark_missed')) + '" data-reject-template="' + tpl.id + '">' + ICON('reject') + '</button>');
+    }
   }
   // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
   // attached file?" / "Let's add the remaining score templates" -- a structured item-level scoring
@@ -530,11 +536,17 @@ async function tabTemplates(content, eventId, detail) {
     Api.call('listScoringCatalogSummary', {}),
     // REQ: "Add a score column to Readiness Templates" -- one call for every document's
     // Completeness%/Quality%/finalized status, instead of the frontend re-deriving it per row.
-    Api.call('getEventTemplatesScoringSummary', { eventId: eventId })
+    Api.call('getEventTemplatesScoringSummary', { eventId: eventId }),
+    // REQ: "Readiness templates table should [show] which version we are on now." -- versions,
+    // currentVersionNumber, isLocked, gapDays (Templates.gs). Also flips version 1 -> 2
+    // automatically if that deadline just passed (processTemplateDeadlineTransition_).
+    Api.call('listTemplateDeadlineVersions', { eventId: eventId })
   ]);
   var templates = results[0], processRoles = results[1];
   var scoredDocTypes = results[2].map(function (s) { return s.docType; });
   var scoringSummaryByTemplateId = results[3];
+  var versionData = results[4];
+  var isLocked = versionData.isLocked;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
   // "Set an event's documents deadline".
   var canManageDeadline = hasPermission('template.setDeadline');
@@ -552,7 +564,7 @@ async function tabTemplates(content, eventId, detail) {
   });
 
   content.innerHTML =
-    templatesDeadlineCardHtml_(detail.event, canManageDeadline) +
+    templatesDeadlineCardHtml_(detail.event, canManageDeadline, versionData) +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('pipeline_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_file_hint')) + '</div></div>' +
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
@@ -565,7 +577,7 @@ async function tabTemplates(content, eventId, detail) {
       { key: 'qualityPct', label: t('col_quality'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'qualityPct', true) },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
       { key: 'reviewReason', label: t('col_review_notes'), render: r => r.reviewReason ? esc(r.reviewReason) : '—' },
-      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt, scoredDocTypes) }
+      { key: 'actions', label: t('actions'), render: r => templateActionsHtml_(r, processRoles.uploaderRoles, processRoles.reviewerRoles, !!detail.event.templatesDeadlineAt, scoredDocTypes, isLocked) }
     ], templates, { emptyText: t('no_templates_in_library_hint', { term: t('field_inspection_company') }) }) + '</div></div>';
 
   UI.wireBoard(content, function (id) {
@@ -629,7 +641,20 @@ async function tabTemplates(content, eventId, detail) {
         UI.toast(t('toast_deadline_saved'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }
     };
+    // REQ: "A third or fourth version deadline can be created manually by responsible role." Only
+    // rendered (see templatesDeadlineCardHtml_) once the current version is actually locked.
+    var createNextVersionBtn = document.getElementById('createNextVersionBtn');
+    if (createNextVersionBtn) createNextVersionBtn.onclick = async function () {
+      var absVal = document.getElementById('fNextVersionDeadline').value;
+      if (!absVal) { UI.toast(t('toast_pick_deadline'), 'error'); return; }
+      try {
+        await Api.call('createNextTemplateDeadlineVersion', { eventId: eventId, deadlineAt: new Date(absVal).toISOString() });
+        UI.toast(t('toast_next_version_created'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
   }
+  var versionHistoryBtn = document.getElementById('viewVersionHistoryBtn');
+  if (versionHistoryBtn) versionHistoryBtn.onclick = function () { openVersionHistoryModal_(eventId); };
 }
 
 // REQ: "Add a score column to Readiness Templates" -- getEventTemplatesScoringSummary returns null
@@ -647,32 +672,96 @@ function templateScoreCellHtml_(summary, field, isQualityCol) {
 }
 
 // REQ: "PM must set one deadline for all documents, by date/time picker or by N weeks/days before
-// event start." One event-wide deadline (Events.templatesDeadlineAt), shown to everyone (with a
+// event start... Readiness templates table should [show] which version we are on now." One
+// event-wide deadline per round (TemplateDeadlineVersions, Templates.gs), shown to everyone (with a
 // live countdown/overdue indicator, same style as Findings' resolution window) but only editable by
-// a Project Manager or SystemAdmin -- matches setTemplatesDeadline's backend requireRole. Whichever
-// of the two inputs the PM actually fills in wins (see the save handler in tabTemplates); the other
-// is just left blank and ignored, no separate mode toggle needed.
-function templatesDeadlineCardHtml_(event, canManage) {
-  var deadline = event.templatesDeadlineAt;
-  var overdue = deadline && new Date(deadline) < new Date();
-  var statusHtml = deadline
-    ? '<div style="font-size:13px;">' + esc(t('deadline_prefix')) + '<strong>' + esc(UI.fmtDate(deadline)) + '</strong> — ' +
-        '<span style="color:' + (overdue ? 'var(--danger)' : 'var(--text-600)') + ';font-weight:600;">' + esc(UI.fmtCountdown(deadline)) + '</span></div>'
+// a Project Manager or SystemAdmin -- matches setTemplatesDeadline/createNextTemplateDeadlineVersion's
+// backend requirePermission. versionData is listTemplateDeadlineVersions' result (see tabTemplates).
+//
+// Three states:
+//  - no version yet: original "set first deadline" picker (unchanged from before versioning existed).
+//  - current version still open (not locked): version 1 stays editable in place (matches
+//    setTemplatesDeadline, which only ever touches version 1); version 2+ is shown read-only since
+//    there's no "edit a later version's deadline" endpoint -- only create-the-next-one.
+//  - current version locked (its deadline passed): REQ's lock banner, plus (if the viewer can manage
+//    it) the "create next version" picker calling createNextTemplateDeadlineVersion.
+function templatesDeadlineCardHtml_(event, canManage, versionData) {
+  var versions = (versionData && versionData.versions) || [];
+  var current = versions.length ? versions[versions.length - 1] : null;
+  var isLocked = !!(versionData && versionData.isLocked);
+  var versionBadge = current
+    ? ' <span class="badge badge-neutral" style="vertical-align:middle;">' + esc(t('version_n_badge', { n: current.versionNumber })) + '</span>'
+    : '';
+  var historyBtn = versions.length
+    ? '<button class="btn btn-secondary btn-sm" id="viewVersionHistoryBtn">' + esc(t('version_history_btn')) + '</button>'
+    : '';
+
+  var statusHtml = current
+    ? '<div style="font-size:13px;">' + esc(t('deadline_prefix')) + '<strong>' + esc(UI.fmtDate(current.deadlineAt)) + '</strong> — ' +
+        '<span style="color:' + (isLocked ? 'var(--danger)' : 'var(--text-600)') + ';font-weight:600;">' + esc(UI.fmtCountdown(current.deadlineAt)) + '</span></div>'
     : '<div class="muted" style="font-size:13px;">' + esc(t('no_deadline_set_yet')) + (canManage ? esc(t('set_one_below_suffix')) : '.') + '</div>';
 
+  var lockBannerHtml = isLocked
+    ? '<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--danger-soft);border-left:4px solid var(--danger);">' +
+        '<div style="font-weight:700;font-size:12.5px;color:var(--danger);margin-bottom:2px;">' + esc(t('documents_locked_title')) + '</div>' +
+        '<div style="font-size:13px;">' + esc(t('documents_locked_body', { n: current.versionNumber })) + '</div>' +
+      '</div>'
+    : '';
+
+  var headerHtml = '<div class="card-header"><div class="card-title">' + esc(t('documents_deadline_title')) + versionBadge + '</div>' + historyBtn + '</div>';
+
   if (!canManage) {
-    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('documents_deadline_title')) + '</div></div>' +
-      '<div class="card-body">' + statusHtml + '</div></div>';
+    return '<div class="card" style="margin-bottom:16px;">' + headerHtml + '<div class="card-body">' + statusHtml + lockBannerHtml + '</div></div>';
   }
-  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('documents_deadline_title')) + '</div>' +
-    '<div class="muted" style="font-size:11.5px;">' + esc(t('one_deadline_hint')) + '</div></div>' +
-    '<div class="card-body">' + statusHtml +
-    '<div class="form-row" style="margin-top:10px;">' +
-      UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input"' + (deadline ? ' value="' + toDatetimeLocalValue_(deadline) + '"' : '') + ' />') +
-      UI.field(t('field_or_before_event_start'), '<div style="display:flex;gap:6px;"><input type="number" id="fTplDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fTplDeadlineUnit" class="field-input"><option value="days">' + esc(t('option_days')) + '</option><option value="weeks">' + esc(t('option_weeks')) + '</option></select></div>') +
-    '</div>' +
-    '<button class="btn btn-primary btn-sm" id="saveTplDeadlineBtn" style="margin-top:8px;">' + esc(t('save_deadline_btn')) + '</button>' +
-  '</div></div>';
+
+  var formHtml;
+  if (isLocked) {
+    // REQ: "A third or fourth version deadline can be created manually by responsible role."
+    formHtml = '<div class="form-row" style="margin-top:10px;">' +
+        UI.field(t('field_next_version_deadline'), '<input type="datetime-local" id="fNextVersionDeadline" class="field-input" />') +
+      '</div>' +
+      '<button class="btn btn-primary btn-sm" id="createNextVersionBtn" style="margin-top:8px;">' + esc(t('create_next_version_btn')) + '</button>';
+  } else if (!current || current.versionNumber === 1) {
+    // No version yet, or version 1 still open -- setTemplatesDeadline only ever manages version 1.
+    formHtml = '<div class="muted" style="font-size:11.5px;">' + esc(t('one_deadline_hint')) + '</div>' +
+      '<div class="form-row" style="margin-top:10px;">' +
+        UI.field(t('field_deadline_datetime'), '<input type="datetime-local" id="fTplDeadlineAbs" class="field-input"' + (current ? ' value="' + toDatetimeLocalValue_(current.deadlineAt) + '"' : '') + ' />') +
+        UI.field(t('field_or_before_event_start'), '<div style="display:flex;gap:6px;"><input type="number" id="fTplDeadlineN" class="field-input" min="1" placeholder="e.g. 2" style="max-width:90px;" /><select id="fTplDeadlineUnit" class="field-input"><option value="days">' + esc(t('option_days')) + '</option><option value="weeks">' + esc(t('option_weeks')) + '</option></select></div>') +
+      '</div>' +
+      '<button class="btn btn-primary btn-sm" id="saveTplDeadlineBtn" style="margin-top:8px;">' + esc(t('save_deadline_btn')) + '</button>';
+  } else {
+    // Version 2+ still open -- its deadline was fixed at creation, no edit endpoint for it.
+    formHtml = '<div class="muted" style="font-size:11.5px;">' + esc(t('version_deadline_fixed_hint')) + '</div>';
+  }
+
+  return '<div class="card" style="margin-bottom:16px;">' + headerHtml + '<div class="card-body">' + statusHtml + lockBannerHtml + formHtml + '</div></div>';
+}
+
+// REQ: "Reserve the status of the documents" -- read-only viewer over TemplateVersionSnapshots
+// (Templates.gs), one section per past version, newest first. Opened from the "Version history"
+// button in templatesDeadlineCardHtml_ (visible once at least one version exists).
+async function openVersionHistoryModal_(eventId) {
+  var snapshots = await Api.call('listTemplateVersionSnapshots', { eventId: eventId });
+  var byVersion = {};
+  snapshots.forEach(function (s) { (byVersion[s.versionNumber] = byVersion[s.versionNumber] || []).push(s); });
+  var versionNumbers = Object.keys(byVersion).map(Number).sort(function (a, b) { return b - a; });
+  var bodyHtml = versionNumbers.length
+    ? versionNumbers.map(function (vn) {
+        var rows = byVersion[vn];
+        return '<div style="margin-bottom:16px;">' +
+          '<div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">' + esc(t('version_n_badge', { n: vn })) + '</div>' +
+          '<table class="data-table"><thead><tr><th>' + esc(t('col_template')) + '</th><th>' + esc(t('status')) + '</th><th>' + esc(t('col_file')) + '</th></tr></thead><tbody>' +
+          rows.map(function (r) {
+            return '<tr><td>' + esc(r.name) + '</td><td>' + UI.statusBadge(r.status) + '</td><td>' +
+              (r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—') +
+              '</td></tr>';
+          }).join('') +
+          '</tbody></table></div>';
+      }).join('')
+    : '<div class="muted">' + esc(t('no_version_history_yet')) + '</div>';
+  UI.openModal(t('version_history_title'), bodyHtml, [
+    { label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }
+  ]);
 }
 
 // Renders a stored UTC instant (toISOString()) as a <input type="datetime-local"> default value, in

@@ -545,7 +545,15 @@ function renderPhotoPropertiesTabBody_(content, orgs) {
  * configurable time AFTER the previous tier) are admin-editable, and per risk level.
  */
 async function renderEscalationsTab_(content) {
-  var cfg = await Api.call('getEscalationConfig', {});
+  var results = await Promise.all([
+    Api.call('getEscalationConfig', {}),
+    // REQ: "one week (configurable)" -- the gap between a documents deadline version's own deadline
+    // passing and the next version auto-opening (maybeAutoCreateVersion2_, Templates.gs).
+    // SystemAdmin-only, same gating as this whole tab (CONFIG_MANAGE_ROLES).
+    Api.call('getTemplateDeadlineVersionGapDays', {})
+  ]);
+  var cfg = results[0];
+  var versionGapDays = results[1].gapDays;
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('escalation_alerts_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('escalation_alerts_subtitle')) + '</div></div>' +
@@ -567,6 +575,16 @@ async function renderEscalationsTab_(content) {
         (cfg.checkIntervalAllowedMinutes || [1, 5, 10, 15, 30]).map(function (m) {
           return '<option value="' + m + '"' + (m === cfg.checkIntervalMinutes ? ' selected' : '') + '>' + esc(t('x_minutes', { count: m })) + '</option>';
         }).join('') + '</select>') +
+    '</div></div>' +
+    // REQ: "create a second deadline one week (configurable) after first version deadline" -- the
+    // gap used by maybeAutoCreateVersion2_ (Templates.gs) when auto-opening version 2 of a
+    // Readiness Templates documents deadline. Saved independently of the escalation config below
+    // (its own endpoint, getTemplateDeadlineVersionGapDays/setTemplateDeadlineVersionGapDays).
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('version_gap_days_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('version_gap_days_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      UI.field(t('version_gap_days_field'), '<input type="number" id="cfgVersionGapDays" class="field-input" min="1" style="max-width:120px;" value="' + esc(String(versionGapDays)) + '" />') +
+      '<button class="btn btn-secondary btn-sm" id="saveVersionGapDaysBtn" style="margin-top:10px;">' + esc(t('save')) + '</button>' +
     '</div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tier1_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('tier1_subtitle')) + '</div></div>' +
@@ -598,6 +616,15 @@ async function renderEscalationsTab_(content) {
       });
       UI.toast(t('toast_escalation_settings_saved'), 'success');
       renderSettings({ tab: 'escalations' });
+    } catch (err) { UI.error(err); }
+  };
+
+  document.getElementById('saveVersionGapDaysBtn').onclick = async function () {
+    var n = Number(document.getElementById('cfgVersionGapDays').value);
+    if (!Number.isFinite(n) || n < 1) { UI.toast(t('toast_version_gap_days_invalid'), 'error'); return; }
+    try {
+      await Api.call('setTemplateDeadlineVersionGapDays', { gapDays: n });
+      UI.toast(t('toast_version_gap_days_saved'), 'success');
     } catch (err) { UI.error(err); }
   };
 }

@@ -99,6 +99,23 @@ var SCHEMA = {
   // etc, the upload/review workflow) -- a document can be Evaluated without its scoring form ever
   // being finalized, or vice versa; these two workflows track different things.
   Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy'],
+  // REQ: "When Documents deadline (first version) is reached; Lock all documents no editing allowed
+  // no upload allowed, reserve the status of the documents. Then create a second deadline one week
+  // (configurable) after first version deadline ... A third or fourth version deadline can be
+  // created manually by responsible role." One row per deadline "round" for an event -- version 1 is
+  // the PM's original deadline (setTemplatesDeadline), version 2 is auto-created the instant version
+  // 1's deadline passes (gap from Config key templateDeadlineVersionGapDays, default 7 days), and
+  // version 3+ can only be created manually (createNextTemplateDeadlineVersion) once the current
+  // latest version's deadline has already passed -- see Templates.gs for the full lock/transition
+  // logic (isTemplatesLocked_, maybeAutoCreateVersion2_).
+  TemplateDeadlineVersions: ['id','eventId','versionNumber','deadlineAt','autoCreated','createdBy','createdAt'],
+  // REQ (same feature): "reserve the status of the documents" -- once a version's deadline passes,
+  // every per-event Templates row's state at that moment is archived here (one row per Templates row
+  // per versionNumber, written once via snapshotOverdueVersionsIfNeeded_ and never touched again)
+  // before the live Templates row resets to a fresh 'Sent' state for whichever version comes next --
+  // see resetTemplatesForNewVersion_, Templates.gs. This is what lets a PM look back at exactly what
+  // was submitted (and its reviewed status) as of each past deadline.
+  TemplateVersionSnapshots: ['id','eventId','templateId','libraryTemplateId','versionNumber','name','status','fileUrl','fileName','mimeType','reviewedBy','reviewedAt','reviewReason','snapshotAt'],
   // toJson/ccJson: JSON-stringified arrays of Users.id (invitee/cc userIds) -- same
   // array-in-a-single-cell convention as the Permissions sheet's overridesJson (Permissions.gs).
   // status: 'Scheduled' (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs,
@@ -624,7 +641,7 @@ var ID_PREFIX = {
   Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
   TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
-  FindingGuide: 'FGD'
+  FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

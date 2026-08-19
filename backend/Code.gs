@@ -169,6 +169,11 @@ var ROUTES = {
   submitEventTemplate: function (u, p) { return submitEventTemplate(u, p); },
   reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
   setTemplatesDeadline: function (u, p) { return setTemplatesDeadline(u, p); },
+  createNextTemplateDeadlineVersion: function (u, p) { return createNextTemplateDeadlineVersion(u, p); },
+  listTemplateDeadlineVersions: function (u, p) { return listTemplateDeadlineVersions(u, p); },
+  listTemplateVersionSnapshots: function (u, p) { return listTemplateVersionSnapshots(u, p); },
+  getTemplateDeadlineVersionGapDays: function (u, p) { return getTemplateDeadlineVersionGapDays(u); },
+  setTemplateDeadlineVersionGapDays: function (u, p) { return setTemplateDeadlineVersionGapDays(u, p); },
   getTemplateProcessRoles: function (u, p) { return getTemplateProcessRoles(u); },
   // Document Review scoring (REQ follow-up: "convert the templates to forms and include evaluation process")
   listTemplateScoringItems: function (u, p) { return listTemplateScoringItems(u, p); },
