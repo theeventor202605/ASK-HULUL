@@ -98,7 +98,12 @@ var SCHEMA = {
   // 'template.reopenScoring') clears them again. Independent of `status` (Sent/Submitted/Evaluated/
   // etc, the upload/review workflow) -- a document can be Evaluated without its scoring form ever
   // being finalized, or vice versa; these two workflows track different things.
-  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy'],
+  // versionNumber: which documents-deadline round (TemplateDeadlineVersions.versionNumber) this row
+  // currently reflects -- the round it was sent/reset for, UNLESS it's since been Evaluated, in which
+  // case it stays pinned to whichever round it was actually approved in even after later rounds open
+  // (REQ follow-up: "those approved [documents]... I wanted them to stay in their current state" --
+  // see resetTemplatesForNewVersion_, Templates.gs).
+  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy','versionNumber'],
   // REQ: "When Documents deadline (first version) is reached; Lock all documents no editing allowed
   // no upload allowed, reserve the status of the documents. Then create a second deadline one week
   // (configurable) after first version deadline ... A third or fourth version deadline can be

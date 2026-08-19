@@ -506,7 +506,7 @@ window.HULUL_I18N = {
     title_send: 'Send', title_set_deadline_first: 'Set the documents deadline first', title_upload: 'Upload',
     title_submit: 'Submit', title_mark_evaluated: 'Mark evaluated', title_mark_missed: 'Mark missed',
     pipeline_title: 'Pipeline', click_card_open_file_hint: 'Click a card to open its file', col_template: 'Template',
-    col_file: 'File', col_review_notes: 'Review notes',
+    col_file: 'File', col_review_notes: 'Review notes', col_version: 'Version',
     // Document Review scoring (REQ follow-up: "Can I convert the templates to forms and include
     // evaluation process as per attached file?") -- templateLibrary.js's docType field + the scoring
     // form itself (eventDetail.js's renderTemplateScoring).
@@ -1144,7 +1144,7 @@ window.HULUL_I18N = {
     title_send: 'إرسال', title_set_deadline_first: 'حدد الموعد النهائي للمستندات أولاً', title_upload: 'رفع',
     title_submit: 'إرسال', title_mark_evaluated: 'تحديد كمُقيَّم', title_mark_missed: 'تحديد كفائت',
     pipeline_title: 'خط سير العمل', click_card_open_file_hint: 'انقر على بطاقة لفتح ملفها', col_template: 'القالب',
-    col_file: 'الملف', col_review_notes: 'ملاحظات المراجعة',
+    col_file: 'الملف', col_review_notes: 'ملاحظات المراجعة', col_version: 'الإصدار',
     col_doctype: 'نوع النموذج', doctype_none_option: 'بدون (مستند عادي)',
     doctype_hint: 'حدد نوع المستند لمنحه نموذج تقييم مُهيكل في تبويب القوالب — راجع بطاقة "نماذج التقييم" أعلاه لمعرفة أنواع المستندات المتاح لها نموذج حاليًا.',
     title_score_document: 'تقييم هذا المستند', no_scoring_form_for_doctype: 'لا يوجد نموذج تقييم مُعد لهذا النوع من المستندات بعد.',

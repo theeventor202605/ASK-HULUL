@@ -162,7 +162,7 @@ function getEventTemplates(user, p) {
     return {
       id: '', eventId: p.eventId, libraryTemplateId: lib.id, name: lib.name, status: 'Not Sent',
       fileUrl: '', fileName: '', mimeType: '', sentBy: '', sentAt: '', uploadedBy: '', updatedAt: '',
-      reviewedBy: '', reviewedAt: '', reviewReason: '', docType: lib.docType || '',
+      reviewedBy: '', reviewedAt: '', reviewReason: '', docType: lib.docType || '', versionNumber: '',
       libraryFileUrl: lib.fileUrl, libraryFileName: lib.fileName
     };
   });
@@ -202,7 +202,11 @@ function sendTemplates(user, p) {
       // snapshot of the library entry's docType, same reasoning as the fileUrl/fileName/mimeType
       // snapshot just above (a later retag of the library entry shouldn't retroactively change which
       // scoring form an already-sent document uses).
-      docType: lib.docType || ''
+      docType: lib.docType || '',
+      // REQ: "Readiness templates table should [show] which version we are on now" -- which round
+      // this row belongs to (sendTemplates only runs once a version already exists, see the
+      // deadlineAt check just above, so there's always a current one to stamp it with).
+      versionNumber: currentTemplateVersionNumber_(p.eventId)
     };
     insertRow('Templates', row);
     sent.push(row);
@@ -628,6 +632,13 @@ function isTemplatesLocked_(eventId) {
   return !!(latest && new Date(latest.deadlineAt) <= new Date());
 }
 
+// The round a newly-sent document should be stamped with -- always the latest version that exists
+// (sendTemplates only ever runs once version 1 has been created, via the deadlineAt check there).
+function currentTemplateVersionNumber_(eventId) {
+  var versions = templateDeadlineVersionsForEvent_(eventId);
+  return versions.length ? versions[versions.length - 1].versionNumber : 1;
+}
+
 // Archives every per-event Templates row's CURRENT state under `versionNumber`, once -- idempotent
 // via checking for an existing snapshot per (templateId, versionNumber) pair, so calling it
 // repeatedly (every lazy read below, plus the periodic sweep) never double-writes or overwrites an
@@ -647,15 +658,22 @@ function snapshotOverdueVersionsIfNeeded_(eventId, versionNumber) {
   });
 }
 
-// Opens a fresh round: every per-event Templates row resets to 'Sent' with its file/review fields
-// cleared, so the configured uploader role can start again for the new version. Only ever called
-// immediately after snapshotOverdueVersionsIfNeeded_ has archived the version that just ended, so
-// nothing about the prior round is ever lost -- it's just no longer the live copy.
-function resetTemplatesForNewVersion_(eventId) {
+// Opens a fresh round: every per-event Templates row that ISN'T already Evaluated resets to 'Sent'
+// (file/review fields cleared, stamped with the new round's versionNumber) so the configured
+// uploader role can start again. REQ follow-up: "those approved [documents]... I wanted them to
+// stay in their current state" -- a document already fully Evaluated needs no further action, so it
+// keeps its file, status, and versionNumber exactly as they were at approval, even once later
+// rounds open; only Sent/In Progress/Submitted/Under Review/Missed rows (i.e. anything not yet
+// resolved) get reopened for the new round. Only ever called immediately after
+// snapshotOverdueVersionsIfNeeded_ has archived the version that just ended, so nothing about the
+// prior round is ever lost even for the rows that DO get reset here -- it's just no longer the live
+// copy for those.
+function resetTemplatesForNewVersion_(eventId, newVersionNumber) {
   findWhere('Templates', function (t) { return t.eventId === eventId; }).forEach(function (t) {
+    if (t.status === 'Evaluated') return;
     updateRow('Templates', t.id, {
       status: 'Sent', fileUrl: '', fileName: '', mimeType: '', uploadedBy: '',
-      reviewedBy: '', reviewedAt: '', reviewReason: '', updatedAt: nowIso_()
+      reviewedBy: '', reviewedAt: '', reviewReason: '', updatedAt: nowIso_(), versionNumber: newVersionNumber
     });
   });
 }
@@ -675,7 +693,7 @@ function maybeAutoCreateVersion2_(eventId) {
     id: newId('TemplateDeadlineVersions'), eventId: eventId, versionNumber: 2, deadlineAt: v2DeadlineAt,
     autoCreated: true, createdBy: 'system', createdAt: nowIso_()
   });
-  resetTemplatesForNewVersion_(eventId);
+  resetTemplatesForNewVersion_(eventId, 2);
   updateRow('Events', eventId, { templatesDeadlineAt: v2DeadlineAt });
   var event = getById('Events', eventId);
   if (event) {
@@ -784,7 +802,7 @@ function createNextTemplateDeadlineVersion(user, p) {
     autoCreated: false, createdBy: user.id, createdAt: nowIso_()
   };
   insertRow('TemplateDeadlineVersions', row);
-  resetTemplatesForNewVersion_(p.eventId);
+  resetTemplatesForNewVersion_(p.eventId, nextVersionNumber);
   updateRow('Events', p.eventId, { templatesDeadlineAt: d.toISOString() });
   audit(user.id, 'CREATE_TEMPLATE_DEADLINE_VERSION', 'Events', p.eventId, { versionNumber: nextVersionNumber, deadlineAt: d.toISOString() });
   notifyEventStakeholders_(p.eventId, 'TEMPLATES_DEADLINE_SET',

@@ -572,6 +572,12 @@ async function tabTemplates(content, eventId, detail) {
     '<div class="card-body">' + UI.table([
       { key: 'name', label: t('col_template') },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
+      // REQ: "Readiness templates table should [show] which version we are on now." Per-row rather
+      // than just once in the deadline card above -- once an Evaluated document stops resetting on
+      // later rounds (versionNumber, Templates.gs), a row's own version can legitimately lag behind
+      // the event's current one (e.g. approved in version 1 while everything else is now on
+      // version 2), so showing it per document is what actually answers the question for that row.
+      { key: 'versionNumber', label: t('col_version'), render: r => r.versionNumber ? esc(t('version_n_badge', { n: r.versionNumber })) : '—' },
       { key: 'fileName', label: t('col_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
       { key: 'completenessPct', label: t('col_completeness'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'completenessPct') },
       { key: 'qualityPct', label: t('col_quality'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'qualityPct', true) },
