@@ -2237,7 +2237,7 @@ async function renderCompletedChecklistDetail(params) {
 // Read-only rows: description, state, risk/window, and (Crossed only) notes + evidence links -- no
 // inputs, nothing to wire beyond the Back/Edit buttons below. Evidence is just a row of plain links
 // (opens the original upload in a new tab) rather than the editable form's camera-capture control.
-function completedChecklistViewRowHtml_(it, existing) {
+function completedChecklistViewRowHtml_(it, existing, eventId) {
   var state = existing ? existing.state : '';
   var stateIcon = state === 'Ticked' ? ICON('result_ticked') : state === 'Crossed' ? ICON('result_crossed') : state === 'N/A' ? ICON('result_na') : '';
   var stateLabel = state === 'Ticked' ? t('title_result_ticked') : state === 'Crossed' ? t('title_result_crossed') : state === 'N/A' ? t('title_result_na') : t('word_pending');
@@ -2260,6 +2260,13 @@ function completedChecklistViewRowHtml_(it, existing) {
           (evidenceUrls.length ? '<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;">' + evidenceUrls.map(function (url, idx) {
             return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;font-size:11.5px;">' + esc(t('word_evidence')) + ' ' + (idx + 1) + '</a>';
           }).join('') + '</div>' : '') +
+          // REQ (checklist<->finding traceability): a Crossed result records a Finding via
+          // recordInspectionResults (Inspections.gs), which stamps InspectionResults.findingId right
+          // after the insert -- link straight to it instead of making someone hunt for it on the
+          // Findings tab.
+          ((existing && existing.findingId)
+            ? '<div style="margin-top:6px;"><a href="#/events/' + esc(eventId) + '/findings/' + esc(existing.findingId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;font-size:11.5px;">' + esc(t('view_finding_link')) + '</a></div>'
+            : '') +
         '</div>'
       : '') +
   '</div>';
@@ -2274,7 +2281,7 @@ function completedChecklistViewMode_(root, eventId, inspection, participant, sco
       '<div class="card-body">' +
         Object.keys(byType).sort().map(function (typeName) {
           return '<div style="font-weight:600;font-size:12.5px;color:var(--accent);margin:10px 0 4px;">' + esc(typeName || '(untyped)') + '</div>' +
-            byType[typeName].map(function (it) { return completedChecklistViewRowHtml_(it, existingByItemId[it.id]); }).join('');
+            byType[typeName].map(function (it) { return completedChecklistViewRowHtml_(it, existingByItemId[it.id], eventId); }).join('');
         }).join('') +
       '</div>' +
       (canManage
@@ -3203,6 +3210,14 @@ async function tabFindings(content, eventId) {
     '<div class="card-body">' + UI.table([
       { key: 'participantName', label: Term('participant') },
       { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: Term('checklistType') },
+      // REQ follow-up: "are logs traceable back to that checklist item?" -- inserted right after
+      // Checklist Type (its closest existing column) rather than disturbing the rest of the REQ'd
+      // column order above/below it. Blank ('—') for manually-logged findings, which have no single
+      // checklist item to point at (see enrichFinding_, Findings.gs). Links into the Checklist Items
+      // catalog (checklistItems.js), same target as the detail page's own link.
+      { key: 'checklistItemDescription', label: t('col_checklist_item'), render: r => r.checklistItemDescription
+        ? '<a href="#/checklist-items?itemId=' + esc(r.checklistItemId) + '" style="color:var(--accent);">' + esc(r.checklistItemDescription) + '</a>'
+        : '—' },
       { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'description', label: t('field_description') },

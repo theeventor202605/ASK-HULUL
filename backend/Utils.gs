@@ -151,7 +151,11 @@ var SCHEMA = {
   // participantId appended at the end (established pattern, see Venues above) -- pre-existing
   // results from before per-participant tracking existed read back with participantId === '',
   // which correctly counts toward no one's completion rather than silently miscounting.
-  InspectionResults:      ['id','inspectionId','checklistItemId','state','riskLevel','resolutionWindowHours','notes','evidenceUrls','recordedAt','participantId'],
+  // findingId: REQ follow-up: "are logs traceable back to that checklist item?" -- the reverse
+  // direction too. Set (recordInspectionResults, Inspections.gs) right after the Finding it produced
+  // is created, only ever non-blank for a Crossed result -- lets the Completed Checklists detail view
+  // link straight to the Finding that came out of a given crossing.
+  InspectionResults:      ['id','inspectionId','checklistItemId','state','riskLevel','resolutionWindowHours','notes','evidenceUrls','recordedAt','participantId','findingId'],
   // checklistItemId/recreatedFromId appended at the end (established pattern, see Venues above).
   // checklistItemId -- REQ: "Any log created through a checklist must be traceable to that specific
   // item in the checklist." Set only when a Finding is auto-created from a Crossed checklist item

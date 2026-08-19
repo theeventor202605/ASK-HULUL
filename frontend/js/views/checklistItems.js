@@ -25,14 +25,22 @@ function padRef_(value, digits) {
   return String(n).padStart(digits, '0');
 }
 
-async function renderChecklistItems() {
+async function renderChecklistItems(params) {
   var root = document.getElementById('viewRoot');
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Inspections.
   var canManage = hasPermission('checklistItem.manage');
   var canDedupe = hasPermission('checklistItem.dedupe');
   var [items, disciplines] = await Promise.all([Api.call('listChecklistItems', {}), Api.call('listDisciplines', {})]);
   var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
-  var view = { phase: phases[0] || '', category: '', checklistType: '' };
+  // Deep-link support, e.g. '#/checklist-items?itemId=CHK-0042' from a Finding's "From checklist
+  // item" link (findings.js) -- pre-scope Phase/Category/Sub-Category to the linked item's own
+  // values instead of the usual defaults, then scroll to + briefly highlight its row once rendered
+  // (see the one-shot pendingHighlightId_ flag below renderTable).
+  var highlightItem = params && params.itemId ? items.filter(function (i) { return i.id === params.itemId; })[0] : null;
+  var pendingHighlightId_ = highlightItem ? highlightItem.id : null;
+  var view = highlightItem
+    ? { phase: highlightItem.phase, category: highlightItem.category, checklistType: highlightItem.checklistType }
+    : { phase: phases[0] || '', category: '', checklistType: '' };
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(Term('checklistItem_plural')) + '</div>' +
@@ -193,6 +201,19 @@ async function renderChecklistItems() {
       // hideExportButton: this table's own auto Export CSV button would duplicate the one already
       // in the list-section header above (csvButtonsHtml_).
       filtered, { hideExportButton: true }) + '</div></div>';
+
+    // One-shot: only the initial deep-linked render scrolls/highlights (a later user click on a
+    // different Phase/Category/Sub-Category tab must not keep re-triggering it). UI.table() gives
+    // every row a data-row-id="<row.id>" attribute (ui.js) -- that's the hook used here.
+    if (pendingHighlightId_) {
+      var targetRow = wrap.querySelector('[data-row-id="' + esc(pendingHighlightId_) + '"]');
+      if (targetRow) {
+        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetRow.classList.add('ci-row-highlight');
+        setTimeout(function () { targetRow.classList.remove('ci-row-highlight'); }, 2500);
+      }
+      pendingHighlightId_ = null;
+    }
 
     if (!canManage) return;
     wrap.querySelectorAll('[data-edit-ci]').forEach(function (btn) {

@@ -595,10 +595,12 @@ function recordInspectionResults(user, p) {
     var riskLevel = r.riskLevel || (item ? item.defaultRisk : 'Medium');
     var windowHours = r.resolutionWindowHours || (item ? item.defaultWindowHours : 24);
 
+    var inspectionResultId = newId('InspectionResults');
     insertRow('InspectionResults', {
-      id: newId('InspectionResults'), inspectionId: p.inspectionId, checklistItemId: r.checklistItemId,
+      id: inspectionResultId, inspectionId: p.inspectionId, checklistItemId: r.checklistItemId,
       state: r.state, riskLevel: riskLevel, resolutionWindowHours: windowHours, notes: r.notes || '',
-      evidenceUrls: (r.evidenceUrls || []).join(','), recordedAt: nowIso_(), participantId: p.participantId
+      evidenceUrls: (r.evidenceUrls || []).join(','), recordedAt: nowIso_(), participantId: p.participantId,
+      findingId: ''
     });
 
     if (r.state === 'Crossed') {
@@ -615,6 +617,10 @@ function recordInspectionResults(user, p) {
         checklistItemId: r.checklistItemId || '', recreatedFromId: ''
       };
       insertRow('Findings', finding);
+      // REQ follow-up: "are logs traceable back to that checklist item?" -- the reverse direction:
+      // the InspectionResults row that produced this Finding now points back at it too, so the
+      // Completed Checklists detail view (eventDetail.js) can link straight through to it.
+      updateRow('InspectionResults', inspectionResultId, { findingId: finding.id });
       // Tier 1 escalation target is set at creation time so escalation checks can find it later.
       createdFindings.push(finding);
       notifyFindingCreated_(finding);

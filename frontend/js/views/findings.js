@@ -976,9 +976,16 @@ async function renderFindingDetail(params) {
         // checklist." checklistItemDescription (viewFinding enrichment, Findings.gs) is only present
         // when this finding was auto-created from a Crossed checklist item -- blank on manually
         // logged findings (Log Finding has no single checklist item to point at), so this line simply
-        // doesn't render for those.
+        // doesn't render for those. REQ follow-up: "are logs identifiable and traceable back to that
+        // checklist item?" -- the description is now a link into the Checklist Items catalog
+        // (#/checklist-items?itemId=..., checklistItems.js), which scrolls to and highlights that
+        // exact row, instead of just naming it in plain text. t()'s interpolation is a raw string
+        // replace (see i18n.js), so the pre-built <a> tag below is safe to pass straight through as
+        // the {{description}} value -- only the link's own visible text needs esc(), not the tag.
         (finding.checklistItemDescription
-          ? '<div class="muted" style="font-size:12px;margin:-8px 0 16px;">' + esc(t('checklist_item_traceability', { description: finding.checklistItemDescription })) + '</div>'
+          ? '<div class="muted" style="font-size:12px;margin:-8px 0 16px;">' + t('checklist_item_traceability', {
+              description: '<a href="#/checklist-items?itemId=' + esc(finding.checklistItemId) + '" style="color:var(--accent);font-weight:600;">' + esc(finding.checklistItemDescription) + '</a>'
+            }) + '</div>'
           : '') +
         '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
           '<div class="field-label" style="margin-top:0;">' + esc(t('description')) + '</div>' +

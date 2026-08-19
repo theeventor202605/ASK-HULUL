@@ -624,6 +624,11 @@ table.data-table tr:hover td{ background:#fafbff; }
    (same variables as .badge-open above) so it reads as calm/informational, not alarming. */
 .badge-info{ background:var(--info-soft); color:var(--info); }
 
+/* Deep-link highlight (checklistItems.js): briefly flags the row a Finding's "From checklist item"
+   link scrolled to, then fades back to normal -- transition handles the fade-out when the class is
+   removed after the timeout, no keyframes needed. */
+.ci-row-highlight{ background:var(--info-soft) !important; transition:background-color 2s ease; }
+
 /* REQ (Finding detail redesign): "Risk level and status are barely noticeable." A colored strip at
    the top of the Finding card (findings.js, findingHeroStripHtml_) scoped bigger badge styling so the
    status pill reads clearly against it without changing the default .badge size used everywhere else
