@@ -658,30 +658,32 @@ function snapshotOverdueVersionsIfNeeded_(eventId, versionNumber) {
   });
 }
 
-// Opens a fresh round: every per-event Templates row that ISN'T already Evaluated resets to 'Sent'
-// (file/review fields cleared, stamped with the new round's versionNumber) so the configured
-// uploader role can start again. REQ follow-up: "those approved [documents]... I wanted them to
-// stay in their current state" -- a document already fully Evaluated needs no further action, so it
-// keeps its file, status, and versionNumber exactly as they were at approval, even once later
-// rounds open; only Sent/In Progress/Submitted/Under Review/Missed rows (i.e. anything not yet
-// resolved) get reopened for the new round. Only ever called immediately after
-// snapshotOverdueVersionsIfNeeded_ has archived the version that just ended, so nothing about the
-// prior round is ever lost even for the rows that DO get reset here -- it's just no longer the live
-// copy for those.
+// Opens a fresh round WITHOUT touching any document's actual state. REQ follow-up: "Whatever state
+// the document was on must stay on when new version is created" -- a document that was In Progress,
+// Submitted, Under Review, or Missed when the deadline hit stays exactly that (same file, same
+// status, same reviewer notes) once the new version opens; the new deadline just determines how much
+// longer it can sit there before locking again, and every action still available for that status
+// (upload/submit for Sent/In Progress/Missed, evaluate/reject for Submitted/Under Review -- see
+// templateActionsHtml_, eventDetail.js) picks back up right where it left off, no re-sending needed.
+// Only versionNumber moves forward, so the table's Version column reflects which round is now
+// actually governing this document's deadline -- except a fully Evaluated row, which is done and
+// stays pinned to whichever round it was actually approved in forever. Only ever called immediately
+// after snapshotOverdueVersionsIfNeeded_ has archived the round that just ended, so the exact
+// snapshot of "what every document looked like right as that deadline passed" is preserved in
+// TemplateVersionSnapshots regardless of what happens to the live row afterwards.
 function resetTemplatesForNewVersion_(eventId, newVersionNumber) {
   findWhere('Templates', function (t) { return t.eventId === eventId; }).forEach(function (t) {
     if (t.status === 'Evaluated') return;
-    updateRow('Templates', t.id, {
-      status: 'Sent', fileUrl: '', fileName: '', mimeType: '', uploadedBy: '',
-      reviewedBy: '', reviewedAt: '', reviewReason: '', updatedAt: nowIso_(), versionNumber: newVersionNumber
-    });
+    updateRow('Templates', t.id, { versionNumber: newVersionNumber });
   });
 }
 
 // The ONE automatic chain: if version 1 is the only version that exists for this event and its
 // deadline has passed, auto-create version 2 (deadline = version 1's deadline + the configured gap)
-// and reopen every document for it. Idempotent -- only ever acts while exactly one version exists,
-// so calling it again after version 2 exists (or before version 1's deadline arrives) is a no-op.
+// and unlocks every document for it, unchanged (see resetTemplatesForNewVersion_ -- despite the
+// name, it no longer resets anything but versionNumber). Idempotent -- only ever acts while exactly
+// one version exists, so calling it again after version 2 exists (or before version 1's deadline
+// arrives) is a no-op.
 function maybeAutoCreateVersion2_(eventId) {
   var versions = templateDeadlineVersionsForEvent_(eventId);
   if (versions.length !== 1) return;
