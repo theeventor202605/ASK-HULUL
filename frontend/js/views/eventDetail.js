@@ -2784,7 +2784,7 @@ function updateRecordResultsProgress_() {
 // itself decides insert-vs-update off the existingByItemId map it already has in closure, not this
 // attribute.
 function recordResultRowHtml_(it, existing) {
-  var riskOptions = ['Critical', 'High', 'Medium', 'Low'].map(function (r) {
+  var riskOptions = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(function (r) {
     return '<option value="' + r + '"' + (r === (existing ? existing.riskLevel : it.defaultRisk) ? ' selected' : '') + '>' + esc(t('risk_' + r.toLowerCase())) + '</option>';
   }).join('');
   var windowVal = existing ? existing.resolutionWindowHours : it.defaultWindowHours;
@@ -3112,7 +3112,7 @@ var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen'
 // FINDING_BOARD_LABELS (a second, separate hardcoded English label map) used to live here -- removed
 // in favor of UI.statusLabel(status), which is the exact same lookup UI.statusBadge itself now uses
 // (ui.js), so this board's headers translate for free instead of needing their own copy kept in sync.
-var RISK_BORDER_COLOR = { Critical: 'var(--critical)', High: 'var(--danger)', Medium: 'var(--warning)', Low: 'var(--success)' };
+var RISK_BORDER_COLOR = { Critical: 'var(--critical)', High: 'var(--danger)', Medium: 'var(--warning)', Low: 'var(--success)', Info: 'var(--info)' };
 // Who can create/edit/delete a finding is now RBAC-driven (see PERMISSION_REGISTRY_,
 // backend/Permissions.gs, and hasPermission() calls below) instead of a hardcoded role array --
 // the finding.create/finding.edit/finding.delete permission keys' defaultRoles are exactly what

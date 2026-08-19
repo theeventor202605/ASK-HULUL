@@ -277,7 +277,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
     UI.field(t('field_description'), '<textarea id="fCiDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>') +
     '<div class="form-row">' +
     UI.field(t('col_default_risk'), '<select id="fCiRisk" class="field-input">' +
-      ['Low', 'Medium', 'High', 'Critical'].map(function (r) {
+      ['Info', 'Low', 'Medium', 'High', 'Critical'].map(function (r) {
         return '<option' + (r === (initial.defaultRisk || 'Medium') ? ' selected' : '') + '>' + r + '</option>';
       }).join('') + '</select>') +
     UI.field(t('field_default_window_hours'), '<input id="fCiWindow" type="number" class="field-input" value="' + (initial.defaultWindowHours != null && initial.defaultWindowHours !== '' ? initial.defaultWindowHours : 24) + '" />') + '</div>';

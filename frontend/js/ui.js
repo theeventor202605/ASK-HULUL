@@ -162,11 +162,14 @@ window.UI = {
   },
 
   // Same "shared function, one fix covers every call site" reasoning as statusBadge above --
-  // risk (Critical/High/Medium/Low, RISK_LEVELS_ in backend/Resolutions.gs) is itself the data value
-  // compared elsewhere, so it's kept as the lookup key; only the rendered text is translated.
+  // risk (Critical/High/Medium/Low, plus Info -- REQ follow-up: "risk level Info that sits below
+  // Low", deliberately NOT in RISK_LEVELS_/backend/Resolutions.gs since it's exempt from escalation)
+  // is itself the data value compared elsewhere, so it's kept as the lookup key; only the rendered
+  // text is translated. Info reuses the app's existing --info/--info-soft blue, distinct from the
+  // green/amber/red/dark-red low->critical progression -- calmer, not alarming.
   riskBadge(risk) {
-    var cls = risk === 'Critical' ? 'badge-critical' : risk === 'High' ? 'badge-high' : risk === 'Medium' ? 'badge-medium' : risk === 'Low' ? 'badge-low' : 'badge-neutral';
-    var riskLabelKeys = { Critical: 'risk_critical', High: 'risk_high', Medium: 'risk_medium', Low: 'risk_low' };
+    var cls = risk === 'Critical' ? 'badge-critical' : risk === 'High' ? 'badge-high' : risk === 'Medium' ? 'badge-medium' : risk === 'Low' ? 'badge-low' : risk === 'Info' ? 'badge-info' : 'badge-neutral';
+    var riskLabelKeys = { Critical: 'risk_critical', High: 'risk_high', Medium: 'risk_medium', Low: 'risk_low', Info: 'risk_info' };
     var label = riskLabelKeys[risk] ? t(riskLabelKeys[risk]) : (risk || '—');
     return '<span class="badge ' + cls + '">' + esc(label) + '</span>';
   },

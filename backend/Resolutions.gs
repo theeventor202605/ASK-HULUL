@@ -245,6 +245,11 @@ function runEscalationCheck(user) {
   var triggered = [];
 
   openFindings.forEach(function (finding) {
+    // REQ follow-up: "Info" risk level sits below Low and is exempt from escalation entirely --
+    // never fires Tier 1/2/3, regardless of how long it's sat open past its resolutionWindowAt.
+    // Deliberately NOT added to RISK_LEVELS_ (above) for this same reason -- that array drives the
+    // Escalations settings delay table, which has nothing to configure for a level that never escalates.
+    if (finding.riskLevel === 'Info') return;
     if (!finding.resolutionWindowAt) return;
     var windowAt = new Date(finding.resolutionWindowAt);
     var escalations = findWhere('Escalations', function (e) { return e.findingId === finding.id; });

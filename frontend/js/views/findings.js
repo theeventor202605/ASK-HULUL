@@ -112,7 +112,10 @@ function findingRiskMeta_(risk) {
     Critical: { label: t('risk_critical'), color: 'var(--critical)', soft: 'var(--critical-soft)' },
     High: { label: t('risk_high'), color: 'var(--danger)', soft: 'var(--danger-soft)' },
     Medium: { label: t('risk_medium'), color: 'var(--warning)', soft: 'var(--warning-soft)' },
-    Low: { label: t('risk_low'), color: 'var(--success)', soft: 'var(--success-soft)' }
+    Low: { label: t('risk_low'), color: 'var(--success)', soft: 'var(--success-soft)' },
+    // REQ follow-up: "risk level Info that sits below Low" -- reuses the app's info blue, same as
+    // UI.riskBadge's badge-info (calmer than the red/amber/green severity progression above).
+    Info: { label: t('risk_info'), color: 'var(--info)', soft: 'var(--info-soft)' }
   };
   return map[risk] || { label: risk || '—', color: 'var(--text-600)', soft: '#f1f3f9' };
 }
@@ -396,7 +399,7 @@ async function renderNewFinding(params) {
         '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
         UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
         '<div class="form-row">' +
-          UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
+          UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Info</option><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
           UI.field(t('resolution_window_hours'), '<input id="fWindow" type="number" class="field-input" value="24" />') +
         '</div>' +
         '<div class="field-label" style="margin-top:8px;">' + esc(t('evidence_photo_video')) + '</div>' +
@@ -635,7 +638,7 @@ async function renderEditFinding(params) {
       '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
       UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
       UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
-        ['Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
+        ['Info', 'Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
       '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('save_changes')) + '</button>' +
     '</div></div>';
 

@@ -192,7 +192,19 @@ function viewFinding(user, p) {
 
   var isParticipant = isParticipantRoleCode_(user.role); // BUG FIX: see findingVisibleTo_'s comment above
   var isReviewer = user.role === ROLES.INSPECTOR || user.role === ROLES.PROJECT_MANAGER || user.role === ROLES.SYSTEM_ADMIN;
-  if (isParticipant && finding.status === 'Open') {
+  // REQ follow-up: "Info when opened jumps to resolved." An Info-level Risk Log carries no real
+  // compliance action to take (same reasoning as its escalation exemption -- runEscalationCheck,
+  // Resolutions.gs), so unlike every other risk level it skips the whole submit/review workflow
+  // entirely: the very first open by ANYONE with view access (participant or reviewer alike, hence
+  // checked before the isParticipant/isReviewer branches below) closes it straight to Resolved -- no
+  // Viewed/Submitted/InReview stop along the way, no resolution evidence required.
+  if (finding.status === 'Open' && finding.riskLevel === 'Info') {
+    finding = updateRow('Findings', p.findingId, { status: 'Resolved' });
+    audit(user.id, 'AUTO_RESOLVE_INFO_FINDING', 'Findings', p.findingId, { status: 'Resolved' });
+    findWhere('Escalations', function (e) { return e.findingId === p.findingId && !e.resolvedAt; })
+      .forEach(function (e) { updateRow('Escalations', e.id, { resolvedAt: nowIso_() }); });
+    notifyFindingStatusChange_(finding, 'Resolved');
+  } else if (isParticipant && finding.status === 'Open') {
     finding = updateRow('Findings', p.findingId, { status: 'Viewed' });
     audit(user.id, 'VIEW_FINDING', 'Findings', p.findingId, { status: 'Viewed' });
   } else if (isReviewer && (finding.status === 'Submitted' || finding.status === 'Resubmitted')) {

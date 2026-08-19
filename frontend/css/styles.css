@@ -620,6 +620,9 @@ table.data-table tr:hover td{ background:#fafbff; }
 .badge-low{ background:var(--success-soft); color:var(--success); } .badge-medium{ background:var(--warning-soft); color:var(--warning); }
 .badge-high{ background:var(--danger-soft); color:var(--danger); } .badge-neutral{ background:#f1f3f9; color:var(--text-600); }
 .badge-critical{ background:var(--critical); color:#fff; } .badge-critical .badge-dot{ background:#fff; }
+/* REQ follow-up: "risk level Info that sits below Low" -- reuses the app's existing info blue
+   (same variables as .badge-open above) so it reads as calm/informational, not alarming. */
+.badge-info{ background:var(--info-soft); color:var(--info); }
 
 /* REQ (Finding detail redesign): "Risk level and status are barely noticeable." A colored strip at
    the top of the Finding card (findings.js, findingHeroStripHtml_) scoped bigger badge styling so the

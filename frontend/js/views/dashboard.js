@@ -157,8 +157,10 @@ function renderDashboardRecentEvents_(events) {
 // severity order (worst first) rather than whatever order Object.keys(riskBreakdown) happens to
 // return, and -- unlike the old version -- actually has a Critical entry, which used to silently fall
 // through to the "Low" green.
-var DASHBOARD_RISK_ORDER_ = ['Critical', 'High', 'Medium', 'Low'];
-var DASHBOARD_RISK_COLOR_ = { Critical: '#7f1d1d', High: '#dc2626', Medium: '#d97706', Low: '#16a34a' };
+// REQ follow-up: "risk level Info that sits below Low" -- appended last (lowest severity) with the
+// app's info blue (matches --info in styles.css), distinct from the red/amber/green progression above.
+var DASHBOARD_RISK_ORDER_ = ['Critical', 'High', 'Medium', 'Low', 'Info'];
+var DASHBOARD_RISK_COLOR_ = { Critical: '#7f1d1d', High: '#dc2626', Medium: '#d97706', Low: '#16a34a', Info: '#2563eb' };
 
 function renderDashboardRiskChart_(riskBreakdown) {
   var canvas = document.getElementById('riskChart');

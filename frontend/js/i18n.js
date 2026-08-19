@@ -137,7 +137,7 @@ window.HULUL_I18N = {
     checklist_item_traceability: 'From checklist item: {{description}}',
     recreated_from_banner_title: 'Automatically recreated', recreated_from_banner_body: 'This finding was automatically created after a previous attempt was rejected twice. Original:',
     recreated_into_banner_title: 'Superseded', recreated_into_banner_body: 'This finding was rejected twice and is now closed. A new finding was automatically created to continue tracking this issue:',
-    risk_critical: 'Critical', risk_high: 'High', risk_medium: 'Medium', risk_low: 'Low', risk_label_suffix: '{{label}} RISK',
+    risk_critical: 'Critical', risk_high: 'High', risk_medium: 'Medium', risk_low: 'Low', risk_info: 'Info', risk_label_suffix: '{{label}} RISK',
 
     // ---- Settings (settings.js) ----
     settings_tab_profile: 'Profile', settings_tab_appearance: 'Appearance', settings_tab_security: 'Security',
@@ -787,7 +787,7 @@ window.HULUL_I18N = {
     checklist_item_traceability: 'من عنصر القائمة: {{description}}',
     recreated_from_banner_title: 'تم الإنشاء تلقائيًا', recreated_from_banner_body: 'تم إنشاء هذا العنصر تلقائيًا بعد رفض محاولة سابقة مرتين. العنصر الأصلي:',
     recreated_into_banner_title: 'تم استبداله', recreated_into_banner_body: 'تم رفض هذا العنصر مرتين وأُغلق الآن. تم إنشاء عنصر جديد تلقائيًا لمتابعة هذه المشكلة:',
-    risk_critical: 'حرج', risk_high: 'مرتفع', risk_medium: 'متوسط', risk_low: 'منخفض', risk_label_suffix: 'خطورة {{label}}',
+    risk_critical: 'حرج', risk_high: 'مرتفع', risk_medium: 'متوسط', risk_low: 'منخفض', risk_info: 'معلومة', risk_label_suffix: 'خطورة {{label}}',
 
     // ---- Settings (settings.js) ----
     settings_tab_profile: 'الملف الشخصي', settings_tab_appearance: 'المظهر', settings_tab_security: 'الأمان',
