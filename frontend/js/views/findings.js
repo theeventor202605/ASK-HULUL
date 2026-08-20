@@ -1203,6 +1203,21 @@ async function renderFindingDetail(params) {
   // deliberately left as-is for now).
   var isParticipant = hasPermission('finding.resolve');
   var isReviewer = hasPermission('finding.review');
+  // REQ ("Opening checklists are done against the venue not participants, but they can assign
+  // operational participants to resolve the raised log"): who's responsible for THIS finding can be
+  // set/changed from here any time before it's closed -- gated on the finding.assignParticipant
+  // permission, separate from resolve/review since assigning responsibility isn't the same action as
+  // submitting or reviewing the fix.
+  var canAssign = hasPermission('finding.assignParticipant') && ['Resolved', 'Rejected'].indexOf(finding.status) === -1;
+  var operators = [];
+  if (canAssign) {
+    try {
+      var eventForAssign = await Api.call('getEvent', { eventId: eventId });
+      var venueIdForAssign = eventForAssign && eventForAssign.venue ? eventForAssign.venue.id : '';
+      var allParticipantsForAssign = venueIdForAssign ? await Api.call('listParticipants', { eventId: eventId, venueId: venueIdForAssign }) : [];
+      operators = allParticipantsForAssign.filter(function (pt) { return pt.type === 'Operator'; });
+    } catch (e) { /* best-effort -- the assign control below just shows an empty picker */ }
+  }
   var latestPending = resolutions.filter(function (r) { return r.decision === 'Pending'; })[0];
   // Whichever rejection is still "live" -- the reason ReOpen exists, or (if terminal) the reason
   // Rejected happened -- shown as a callout so the Participant knows what to fix without having to
@@ -1280,6 +1295,8 @@ async function renderFindingDetail(params) {
           '<div style="font-size:13px;">' + esc(latestRejected.comments || '—') + '</div></div></div>'
       : '') +
 
+    assignOperatorSectionHtml_(finding, canAssign, operators) +
+
     findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending) +
 
     (resolutions.length
@@ -1290,6 +1307,16 @@ async function renderFindingDetail(params) {
 
   document.getElementById('backFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=findings'; };
   wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending);
+  if (canAssign) {
+    document.getElementById('saveAssignOperatorBtn').onclick = async function () {
+      var select = document.getElementById('fAssignOperator');
+      try {
+        await Api.call('assignFindingParticipant', { findingId: findingId, participantId: select.value });
+        UI.toast(t('toast_operator_assigned'), 'success');
+        Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  }
 }
 
 function findingResolutionHistoryRowHtml_(r) {
@@ -1301,6 +1328,24 @@ function findingResolutionHistoryRowHtml_(r) {
     (r.comments ? '<div style="font-size:12.5px;color:var(--danger);margin-top:4px;">' + esc(t('reviewer_remarks')) + esc(r.comments) + '</div>' : '') +
     '<div style="margin-top:8px;">' + evidenceThumbsHtml_(r.evidenceUrls) + '</div>' +
   '</div>';
+}
+
+// REQ ("Opening checklists are done against the venue not participants, but they can assign
+// operational participants to resolve the raised log"): renders nothing at all when canAssign is
+// false (finding.assignParticipant permission missing, or the finding's already closed) -- same
+// "just don't show it" pattern as findingActionSectionHtml_ below, not a disabled control.
+function assignOperatorSectionHtml_(finding, canAssign, operators) {
+  if (!canAssign) return '';
+  var options = '<option value="">' + esc(t('assign_operator_unassigned_option')) + '</option>' +
+    operators.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === finding.participantId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('');
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('assign_operator_title')) + '</div></div>' +
+    '<div class="card-body">' +
+      (operators.length ? '' : '<div class="muted" style="font-size:12px;margin-bottom:8px;">' + esc(t('assign_operator_none_hint')) + '</div>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        '<select id="fAssignOperator" class="field-input" style="max-width:280px;">' + options + '</select>' +
+        '<button class="btn btn-primary btn-sm" id="saveAssignOperatorBtn">' + esc(t('save')) + '</button>' +
+      '</div>' +
+    '</div></div>';
 }
 
 // The one action available to the current viewer for the finding's current status -- Resolve

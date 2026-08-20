@@ -261,7 +261,14 @@ var SCHEMA = {
   // custom role as usable in the Place/Participant "type" picker (Venues > Places, Event >
   // Participants) alongside the 3 built-in types (Vendor/Operator/Exhibitor). See
   // isParticipantRoleCode_/listParticipantTypes (Roles.gs).
-  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt','isParticipantType'],
+  // isMandatoryOperator appended at the end -- REQ ("Opening checklists are done against the venue
+  // not participants, but they can assign operational participants to resolve the raised log ... a
+  // security operator must be available in every event, a H&S Operator must be available on every
+  // event"): flags an isParticipantType role (a custom Operator sub-type, e.g. "Security Operator")
+  // as one every event's venue is expected to have at least one Participant account for -- managed
+  // from the new Settings > Mandatory Operators tab, checked by getMandatoryOperatorCompliance
+  // (Events.gs). Meaningless on a role that isn't also isParticipantType.
+  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt','isParticipantType','isMandatoryOperator'],
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.
@@ -384,7 +391,32 @@ var SCHEMA = {
   // "exit" event to observe (pings are periodic, not continuous) -- lastSeenInsideAt IS the
   // "last time seen inside/near" timestamp, which doubles as the practical answer to "when did they
   // leave": some time after that moment, since no later ping ever matched this venue again.
-  VenueAttendance:        ['id','userId','venueId','firstAttendedAt','lastSeenInsideAt','createdAt']
+  VenueAttendance:        ['id','userId','venueId','firstAttendedAt','lastSeenInsideAt','createdAt'],
+  // REQ: "Under readiness add 'Annex' ... divided into three sections: Risk Assessments, Sign-Offs /
+  // Approvals, Certifications / TUVs / Supporting Records." A global, admin-seeded reference catalog
+  // (mirrors Disciplines/ChecklistItems -- seeded once via seedAnnexCategories_, Setup.gs) of every
+  // named category across the 3 fixed sections -- NOT per-event; every event sees the same catalog,
+  // same "shared reference list, per-event tracking lives in its own join table" split Templates.gs
+  // already uses (TemplateLibrary vs Templates). section is one of 'RiskAssessments'/'SignOffs'/
+  // 'Certifications'. orderIndex preserves the exact numbered order given in the REQ.
+  AnnexCategories:        ['id','section','name','orderIndex','status'],
+  // Per-(event, category) override -- lazily created (see listEventAnnex, Annex.gs) so a brand new
+  // event doesn't need 28 rows pre-inserted; a category with no row here yet is just "not required,
+  // not provided" by default, same virtual-row convention getEventTemplates (Templates.gs) uses for
+  // TemplateLibrary entries with no Templates row yet. required: PM/Analyst-set flag ("mark document
+  // as required" REQ) that drives the EMC-facing missing-mandatory count. status: 'Provided' once at
+  // least one uploaded AnnexDocuments row under this (event, category) has been Accepted, else
+  // 'NotProvided' -- recomputed by reviewAnnexDocument, never hand-set. infoRequestNote/By/At: REQ
+  // "Allow PM or analyst to ask for more information per category" -- the latest such request, shown
+  // to the EMC as a banner on that category until a new document is uploaded or reviewed.
+  AnnexEventCategories:   ['id','eventId','categoryId','required','status','infoRequestNote','infoRequestedBy','infoRequestedAt'],
+  // REQ: "Allows EMC Event manager to upload documents under each category. So an EMC manager can
+  // upload 10 documents under 'Event General Risk Assessment'." Many-per-category, unlike Templates'
+  // one-current-file-per-entry model -- every upload is its own row, kept even after review (so the
+  // full history stays visible), status: 'Pending' (just uploaded) / 'Accepted' / 'Rejected' -- REQ
+  // "accept uploaded documents, then mark as provided" -- Accepted is what flips the parent
+  // AnnexEventCategories row to 'Provided' (reviewAnnexDocument, Annex.gs).
+  AnnexDocuments:         ['id','eventId','categoryId','fileUrl','fileName','mimeType','uploadedBy','uploadedAt','status','reviewedBy','reviewedAt','reviewComments']
 };
 
 var ROLES = {
@@ -663,7 +695,8 @@ var ID_PREFIX = {
   Projects: 'PRJ', SupportTickets: 'TKT', SupportTicketComments: 'TKC', EventChatMessages: 'ECM', Roles: 'ROL',
   TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
-  FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS'
+  FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
+  AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

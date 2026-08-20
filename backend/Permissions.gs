@@ -76,6 +76,17 @@ var PERMISSION_REGISTRY_ = {
     module: 'Risk Logging', label: 'Accept/reject a submitted resolution', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
+  // REQ ("Opening checklists are done against the venue not participants, but they can assign
+  // operational participants to resolve the raised log"): a checklist-raised log from an Opening-
+  // phase inspection starts with no participant at all (see recordInspectionResults, Inspections.gs)
+  // -- this is the separate, later step that picks who's actually responsible for fixing it.
+  // Deliberately its own permission key rather than reusing finding.resolve/finding.review -- an
+  // Inspector or PM assigning responsibility isn't the same action as the Operator submitting the
+  // fix, or a reviewer accepting/rejecting it.
+  'finding.assignParticipant': {
+    module: 'Risk Logging', label: 'Assign an operational participant to resolve a finding', page: 'findings', crud: ['update'],
+    defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
+  },
   // participant.create/participant.edit (the old venue-wide Participants.gs create/update API) were
   // removed from here -- Places.gs's createPlace/updatePlace (place.create/place.manage below) fully
   // superseded them and these two keys had no requirePermission() call site left anywhere (confirmed
@@ -325,6 +336,20 @@ var PERMISSION_REGISTRY_ = {
   'roadmapItem.manage': {
     module: 'Roadmap', label: 'Edit an event\'s rolled-out Roadmap items (mark done, override a date, add/remove, regenerate)', page: 'roadmap', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EventManager', 'ProjectManager']
+  },
+  // Annex (Annex.gs) -- REQ: "Under readiness add 'Annex': Allows EMC Event manager to upload
+  // documents under each category ... Inspection Company PM or analyst can mark document as required
+  // ... accept uploaded documents, then mark as provided ... ask for more information per category."
+  // Same "who provides vs. who reviews" split as template.upload/template.review above: annex.upload
+  // is the EMC's own upload action, annex.manage covers every PM/Analyst-side action (mark required,
+  // accept/reject a document, mark a category Provided, request more info).
+  'annex.upload': {
+    module: 'Readiness', label: 'Upload an Annex document (the "EMC Event Manager" step)', page: 'annex', crud: ['create', 'delete'],
+    defaultRoles: ['EventManager', 'SystemAdmin']
+  },
+  'annex.manage': {
+    module: 'Readiness', label: 'Manage Annex categories (mark required, accept/reject documents, mark provided, request info)', page: 'annex', crud: ['update', 'delete'],
+    defaultRoles: ['ProjectManager', 'InspectionAnalyst', 'InspectionAdmin', 'SystemAdmin']
   }
 };
 

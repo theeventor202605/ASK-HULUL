@@ -21,6 +21,11 @@ var EVENT_TABS = [
   ['chat', 'tab_chat', function () { return t('tab_chat'); }, function () { return !isParticipantRole_(HululState.user.role); }],
   ['templates', 'tab_templates', function () { return t('readiness_x_label', { term: Term('template_plural') }); }],
   ['approval', 'tab_approval', function () { return t('tab_approval'); }],
+  // REQ: "Under readiness add 'Annex'" -- fixed catalog of document categories (Risk Assessments /
+  // Sign-Offs / Certifications) the EMC uploads against and the PM/Analyst reviews. Grouped with
+  // templates/approval/scoreOverview under Readiness below (EVENT_TAB_GROUPS_), same reasoning as
+  // scoreOverview's own move there.
+  ['annex', 'tab_annex'],
   // REQ follow-up: "Disciplines & Inspectors" -> "Assignments", "Inspections & Checklist Items" ->
   // "Checklists" -- both used to compose their label from two Term()s via and_join; now just a plain
   // fixed word for each, so no entityLabelFn is needed at all (tabLabel_ falls back to t(tb[1]) --
@@ -82,7 +87,7 @@ var EVENT_TAB_GROUPS_ = [
   // REQ follow-up: "Move Score tab from Checklists to Readiness." -- scoreOverview (Document Review
   // scoring across every document) fits better alongside templates/approval than the Checklist-item
   // workflow tabs it was grouped with.
-  { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval', 'scoreOverview'] },
+  { key: 'readiness', labelKey: 'tab_group_readiness', tabs: ['templates', 'approval', 'scoreOverview', 'annex'] },
   { key: 'inspectionsGroup', labelKey: 'tab_group_inspections', tabs: ['disciplines', 'inspections', 'completedChecklists'] },
   // REQ follow-up: "Move Log Photos to Findings tab" + explicit subtab order (Log Photos, Risk
   // Logging, Photo Timeline, Escalations) -- logPhotos moved out of inspectionsGroup above into here,
@@ -121,6 +126,7 @@ function eventTabRenderers_() {
   if (!EVENT_TAB_RENDERERS_) {
     EVENT_TAB_RENDERERS_ = {
       overview: tabOverview, roadmap: tabRoadmap, chat: tabEventChat, templates: tabTemplates, approval: tabApproval,
+      annex: tabAnnex,
       disciplines: tabDisciplines, inspections: tabInspections, completedChecklists: tabCompletedChecklists, scoreOverview: tabScoreOverview, logPhotos: tabLogPhotos, findings: tabFindings,
       escalations: tabEscalations, findingPhotos: tabFindingPhotos, participants: tabParticipants,
       participantDisciplines: tabParticipantDisciplines, reports: tabReports, log: tabEventLog
@@ -685,6 +691,193 @@ async function tabTemplates(content, eventId, detail) {
   }
   var versionHistoryBtn = document.getElementById('viewVersionHistoryBtn');
   if (versionHistoryBtn) versionHistoryBtn.onclick = function () { openVersionHistoryModal_(eventId); };
+}
+
+// REQ: "Under readiness add 'Annex': Allows EMC Event manager to upload documents under each
+// category ... Inspection Company PM or analyst can mark document as required ... Provide table to
+// know how many documents have been uploaded and how many missing from mandatory ... accept
+// uploaded documents, then mark as provided ... ask for more information per category." One card per
+// fixed section (Risk Assessments / Sign-Offs / Certifications), each a table of that section's
+// categories -- required toggle, upload/accepted counts, status, and a Documents action that opens
+// the per-category document list. listEventAnnex (Annex.gs) does all the merge/rollup math; this
+// just renders what it returns.
+var ANNEX_SECTIONS_ = [
+  ['RiskAssessments', 'annex_section_risk_assessments'],
+  ['SignOffs', 'annex_section_sign_offs'],
+  ['Certifications', 'annex_section_certifications']
+];
+
+async function tabAnnex(content, eventId, detail) {
+  var data = await Api.call('listEventAnnex', { eventId: eventId });
+  var canUpload = hasPermission('annex.upload');
+  var canManage = hasPermission('annex.manage');
+  var summary = data.summary;
+
+  content.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;gap:14px;">' +
+    '<div style="font-weight:700;font-size:14px;">' + esc(t('annex_summary_x', { provided: summary.providedCount, required: summary.requiredCount, missing: summary.missingCount })) + '</div>' +
+    '</div></div>' +
+    ANNEX_SECTIONS_.map(function (sec) {
+      var rows = data.categories.filter(function (c) { return c.section === sec[0]; });
+      return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t(sec[1])) + '</div></div>' +
+        '<div class="card-body">' + UI.table([
+          { key: 'name', label: t('col_category') },
+          { key: 'required', label: t('col_required'), render: r => canManage
+            ? '<input type="checkbox" class="annex-required-cb" data-category-id="' + esc(r.categoryId) + '" ' + (r.required ? 'checked' : '') + ' />'
+            : (r.required ? t('col_required') : '—') },
+          { key: 'uploadedCount', label: t('col_uploaded'), render: r => String(r.uploadedCount) },
+          { key: 'acceptedCount', label: t('col_accepted'), render: r => String(r.acceptedCount) },
+          { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) + (r.infoRequestNote ? ' <span class="muted" style="font-size:11px;">' + esc(t('annex_info_requested_banner', { note: r.infoRequestNote })) + '</span>' : '') },
+          { key: 'actions', label: t('actions'), render: r => annexCategoryActionsHtml_(r, canUpload, canManage) }
+        ], rows, { emptyText: t('no_data') }) + '</div></div>';
+    }).join('');
+
+  content.querySelectorAll('.annex-required-cb').forEach(function (cb) {
+    cb.onchange = async function () {
+      try {
+        await Api.call('setAnnexCategoryRequired', { eventId: eventId, categoryId: cb.getAttribute('data-category-id'), required: cb.checked });
+        UI.toast(t('toast_annex_required_updated'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
+  content.querySelectorAll('[data-annex-upload]').forEach(function (btn) {
+    btn.onclick = function () { openAnnexUploadModal_(eventId, btn.getAttribute('data-annex-upload'), btn.getAttribute('data-annex-name')); };
+  });
+  content.querySelectorAll('[data-annex-documents]').forEach(function (btn) {
+    btn.onclick = function () {
+      var cat = data.categories.filter(function (c) { return c.categoryId === btn.getAttribute('data-annex-documents'); })[0];
+      if (cat) openAnnexDocumentsModal_(eventId, cat, canUpload, canManage);
+    };
+  });
+  content.querySelectorAll('[data-annex-request-info]').forEach(function (btn) {
+    btn.onclick = function () { openAnnexRequestInfoModal_(eventId, btn.getAttribute('data-annex-request-info'), btn.getAttribute('data-annex-name')); };
+  });
+  content.querySelectorAll('[data-annex-mark-provided]').forEach(function (btn) {
+    btn.onclick = async function () {
+      try {
+        await Api.call('markAnnexCategoryProvided', { eventId: eventId, categoryId: btn.getAttribute('data-annex-mark-provided'), provided: true });
+        UI.toast(t('toast_annex_provided'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
+  content.querySelectorAll('[data-annex-reopen]').forEach(function (btn) {
+    btn.onclick = async function () {
+      try {
+        await Api.call('markAnnexCategoryProvided', { eventId: eventId, categoryId: btn.getAttribute('data-annex-reopen'), provided: false });
+        UI.toast(t('toast_annex_reopened'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
+}
+
+function annexCategoryActionsHtml_(r, canUpload, canManage) {
+  var btns = [];
+  if (canUpload) btns.push('<button class="btn btn-secondary btn-sm" data-annex-upload="' + esc(r.categoryId) + '" data-annex-name="' + esc(r.name) + '">' + esc(t('btn_upload')) + '</button>');
+  btns.push('<button class="btn btn-secondary btn-sm" data-annex-documents="' + esc(r.categoryId) + '">' + esc(t('btn_documents')) + ' (' + r.uploadedCount + ')</button>');
+  if (canManage) {
+    btns.push('<button class="btn btn-secondary btn-sm" data-annex-request-info="' + esc(r.categoryId) + '" data-annex-name="' + esc(r.name) + '">' + esc(t('btn_request_info')) + '</button>');
+    if (r.status === 'Provided') {
+      btns.push('<button class="btn btn-secondary btn-sm" data-annex-reopen="' + esc(r.categoryId) + '">' + esc(t('btn_reopen_category')) + '</button>');
+    } else {
+      btns.push('<button class="btn btn-primary btn-sm" data-annex-mark-provided="' + esc(r.categoryId) + '">' + esc(t('btn_mark_provided')) + '</button>');
+    }
+  }
+  return '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + btns.join('') + '</div>';
+}
+
+function openAnnexUploadModal_(eventId, categoryId, categoryName) {
+  var body = UI.field(t('field_document_file'), '<input type="file" id="fAnnexFile" class="field-input" />');
+  UI.openModal(t('annex_upload_document_title') + ' — ' + categoryName, body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
+        var fileInput = document.getElementById('fAnnexFile');
+        if (!fileInput.files[0]) { UI.toast(t('toast_choose_file_first'), 'error'); return; }
+        try {
+          await Api.call('uploadAnnexDocument', {
+            eventId: eventId, categoryId: categoryId, fileBase64: await fileToBase64(fileInput.files[0]),
+            fileName: fileInput.files[0].name, mimeType: fileInput.files[0].type
+          });
+          UI.closeModal(); UI.toast(t('toast_annex_uploaded'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+}
+
+function openAnnexRequestInfoModal_(eventId, categoryId, categoryName) {
+  var body = UI.field(t('field_info_note'), '<textarea id="fAnnexInfoNote" class="field-input" rows="3"></textarea>');
+  UI.openModal(t('annex_request_info_title') + ' — ' + categoryName, body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
+        var note = document.getElementById('fAnnexInfoNote').value.trim();
+        if (!note) { UI.toast(t('toast_reason_required'), 'error'); return; }
+        try {
+          await Api.call('requestAnnexInfo', { eventId: eventId, categoryId: categoryId, note: note });
+          UI.closeModal(); UI.toast(t('toast_annex_info_requested'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
+}
+
+function annexDocumentRowHtml_(doc, canManage, canUpload) {
+  var canDelete = canManage || (canUpload && doc.uploadedBy === HululState.user.id && doc.status !== 'Accepted');
+  var actions = [];
+  if (canManage && doc.status === 'Pending') {
+    actions.push('<button class="btn btn-primary btn-sm" data-annex-doc-accept="' + esc(doc.id) + '">' + esc(t('btn_accept')) + '</button>');
+    actions.push('<button class="btn btn-danger btn-sm" data-annex-doc-reject="' + esc(doc.id) + '">' + esc(t('btn_reject')) + '</button>');
+  }
+  if (canDelete) actions.push('<button class="btn btn-secondary btn-sm" data-annex-doc-delete="' + esc(doc.id) + '">' + esc(t('delete')) + '</button>');
+  return '<tr>' +
+    '<td><a href="' + esc(doc.fileUrl) + '" target="_blank" style="color:var(--accent);">' + esc(doc.fileName) + '</a></td>' +
+    '<td>' + UI.statusBadge(doc.status) + '</td>' +
+    '<td>' + UI.fmtDate(doc.uploadedAt) + '</td>' +
+    '<td>' + esc(doc.reviewComments || '—') + '</td>' +
+    '<td><div style="display:flex;gap:6px;flex-wrap:wrap;">' + actions.join('') + '</div></td>' +
+    '</tr>';
+}
+
+function openAnnexDocumentsModal_(eventId, category, canUpload, canManage) {
+  var body = (category.infoRequestNote ? '<div class="muted" style="margin-bottom:10px;">' + esc(t('annex_info_requested_banner', { note: category.infoRequestNote })) + '</div>' : '') +
+    (category.documents.length
+      ? '<table class="data-table"><thead><tr><th>' + esc(t('col_file')) + '</th><th>' + esc(t('status')) + '</th><th>' + esc(t('col_uploaded_at')) + '</th><th>' + esc(t('col_review_comments')) + '</th><th>' + esc(t('actions')) + '</th></tr></thead><tbody>' +
+        category.documents.map(function (d) { return annexDocumentRowHtml_(d, canManage, canUpload); }).join('') + '</tbody></table>'
+      : '<div class="muted">' + esc(t('no_annex_documents_yet')) + '</div>');
+  var footerBtns = [{ label: t('close'), className: 'btn-secondary', onClick: UI.closeModal }];
+  if (canUpload) {
+    footerBtns.unshift({ label: t('btn_upload'), className: 'btn-primary', onClick: function () { UI.closeModal(); openAnnexUploadModal_(eventId, category.categoryId, category.name); } });
+  }
+  UI.openModal(t('annex_documents_modal_title', { category: category.name }), body, footerBtns);
+
+  var root = document.getElementById('modalRoot');
+  root.querySelectorAll('[data-annex-doc-accept]').forEach(function (btn) {
+    btn.onclick = function () { openAnnexReviewModal_(eventId, btn.getAttribute('data-annex-doc-accept'), 'Accepted', category); };
+  });
+  root.querySelectorAll('[data-annex-doc-reject]').forEach(function (btn) {
+    btn.onclick = function () { openAnnexReviewModal_(eventId, btn.getAttribute('data-annex-doc-reject'), 'Rejected', category); };
+  });
+  root.querySelectorAll('[data-annex-doc-delete]').forEach(function (btn) {
+    btn.onclick = function () {
+      UI.confirmModal(t('confirm_delete_annex_document'), async function () {
+        try {
+          await Api.call('deleteAnnexDocument', { documentId: btn.getAttribute('data-annex-doc-delete') });
+          UI.toast(t('toast_annex_document_deleted'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      });
+    };
+  });
+}
+
+function openAnnexReviewModal_(eventId, documentId, decision, category) {
+  var body = UI.field(t('field_review_comments'), '<textarea id="fAnnexReviewComments" class="field-input" rows="3"></textarea>');
+  UI.openModal(t('annex_review_document_title'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: function () { openAnnexDocumentsModal_(eventId, category, hasPermission('annex.upload'), hasPermission('annex.manage')); } },
+    { label: decision === 'Accepted' ? t('btn_accept') : t('btn_reject'), className: decision === 'Accepted' ? 'btn-primary' : 'btn-danger', onClick: async function () {
+        var comments = document.getElementById('fAnnexReviewComments').value.trim();
+        try {
+          await Api.call('reviewAnnexDocument', { documentId: documentId, decision: decision, reviewComments: comments });
+          UI.closeModal(); UI.toast(t('toast_annex_reviewed'), 'success'); Router.resolve();
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 // REQ: "Add a score column to Readiness Templates" -- getEventTemplatesScoringSummary returns null
@@ -2012,7 +2205,18 @@ async function tabInspections(content, eventId, detail) {
       { key: 'disciplineName', label: Term('discipline') }, { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) },
-      { key: 'progress', label: t('col_progress'), render: r => r.coverage ? t('progress_fraction', { done: r.coverage.done, total: r.coverage.total, term: Term('participant_plural').toLowerCase() }) : '—' },
+      // REQ: "Opening checklists are done against the venue not participants." coverage.mode
+      // (Inspections.gs's inspectionCoverage_) distinguishes an Opening-phase checklist (venue-wide,
+      // no participant dimension -- shows real item counts via coverage.items) from an Operational
+      // one (unchanged -- X of Y participants done).
+      { key: 'progress', label: t('col_progress'), render: r => {
+          if (!r.coverage) return '—';
+          if (r.coverage.mode === 'venue') {
+            var items = r.coverage.items || { done: 0, total: 0 };
+            return t('progress_fraction', { done: items.done, total: items.total, term: t('word_items') });
+          }
+          return t('progress_fraction', { done: r.coverage.done, total: r.coverage.total, term: Term('participant_plural').toLowerCase() });
+        } },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
       { key: 'actions', label: t('actions'), render: r => {
           // Edit/Delete are only offered while the inspection is still 'Scheduled' -- once results
@@ -2107,7 +2311,14 @@ async function tabInspections(content, eventId, detail) {
 
   content.querySelectorAll('[data-record]').forEach(btn => {
     var inspection = inspections.filter(i => i.id === btn.getAttribute('data-record'))[0];
-    btn.onclick = () => openChooseParticipantScreen_(content, eventId, inspection, detail && detail.venue);
+    // REQ: "Opening checklists are done against the venue not participants." An Opening-phase
+    // inspection skips the whole choose-a-participant screen (openChooseParticipantScreen_ below --
+    // that map/list is built entirely around picking one relevant Participant, which doesn't apply
+    // here) and jumps straight into the results form with participant=null; every other phase
+    // (Operational) keeps the original flow unchanged.
+    btn.onclick = () => inspection.phase === 'Opening'
+      ? openRecordResultsModal(eventId, inspection, null)
+      : openChooseParticipantScreen_(content, eventId, inspection, detail && detail.venue);
   });
 
   content.querySelectorAll('[data-edit-inspection]').forEach(btn => {
@@ -2771,10 +2982,19 @@ function renderNearestList_(eventId, inspection, participants, myLatLng) {
 // Marking an item Crossed requires a Risk Logging: notes, suggested action, and at least one
 // photo/video. Evidence uploads start the moment a file is selected (in the background, with its
 // own progress bar) rather than waiting for Save.
+// REQ: "Opening checklists are done against the venue not participants." `participant` is null for
+// an Opening-phase inspection (see the data-record handler above) -- listInspectionResults simply
+// omits participantId in that case, which returns every result already recorded for this inspection
+// (that endpoint's own filter is opt-in: `if (p.participantId) { ... }`), i.e. exactly the venue-wide
+// set this flow needs. recordResultsTitle_ below is the one shared place every downstream title/
+// filename falls back to a venue-level label instead of participant.name when participant is null.
+function recordResultsTitle_(inspection, participant) {
+  return participant ? t('record_results_for_x_title', { name: participant.name }) : t('record_results_for_venue_title');
+}
 async function openRecordResultsModal(eventId, inspection, participant) {
   var [items, existingResults] = await Promise.all([
     Api.call('listChecklistItems', {}),
-    Api.call('listInspectionResults', { inspectionId: inspection.id, participantId: participant.id })
+    Api.call('listInspectionResults', participant ? { inspectionId: inspection.id, participantId: participant.id } : { inspectionId: inspection.id })
   ]);
   // A checklistItemId can in theory have more than one recorded row (legacy multi-account data from
   // before the shift-account merge, see listInspectionResults' own comment) -- keep the most recent.
@@ -2814,7 +3034,7 @@ function openChecklistTypeStep_(eventId, inspection, participant, scope, byType,
     '</select>') +
     '<div class="muted" style="font-size:11px;margin-top:8px;">' + esc(t('checklist_type_pick_hint')) + '</div>';
 
-  UI.openModal(t('record_results_for_x_title', { name: participant.name }), body, [
+  UI.openModal(recordResultsTitle_(inspection, participant), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('continue_btn'), className: 'btn-primary', onClick: function () {
         var picked = document.getElementById('fRecordType').value;
@@ -2854,7 +3074,7 @@ function openRecordResultsForm_(eventId, inspection, participant, filteredItems,
         byType[typeName].map(function (it) { return recordResultRowHtml_(it, existingByItemId[it.id]); }).join('');
     }).join('');
 
-  var title = t('record_results_for_x_title', { name: participant.name }) + ' · ' + esc(inspection.disciplineName) + ' (' + esc(inspection.phase) + ')' +
+  var title = recordResultsTitle_(inspection, participant) + ' · ' + esc(inspection.disciplineName) + ' (' + esc(inspection.phase) + ')' +
     (typeLabel ? ' — ' + esc(typeLabel) : '');
 
   UI.openModal(title, body, [
@@ -3200,7 +3420,7 @@ async function saveInspectionResults_(eventId, inspection, participant, filtered
 
   try {
     var recordPromise = newResults.length
-      ? Api.call('recordInspectionResults', { inspectionId: inspection.id, participantId: participant.id, results: newResults })
+      ? Api.call('recordInspectionResults', Object.assign({ inspectionId: inspection.id, results: newResults }, participant ? { participantId: participant.id } : {}))
       : null;
     var updatePromises = updates.map(function (u) { return Api.call('updateInspectionResult', u); });
     var responses = await Promise.all((recordPromise ? [recordPromise] : []).concat(updatePromises));
@@ -3241,7 +3461,7 @@ function exportInspectionResultsCsv_(participant, inspection, filteredItems) {
   var rows = inspectionResultsSnapshot_(filteredItems);
   var header = [t('col_type'), t('field_description'), t('col_result'), t('col_risk_level'), t('field_window_hours'), t('field_notes_found')];
   var body = rows.map(function (r) { return [r.type, r.description, r.stateLabel, r.risk, r.windowHours, r.notes]; });
-  var filename = (participant.name + '-' + inspection.disciplineName + '-' + inspection.phase + '.csv').replace(/[^\w.\-]+/g, '_');
+  var filename = ((participant ? participant.name : t('venue_checklist_label')) + '-' + inspection.disciplineName + '-' + inspection.phase + '.csv').replace(/[^\w.\-]+/g, '_');
   UI.downloadCsv(filename, [header].concat(body));
 }
 
@@ -3249,15 +3469,16 @@ function printInspectionResults_(participant, inspection, filteredItems) {
   var rows = inspectionResultsSnapshot_(filteredItems);
   var w = window.open('', '_blank', 'width=800,height=900');
   if (!w) { UI.toast(t('toast_allow_popups'), 'error'); return; }
+  var subjectLabel = participant ? participant.name : t('venue_checklist_label');
   w.document.write(
-    '<!DOCTYPE html><html><head><title>' + esc(participant.name) + ' — ' + esc(inspection.disciplineName) + '</title>' +
+    '<!DOCTYPE html><html><head><title>' + esc(subjectLabel) + ' — ' + esc(inspection.disciplineName) + '</title>' +
     '<meta charset="UTF-8" /><style>' +
       'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;}' +
       'h2{margin:0 0 4px;} .sub{color:#666;font-size:12px;margin-bottom:16px;}' +
       'table{width:100%;border-collapse:collapse;font-size:12px;} th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top;}' +
       'th{background:#f3f3f3;}' +
     '</style></head><body>' +
-      '<h2>' + esc(participant.name) + '</h2>' +
+      '<h2>' + esc(subjectLabel) + '</h2>' +
       '<div class="sub">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + ' · ' + esc(UI.fmtDate(new Date().toISOString())) + '</div>' +
       '<table><thead><tr><th>' + esc(t('col_type')) + '</th><th>' + esc(t('field_description')) + '</th><th>' + esc(t('col_result')) + '</th><th>' + esc(t('col_risk_level')) + '</th><th>' + esc(t('field_window_hours')) + '</th><th>' + esc(t('field_notes_found')) + '</th></tr></thead><tbody>' +
       rows.map(function (r) {

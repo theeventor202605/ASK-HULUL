@@ -35,6 +35,9 @@ window.HULUL_I18N = {
     // Readiness Templates' own statuses not already covered above (Submitted/Evaluated/Missed are
     // shared with Findings/Venue Approval; 'In Progress' reuses status_inprogress).
     status_not_sent: 'Not Sent', status_sent: 'Sent', status_under_review: 'Under Review',
+    // Annex documents/categories (Annex.gs) -- Pending/Rejected reuse status_pending/status_rejected
+    // above (same words, same meaning).
+    status_accepted: 'Accepted', status_provided: 'Provided', status_not_provided: 'Not Provided',
     // risk_critical/high/medium/low already exist further down (used by the risk filter chips) --
     // UI.riskBadge (ui.js) reuses those same keys, no new ones needed.
     nav_dashboard: 'Dashboard', nav_events: 'Events', nav_projects: 'Projects', nav_users: 'Users & Roles', nav_orgs: 'Organizations',
@@ -64,6 +67,7 @@ window.HULUL_I18N = {
     events_title: 'Events', new_event: 'New Event', tab_overview: 'Overview', tab_chat: 'Chat', tab_venue: 'Venue',
     tab_templates: 'Readiness Templates', tab_approval: 'Opening Approval', tab_disciplines: 'Assignments',
     tab_inspections: 'Inspections', tab_completed_checklists: 'Completed Checklists', tab_score_overview: 'Score',
+    tab_annex: 'Annex',
     tab_findings: 'Risk Logging', tab_resolutions: 'Resolutions',
     tab_escalations: 'Escalations', tab_participants: 'Participants', tab_participants_new: 'New', tab_reports: 'Reports', tab_event_log: 'Logs',
     // REQ: "The Events' tab menu is long. Divide it into tab and subtab." -- group-parent labels
@@ -131,6 +135,8 @@ window.HULUL_I18N = {
     rejected_final: ' — final', rejected_fix_resubmit: ' — please fix and resubmit',
     resolution_history: 'Resolution history', resolution_history_subtitle: 'Remarks & photos submitted by the {{term}}',
     reviewer_remarks: 'Reviewer remarks: ', resolve_this_x: 'Resolve this {{term}}', remarks: 'Remarks',
+    assign_operator_title: 'Assign operator to resolve', assign_operator_unassigned_option: 'Unassigned',
+    assign_operator_none_hint: 'No Operator participants found at this venue yet.', toast_operator_assigned: 'Operator assigned.',
     resolution_evidence_required: 'Photo or video evidence of resolution (required)', submit_resolution: 'Submit resolution',
     review_resolution: 'Review resolution', accept: 'Accept', reject: 'Reject',
     rejection_remarks_required_label: 'Rejection remarks (required)', confirm_rejection: 'Confirm rejection',
@@ -648,6 +654,7 @@ window.HULUL_I18N = {
     x_done_of_total_suffix: ' — {{done}}/{{total}} done', all_checklist_types_option: 'All {{term}}',
     checklist_type_pick_hint: 'Only the type you pick gets opened this visit -- anything else stays for a later visit.',
     record_results_for_x_title: 'Record results — {{name}}', continue_btn: 'Continue',
+    record_results_for_venue_title: 'Record results — Venue', venue_checklist_label: 'Venue', word_items: 'items',
     unset_items_stay_open_hint: 'Items left blank stay open for next time.',
     x_of_y_completed: '{{done}} of {{total}} completed', recorded_on_label: 'Recorded {{date}}',
     word_evidence: 'Evidence', word_pending: 'Pending', col_result: 'Result',
@@ -704,7 +711,25 @@ window.HULUL_I18N = {
 
     // ---- App chrome (app.js) ----
     search_placeholder: 'Search {{events}}, {{findings}}, users…', tier_x_escalation: 'Tier {{tier}} Escalation',
-    noted_btn: 'Noted', toast_login_failed: 'Login failed'
+    noted_btn: 'Noted', toast_login_failed: 'Login failed',
+
+    // ---- Annex (Readiness > Annex, eventDetail.js / Annex.gs) ----
+    annex_section_risk_assessments: 'Risk Assessments', annex_section_sign_offs: 'Sign-Offs / Approvals',
+    annex_section_certifications: 'Certifications / TUVs / Supporting Records',
+    annex_summary_x: '{{provided}} of {{required}} mandatory categories provided ({{missing}} missing)',
+    col_category: 'Category', col_required: 'Required', col_uploaded: 'Uploaded', col_accepted: 'Accepted',
+    btn_documents: 'Documents', btn_request_info: 'Request info', btn_mark_provided: 'Mark provided',
+    btn_reopen_category: 'Reopen', btn_accept: 'Accept', btn_reject: 'Reject',
+    annex_info_requested_banner: 'Information requested: {{note}}',
+    annex_upload_document_title: 'Upload document', field_document_file: 'File',
+    annex_documents_modal_title: 'Documents — {{category}}', col_uploaded_by: 'Uploaded by', col_uploaded_at: 'Uploaded',
+    col_review_comments: 'Comments', no_annex_documents_yet: 'No documents uploaded yet.',
+    annex_review_document_title: 'Review document', field_review_comments: 'Comments (optional)',
+    annex_request_info_title: 'Request more information', field_info_note: 'What do you need?',
+    toast_annex_required_updated: 'Required status updated', toast_annex_uploaded: 'Document uploaded',
+    toast_annex_reviewed: 'Document reviewed', toast_annex_provided: 'Category marked as provided',
+    toast_annex_reopened: 'Category reopened', toast_annex_info_requested: 'Information request sent',
+    toast_annex_document_deleted: 'Document deleted', confirm_delete_annex_document: 'Delete this document?'
   },
   ar: {
     tagline: 'منصة جاهزية الفعاليات والامتثال', email: 'البريد الإلكتروني', password: 'كلمة المرور', signIn: 'تسجيل الدخول',
@@ -716,6 +741,7 @@ window.HULUL_I18N = {
     status_venue_approved: 'الافتتاح معتمد', status_venue_rejected: 'الافتتاح مرفوض', status_inprogress: 'قيد التنفيذ',
     // Readiness Templates' own statuses (see the matching EN comment).
     status_not_sent: 'لم يُرسل', status_sent: 'تم الإرسال', status_under_review: 'قيد المراجعة',
+    status_accepted: 'مقبول', status_provided: 'تم التوفير', status_not_provided: 'لم يُوفَّر',
     nav_dashboard: 'لوحة التحكم', nav_events: 'الفعاليات', nav_projects: 'المشاريع', nav_users: 'المستخدمون والأدوار', nav_orgs: 'الجهات',
     nav_notifications: 'الإشعارات', nav_settings: 'الإعدادات', nav_logout: 'تسجيل الخروج', nav_support: 'الدعم الفني',
     nav_reassignment: 'إعادة التكليف',
@@ -738,6 +764,7 @@ window.HULUL_I18N = {
     events_title: 'الفعاليات', new_event: 'فعالية جديدة', tab_overview: 'نظرة عامة', tab_chat: 'المحادثة', tab_venue: 'الموقع',
     tab_templates: 'قوالب الجاهزية', tab_approval: 'اعتماد الافتتاح', tab_disciplines: 'المهام',
     tab_inspections: 'عمليات التفتيش', tab_completed_checklists: 'القوائم المكتملة', tab_score_overview: 'التقييم',
+    tab_annex: 'الملحق',
     tab_findings: 'سجل المخاطر', tab_resolutions: 'الحلول',
     tab_escalations: 'التصعيد', tab_participants: 'المشاركون', tab_participants_new: 'جديد', tab_reports: 'التقارير', tab_event_log: 'السجلات',
     tab_group_general: 'عام', tab_group_readiness: 'الجاهزية', tab_group_inspections: 'قوائم المراجعة', tab_group_findings: 'سجلات المخاطر',
@@ -798,6 +825,8 @@ window.HULUL_I18N = {
     rejected_final: ' — نهائي', rejected_fix_resubmit: ' — يرجى الإصلاح وإعادة التقديم',
     resolution_history: 'سجل الحلول', resolution_history_subtitle: 'ملاحظات وصور مقدَّمة من {{term}}',
     reviewer_remarks: 'ملاحظات المراجع: ', resolve_this_x: 'حل هذا العنصر ({{term}})', remarks: 'ملاحظات',
+    assign_operator_title: 'تعيين مشغّل لحل هذا العنصر', assign_operator_unassigned_option: 'غير مُعيَّن',
+    assign_operator_none_hint: 'لا يوجد مشغّلون (Operator) في هذا المكان بعد.', toast_operator_assigned: 'تم تعيين المشغّل.',
     resolution_evidence_required: 'دليل مصور للحل (صورة أو فيديو) — مطلوب', submit_resolution: 'تقديم الحل',
     review_resolution: 'مراجعة الحل', accept: 'قبول', reject: 'رفض',
     rejection_remarks_required_label: 'ملاحظات الرفض (مطلوبة)', confirm_rejection: 'تأكيد الرفض',
@@ -1291,6 +1320,7 @@ window.HULUL_I18N = {
     x_done_of_total_suffix: ' — {{done}}/{{total}} مكتمل', all_checklist_types_option: 'كل {{term}}',
     checklist_type_pick_hint: 'يُفتح فقط النوع الذي تختاره في هذه الزيارة — يبقى الباقي لزيارة لاحقة.',
     record_results_for_x_title: 'تسجيل النتائج — {{name}}', continue_btn: 'متابعة',
+    record_results_for_venue_title: 'تسجيل النتائج — المكان', venue_checklist_label: 'المكان', word_items: 'عناصر',
     unset_items_stay_open_hint: 'العناصر التي تُترك فارغة تبقى مفتوحة للمرة القادمة.',
     x_of_y_completed: '{{done}} من {{total}} مكتمل', recorded_on_label: 'سُجّل {{date}}',
     word_evidence: 'دليل', word_pending: 'قيد الانتظار', col_result: 'النتيجة',
@@ -1347,7 +1377,25 @@ window.HULUL_I18N = {
 
     // ---- App chrome (app.js) ----
     search_placeholder: 'ابحث في {{events}}، {{findings}}، المستخدمين…', tier_x_escalation: 'تصعيد المستوى {{tier}}',
-    noted_btn: 'تم الاطلاع', toast_login_failed: 'فشل تسجيل الدخول'
+    noted_btn: 'تم الاطلاع', toast_login_failed: 'فشل تسجيل الدخول',
+
+    // ---- Annex (Readiness > Annex, eventDetail.js / Annex.gs) ----
+    annex_section_risk_assessments: 'تقييمات المخاطر', annex_section_sign_offs: 'الاعتمادات / الموافقات',
+    annex_section_certifications: 'الشهادات / TUV / السجلات الداعمة',
+    annex_summary_x: '{{provided}} من {{required}} فئة إلزامية تم توفيرها ({{missing}} ناقصة)',
+    col_category: 'الفئة', col_required: 'إلزامي', col_uploaded: 'المرفوع', col_accepted: 'المقبول',
+    btn_documents: 'المستندات', btn_request_info: 'طلب معلومات', btn_mark_provided: 'وضع علامة كمُوفَّر',
+    btn_reopen_category: 'إعادة الفتح', btn_accept: 'قبول', btn_reject: 'رفض',
+    annex_info_requested_banner: 'معلومات مطلوبة: {{note}}',
+    annex_upload_document_title: 'رفع مستند', field_document_file: 'الملف',
+    annex_documents_modal_title: 'المستندات — {{category}}', col_uploaded_by: 'رفعه', col_uploaded_at: 'تاريخ الرفع',
+    col_review_comments: 'ملاحظات', no_annex_documents_yet: 'لم يتم رفع أي مستندات بعد.',
+    annex_review_document_title: 'مراجعة المستند', field_review_comments: 'ملاحظات (اختياري)',
+    annex_request_info_title: 'طلب مزيد من المعلومات', field_info_note: 'ما الذي تحتاجه؟',
+    toast_annex_required_updated: 'تم تحديث حالة الإلزامية', toast_annex_uploaded: 'تم رفع المستند',
+    toast_annex_reviewed: 'تمت مراجعة المستند', toast_annex_provided: 'تم وضع علامة على الفئة كمُوفَّرة',
+    toast_annex_reopened: 'تمت إعادة فتح الفئة', toast_annex_info_requested: 'تم إرسال طلب المعلومات',
+    toast_annex_document_deleted: 'تم حذف المستند', confirm_delete_annex_document: 'هل تريد حذف هذا المستند؟'
   }
 };
 

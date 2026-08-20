@@ -186,6 +186,16 @@ var ROUTES = {
   listEventScoringItems: function (u, p) { return listEventScoringItems(u, p); },
   importTemplateScoringCatalog: function (u, p) { return importTemplateScoringCatalog(u, p); },
   listScoringCatalogSummary: function (u, p) { return listScoringCatalogSummary(u); },
+
+  // Annex (ANX)
+  listEventAnnex: function (u, p) { return listEventAnnex(u, p); },
+  setAnnexCategoryRequired: function (u, p) { return setAnnexCategoryRequired(u, p); },
+  uploadAnnexDocument: function (u, p) { return uploadAnnexDocument(u, p); },
+  reviewAnnexDocument: function (u, p) { return reviewAnnexDocument(u, p); },
+  markAnnexCategoryProvided: function (u, p) { return markAnnexCategoryProvided(u, p); },
+  requestAnnexInfo: function (u, p) { return requestAnnexInfo(u, p); },
+  deleteAnnexDocument: function (u, p) { return deleteAnnexDocument(u, p); },
+
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },
@@ -271,6 +281,7 @@ var ROUTES = {
   viewFinding: function (u, p) { return viewFinding(u, p); },
   resolveFinding: function (u, p) { return resolveFinding(u, p); },
   reviewFindingResolution: function (u, p) { return reviewFindingResolution(u, p); },
+  assignFindingParticipant: function (u, p) { return assignFindingParticipant(u, p); },
 
   // Resolutions & escalations (RES) -- submitResolution/reviewResolution removed, superseded by
   // resolveFinding/reviewFindingResolution above (see Resolutions.gs header comment).

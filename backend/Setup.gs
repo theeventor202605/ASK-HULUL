@@ -13,6 +13,7 @@ function setupHulul() {
   seedChecklistItems_();
   backfillFindingGuideDisciplines_();
   seedFindingGuide_();
+  seedAnnexCategories_();
   seedConfig_();
   seedFirstAdmin_();
   installEscalationTrigger_();
@@ -942,6 +943,56 @@ function seedFindingGuide_() {
     insertRow('FindingGuide', { id: newId('FindingGuide'), category: r[0], subCategory: r[1], description: r[2], suggestion: r[3] });
   });
   Logger.log('seedFindingGuide_: seeded ' + rows.length + ' Log Assistance Guide row(s).');
+}
+
+// Seeds the global Annex document-category catalog (Readiness > Annex). Idempotent: a per-event
+// override row is NOT created here — AnnexEventCategories rows are synthesized virtually per event
+// (same merge pattern as TemplateLibrary/Templates) until a PM/Analyst or EMC manager first touches
+// that category for that event, at which point a real override row is written.
+function seedAnnexCategories_() {
+  var existing = getAll('AnnexCategories');
+  if (existing.length > 0) return;
+  var rows = [
+    // section, name
+    ['RiskAssessments', 'Event General Risk Assessment'],
+    ['RiskAssessments', 'HSE Risk Assessment'],
+    ['RiskAssessments', 'Fire Risk Assessment'],
+    ['RiskAssessments', 'Crowd Risk Assessment'],
+    ['RiskAssessments', 'Security Risk Assessment'],
+    ['RiskAssessments', 'Traffic Risk Assessment'],
+    ['RiskAssessments', 'Medical Risk Assessment'],
+    ['RiskAssessments', 'Generators Risk Assessment'],
+    ['RiskAssessments', 'F&B Risk Assessment'],
+    ['RiskAssessments', 'Rides Risk Assessment'],
+    ['RiskAssessments', 'Pyro Risk Assessment'],
+    ['RiskAssessments', 'SFX Risk Assessment'],
+    ['RiskAssessments', 'Other Risk Assessment, where applicable'],
+    ['SignOffs', 'Civil Defence Sign-Off'],
+    ['SignOffs', 'Third-Party Fire & Evacuation Sign-Off'],
+    ['SignOffs', 'Third-Party Electricity Sign-Off'],
+    ['SignOffs', 'Third-Party Temporary Structure Sign-Off'],
+    ['SignOffs', 'Third-Party Rigging / AVL Sign-Off'],
+    ['SignOffs', 'Third-Party Grandstands Sign-Off'],
+    ['SignOffs', 'Third-Party F&B Booths / Trucks Sign-Off'],
+    ['SignOffs', 'Other Sign-Off, where applicable'],
+    ['Certifications', 'Trusses Certification / TUV'],
+    ['Certifications', 'Rides Certification / TUV'],
+    ['Certifications', 'Fire Retardancy Certificate for Fabrics'],
+    ['Certifications', 'Fire Retardancy Certificate for Partition Walls'],
+    ['Certifications', 'Fire Retardancy Certificate for Branding'],
+    ['Certifications', 'Fire Retardancy Certificate for Mesh'],
+    ['Certifications', 'Other TUV / Certification, where applicable']
+  ];
+  var orderIndex = { RiskAssessments: 0, SignOffs: 0, Certifications: 0 };
+  rows.forEach(function (r) {
+    var section = r[0];
+    orderIndex[section] += 1;
+    insertRow('AnnexCategories', {
+      id: newId('AnnexCategories'), section: section, name: r[1],
+      orderIndex: orderIndex[section], status: 'Active'
+    });
+  });
+  Logger.log('seedAnnexCategories_: seeded ' + rows.length + ' Annex categories.');
 }
 
 function seedConfig_() {

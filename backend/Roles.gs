@@ -24,7 +24,8 @@ function getCustomRoles_() {
     try { creatableBy = r.creatableBy ? JSON.parse(r.creatableBy) : []; } catch (e) { /* ignore malformed row */ }
     return {
       code: r.code, label: r.label, orgType: r.orgType || '', creatableBy: creatableBy, basedOnRole: r.basedOnRole || '',
-      isParticipantType: r.isParticipantType === true || r.isParticipantType === 'true'
+      isParticipantType: r.isParticipantType === true || r.isParticipantType === 'true',
+      isMandatoryOperator: r.isMandatoryOperator === true || r.isMandatoryOperator === 'true'
     };
   });
 }
@@ -93,12 +94,19 @@ function createRole(user, p) {
   var basedOnRole = (p && p.basedOnRole) || '';
   if (basedOnRole && validCodes.indexOf(basedOnRole) === -1) basedOnRole = '';
   var isParticipantType = !!(p && p.isParticipantType);
+  // REQ ("a security operator must be available in every event ... EMC just needs to set up their
+  // accounts accordingly"): normally toggled later from Settings > Mandatory Operators, but accepted
+  // here too so a role can be created already flagged in one step. Meaningless without
+  // isParticipantType -- getMandatoryOperatorCompliance (Events.gs) only ever looks at roles where
+  // both are true.
+  var isMandatoryOperator = !!(p && p.isMandatoryOperator);
 
   var code = generateRoleCode_(label);
   var row = insertRow('Roles', {
     id: newId('Roles'), code: code, label: label, orgType: orgType,
     creatableBy: JSON.stringify(creatableBy), basedOnRole: basedOnRole,
-    status: 'Active', createdBy: user.id, createdAt: nowIso_(), isParticipantType: isParticipantType
+    status: 'Active', createdBy: user.id, createdAt: nowIso_(), isParticipantType: isParticipantType,
+    isMandatoryOperator: isMandatoryOperator
   });
 
   var clonedCount = 0;
@@ -113,8 +121,8 @@ function createRole(user, p) {
     if (clonedCount) savePermissionOverrides_(user, overrides);
   }
 
-  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount, isParticipantType: isParticipantType });
-  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole, isParticipantType: isParticipantType };
+  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator });
+  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator };
 }
 
 // SystemAdmin-only: edit an existing CUSTOM role's label/orgType/creatableBy. Built-in roles (not in

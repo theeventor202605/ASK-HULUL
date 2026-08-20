@@ -320,6 +320,37 @@ function resolveFinding(user, p) {
   return { finding: getById('Findings', p.findingId), resolution: resolution };
 }
 
+// REQ ("Opening checklists are done against the venue not participants, but they can assign
+// operational participants to resolve the raised log"): a checklist-raised log from an Opening-phase
+// inspection starts with participantId blank (see recordInspectionResults, Inspections.gs) -- this is
+// the separate step an Inspector or PM uses to pick who's actually responsible for fixing it, any
+// time from the Log's own detail page (not required at Crossed-time). Also works to REASSIGN an
+// already-assigned finding (e.g. the wrong operator was picked), and to clear it back to blank
+// (p.participantId === ''). Restricted to "Operator" type participants at the finding's own venue --
+// same eligibility the person confirmed when this feature was scoped.
+function assignFindingParticipant(user, p) {
+  requirePermission(user, 'finding.assignParticipant');
+  if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
+  var finding = getById('Findings', p.findingId);
+  if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
+  if (!findingVisibleTo_(user, finding)) throw new HululError('FORBIDDEN', 'Not your finding');
+  if (['Resolved', 'Rejected'].indexOf(finding.status) !== -1) {
+    throw new HululError('BAD_REQUEST', 'This finding is already closed -- its assigned participant can no longer be changed.');
+  }
+  var participantId = p.participantId || '';
+  if (participantId) {
+    var participant = getById('Participants', participantId);
+    var event = getById('Events', finding.eventId);
+    var venueId = event ? event.venueId : '';
+    if (!participant || participant.type !== 'Operator' || !venueId || participant.venueId !== venueId) {
+      throw new HululError('BAD_REQUEST', 'participantId must be an Operator at this finding\'s venue');
+    }
+  }
+  updateRow('Findings', p.findingId, { participantId: participantId });
+  audit(user.id, 'ASSIGN_FINDING_PARTICIPANT', 'Findings', p.findingId, { participantId: participantId });
+  return { finding: getById('Findings', p.findingId) };
+}
+
 // REQ workflow steps 5/6/8: Inspector/PM/SysAdmin accepts or rejects the latest pending resolution.
 // Only valid from InReview. Accept -> Resolved (terminal). Reject requires rejection remarks and
 // always -> ReOpen (participant can retry again), no matter how many times a finding has already

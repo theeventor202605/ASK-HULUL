@@ -436,12 +436,37 @@ function inspectionParticipantCoverage_(inspection, participantId) {
   return { total: scope.length, done: scope.length - openItems.length, openItems: openItems };
 }
 
-// Overall inspection completion = every *relevant* participant (matching discipline + zone, see
-// participantRelevantToInspection_) has a fully-recorded checklist -- not just one checklist run.
-// An inspection only becomes "Completed" once every relevant participant is done — until then it
-// stays open, per REQ: "Any Checklist type that has not been done will remain open ... anytime on
-// or after scheduled date," now applied per participant rather than just per checklist item.
+// Coverage for an "Opening" phase inspection -- REQ: "Opening checklists are done against the venue
+// not participants." No per-participant loop at all here: every in-scope item just needs ONE
+// recorded result (any participantId, including blank), same as any ordinary single-pass checklist.
+// Mirrors inspectionParticipantCoverage_'s shape ({ total, done, openItems }) so inspectionCoverage_
+// below can treat both phases through one return shape.
+function inspectionVenueCoverage_(inspection) {
+  var scope = inspectionScopeItems_(inspection);
+  var recorded = findWhere('InspectionResults', function (r) { return r.inspectionId === inspection.id; });
+  var doneIds = {};
+  recorded.forEach(function (r) { doneIds[r.checklistItemId] = true; });
+  var openItems = scope.filter(function (c) { return !doneIds[c.id]; });
+  return { total: scope.length, done: scope.length - openItems.length, openItems: openItems };
+}
+
+// Overall inspection completion. REQ follow-up: "Opening checklists are done against the venue not
+// participants, but they can assign operational participants to resolve the raised log." Two
+// different completion models depending on phase:
+//  - Opening: one pass over the venue as a whole (inspectionVenueCoverage_ above) -- no participant
+//    dimension. total/done here are just 0/1 (not-yet-done/done); mode:'venue' tells the frontend to
+//    render "X of Y items" instead of "X of Y participants" for the progress column, and `items`
+//    carries the real item-level total/done for that.
+//  - Operational (and anything else): unchanged -- every *relevant* participant (matching
+//    discipline + zone, see participantRelevantToInspection_) needs its own fully-recorded checklist,
+//    per REQ: "Any Checklist type that has not been done will remain open ... anytime on or after
+//    scheduled date," applied per participant rather than just per checklist item. mode:'participant'.
 function inspectionCoverage_(inspection) {
+  if (inspection.phase === 'Opening') {
+    var vc = inspectionVenueCoverage_(inspection);
+    var vDone = vc.total > 0 && vc.openItems.length === 0;
+    return { total: vc.total > 0 ? 1 : 0, done: vDone ? 1 : 0, perParticipant: [], mode: 'venue', items: vc };
+  }
   var inspectorZoneIds = inspectorZoneIdsForInspection_(inspection);
   var venueId = inspectionVenueId_(inspection);
   var venueParticipants = venueParticipantsForEvent_(venueId, inspection.eventId);
@@ -454,7 +479,7 @@ function inspectionCoverage_(inspection) {
     return { participantId: pt.id, participantName: pt.name, total: c.total, done: c.done, completed: c.total > 0 && c.openItems.length === 0 };
   });
   var done = perParticipant.filter(function (x) { return x.completed; }).length;
-  return { total: perParticipant.length, done: done, perParticipant: perParticipant };
+  return { total: perParticipant.length, done: done, perParticipant: perParticipant, mode: 'participant' };
 }
 
 // Every participant on the event, each flagged whether they're relevant to this inspection (see
@@ -575,9 +600,11 @@ function listInspections(user, p) {
       return Object.assign({}, i, {
         disciplineName: discipline ? discipline.name : i.disciplineId,
         inspectorName: inspector ? inspector.name : i.inspectorId,
-        // total/done now count *relevant participants* completed, not checklist items -- see
-        // inspectionCoverage_.
-        coverage: { total: coverage.total, done: coverage.done }
+        // total/done count *relevant participants* completed for an Operational-phase inspection, or
+        // just 0/1 (not-yet-done/done) for an Opening-phase one -- see inspectionCoverage_. `mode`
+        // and `items` (Opening only, real item-level total/done) let the frontend render the right
+        // label either way ("X of Y participants" vs "X of Y items").
+        coverage: { total: coverage.total, done: coverage.done, mode: coverage.mode, items: coverage.items }
       });
     });
 }
@@ -692,14 +719,22 @@ function recordInspectionResults(user, p) {
   if (new Date(inspection.scheduledAt) > new Date()) {
     throw new HululError('BAD_REQUEST', 'This inspection is scheduled for a future date/time and cannot be recorded yet.');
   }
-  // REQ: a checklist is completed *for a participant* -- the inspector must choose one before
-  // recording anything (see the choose-participant screen in tabInspections). Any participant on
-  // the event is accepted here (not just "relevant" ones) so an inspector can still log something
-  // unexpected found on site; the frontend's guided flow is what steers them to the relevant list.
-  if (!p.participantId) throw new HululError('BAD_REQUEST', 'participantId is required — choose which participant this checklist is for.');
-  var participant = getById('Participants', p.participantId);
+  // REQ ("Opening checklists are done against the venue not participants, but they can assign
+  // operational participants to resolve the raised log"): an Opening-phase checklist is filled out
+  // once for the whole venue -- no participant chooser screen precedes it anymore (see tabInspections'
+  // data-record button), so p.participantId is simply absent here, and that's fine. Every other phase
+  // (Operational) keeps the original "a checklist is completed *for a participant*" requirement
+  // unchanged -- the inspector must choose one before recording anything (see the choose-participant
+  // screen in tabInspections). Any participant on the event is accepted (not just "relevant" ones) so
+  // an inspector can still log something unexpected found on site; the frontend's guided flow is what
+  // steers them to the relevant list.
+  var isOpeningPhase = inspection.phase === 'Opening';
   var venueId = inspectionVenueId_(inspection);
-  if (!participant || !venueId || participant.venueId !== venueId) throw new HululError('BAD_REQUEST', 'participantId must belong to this event\'s venue');
+  if (!isOpeningPhase) {
+    if (!p.participantId) throw new HululError('BAD_REQUEST', 'participantId is required — choose which participant this checklist is for.');
+    var participant = getById('Participants', p.participantId);
+    if (!participant || !venueId || participant.venueId !== venueId) throw new HululError('BAD_REQUEST', 'participantId must belong to this event\'s venue');
+  }
 
   var createdFindings = [];
   (p.results || []).forEach(function (r) {
@@ -717,7 +752,7 @@ function recordInspectionResults(user, p) {
     insertRow('InspectionResults', {
       id: inspectionResultId, inspectionId: p.inspectionId, checklistItemId: r.checklistItemId,
       state: r.state, riskLevel: riskLevel, resolutionWindowHours: windowHours, notes: r.notes || '',
-      evidenceUrls: (r.evidenceUrls || []).join(','), recordedAt: nowIso_(), participantId: p.participantId,
+      evidenceUrls: (r.evidenceUrls || []).join(','), recordedAt: nowIso_(), participantId: p.participantId || '',
       findingId: ''
     });
 
@@ -726,8 +761,15 @@ function recordInspectionResults(user, p) {
       var finding = {
         id: newId('Findings'), eventId: inspection.eventId, inspectionId: p.inspectionId, disciplineId: inspection.disciplineId,
         category: item ? item.checklistType : '', subCategory: item ? item.category : '', description: r.notes || (item ? item.description : ''),
+        // REQ ("...they can assign operational participants to resolve the raised log"): on an
+        // Opening-phase checklist there's no participant to inherit here -- p.participantId is blank
+        // (see isOpeningPhase above) -- so the Finding starts with no participant at all. That's
+        // expected, not a bug: assignFindingParticipant (Findings.gs) is how a PM/Inspector picks the
+        // Operator responsible for resolving it afterward, from the Log's own detail page. The `|| ''`
+        // guard (was just `r.participantId || p.participantId`) avoids ever writing the literal string
+        // "undefined" into the sheet now that p.participantId can genuinely be absent.
         suggestedAction: r.suggestedAction || '', riskLevel: riskLevel, resolutionWindowAt: resolutionWindowAt,
-        nextInspectionAt: r.nextInspectionAt || '', participantId: r.participantId || p.participantId, subZone: r.subZone || '',
+        nextInspectionAt: r.nextInspectionAt || '', participantId: r.participantId || p.participantId || '', subZone: r.subZone || '',
         location: r.location || '', status: 'Open', evidenceUrls: (r.evidenceUrls || []).join(','),
         lat: r.lat || '', lng: r.lng || '', createdBy: user.id, createdAt: nowIso_(), reopenCount: 0,
         // REQ: "Any log created through a checklist must be traceable to that specific item in the
