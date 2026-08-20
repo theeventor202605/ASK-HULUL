@@ -229,8 +229,18 @@ function viewFinding(user, p) {
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
   if (!findingVisibleTo_(user, finding)) throw new HululError('FORBIDDEN', 'Not your finding');
 
-  var isParticipant = isParticipantRoleCode_(user.role); // BUG FIX: see findingVisibleTo_'s comment above
-  var isReviewer = user.role === ROLES.INSPECTOR || user.role === ROLES.PROJECT_MANAGER || user.role === ROLES.SYSTEM_ADMIN;
+  // BUG FIX (reported: "Inspector has been given finding.resolve permission, but still doesn't get
+  // the option to resolve a log"): this used to be isParticipantRoleCode_(user.role) -- a hardcoded
+  // check for the 3 built-in Participant-type roles, deaf to Settings > Permissions overrides. The
+  // frontend's action-section gate (renderFindingDetail, findings.js) was already migrated to the
+  // real finding.resolve permission a while back, but this status-transition trigger (the thing that
+  // actually flips Open -> Viewed on first open, which the frontend gate also requires) never was --
+  // so granting finding.resolve to a non-Participant role like Inspector let them see the Resolve
+  // button's *permission* check pass, but the finding stayed stuck on Open forever because nothing
+  // ever advanced it to Viewed for that role. hasPermissionRole_ respects the same overrides
+  // Settings > Permissions writes, so any role granted finding.resolve now gets both halves.
+  var isParticipant = hasPermissionRole_(user, 'finding.resolve');
+  var isReviewer = hasPermissionRole_(user, 'finding.review');
   // REQ follow-up: "Info when opened jumps to resolved." An Info-level Risk Log carries no real
   // compliance action to take (same reasoning as its escalation exemption -- runEscalationCheck,
   // Resolutions.gs), so unlike every other risk level it skips the whole submit/review workflow
