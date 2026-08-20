@@ -3528,7 +3528,9 @@ function printInspectionResults_(participant, inspection, filteredItems) {
  * Resolved/Rejected); the standalone Resolutions tab that used to live here has been folded into
  * the finding detail page's own Resolve/Accept/Reject actions (see findings.js) and removed.
  */
-var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted', 'Resolved', 'Rejected'];
+// REQ: "In pipeline move all resolved cards to end of list" -- Resolved moved to the very last
+// column (after Rejected) so the board reads open/in-progress work first, done work last.
+var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted', 'Rejected', 'Resolved'];
 // FINDING_BOARD_LABELS (a second, separate hardcoded English label map) used to live here -- removed
 // in favor of UI.statusLabel(status), which is the exact same lookup UI.statusBadge itself now uses
 // (ui.js), so this board's headers translate for free instead of needing their own copy kept in sync.
