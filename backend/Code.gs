@@ -200,6 +200,7 @@ var ROUTES = {
   // Disciplines / Inspectors (DIS)
   listDisciplines: function () { return listDisciplines(); },
   createDiscipline: function (u, p) { return createDiscipline(u, p); },
+  updateDiscipline: function (u, p) { return updateDiscipline(u, p); },
   identifyDisciplines: function (u, p) { return identifyDisciplines(u, p); },
   listEventDisciplines: function (u, p) { return listEventDisciplines(p.eventId); },
   setInspectorQualifications: function (u, p) { return setInspectorQualifications(u, p); },

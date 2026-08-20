@@ -36,7 +36,11 @@ async function renderDisciplinesAdmin() {
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: t('col_name') }, { key: 'code', label: t('col_code') },
       { key: 'catRef', label: t('col_cat_ref'), render: r => esc(toRoman_(r.catRef)) },
-      { key: 'id', label: t('col_id') }
+      { key: 'id', label: t('col_id') },
+      // REQ follow-up: "In Categories page allow editing." Same permission as the New button above
+      // (discipline.manage) -- there was never a separate "view only" tier for this catalogue.
+      { key: 'actions', label: t('actions'), render: r =>
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-disc="' + esc(r.id) + '">' + ICON('edit') + '</button>' }
     ], disciplines, {}) + '</div></div>';
 
   document.getElementById('newDiscBtn').onclick = function () {
@@ -59,4 +63,29 @@ async function renderDisciplinesAdmin() {
         } }
     ]);
   };
+
+  root.querySelectorAll('[data-edit-disc]').forEach(function (btn) {
+    btn.onclick = function () {
+      var disc = disciplines.filter(function (d) { return d.id === btn.getAttribute('data-edit-disc'); })[0];
+      if (!disc) return;
+      var body = UI.field(t('col_name'), '<input id="fDiscName" class="field-input" value="' + esc(disc.name) + '" />') +
+        UI.field(t('col_code'), '<input id="fDiscCode" class="field-input" value="' + esc(disc.code) + '" maxlength="3" />') +
+        UI.field(t('col_cat_ref'), '<input id="fDiscCatRef" type="number" min="1" step="1" class="field-input" value="' + esc(disc.catRef) + '" />' +
+          '<div class="muted" style="font-size:11px;margin-top:4px;">' + esc(t('cat_ref_hint')) + '</div>');
+      UI.openModal(t('edit_x', { term: Term('discipline') }), body, [
+        { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+        { label: t('save'), className: 'btn-primary', onClick: async function () {
+            var code = document.getElementById('fDiscCode').value.trim();
+            if (code.length !== 3) { UI.toast(t('toast_code_must_be_3'), 'error'); return; }
+            var catRefRaw = document.getElementById('fDiscCatRef').value;
+            var catRef = Number(catRefRaw);
+            if (catRefRaw === '' || !Number.isInteger(catRef) || catRef < 1) { UI.toast(t('toast_cat_ref_required'), 'error'); return; }
+            try {
+              await Api.call('updateDiscipline', { disciplineId: disc.id, name: document.getElementById('fDiscName').value, code: code, catRef: catRef });
+              UI.closeModal(); UI.toast(t('x_updated', { term: Term('discipline') }), 'success'); Router.resolve();
+            } catch (err) { UI.error(err); }
+          } }
+      ]);
+    };
+  });
 }

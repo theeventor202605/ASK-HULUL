@@ -25,6 +25,45 @@ function createDiscipline(user, p) {
   return row;
 }
 
+// REQ follow-up: "In Categories page allow editing." Same validation as createDiscipline (code
+// exactly 3 chars, Cat Ref. a whole number of 1 or more) -- editing doesn't relax anything create
+// enforced, just lets an admin fix a typo/renumber without deleting and recreating the row.
+//
+// BUG FIX (REQ follow-up: "Transport & Traffic is showing as Traffic & Transport in the Checklist
+// page! ... The Category in the Checklist page should all be coming from the Categories page!"):
+// ChecklistItems.category and FindingGuide.category both store the Discipline's NAME as a plain
+// string snapshot, not a live disciplineId foreign key (see checklistItems.js/FindingGuide.gs header
+// comments) -- and inspectionScopeItems_ (Inspections.gs) matches on that string too, so it isn't
+// just cosmetic: a rename that doesn't cascade silently drops every already-created checklist item
+// under the old name out of every future inspection's scope. Renaming here now updates every
+// ChecklistItems/FindingGuide row still carrying the old name to the new one in the same call, so
+// both catalogues stay in sync with whatever the Categories page says, same as the fresh-creation
+// path already keeps them in sync going forward.
+function updateDiscipline(user, p) {
+  requirePermission(user, 'discipline.manage');
+  if (!p || !p.disciplineId) throw new HululError('BAD_REQUEST', 'disciplineId is required');
+  var existing = getById('Disciplines', p.disciplineId);
+  if (!existing) throw new HululError('NOT_FOUND', 'Category not found');
+  if (!p.name || !p.code) throw new HululError('BAD_REQUEST', 'name and code are required');
+  var code = String(p.code).trim();
+  if (code.length !== 3) throw new HululError('BAD_REQUEST', 'Code must be exactly 3 characters.');
+  var catRef = Number(p.catRef);
+  if (p.catRef === undefined || p.catRef === null || p.catRef === '' || !Number.isInteger(catRef) || catRef < 1) {
+    throw new HululError('BAD_REQUEST', 'Cat Ref. is required and must be a whole number of 1 or more.');
+  }
+  var oldName = existing.name;
+  var updated = updateRow('Disciplines', p.disciplineId, { name: p.name, code: code, catRef: catRef });
+  var renamedCount = 0;
+  if (oldName && oldName !== p.name) {
+    findWhere('ChecklistItems', function (c) { return c.category === oldName; })
+      .forEach(function (c) { updateRow('ChecklistItems', c.id, { category: p.name }); renamedCount++; });
+    findWhere('FindingGuide', function (g) { return g.category === oldName; })
+      .forEach(function (g) { updateRow('FindingGuide', g.id, { category: p.name }); renamedCount++; });
+  }
+  audit(user.id, 'UPDATE_DISCIPLINE', 'Disciplines', p.disciplineId, { name: p.name, code: code, catRef: catRef, cascadedRenames: renamedCount });
+  return updated;
+}
+
 // REQ-DIS-01: once a venue is approved, PM identifies applicable disciplines. This reconciles
 // the full set on every save (adds newly checked, removes unchecked) — but a discipline that
 // already has an Inspector assigned for this event can't be removed until that assignment is

@@ -24,6 +24,9 @@ async function renderCompletedChecklistsPage() {
       { key: 'eventName', label: Term('event'), render: r => '<a href="#/events/' + esc(r.eventId) + '?tab=completedChecklists" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.eventName) + '</a>' },
       { key: 'participantName', label: Term('participant') },
       { key: 'disciplineName', label: Term('discipline') },
+      // REQ follow-up: same reasoning as tabCompletedChecklists (eventDetail.js) -- one row per
+      // completed sub-category now, not one per whole inspection, so this column distinguishes them.
+      { key: 'checklistType', label: Term('checklistType') },
       { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'progress', label: t('col_progress'), render: r => t('progress_fraction', { done: r.done, total: r.total, term: Term('checklistItem_plural').toLowerCase() }) },

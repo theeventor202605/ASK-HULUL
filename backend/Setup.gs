@@ -118,6 +118,38 @@ function fixDuplicateDisciplineIds() {
   return { fixed: fixed };
 }
 
+// One-time reconciliation (REQ follow-up bug report: "Transport & Traffic is showing as Traffic &
+// Transport in the Checklist page! ... The Category in the Checklist page should all be coming from
+// the Categories page!"). ChecklistItems.category and FindingGuide.category are plain string
+// snapshots of a Discipline's name, not a live disciplineId foreign key (see updateDiscipline's own
+// comment, Disciplines.gs, which now cascades a rename made THROUGH the app going forward) -- a
+// discipline renamed directly in the spreadsheet, or a row typed in before a rename, is left stuck on
+// the old text with no automatic way to notice. This only auto-fixes the narrow, safe case of a
+// same-words-different-order mismatch (e.g. "Traffic & Transport" vs "Transport & Traffic") against
+// the CURRENT live Disciplines catalog -- anything that isn't just a word-order difference is left
+// alone rather than guessed at. Run once from the Apps Script editor's function dropdown; safe to
+// re-run, changes nothing once every category string matches a live Discipline name.
+function reconcileChecklistCategoryNames() {
+  var disciplineNames = getAll('Disciplines').map(function (d) { return d.name; });
+  var normalize_ = function (s) { return String(s || '').toLowerCase().split(/\s+/).filter(Boolean).sort().join(' '); };
+  var byNormalized = {};
+  disciplineNames.forEach(function (n) { byNormalized[normalize_(n)] = n; });
+  var fixed = [];
+  ['ChecklistItems', 'FindingGuide'].forEach(function (sheetName) {
+    getAll(sheetName).forEach(function (row) {
+      if (disciplineNames.indexOf(row.category) !== -1) return; // already matches a live Discipline exactly
+      var match = byNormalized[normalize_(row.category)];
+      if (match && match !== row.category) {
+        updateRow(sheetName, row.id, { category: match });
+        fixed.push({ sheet: sheetName, id: row.id, from: row.category, to: match });
+      }
+    });
+  });
+  fixed.forEach(function (f) { Logger.log('reconcileChecklistCategoryNames: ' + f.sheet + ' ' + f.id + ' "' + f.from + '" -> "' + f.to + '"'); });
+  if (!fixed.length) Logger.log('reconcileChecklistCategoryNames: nothing to fix.');
+  return { fixed: fixed };
+}
+
 // One-time migration: the old Readiness Templates model auto-created a fixed 5-type Templates row
 // (ZSMP/ZERP/TTP/CSM/SEC) per event with no separate library. The new model splits that into a
 // per-Inspection-Company TemplateLibrary (uploaded once, versioned) and per-event Templates rows

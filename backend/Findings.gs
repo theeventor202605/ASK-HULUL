@@ -56,14 +56,22 @@ function findingVisibleTo_(user, finding) {
 // and evidenceUrls turned into a real array instead of the raw comma-joined string the sheet stores.
 // checklistItemsById (optional) -- REQ: "Any log created through a checklist must be traceable to
 // that specific item in the checklist" -- resolves checklistItemId into a readable description.
-function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById) {
+// usersById (optional) -- REQ follow-up (Risk Logging table column reorder): "Created by" needs the
+// user's name, not the raw id audit_/createdBy already carries.
+function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById) {
   var pt = participantsById[f.participantId];
   var d = disciplinesById[f.disciplineId];
   var item = checklistItemsById && f.checklistItemId ? checklistItemsById[f.checklistItemId] : null;
+  var creator = usersById && f.createdBy ? usersById[f.createdBy] : null;
   return Object.assign({}, f, {
     participantName: pt ? pt.name : '',
     disciplineName: d ? d.name : '',
+    // REQ follow-up: "Category Code as Category" -- the Risk Logging table's Category column shows
+    // the Discipline's short code (e.g. "CSM") instead of its full name to stay compact; disciplineName
+    // (full name) stays available too for anywhere else that still wants it (e.g. the detail page chip).
+    disciplineCode: d ? d.code : '',
     checklistItemDescription: item ? item.description : '',
+    createdByName: creator ? creator.name : '',
     evidenceUrls: f.evidenceUrls ? String(f.evidenceUrls).split(',').filter(Boolean) : []
   });
 }
@@ -87,7 +95,9 @@ function listFindings(user, p) {
   getAll('Disciplines').forEach(function (d) { disciplinesById[d.id] = d; });
   var checklistItemsById = {};
   getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
-  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById, checklistItemsById); });
+  var usersById = {};
+  getAll('Users').forEach(function (u) { usersById[u.id] = u; });
+  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById); });
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 

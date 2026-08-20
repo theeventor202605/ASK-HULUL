@@ -2168,6 +2168,11 @@ async function tabCompletedChecklists(content, eventId, detail) {
             : esc(r.participantName)
       },
       { key: 'disciplineName', label: Term('discipline') },
+      // REQ follow-up: "Not all sub-categories are applicable ... when Sub-Category of a checklist is
+      // completed then it must appear in the Completed Checklist tab." listCompletedChecklists now
+      // emits one row per completed sub-category (not one per whole inspection) -- this column is what
+      // distinguishes a participant's separate completed rows from each other.
+      { key: 'checklistType', label: Term('checklistType') },
       { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'progress', label: t('col_progress'), render: r => t('progress_fraction', { done: r.done, total: r.total, term: Term('checklistItem_plural').toLowerCase() }) },
@@ -2231,7 +2236,10 @@ async function renderCompletedChecklistDetail(params) {
   var byType = {};
   scope.forEach(function (it) { (byType[it.checklistType] = byType[it.checklistType] || []).push(it); });
 
-  completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage);
+  // REQ follow-up: "the checklist item must be linked to the checklist the user completed not to the
+  // main Checklist page." Findings tab's checklist-item link (tabFindings below) now points here with
+  // ?itemId=... instead of the admin Checklist Items catalog -- scroll to + highlight that exact row.
+  completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage, params.itemId);
 }
 
 // Read-only rows: description, state, risk/window, and (Crossed only) notes + evidence links -- no
@@ -2242,7 +2250,11 @@ function completedChecklistViewRowHtml_(it, existing, eventId) {
   var stateIcon = state === 'Ticked' ? ICON('result_ticked') : state === 'Crossed' ? ICON('result_crossed') : state === 'N/A' ? ICON('result_na') : '';
   var stateLabel = state === 'Ticked' ? t('title_result_ticked') : state === 'Crossed' ? t('title_result_crossed') : state === 'N/A' ? t('title_result_na') : t('word_pending');
   var evidenceUrls = (existing && existing.evidenceUrls) ? String(existing.evidenceUrls).split(',').filter(Boolean) : [];
-  return '<div style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
+  // REQ follow-up: "the checklist item must be linked to the checklist the user completed not to the
+  // main Checklist page." data-row-id is the deep-link/highlight hook (completedChecklistViewMode_
+  // below), same generic convention UI.table() rows already carry and checklistItems.js's own
+  // deep-link already uses.
+  return '<div data-row-id="' + esc(it.id) + '" style="border-bottom:1px solid #f0f1f6;padding:10px 0;">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
       '<div style="flex:1 1 260px;">' +
         '<div style="font-weight:600;font-size:13px;">' + esc(it.description) + '</div>' +
@@ -2272,7 +2284,7 @@ function completedChecklistViewRowHtml_(it, existing, eventId) {
   '</div>';
 }
 
-function completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage) {
+function completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage, highlightItemId) {
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(participant.name) + '</div>' +
     '<div class="page-subtitle">' + esc(inspection.disciplineName) + ' · ' + esc(inspection.phase) + '</div></div>' +
@@ -2290,6 +2302,17 @@ function completedChecklistViewMode_(root, eventId, inspection, participant, sco
           '</div>'
         : '') +
     '</div>';
+
+  // REQ follow-up: deep-link + highlight, same one-shot scroll pattern checklistItems.js's own
+  // itemId deep-link already uses (.ci-row-highlight is the generic reusable highlight class).
+  if (highlightItemId) {
+    var targetRow = root.querySelector('[data-row-id="' + esc(highlightItemId) + '"]');
+    if (targetRow) {
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetRow.classList.add('ci-row-highlight');
+      setTimeout(function () { targetRow.classList.remove('ci-row-highlight'); }, 2500);
+    }
+  }
 
   document.getElementById('backCompletedChecklistBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=completedChecklists'; };
   if (canManage) {
@@ -2935,10 +2958,39 @@ function retryEvidenceEntry_(itemId, entry, pendingFiles) {
   });
 }
 
+// REQ follow-up: "Also user wants to see image before submitting allow image thumbnail and when
+// clicked expand." Image files get a real thumbnail as soon as EvidenceCapture.prepare() has resolved
+// (entry.file set -- see uploadEvidenceFile_) using a local object URL, swapped for the real Drive
+// thumbnail once the upload finishes (entry.status === 'done'); the object URL is created once and
+// cached on the entry itself (entry._previewUrl) so repeated re-renders during upload progress don't
+// leak a new one every tick. Video files keep the plain icon (no cheap way to grab a frame here)
+// but stay fully functional otherwise. Thumbnails render in their own flex strip ABOVE the existing
+// per-file status/progress rows (unchanged below) rather than inline with them, so every thumbnail in
+// that strip is a sibling .evidence-thumb[data-lightbox-url] element -- the exact shape
+// findings.js's delegated lightbox click handler already scans for its sibling-based gallery
+// iteration, so Prev/Next between the pending photos "just works" with no extra wiring here.
+function evidencePendingThumbHtml_(f) {
+  if (!f.file || !f.file.type || f.file.type.indexOf('image/') !== 0) return '';
+  var src;
+  if (f.status === 'done' && f.url) src = driveEvidenceThumbUrl_(f.url) || '';
+  if (!src) {
+    f._previewUrl = f._previewUrl || URL.createObjectURL(f.file);
+    src = f._previewUrl;
+  }
+  var full = (f.status === 'done' && f.url) ? (driveEvidenceThumbUrl_(f.url, 1600) || f.url) : (f._previewUrl || src);
+  var original = (f.status === 'done' && f.url) ? f.url : (f._previewUrl || src);
+  return '<a href="' + esc(original) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+    'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:56px;height:56px;">' +
+    '<img src="' + esc(src) + '" alt="' + esc(f.name) + '" class="evidence-thumb-img" /></a>';
+}
+
 function renderEvidenceList_(itemId, pendingFiles) {
   var el = document.querySelector('[data-evlist="' + itemId + '"]');
   if (!el) return;
-  el.innerHTML = (pendingFiles[itemId] || []).map(function (f) {
+  var files = pendingFiles[itemId] || [];
+  var thumbsHtml = files.map(evidencePendingThumbHtml_).filter(Boolean).join('');
+  el.innerHTML = (thumbsHtml ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">' + thumbsHtml + '</div>' : '') +
+    files.map(function (f) {
     if (f.status === 'preparing') {
       return '<div style="font-size:11.5px;margin-top:4px;">' + esc(f.name) + ' ' + esc(t('stamping_hint')) + '</div>';
     }
@@ -3192,7 +3244,7 @@ async function tabFindings(content, eventId) {
     '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_log_hint')) + '</div></div>' +
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
     '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_findings') + '</div>' +
-    (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">' + esc(t('log_x_btn', { term: Term('finding').toLowerCase() })) + '</button>' : '') + '</div>' +
+    (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">' + esc(t('log_x_btn')) + '</button>' : '') + '</div>' +
     // REQ (follow-up): "Change Sub Category to Checklist Type and fill automatically." Findings.category
     // is where the New Finding form's own "Checklist Type" dropdown value actually gets saved
     // (findings.js renderNewFinding -- category: fChecklistType.value, defaulted to 'Other' server-side
@@ -3207,30 +3259,15 @@ async function tabFindings(content, eventId) {
     // while the finding is still Open/Viewed (FINDING_EDITABLE_STATUSES_) -- the backend
     // (updateFinding/deleteFinding, Findings.gs) enforces the same status gate independently, so this
     // is purely about not showing a button that would just come back as a FORBIDDEN error.
+    // REQ follow-up: "Arrange table columns in following order: Do, Image, Category Code as Category,
+    // Sub-Category, Risk Level as Severity, Status, Description, Suggestion, Log Location, Date time,
+    // Created by" -- plus Participant/Checklist Item link/Log ID/Rejection count kept alongside per
+    // the clarifying answer ("keep them ... but for the checklist item it must be linked to the
+    // checklist the user completed not to the main Checklist page").
     '<div class="card-body">' + UI.table([
-      // REQ follow-up: "Add column to show Log ID." A finding IS a Risk Log entry (this whole page
-      // is the "Risk Logging" tab -- see findings.js's header comment), so the finding's own id is
-      // shown up front as the log's identifier, same column-1 placement listFindings/UI.table already
-      // gives row.id elsewhere in the app.
-      { key: 'id', label: t('col_log_id') },
-      { key: 'participantName', label: Term('participant') },
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'category', label: Term('checklistType') },
-      // REQ follow-up: "are logs traceable back to that checklist item?" -- inserted right after
-      // Checklist Type (its closest existing column) rather than disturbing the rest of the REQ'd
-      // column order above/below it. Blank ('—') for manually-logged findings, which have no single
-      // checklist item to point at (see enrichFinding_, Findings.gs). Links into the Checklist Items
-      // catalog (checklistItems.js), same target as the detail page's own link.
-      { key: 'checklistItemDescription', label: t('col_checklist_item'), render: r => r.checklistItemDescription
-        ? '<a href="#/checklist-items?itemId=' + esc(r.checklistItemId) + '" style="color:var(--accent);">' + esc(r.checklistItemDescription) + '</a>'
-        : '—' },
-      { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
-      { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
-      // REQ follow-up: "Add ... another to show rejection count." reopenCount (Findings.gs) now
-      // increments on every rejection regardless of outcome (every rejection lands back on ReOpen,
-      // see reviewFindingResolution) -- this is the one visible place it's surfaced as a plain count.
-      { key: 'reopenCount', label: t('col_rejection_count'), render: r => r.reopenCount || 0 },
-      { key: 'description', label: t('field_description') },
-      { key: 'actions', label: t('actions'), render: r => {
+      // Do -- the same view/edit/delete actions that used to be the LAST column, now first and
+      // relabeled per the REQ (was an unlabeled/"Actions" trailing column).
+      { key: 'actions', label: t('col_do'), render: r => {
         var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
         var canEdit = canEditAny && stillEditable;
         var canDelete = canDeleteAny && stillEditable;
@@ -3239,7 +3276,48 @@ async function tabFindings(content, eventId) {
           (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
           (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="' + esc(t('action_delete')) + '" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '')
         );
-      } }
+      } },
+      // REQ follow-up: "Add column to show Log ID." A finding IS a Risk Log entry (this whole page
+      // is the "Risk Logging" tab -- see findings.js's header comment).
+      { key: 'id', label: t('col_log_id') },
+      // Image -- last evidence photo as a thumbnail; click expands and iterates through every photo
+      // on this finding (data-gallery-b64, see findings.js's delegated lightbox click handler).
+      { key: 'evidenceUrls', label: t('col_image'), exportValue: r => (r.evidenceUrls && r.evidenceUrls.length) ? r.evidenceUrls[r.evidenceUrls.length - 1] : '', render: r => {
+        var urls = r.evidenceUrls || [];
+        if (!urls.length) return '—';
+        var last = urls[urls.length - 1];
+        var thumb = driveEvidenceThumbUrl_(last) || '';
+        var full = driveEvidenceThumbUrl_(last, 1600) || last;
+        return '<a href="' + esc(last) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+          'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" data-gallery-b64="' + esc(btoa(JSON.stringify(urls))) + '" style="width:44px;height:44px;">' +
+          (thumb ? '<img src="' + esc(thumb) + '" class="evidence-thumb-img" alt="Evidence" />' : ICON('capture_photo')) + '</a>';
+      } },
+      { key: 'participantName', label: Term('participant') },
+      // Category -- REQ: "Category Code as Category," i.e. the Discipline's short code (see
+      // enrichFinding_, Findings.gs), not its full name, to keep this column compact.
+      { key: 'disciplineCode', label: Term('discipline'), render: r => esc(r.disciplineCode || r.disciplineName || '—') },
+      // Sub-Category -- category field is where the New Log form's own Checklist Type dropdown value
+      // is saved (findings.js); Term('checklistType') already displays as "Sub-Category" app-wide.
+      { key: 'category', label: Term('checklistType') },
+      // REQ follow-up: "are logs traceable back to that checklist item? ... must be linked to the
+      // checklist the user completed not to the main Checklist page." Links into the actual completed
+      // checklist this item was recorded on (completedChecklistViewMode_, this file), not the admin
+      // Checklist Items catalog -- and deep-link-highlights that exact row there. Blank ('—') for
+      // manually-logged findings, which have no single checklist item to point at.
+      { key: 'checklistItemDescription', label: t('col_checklist_item'), render: r => r.checklistItemDescription
+        ? '<a href="#/events/' + esc(eventId) + '/completed-checklist/' + esc(r.inspectionId) + '/' + esc(r.participantId) + '?itemId=' + esc(r.checklistItemId) + '" style="color:var(--accent);">' + esc(r.checklistItemDescription) + '</a>'
+        : '—' },
+      { key: 'riskLevel', label: t('col_severity'), render: r => UI.riskBadge(r.riskLevel) },
+      { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status) },
+      // REQ follow-up: "Add ... another to show rejection count." reopenCount (Findings.gs) now
+      // increments on every rejection regardless of outcome (every rejection lands back on ReOpen,
+      // see reviewFindingResolution) -- this is the one visible place it's surfaced as a plain count.
+      { key: 'reopenCount', label: t('col_rejection_count'), render: r => r.reopenCount || 0 },
+      { key: 'description', label: t('field_description') },
+      { key: 'suggestedAction', label: t('col_suggestion'), render: r => esc(r.suggestedAction || '—') },
+      { key: 'location', label: t('field_log_location'), render: r => esc(r.location || '—') },
+      { key: 'createdAt', label: t('col_date_time'), render: r => UI.fmtDate(r.createdAt) },
+      { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || r.createdBy || '—') }
     ], findings, {}) + '</div></div>';
 
   UI.wireBoard(content, function (id) { window.location.hash = '#/events/' + eventId + '/findings/' + id; });

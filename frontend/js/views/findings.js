@@ -79,25 +79,73 @@ document.addEventListener('error', function (e) {
 // Fills as much of the viewport as sensibly possible (92vw/88vh, object-fit:contain) rather than
 // reusing UI.openModal's modal-box -- that's capped at 520px with header/footer chrome, which is
 // exactly the "not very big" look this REQ is trying to get away from.
-function openEvidenceLightbox_(fullImgUrl, originalUrl) {
+//
+// gallery/startIndex (both optional, REQ follow-up: "when clicked expand and iterate between
+// images"): gallery is an array of { full, original } pairs -- when it has more than one entry, Prev/
+// Next controls (and left/right arrow keys) step through the rest of that finding's evidence without
+// closing back out to the grid/table first. Single-image callers (most existing evidenceThumbsHtml_
+// uses) simply omit these two args and get the old single-image behavior unchanged.
+function openEvidenceLightbox_(fullImgUrl, originalUrl, gallery, startIndex) {
+  var hasGallery = gallery && gallery.length > 1;
+  var idx = hasGallery ? (startIndex || 0) : 0;
   var overlay = document.createElement('div');
   overlay.className = 'evidence-lightbox-overlay';
   overlay.innerHTML =
     '<button type="button" class="evidence-lightbox-close" aria-label="' + esc(t('close')) + '" title="' + esc(t('close')) + '">' + ICON('close_modal') + '</button>' +
+    (hasGallery ? '<button type="button" class="evidence-lightbox-nav evidence-lightbox-prev" aria-label="' + esc(t('previous')) + '" title="' + esc(t('previous')) + '">' + ICON('page_prev') + '</button>' : '') +
     '<img src="' + esc(fullImgUrl) + '" alt="Evidence" />' +
-    '<a href="' + esc(originalUrl) + '" target="_blank" rel="noopener" class="evidence-lightbox-open">' + ICON('view_open') + ' ' + esc(t('open_original')) + '</a>';
+    (hasGallery ? '<button type="button" class="evidence-lightbox-nav evidence-lightbox-next" aria-label="' + esc(t('next')) + '" title="' + esc(t('next')) + '">' + ICON('page_next') + '</button>' : '') +
+    '<a href="' + esc(originalUrl) + '" target="_blank" rel="noopener" class="evidence-lightbox-open">' + ICON('view_open') + ' ' + esc(t('open_original')) + '</a>' +
+    (hasGallery ? '<div class="evidence-lightbox-count">' + esc(t('gallery_count', { current: idx + 1, total: gallery.length })) + '</div>' : '');
   document.body.appendChild(overlay);
   function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
   overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); }); // background only -- not the image/buttons
   overlay.querySelector('.evidence-lightbox-close').onclick = close;
-  function onKey(e) { if (e.key === 'Escape') close(); }
+  function show(i) {
+    idx = (i + gallery.length) % gallery.length; // wraps both directions -- no dead-end at either edge
+    var entry = gallery[idx];
+    overlay.querySelector('img').src = entry.full;
+    overlay.querySelector('.evidence-lightbox-open').href = entry.original;
+    var count = overlay.querySelector('.evidence-lightbox-count');
+    if (count) count.textContent = t('gallery_count', { current: idx + 1, total: gallery.length });
+  }
+  if (hasGallery) {
+    overlay.querySelector('.evidence-lightbox-prev').onclick = function (e) { e.stopPropagation(); show(idx - 1); };
+    overlay.querySelector('.evidence-lightbox-next').onclick = function (e) { e.stopPropagation(); show(idx + 1); };
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') close();
+    else if (hasGallery && e.key === 'ArrowLeft') show(idx - 1);
+    else if (hasGallery && e.key === 'ArrowRight') show(idx + 1);
+  }
   document.addEventListener('keydown', onKey);
 }
+// data-gallery-b64 (optional, REQ follow-up: "Image (show last image thumbnail) when clicked expand
+// and iterate between images"): a base64-encoded JSON array of every evidence URL for the thumbnail's
+// own finding/pending-upload set, used when only ONE thumbnail is actually rendered (e.g. the Risk
+// Logging table's Image column, which shows just the last image) but all of them should still be
+// browsable once expanded. Falls back to scanning sibling .evidence-thumb elements (evidenceThumbsHtml_'s
+// own grid, where every image IS already rendered) when that attribute isn't present.
 document.addEventListener('click', function (e) {
   var el = e.target.closest ? e.target.closest('.evidence-thumb[data-lightbox-url]') : null;
   if (!el) return;
   e.preventDefault();
-  openEvidenceLightbox_(el.getAttribute('data-lightbox-url'), el.getAttribute('href'));
+  var gallery = null, startIndex = 0;
+  var b64 = el.getAttribute('data-gallery-b64');
+  if (b64) {
+    try {
+      var urls = JSON.parse(atob(b64));
+      gallery = urls.map(function (u) { return { full: driveEvidenceThumbUrl_(u, 1600) || u, original: u }; });
+      startIndex = gallery.length - 1; // the rendered thumb is always the LAST image (REQ: "last image thumbnail")
+    } catch (err) { gallery = null; }
+  } else if (el.parentElement) {
+    var siblings = Array.prototype.slice.call(el.parentElement.querySelectorAll('.evidence-thumb[data-lightbox-url]'));
+    if (siblings.length > 1) {
+      gallery = siblings.map(function (s) { return { full: s.getAttribute('data-lightbox-url'), original: s.getAttribute('href') }; });
+      startIndex = siblings.indexOf(el);
+    }
+  }
+  openEvidenceLightbox_(el.getAttribute('data-lightbox-url'), el.getAttribute('href'), gallery, startIndex);
 });
 
 // REQ (Finding detail redesign): "Risk level and status are barely noticeable." Maps each risk level
@@ -371,7 +419,9 @@ async function renderNewFinding(params) {
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
-    '<div class="page-header"><div><div class="page-title">' + esc(t('finding_log_title', { term: Term('finding') })) + '</div>' +
+    // REQ follow-up: "Change page title to 'New Log'." A separate key from finding_log_title (which
+    // stays "Log {{term}}" -- still used for the submit button below) so the two don't drift together.
+    '<div class="page-header"><div><div class="page-title">' + esc(t('new_log_page_title')) + '</div>' +
     '<div class="page-subtitle">' + esc(t('finding_log_subtitle', { term: Term('event').toLowerCase() })) + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
     // REQ (follow-up): "move map to the right, and enlarge the canvas to cover empty space." No
@@ -391,12 +441,21 @@ async function renderNewFinding(params) {
           disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
         // REQ (follow-up): "Move Checklist Type to be after Discipline."
         UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
+        // REQ follow-up: "Move Suggested description above description and make it a searchable
+        // dropdown. User can search and accordingly Category and sub-category auto fill." Supersedes
+        // the old Discipline+Checklist-Type-gated suggestion list (which only appeared after both were
+        // picked) -- this is now the primary entry point: search across the whole Log Assistance Guide
+        // catalogue by description/category/sub-category, and picking one fills Description + Suggested
+        // Action AND drives Discipline + Checklist Type (see pickSuggestion_ below), instead of the
+        // other way around.
+        '<div class="field-group" style="position:relative;">' +
+          '<label class="field-label" style="margin-top:0;">' + esc(t('suggested_descriptions')) + '</label>' +
+          '<input id="fSuggestSearch" class="field-input" placeholder="' + esc(t('suggested_description_search_placeholder')) + '" autocomplete="off" />' +
+          '<div id="fSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
+        '</div>' +
         UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
-        // REQ: "Some inspectors are junior level and could use help. We have created a guide which
-        // should give them a list of descriptions once they select the category and sub-category."
-        // Populated by renderFindingGuideSuggestions_ below once both Discipline + Checklist Type are
-        // selected; hidden (via .hidden, set inline below) whenever there's nothing to suggest.
-        '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
+        // REQ follow-up: "Add Log Location (editable field below Description)."
+        UI.field(t('field_log_location'), '<input id="fLogLocation" class="field-input" />') +
         UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
         '<div class="form-row">' +
           UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Info</option><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
@@ -493,16 +552,61 @@ async function renderNewFinding(params) {
     typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
       types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
     if (types.indexOf(prev) !== -1) typeSelect.value = prev;
-    updateFindingGuideSuggestions_();
-  }
-  function updateFindingGuideSuggestions_() {
-    var disciplineId = document.getElementById('fDiscipline').value;
-    var disciplineName = disciplineId && disciplinesById[disciplineId] ? disciplinesById[disciplineId].name : '';
-    renderFindingGuideSuggestions_(findingGuide, disciplineName, document.getElementById('fChecklistType').value, document.getElementById('fDesc'), document.getElementById('fAction'));
   }
   document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
-  document.getElementById('fChecklistType').addEventListener('change', updateFindingGuideSuggestions_);
   renderChecklistTypeOptions_();
+
+  /* ---- Suggested description: searchable dropdown (REQ follow-up) ----
+   * Searches the whole Log Assistance Guide catalogue (findingGuide) by description/category/
+   * sub-category -- unlike the old Discipline+Checklist-Type-gated list, this works before either is
+   * picked. Choosing a match fills Description + Suggested Action and drives Discipline + Checklist
+   * Type from that guide entry's own category/subCategory (match-by-name, same convention
+   * ChecklistItems.category already uses against Disciplines) -- a starting point, still fully
+   * editable afterward, same "suggestion, not a lock" spirit as the participant-driven Discipline
+   * pre-fill above. */
+  var sSearch = document.getElementById('fSuggestSearch');
+  var sSuggest = document.getElementById('fSuggestBox');
+  var sMatches = [];
+  function renderSuggestBox_(query) {
+    var q = (query || '').toLowerCase();
+    sMatches = !q ? findingGuide.slice(0, 20) : findingGuide.filter(function (g) {
+      return (g.description && g.description.toLowerCase().indexOf(q) !== -1) ||
+        (g.category && g.category.toLowerCase().indexOf(q) !== -1) ||
+        (g.subCategory && g.subCategory.toLowerCase().indexOf(q) !== -1);
+    });
+    sSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(t('suggested_descriptions')) + '</div>' +
+      (sMatches.length
+        ? sMatches.slice(0, 20).map(function (g, i) {
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(g.description) +
+              '<span class="muted" style="font-size:11px;"> · ' + esc(g.category) + (g.subCategory ? ' / ' + esc(g.subCategory) : '') + '</span></div>';
+          }).join('')
+        : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
+    sSuggest.style.display = '';
+    sSuggest.querySelectorAll('.chat-suggest-item').forEach(function (el) {
+      // mousedown+preventDefault (not click) -- same pattern as the Participant suggest box above,
+      // fires before the input's own blur handling.
+      el.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        pickSuggestion_(sMatches[Number(el.getAttribute('data-idx'))]);
+      });
+    });
+  }
+  function pickSuggestion_(g) {
+    sSearch.value = g.description;
+    sSuggest.style.display = 'none';
+    document.getElementById('fDesc').value = g.description;
+    if (g.suggestion) document.getElementById('fAction').value = g.suggestion;
+    var disc = disciplines.filter(function (d) { return d.name === g.category; })[0];
+    if (disc) {
+      document.getElementById('fDiscipline').value = disc.id;
+      renderChecklistTypeOptions_();
+      if (g.subCategory) document.getElementById('fChecklistType').value = g.subCategory;
+    }
+  }
+  sSearch.addEventListener('focus', function () { renderSuggestBox_(sSearch.value); });
+  sSearch.addEventListener('input', function () { renderSuggestBox_(sSearch.value); });
+  sSearch.addEventListener('keydown', function (e) { if (e.key === 'Escape') sSuggest.style.display = 'none'; });
+  sSearch.addEventListener('blur', function () { setTimeout(function () { sSuggest.style.display = 'none'; }, 150); });
 
   /* ---- Evidence: photo or video, camera capture only ---- */
   var pendingFiles = { newFinding: [] };
@@ -539,17 +643,28 @@ async function renderNewFinding(params) {
   // anything still preparing/uploading is watched (attachFindingEvidenceInBackground_ below) and
   // appended (addFindingEvidence, Findings.gs) the moment each one finishes.
   document.getElementById('createFindingBtn').onclick = async function () {
+    var btn = document.getElementById('createFindingBtn');
+    // BUG FIX: "Logs are becoming doubles ... user pressing the submission button twice." A second
+    // click before the first Api.call('createFinding', ...) round-trip finishes created a second,
+    // near-identical Finding -- guard with the button's own disabled state (re-entrant onclick calls
+    // are otherwise perfectly free to overlap) rather than a separate flag, so there's exactly one
+    // source of truth and no way for it to drift out of sync with what the user actually sees.
+    if (btn.disabled) return;
     if (!selectedParticipant) { UI.toast(t('toast_participant_required', { term: Term('participant') }), 'error'); return; }
     var disciplineId = document.getElementById('fDiscipline').value;
     if (!disciplineId) { UI.toast(t('toast_discipline_required', { term: Term('discipline') }), 'error'); return; }
     var files = pendingFiles.newFinding || [];
     var doneUrls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
     var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
+    btn.disabled = true;
     try {
       var f = await Api.call('createFinding', Object.assign({
         eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
         category: document.getElementById('fChecklistType').value,
+        // REQ follow-up: "Add Log Location (editable field below Description)." createFinding
+        // (Findings.gs) already accepts location and falls back to the participant's own when blank.
+        location: document.getElementById('fLogLocation').value,
         riskLevel: document.getElementById('fRisk').value, resolutionWindowHours: Number(document.getElementById('fWindow').value),
         evidenceUrls: doneUrls
         // REQ follow-up: findings used to always fall back to the participant's static coordinates,
@@ -566,7 +681,7 @@ async function renderNewFinding(params) {
       }
       destroyFindingLocationMap_();
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;
-    } catch (err) { UI.error(err); }
+    } catch (err) { UI.error(err); btn.disabled = false; }
   };
 }
 

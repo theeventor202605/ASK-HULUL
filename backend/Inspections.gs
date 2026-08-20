@@ -504,6 +504,13 @@ function listInspections(user, p) {
 // participant (merged to one row per physical spot, same as inspectionCoverage_) with NO relevance
 // filter, so anyone who actually has a fully-recorded checklist for this inspection shows up
 // regardless of whether the PM ever formally assigned them this discipline/zone.
+// REQ follow-up: "Not all sub-categories are applicable; so when Sub-Category of a checklist is
+// completed then it must appear in the Completed Checklist tab." Coverage used to be computed across
+// an inspection's WHOLE scope (every Checklist Type/sub-category combined) -- a participant that only
+// ever needed, say, "Restaurants" would never show up here at all as long as "Food Truck"/"Retail"
+// (not applicable to them, never touched) stayed open. Now computed per (participant, checklistType):
+// a participant can appear more than once, once per sub-category that's been fully recorded, entirely
+// independent of whether any other sub-category under the same inspection is done or even started.
 function listCompletedChecklists(user, p) {
   if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
   var inspections = listInspections(user, { eventId: p.eventId });
@@ -511,17 +518,27 @@ function listCompletedChecklists(user, p) {
   inspections.forEach(function (insp) {
     var venueId = inspectionVenueId_(insp);
     var merged = mergeParticipantsByLocation_(venueParticipantsForEvent_(venueId, insp.eventId));
+    var byType = {};
+    inspectionScopeItems_(insp).forEach(function (c) { (byType[c.checklistType] = byType[c.checklistType] || []).push(c); });
     merged.forEach(function (pt) {
-      var coverage = inspectionParticipantCoverage_(insp, pt.id);
-      if (!coverage.total || coverage.openItems.length) return; // nothing in scope, or not fully recorded yet
       var accountIds = participantAccountIds_(pt.id);
-      var rows = findWhere('InspectionResults', function (r) { return r.inspectionId === insp.id && accountIds.indexOf(r.participantId) !== -1; });
-      var lastRecordedAt = rows.reduce(function (max, r) { return (!max || new Date(r.recordedAt) > new Date(max)) ? r.recordedAt : max; }, '');
-      out.push({
-        inspectionId: insp.id, disciplineName: insp.disciplineName, phase: insp.phase,
-        inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
-        participantId: pt.id, participantName: pt.name,
-        done: coverage.done, total: coverage.total, lastRecordedAt: lastRecordedAt
+      var recordedByItemId = {};
+      findWhere('InspectionResults', function (r) { return r.inspectionId === insp.id && accountIds.indexOf(r.participantId) !== -1; })
+        .forEach(function (r) { recordedByItemId[r.checklistItemId] = r; });
+      Object.keys(byType).forEach(function (checklistType) {
+        var items = byType[checklistType];
+        var openItems = items.filter(function (c) { return !recordedByItemId[c.id]; });
+        if (!items.length || openItems.length) return; // this sub-category isn't fully recorded (or doesn't apply) yet
+        var lastRecordedAt = items.reduce(function (max, c) {
+          var r = recordedByItemId[c.id];
+          return (!max || new Date(r.recordedAt) > new Date(max)) ? r.recordedAt : max;
+        }, '');
+        out.push({
+          inspectionId: insp.id, disciplineName: insp.disciplineName, phase: insp.phase, checklistType: checklistType,
+          inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
+          participantId: pt.id, participantName: pt.name,
+          done: items.length, total: items.length, lastRecordedAt: lastRecordedAt
+        });
       });
     });
   });

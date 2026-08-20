@@ -100,10 +100,11 @@ window.HULUL_I18N = {
     back: 'Back',
 
     // ---- Findings / Risk Logging (findings.js) ----
-    finding_log_title: 'Log {{term}}', finding_log_subtitle: 'Record a new non-compliance finding for this {{term}}',
+    finding_log_title: 'Log {{term}}', new_log_page_title: 'New Log', finding_log_subtitle: 'Record a new non-compliance finding for this {{term}}',
     participant_search_placeholder: 'Search {{term}} by name…', live_location_map_hint: 'Or tap a dot on the map to pick them.',
     checklist_type_default_hint: '— (defaults to Other)',
     description: 'Description', suggested_action: 'Suggested action', risk_level: 'Risk level',
+    field_log_location: 'Log Location', suggested_description_search_placeholder: 'Search suggested descriptions…',
     resolution_window_hours: 'Resolution window (hours)', evidence_photo_video: 'Photo or video evidence',
     take_photo_video: 'Take photo / video', your_location: 'Your location',
     map_unavailable: 'Map unavailable (couldn\'t load the map library).',
@@ -116,6 +117,7 @@ window.HULUL_I18N = {
     could_not_load_x: 'Could not load this {{term}}.', x_already_submitted: 'This {{term}} has already been submitted and can no longer be edited',
     edit_x_title: 'Edit {{term}}', edit_finding_subtitle: 'Update this {{term}} before it\'s submitted', save_changes: 'Save changes',
     no_evidence_attached: 'No evidence attached.', click_to_expand: 'Click to expand', open_original: 'Open original',
+    previous: 'Previous', next: 'Next', gallery_count: '{{current}} / {{total}}',
     // REQ: "Create a Log photos timeline for every photo under an event... modern design. Applies to
     // participants level and project level." Shared timeline (renderFindingPhotoTimeline_,
     // findings.js) used by both the event tab and the Project detail page.
@@ -649,7 +651,8 @@ window.HULUL_I18N = {
     toast_evidence_required_desc: 'A photo or video is required for "{{desc}}" since it is marked None Comply',
     toast_nothing_to_save: 'No changes to save', toast_results_saved: '{{saved}} result(s) saved',
     findings_created_toast: '{{count}} {{term}} created', click_card_open_log_hint: 'Click a card to open the log',
-    log_x_btn: '+ Log {{term}}', col_severity: 'Severity',
+    log_x_btn: '+ Log', col_severity: 'Severity',
+    col_do: 'Do', col_image: 'Image', col_suggestion: 'Suggestion', col_date_time: 'Date time',
     title_open_log: 'Open log', delete_x_cant_undo_confirm: 'Delete this {{term}}? This can\'t be undone.',
     escalations_auto_hint: '{{term}} run automatically every 30 minutes, using the To/Cc roles and timers set in Config → Escalations. You can also trigger a check manually.',
     run_check_now_btn: 'Run check now', manual_x_override_title: 'Manual {{term}} (admin override)',
@@ -754,10 +757,11 @@ window.HULUL_I18N = {
     back: 'رجوع',
 
     // ---- Findings / Risk Logging (findings.js) ----
-    finding_log_title: 'تسجيل {{term}}', finding_log_subtitle: 'تسجيل ملاحظة عدم امتثال جديدة لهذه {{term}}',
+    finding_log_title: 'تسجيل {{term}}', new_log_page_title: 'سجل جديد', finding_log_subtitle: 'تسجيل ملاحظة عدم امتثال جديدة لهذه {{term}}',
     participant_search_placeholder: 'ابحث عن {{term}} بالاسم…', live_location_map_hint: 'أو اضغط على نقطة على الخريطة لاختياره.',
     checklist_type_default_hint: '— (تُحدَّد افتراضيًا كأخرى)',
     description: 'الوصف', suggested_action: 'الإجراء المقترح', risk_level: 'مستوى الخطورة',
+    field_log_location: 'موقع السجل', suggested_description_search_placeholder: 'ابحث في الأوصاف المقترحة…',
     resolution_window_hours: 'مهلة الحل (ساعات)', evidence_photo_video: 'دليل مصور (صورة أو فيديو)',
     take_photo_video: 'التقاط صورة / فيديو', your_location: 'موقعك',
     map_unavailable: 'الخريطة غير متاحة (تعذّر تحميل مكتبة الخرائط).',
@@ -770,6 +774,7 @@ window.HULUL_I18N = {
     could_not_load_x: 'تعذّر تحميل {{term}}.', x_already_submitted: 'تم تقديم هذا العنصر ({{term}}) بالفعل ولم يعد قابلاً للتعديل',
     edit_x_title: 'تعديل {{term}}', edit_finding_subtitle: 'تحديث {{term}} قبل تقديمه', save_changes: 'حفظ التغييرات',
     no_evidence_attached: 'لا يوجد دليل مرفق.', click_to_expand: 'اضغط للتكبير', open_original: 'فتح الأصل',
+    previous: 'السابق', next: 'التالي', gallery_count: '{{current}} / {{total}}',
     tab_finding_photos: 'الجدول الزمني للصور', photo_timeline_all_participants: 'كل المشاركين',
     photo_timeline_all_risk: 'كل مستويات الخطورة', photo_timeline_all_status: 'كل الحالات',
     photo_timeline_logged_by: 'سجّلها {{name}}', empty_no_finding_photos: 'لا توجد صور نتائج بعد.',
@@ -1276,7 +1281,8 @@ window.HULUL_I18N = {
     toast_evidence_required_desc: 'صورة أو فيديو مطلوب لـ "{{desc}}" لأنه مُحدَّد كغير مطابق',
     toast_nothing_to_save: 'لا توجد تغييرات لحفظها', toast_results_saved: 'تم حفظ {{saved}} نتيجة',
     findings_created_toast: 'تم إنشاء {{count}} {{term}}', click_card_open_log_hint: 'انقر على بطاقة لفتح السجل',
-    log_x_btn: '+ تسجيل {{term}}', col_severity: 'الخطورة',
+    log_x_btn: '+ تسجيل', col_severity: 'الخطورة',
+    col_do: 'إجراء', col_image: 'صورة', col_suggestion: 'الاقتراح', col_date_time: 'التاريخ والوقت',
     title_open_log: 'فتح السجل', delete_x_cant_undo_confirm: 'هل تريد حذف هذا {{term}}؟ لا يمكن التراجع عن هذا.',
     escalations_auto_hint: 'تعمل {{term}} تلقائيًا كل 30 دقيقة، باستخدام أدوار إلى/نسخة إلى والمؤقتات المحددة في الإعدادات ← التصعيد. يمكنك أيضًا تشغيل فحص يدويًا.',
     run_check_now_btn: 'تشغيل الفحص الآن', manual_x_override_title: '{{term}} يدوي (تجاوز إداري)',

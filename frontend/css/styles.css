@@ -665,6 +665,18 @@ table.data-table tr:hover td{ background:#fafbff; }
   text-decoration:none; display:flex; align-items:center; gap:6px; }
 .evidence-lightbox-open:hover{ background:rgba(255,255,255,.24); }
 
+/* REQ follow-up: "when clicked expand and iterate between images." Prev/Next float over the image's
+   left/right edges (same translucent-white-on-dark treatment as evidence-lightbox-close above); the
+   count pill sits above the "Open original" pill at the bottom, same rounded-pill styling. */
+.evidence-lightbox-nav{ position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; border-radius:50%;
+  background:rgba(255,255,255,.12); border:none; color:#fff; font-size:20px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; }
+.evidence-lightbox-nav:hover{ background:rgba(255,255,255,.24); }
+.evidence-lightbox-prev{ inset-inline-start:24px; }
+.evidence-lightbox-next{ inset-inline-end:24px; }
+.evidence-lightbox-count{ position:absolute; bottom:68px; left:50%; transform:translateX(-50%); color:#fff;
+  font-size:11.5px; font-weight:600; background:rgba(255,255,255,.14); padding:4px 12px; border-radius:999px; }
+
 /* ---------- Photo timeline (renderFindingPhotoTimeline_, findings.js) ----------
    REQ: "Create a Log photos timeline for every photo under an event with details like Baskin
    Robbins High Risk Open, in modern design. This also applies to participants level and project
