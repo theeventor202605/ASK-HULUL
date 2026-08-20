@@ -216,6 +216,33 @@ function addFindingEvidence(user, p) {
   return updated;
 }
 
+// REQ: "In logs add ability to delete a photo." The inverse of addFindingEvidence above -- removes
+// one URL from the finding's own evidence gallery (and its matching evidenceMeta entry, if any) so a
+// wrongly-attached or duplicate photo can be corrected without needing to delete/recreate the whole
+// Log. Only detaches the URL from this row; the underlying Drive file itself is left alone (same
+// "detach, don't destroy" precedent as deleteAnnexDocument, Annex.gs -- a shared/linked file elsewhere
+// shouldn't be silently destroyed). Deliberately its own permission (finding.deleteEvidence) rather
+// than reusing finding.edit -- same "add vs. edit vs. delete are each their own admin-configurable
+// action" pattern as every other Findings permission, and not gated to FINDING_EDITABLE_STATUSES_
+// (same reasoning as addFindingEvidence -- correcting a mistake shouldn't depend on how far the
+// workflow has already moved).
+function deleteFindingEvidence(user, p) {
+  var finding = getById('Findings', p && p.findingId);
+  if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
+  requirePermission(user, 'finding.deleteEvidence');
+  if (!p.url) throw new HululError('BAD_REQUEST', 'url is required');
+  var urls = finding.evidenceUrls ? String(finding.evidenceUrls).split(',').filter(Boolean) : [];
+  var idx = urls.indexOf(p.url);
+  if (idx === -1) throw new HululError('NOT_FOUND', 'That photo is not attached to this log');
+  urls.splice(idx, 1);
+  var patch = { evidenceUrls: urls.join(',') };
+  var meta = findingEvidenceMeta_(finding.evidenceMeta);
+  if (meta.length) patch.evidenceMeta = JSON.stringify(meta.filter(function (m) { return m.url !== p.url; }));
+  var updated = updateRow('Findings', p.findingId, patch);
+  audit(user.id, 'DELETE_FINDING_EVIDENCE', 'Findings', p.findingId, { url: p.url });
+  return updated;
+}
+
 // Fetches one finding for its detail page, auto-advancing status on view exactly at the two points
 // the process flow calls for:
 //  - a Participant's first open of an Open finding -> Viewed
