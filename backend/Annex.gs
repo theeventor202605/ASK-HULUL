@@ -59,7 +59,13 @@ function listEventAnnex(user, p) {
   var categories = catalog.map(function (cat) {
     var ov = overrideByCatId[cat.id];
     var catDocs = (docsByCatId[cat.id] || []).sort(function (a, b) { return a.uploadedAt < b.uploadedAt ? -1 : 1; });
-    var required = !!(ov && (ov.required === true || ov.required === 'true'));
+    // REQ follow-up: "mark default required uploads" -- once a PM/Analyst has actually touched this
+    // category for this event (setAnnexCategoryRequired -> a real AnnexEventCategories row exists),
+    // their own explicit choice always wins, same as before. Only the still-virtual "nobody's touched
+    // it yet" case now reads the catalog's own defaultRequired instead of hardcoding false, so an
+    // admin can pre-mark a category mandatory once (Inspection Setup > Annex Categories) instead of
+    // every PM re-checking the same box on every new event.
+    var required = ov ? (ov.required === true || ov.required === 'true') : (cat.defaultRequired === true || cat.defaultRequired === 'true');
     var status = (ov && ov.status) || 'Not Provided';
     var acceptedCount = catDocs.filter(function (d) { return d.status === 'Accepted'; }).length;
     var pendingCount = catDocs.filter(function (d) { return d.status === 'Pending'; }).length;
@@ -83,18 +89,98 @@ function listEventAnnex(user, p) {
   };
 }
 
+var ANNEX_SECTIONS_VALID_ = ['RiskAssessments', 'SignOffs', 'Certifications'];
+
+// Admin listing for the Inspection Setup > Annex Categories page (annexCategories.js) -- REQ follow-
+// up: "I would rather have this part of the inspection setup so the responsible person can make
+// changes or add new categories and mark default required uploads." Unlike listEventAnnex (which
+// only ever needs the active catalog merged against one event), this is the raw catalog itself, so
+// the admin page can show and manage every row including soft-deleted ones (includeDeleted) -- same
+// convention as listChecklistItems.
+function listAnnexCategories(user, p) {
+  var all = getAll('AnnexCategories').sort(function (a, b) {
+    if (a.section !== b.section) return a.section < b.section ? -1 : 1;
+    return Number(a.orderIndex) - Number(b.orderIndex);
+  });
+  return (p && p.includeDeleted) ? all : all.filter(function (c) { return c.status !== 'Deleted'; });
+}
+
+function annexCategoryDupKey_(section, name) {
+  return String(section || '') + '|' + String(name || '').trim().toLowerCase();
+}
+
+function createAnnexCategory(user, p) {
+  requirePermission(user, 'annex.manageCatalog');
+  if (!p || !p.section || !p.name) throw new HululError('BAD_REQUEST', 'section and name are required');
+  if (ANNEX_SECTIONS_VALID_.indexOf(p.section) === -1) throw new HululError('BAD_REQUEST', 'Invalid section');
+  var key = annexCategoryDupKey_(p.section, p.name);
+  var dup = findWhere('AnnexCategories', function (c) { return c.status !== 'Deleted' && annexCategoryDupKey_(c.section, c.name) === key; })[0];
+  if (dup) throw new HululError('BAD_REQUEST', 'A category with this name already exists in this section.');
+  var sectionRows = findWhere('AnnexCategories', function (c) { return c.section === p.section; });
+  var maxOrder = sectionRows.reduce(function (max, c) { return Math.max(max, Number(c.orderIndex) || 0); }, 0);
+  var row = {
+    id: newId('AnnexCategories'), section: p.section, name: String(p.name).trim(),
+    orderIndex: maxOrder + 1, status: 'Active', defaultRequired: !!p.defaultRequired
+  };
+  insertRow('AnnexCategories', row);
+  audit(user.id, 'CREATE_ANNEX_CATEGORY', 'AnnexCategories', row.id, {});
+  return row;
+}
+
+function updateAnnexCategory(user, p) {
+  requirePermission(user, 'annex.manageCatalog');
+  if (!p || !p.categoryId) throw new HululError('BAD_REQUEST', 'categoryId is required');
+  var existing = getById('AnnexCategories', p.categoryId);
+  if (!existing) throw new HululError('NOT_FOUND', 'Category not found');
+  var section = p.section !== undefined ? p.section : existing.section;
+  var name = p.name !== undefined ? String(p.name).trim() : existing.name;
+  if (!section || !name) throw new HululError('BAD_REQUEST', 'section and name are required');
+  if (ANNEX_SECTIONS_VALID_.indexOf(section) === -1) throw new HululError('BAD_REQUEST', 'Invalid section');
+  var key = annexCategoryDupKey_(section, name);
+  var dup = findWhere('AnnexCategories', function (c) { return c.id !== p.categoryId && c.status !== 'Deleted' && annexCategoryDupKey_(c.section, c.name) === key; })[0];
+  if (dup) throw new HululError('BAD_REQUEST', 'A category with this name already exists in this section.');
+  var patch = { section: section, name: name };
+  if (p.defaultRequired !== undefined) patch.defaultRequired = !!p.defaultRequired;
+  // Reactivating a soft-deleted row through the same "Active" toggle the admin page uses, rather than
+  // needing a separate restore action -- same status-field-doubles-as-a-toggle convention Roles.gs
+  // uses for custom roles.
+  if (p.status !== undefined) patch.status = p.status === 'Deleted' ? 'Deleted' : 'Active';
+  var updated = updateRow('AnnexCategories', p.categoryId, patch);
+  audit(user.id, 'UPDATE_ANNEX_CATEGORY', 'AnnexCategories', p.categoryId, patch);
+  return updated;
+}
+
+// Soft delete -- AnnexDocuments and AnnexEventCategories rows already uploaded/touched against this
+// category stay exactly as they are (same "detach, don't destroy" precedent as deleteAnnexDocument
+// further down and deleteFindingEvidence, Findings.gs); listEventAnnex's own catalog filter
+// (status !== 'Deleted') is what actually hides it from every event going forward.
+function deleteAnnexCategory(user, p) {
+  requirePermission(user, 'annex.manageCatalog');
+  if (!p || !p.categoryId) throw new HululError('BAD_REQUEST', 'categoryId is required');
+  var existing = getById('AnnexCategories', p.categoryId);
+  if (!existing) throw new HululError('NOT_FOUND', 'Category not found');
+  if (existing.status === 'Deleted') throw new HululError('BAD_REQUEST', 'Category is already deleted');
+  updateRow('AnnexCategories', p.categoryId, { status: 'Deleted' });
+  audit(user.id, 'DELETE_ANNEX_CATEGORY', 'AnnexCategories', p.categoryId, {});
+  return { ok: true };
+}
+
 // SystemAdmin-only, in-app trigger for seedAnnexCategories_ (Setup.gs). That seed only ever ran
 // automatically as part of the full setupHulul() provisioning script, so any org whose spreadsheet
 // was already live before the Annex feature shipped (task history: "Under readiness add 'Annex'")
 // never got it -- REQ bug report: "In Annex tab, I can not see an upload option" turned out to be an
 // empty AnnexCategories catalog, not a permissions problem, and the admin reported they couldn't
-// locate seedAnnexCategories_ in the Apps Script editor's function dropdown to run it by hand. This
-// gives SystemAdmin a one-click way to run the exact same (idempotent -- see its own no-op-if-
-// existing-rows guard) seed from inside the app instead. Safe to leave in permanently: the frontend
-// only ever shows the button that calls this when listEventAnnex's own category list is already
-// empty, and the seed itself is a no-op once categories exist either way.
+// locate seedAnnexCategories_ in the Apps Script editor's function dropdown to run it by hand. Now
+// surfaced as an empty-state bootstrap action on the Inspection Setup > Annex Categories admin page
+// (annexCategories.js) instead of the per-event Annex tab -- REQ follow-up: "I would rather have this
+// part of the inspection setup" -- since seeding/managing the catalog is a setup concern, not
+// something tied to any one event. Gives SystemAdmin a one-click way to run the exact same
+// (idempotent -- see its own no-op-if-existing-rows guard) seed from inside the app instead. Safe to
+// leave in permanently: the admin page only ever shows the button that calls this when
+// listAnnexCategories' own list is already empty, and the seed itself is a no-op once categories
+// exist either way.
 function runSeedAnnexCategories(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  requirePermission(user, 'annex.manageCatalog'); // same audience as create/update/deleteAnnexCategory
   var before = getAll('AnnexCategories').length;
   seedAnnexCategories_();
   var after = getAll('AnnexCategories').length;

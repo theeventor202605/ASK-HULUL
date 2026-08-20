@@ -107,6 +107,7 @@ window.Router = {
     this.add('/disciplines', renderDisciplinesAdmin);
     this.add('/checklist-items', renderChecklistItems);
     this.add('/finding-guide', renderFindingGuide);
+    this.add('/annex-categories', renderAnnexCategories);
     this.add('/inspector-qualifications', renderInspectorQualifications);
     this.add('/completed-checklists', renderCompletedChecklistsPage);
     this.add('/template-library', renderTemplateLibrary);

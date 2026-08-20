@@ -57,6 +57,11 @@ var NAV_ITEMS = [
   // audience as Checklist Items -- whoever maintains that catalogue also maintains this one.
   { path: '/finding-guide', icon: LUCIDE_ICONS['lightbulb'], label: 'nav_finding_guide', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
+  // REQ follow-up: "I would rather have this part of the inspection setup so the responsible person
+  // can make changes or add new categories and mark default required uploads." Same admin audience as
+  // the other catalogue-maintenance pages in this group.
+  { path: '/annex-categories', icon: LUCIDE_ICONS['file-check'], label: 'nav_annex_categories', section: 'section_admin',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/inspector-qualifications', icon: LUCIDE_ICONS['graduation-cap'], label: 'nav_qualifications', section: 'section_admin',
     entityLabelFn: function () { return t('qualifications_page_title', { term: Term('inspector_plural') }); },
     roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
@@ -92,7 +97,7 @@ var NAV_GROUPS_ = [
   { section: 'section_admin', key: 'accountsGroup', labelKey: 'nav_group_accounts', paths: ['/users', '/organizations'] },
   // "Everything the Inspections workflow draws its catalogue/setup from" -- Disciplines, Checklist
   // Items, Inspector Qualifications, Template Library.
-  { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/finding-guide', '/inspector-qualifications', '/template-library'] },
+  { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/finding-guide', '/annex-categories', '/inspector-qualifications', '/template-library'] },
   { section: 'section_admin', paths: ['/audit-log'] },
   { section: 'section_admin', paths: ['/settings'] }
 ];

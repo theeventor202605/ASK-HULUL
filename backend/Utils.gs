@@ -393,13 +393,21 @@ var SCHEMA = {
   // leave": some time after that moment, since no later ping ever matched this venue again.
   VenueAttendance:        ['id','userId','venueId','firstAttendedAt','lastSeenInsideAt','createdAt'],
   // REQ: "Under readiness add 'Annex' ... divided into three sections: Risk Assessments, Sign-Offs /
-  // Approvals, Certifications / TUVs / Supporting Records." A global, admin-seeded reference catalog
-  // (mirrors Disciplines/ChecklistItems -- seeded once via seedAnnexCategories_, Setup.gs) of every
-  // named category across the 3 fixed sections -- NOT per-event; every event sees the same catalog,
-  // same "shared reference list, per-event tracking lives in its own join table" split Templates.gs
-  // already uses (TemplateLibrary vs Templates). section is one of 'RiskAssessments'/'SignOffs'/
-  // 'Certifications'. orderIndex preserves the exact numbered order given in the REQ.
-  AnnexCategories:        ['id','section','name','orderIndex','status'],
+  // Approvals, Certifications / TUVs / Supporting Records." A global, admin-maintained reference
+  // catalog (mirrors Disciplines/ChecklistItems -- seedAnnexCategories_, Setup.gs seeds the original
+  // 28 rows one time; annexCategories.js, the "Inspection Setup" admin page, is how it's maintained
+  // going forward -- add/edit/soft-delete a category, same pattern as Categories/Checklists/Log
+  // Assistance Guide) of every named category across the 3 fixed sections -- NOT per-event; every
+  // event sees the same catalog, same "shared reference list, per-event tracking lives in its own join
+  // table" split Templates.gs already uses (TemplateLibrary vs Templates). section is one of
+  // 'RiskAssessments'/'SignOffs'/'Certifications'. orderIndex preserves the exact numbered order given
+  // in the REQ (existing rows) or "added at the end of its section" (new rows via the admin page).
+  // defaultRequired (REQ follow-up: "mark default required uploads") is the catalog-level starting
+  // point for a category's per-event 'required' flag -- listEventAnnex's virtual per-event default
+  // (no AnnexEventCategories row touched yet) now reads this instead of always defaulting to false,
+  // so an admin can pre-mark a category mandatory once instead of every PM re-checking it per event.
+  // A PM/Analyst's own per-event override (setAnnexCategoryRequired) still always wins once it exists.
+  AnnexCategories:        ['id','section','name','orderIndex','status','defaultRequired'],
   // Per-(event, category) override -- lazily created (see listEventAnnex, Annex.gs) so a brand new
   // event doesn't need 28 rows pre-inserted; a category with no row here yet is just "not required,
   // not provided" by default, same virtual-row convention getEventTemplates (Templates.gs) uses for

@@ -350,6 +350,16 @@ var PERMISSION_REGISTRY_ = {
   'annex.manage': {
     module: 'Readiness', label: 'Manage Annex categories (mark required, accept/reject documents, mark provided, request info)', page: 'annex', crud: ['update', 'delete'],
     defaultRoles: ['ProjectManager', 'InspectionAnalyst', 'InspectionAdmin', 'SystemAdmin']
+  },
+  // REQ follow-up: "I would rather have this part of the inspection setup so the responsible person
+  // can make changes or add new categories and mark default required uploads." A distinct permission
+  // from annex.manage above on purpose -- that one is the per-EVENT required/accept/provide workflow
+  // (ProjectManager/InspectionAnalyst on every event), this one is maintaining the shared CATALOG
+  // itself (add/edit/soft-delete a category, set its default-required starting point) -- same "setup
+  // catalogue" audience as discipline.manage/checklistItem.manage/findingGuide.manage, not every PM.
+  'annex.manageCatalog': {
+    module: 'Readiness', label: 'Add, edit, or delete an Annex category in the catalogue (Inspection Setup)', page: 'annexCategories', crud: ['create', 'update', 'delete'],
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
   }
 };
 

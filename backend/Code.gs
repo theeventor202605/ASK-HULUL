@@ -198,6 +198,11 @@ var ROUTES = {
   markAnnexCategoryProvided: function (u, p) { return markAnnexCategoryProvided(u, p); },
   requestAnnexInfo: function (u, p) { return requestAnnexInfo(u, p); },
   deleteAnnexDocument: function (u, p) { return deleteAnnexDocument(u, p); },
+  // Annex Categories catalog admin (Inspection Setup)
+  listAnnexCategories: function (u, p) { return listAnnexCategories(u, p); },
+  createAnnexCategory: function (u, p) { return createAnnexCategory(u, p); },
+  updateAnnexCategory: function (u, p) { return updateAnnexCategory(u, p); },
+  deleteAnnexCategory: function (u, p) { return deleteAnnexCategory(u, p); },
 
   scheduleKickoff: function (u, p) { return scheduleKickoff(u, p); },
   listMeetings: function (u, p) { return listMeetings(u, p); },

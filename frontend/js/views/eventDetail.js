@@ -731,23 +731,24 @@ async function tabAnnex(content, eventId, detail) {
   var canManage = hasPermission('annex.manage');
   var summary = data.summary;
   // BUG REPORT: "In Annex tab, I can not see an upload option" -- turned out to be an org whose
-  // spreadsheet predates the Annex feature, so seedAnnexCategories_ (Setup.gs) never ran and the
-  // catalog every section's table renders from is just empty (no rows -> no per-row Upload button
-  // for anyone, regardless of permission). That seed only ever ran automatically inside the full
-  // setupHulul() provisioning script, and the admin reported not being able to find it in the Apps
-  // Script editor's function dropdown to run by hand. This banner + button calls the new
-  // runSeedAnnexCategories endpoint (Annex.gs) instead, so a SystemAdmin can fix it from the app
-  // itself -- only shown when the catalog is actually empty, so it disappears on its own once seeded.
-  var showSeedBanner = !data.categories.length && HululState.user.role === 'SystemAdmin';
+  // spreadsheet predates the Annex feature, so the AnnexCategories catalog every section's table
+  // renders from is just empty (no rows -> no per-row Upload button for anyone, regardless of
+  // permission). REQ follow-up: "I would rather have this part of the inspection setup so the
+  // responsible person can make changes or add new categories and mark default required uploads" --
+  // managing (and, for an org that's never had it, first bootstrapping) the catalog now lives on its
+  // own admin page (Inspection Setup > Annex Categories, annexCategories.js) instead of an action
+  // embedded in this per-event tab. This is just a pointer over there for whoever hits the empty
+  // state on an actual event, not a duplicate of that page's own seed button.
+  var showEmptyCatalogHint = !data.categories.length && hasPermission('annex.manageCatalog');
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;gap:14px;">' +
     '<div style="font-weight:700;font-size:14px;">' + esc(t('annex_summary_x', { provided: summary.providedCount, required: summary.requiredCount, missing: summary.missingCount })) + '</div>' +
     '</div></div>' +
-    (showSeedBanner
+    (showEmptyCatalogHint
       ? '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning);"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">' +
           '<div style="font-size:13px;">' + esc(t('annex_no_categories_hint')) + '</div>' +
-          '<button class="btn btn-primary btn-sm" id="seedAnnexCategoriesBtn">' + esc(t('annex_seed_categories_btn')) + '</button>' +
+          '<a href="#/annex-categories" class="btn btn-primary btn-sm">' + esc(t('annex_go_to_setup_btn')) + '</a>' +
         '</div></div>'
       : '') +
     ANNEX_SECTIONS_.map(function (sec) {
@@ -765,15 +766,6 @@ async function tabAnnex(content, eventId, detail) {
         ], rows, { emptyText: t('no_data') }) + '</div></div>';
     }).join('');
 
-  if (showSeedBanner) {
-    document.getElementById('seedAnnexCategoriesBtn').onclick = async function () {
-      try {
-        var result = await Api.call('runSeedAnnexCategories', {});
-        UI.toast(t('toast_annex_categories_seeded', { count: result.seeded }), 'success');
-        Router.resolve();
-      } catch (err) { UI.error(err); }
-    };
-  }
   content.querySelectorAll('.annex-required-cb').forEach(function (cb) {
     cb.onchange = async function () {
       try {

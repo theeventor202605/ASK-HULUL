@@ -927,6 +927,7 @@ function permissionPages_() {
     { id: 'templateLibrary', label: t('template_library_title', { term: Term('template_plural') }), navPath: '/template-library' },
     { id: 'approval', label: t('tab_approval'), eventTab: 'approval' },
     { id: 'annex', label: t('tab_annex'), eventTab: 'annex' },
+    { id: 'annexCategories', label: t('annex_categories_title'), navPath: '/annex-categories' },
     { id: 'disciplinesTab', label: t('tab_disciplines'), eventTab: 'disciplines' },
     { id: 'disciplinesCatalog', label: Term('discipline_plural'), navPath: '/disciplines' },
     { id: 'inspectorQualifications', label: t('qualifications_page_title', { term: Term('inspector_plural') }), navPath: '/inspector-qualifications' },
