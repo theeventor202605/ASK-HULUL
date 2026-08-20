@@ -398,8 +398,36 @@ function getEventDetail(user, eventId) {
     kpi: {
       totalLogs: buckets.total, open: buckets.open, inReview: buckets.inReview,
       resolved: buckets.resolved, reopened: buckets.reopen, rejected: buckets.rejected
-    }
+    },
+    // REQ ("a security operator must be available in every event ... EMC just needs to set up their
+    // accounts accordingly" + follow-up: "Show compliance status") -- rolled into getEventDetail
+    // (not a separate round-trip) so the Overview tab's compliance banner is available on first
+    // paint, same as kpi just above.
+    mandatoryOperatorCompliance: mandatoryOperatorCompliance_(eventId)
   };
+}
+
+// Internal: for every custom role flagged BOTH isParticipantType AND isMandatoryOperator (Roles.gs,
+// Settings > Mandatory Operators), whether this event has at least one Participant of that type.
+// Participants.type stores the role code directly for a custom Participant type (see
+// participantTypes_, Roles.gs), so this is a simple presence check per role, event-wide (not
+// venue-scoped -- REQ's own framing, "must be available in every event", is event-level).
+function mandatoryOperatorCompliance_(eventId) {
+  var mandatoryRoles = getCustomRoles_().filter(function (r) { return r.isParticipantType && r.isMandatoryOperator; });
+  if (!mandatoryRoles.length) return { roles: [], totalCount: 0, missingCount: 0 };
+  var presentTypes = {};
+  findWhere('Participants', function (p) { return p.eventId === eventId; }).forEach(function (p) { presentTypes[p.type] = true; });
+  var roles = mandatoryRoles.map(function (r) { return { code: r.code, label: r.label, present: !!presentTypes[r.code] }; });
+  return { roles: roles, totalCount: roles.length, missingCount: roles.filter(function (r) { return !r.present; }).length };
+}
+
+// Standalone endpoint mirroring the embedded copy above -- for callers that just need this (e.g. a
+// future Dashboard widget) without pulling the whole getEventDetail payload.
+function getMandatoryOperatorCompliance(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var event = getById('Events', p.eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  return mandatoryOperatorCompliance_(p.eventId);
 }
 
 // REQ-EVT-11: EMC Manager assigns an Event Manager to a Venue (recorded on the Event).

@@ -283,6 +283,7 @@ async function tabOverview(content, eventId, detail) {
   // up into a right column beside them, stretched to match their combined height instead of a small
   // fixed-height thumbnail sitting alone.
   content.innerHTML =
+    mandatoryOperatorComplianceBannerHtml_(detail.mandatoryOperatorCompliance) +
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', detail.kpi.totalLogs, ICON('kpi_total'), 'var(--info)') +
       kpiCard('kpi_open', detail.kpi.open, ICON('kpi_open'), 'var(--info)') +
@@ -336,6 +337,23 @@ async function tabOverview(content, eventId, detail) {
     '</div>';
 
   initOverviewZoneMap_(detail.venue, zones);
+}
+
+// REQ ("a security operator must be available in every event ... EMC just needs to set up their
+// accounts accordingly" + follow-up: "Show compliance status") -- a chip per role flagged
+// isMandatoryOperator (Settings > Mandatory Operators), green if this event already has a matching
+// Operator-type participant, red if not. Renders nothing at all when no role is flagged (the common
+// case for orgs not using this feature), same as the Sub-Events card hiding itself when empty.
+function mandatoryOperatorComplianceBannerHtml_(compliance) {
+  if (!compliance || !compliance.roles || !compliance.roles.length) return '';
+  var chips = compliance.roles.map(function (r) {
+    return '<span class="badge ' + (r.present ? 'badge-resolved' : 'badge-rejected') + '" style="font-size:11px;">' +
+      esc(r.label) + ' — ' + esc(r.present ? t('mandatory_operator_present') : t('mandatory_operator_missing')) + '</span>';
+  }).join(' ');
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+    '<div style="font-weight:700;font-size:13px;">' + esc(t('mandatory_operator_compliance_title')) + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + chips + '</div>' +
+    '</div></div>';
 }
 
 var overviewZoneMapInstance_ = null;
@@ -2132,10 +2150,13 @@ function renderOpenChecklistsCard_(openSlots, canClaim) {
   var body = !openSlots.length
     ? '<div class="muted" style="font-size:13px;">' + esc(t('no_open_checklists_hint')) + '</div>'
     : openSlots.map(function (s) {
+        // REQ correction: "inspectors can now pick up one open checklist sub-category" -- a slot is
+        // now (discipline, phase, checklistType), not the whole discipline+phase, so the sub-category
+        // is shown alongside discipline/phase and carried on the Pick up button.
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13px;">' +
-          '<div><strong>' + esc(s.disciplineName) + '</strong> <span class="muted">— ' + esc(s.phase) + '</span></div>' +
+          '<div><strong>' + esc(s.disciplineName) + '</strong> <span class="muted">— ' + esc(s.phase) + ' · ' + esc(s.checklistType) + '</span></div>' +
           (canClaim && s.qualified
-            ? '<button class="btn btn-primary btn-sm" data-pickup-discipline="' + esc(s.disciplineId) + '" data-pickup-phase="' + esc(s.phase) + '">' + esc(t('pick_up_btn')) + '</button>'
+            ? '<button class="btn btn-primary btn-sm" data-pickup-discipline="' + esc(s.disciplineId) + '" data-pickup-phase="' + esc(s.phase) + '" data-pickup-checklist-type="' + esc(s.checklistType) + '">' + esc(t('pick_up_btn')) + '</button>'
             : (canClaim ? '<span class="muted" style="font-size:11.5px;">' + esc(t('not_qualified_hint')) + '</span>' : '')) +
           '</div>';
       }).join('');
@@ -2202,7 +2223,12 @@ async function tabInspections(content, eventId, detail) {
     renderOpenChecklistsCard_(openSlots, canClaim) +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('inspection_plural')) + '</div></div><div class="card-body">' +
     UI.table([
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'phase', label: t('col_phase') },
+      // REQ correction: "inspectors can now pick up one open checklist sub-category" -- a self-claimed
+      // pickup (assignedVia === 'self') now covers just one checklistType instead of the whole
+      // discipline, so its sub-category is shown alongside the discipline name to distinguish it from
+      // a PM-scheduled row (checklistType blank, covers everything) for the same discipline+phase.
+      { key: 'disciplineName', label: Term('discipline'), render: r => esc(r.disciplineName) + (r.checklistType ? ' <span class="muted" style="font-size:11px;">— ' + esc(r.checklistType) + '</span>' : '') },
+      { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) },
       // REQ: "Opening checklists are done against the venue not participants." coverage.mode
@@ -2340,14 +2366,15 @@ async function tabInspections(content, eventId, detail) {
     );
   });
 
-  // REQ: self-service open checklist pickup -- "Pick up" claims the (discipline, phase) slot as the
-  // current Inspector's own; the button's own app-wide click-guard (ui.js) already stops a double-
-  // click from firing this twice.
+  // REQ: self-service open checklist pickup -- "Pick up" claims the (discipline, phase, checklistType)
+  // sub-category slot as the current Inspector's own; the button's own app-wide click-guard (ui.js)
+  // already stops a double-click from firing this twice.
   content.querySelectorAll('[data-pickup-discipline]').forEach(btn => {
     btn.onclick = async () => {
       try {
         await Api.call('claimOpenInspectionSlot', {
-          eventId: eventId, disciplineId: btn.getAttribute('data-pickup-discipline'), phase: btn.getAttribute('data-pickup-phase')
+          eventId: eventId, disciplineId: btn.getAttribute('data-pickup-discipline'), phase: btn.getAttribute('data-pickup-phase'),
+          checklistType: btn.getAttribute('data-pickup-checklist-type')
         });
         UI.toast(t('toast_checklist_picked_up'), 'success'); Router.resolve();
       } catch (err) { UI.error(err); }

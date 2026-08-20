@@ -147,12 +147,27 @@ function updateRole(user, p) {
     patch.creatableBy = JSON.stringify((p.creatableBy || []).filter(function (r) { return validCodes.indexOf(r) !== -1; }));
   }
   if (p.isParticipantType !== undefined) patch.isParticipantType = !!p.isParticipantType;
+  // REQ ("In settings add a tab for mandatory operators"): toggled from Settings > Mandatory
+  // Operators (setMandatoryOperator, below) in the normal flow, but also editable here since this is
+  // the general-purpose role editor -- same "accept it in more than one place" reasoning as
+  // isParticipantType just above. Meaningless without isParticipantType also being true; the
+  // frontend's Mandatory Operators tab only offers the toggle for roles that already are one.
+  if (p.isMandatoryOperator !== undefined) patch.isMandatoryOperator = !!p.isMandatoryOperator;
   var updated = updateRow('Roles', row.id, patch);
   audit(user.id, 'UPDATE_ROLE', 'Roles', row.id, patch);
   return {
     code: updated.code, label: updated.label, orgType: updated.orgType || '', creatableBy: JSON.parse(updated.creatableBy || '[]'),
-    isParticipantType: updated.isParticipantType === true || updated.isParticipantType === 'true'
+    isParticipantType: updated.isParticipantType === true || updated.isParticipantType === 'true',
+    isMandatoryOperator: updated.isMandatoryOperator === true || updated.isMandatoryOperator === 'true'
   };
+}
+
+// SystemAdmin-only convenience wrapper around updateRole, scoped to just the Mandatory Operators
+// flag -- Settings > Mandatory Operators (frontend) calls this instead of the general updateRole so
+// toggling one flag can't accidentally clobber a concurrent edit to the role's label/orgType/
+// creatableBy from the main Roles tab. p: { code, isMandatoryOperator }.
+function setMandatoryOperator(user, p) {
+  return updateRole(user, { code: p && p.code, isMandatoryOperator: !!(p && p.isMandatoryOperator) });
 }
 
 // True for a Place/Participant "type" role -- the 3 built-in ones (Vendor/Operator/Exhibitor) plus any

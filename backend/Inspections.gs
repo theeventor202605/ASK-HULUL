@@ -268,18 +268,27 @@ function deleteInspection(user, p) {
 /* ---------------- Self-service "open" checklist pickup ----------------
  * REQ: "Any inspector who has not been assigned can start on a checklist that has not been assigned
  * to anyone as long as he is qualified in that category. Once he picks up an opening sub-checklist
- * it becomes unavailable to other inspectors unless cancelled by the inspector."
+ * it becomes unavailable to other inspectors unless cancelled by the inspector." REQ correction:
+ * "inspectors can now pick up one open checklist sub-category" -- a "slot" is one (discipline, phase,
+ * checklistType) combination, not the whole discipline+phase -- e.g. two different inspectors can
+ * each pick up a different sub-category under the same "Fire Safety / Opening" checklist instead of
+ * one inspector claiming the entire discipline. checklistType is a required field on every
+ * ChecklistItems row (createChecklistItem above), so every (discipline, phase) that has any catalogue
+ * items at all has at least one sub-category to enumerate.
  *
- * A "slot" here is one (discipline, phase) combination that's been identified for the event
- * (EventDisciplines -- see identifyDisciplines, Disciplines.gs) and actually has catalogue
- * ChecklistItems for that phase, but has NO Inspections row yet -- from ANY inspector, whether
- * scheduled the normal PM-driven way (scheduleInspection, above) or previously self-claimed. This is
- * deliberately a different, looser gate than scheduleInspection's own InspectorAssignments check --
- * that one requires a PM to have explicitly assigned this specific inspector to this discipline for
- * this event first; self-claiming only requires the inspector's own global Inspector Qualifications
- * profile (Settings > Inspector Qualifications, same one used to populate the "Assign inspector"
- * dropdown) to include this discipline, regardless of whether they were ever added to this event's
- * own Assignments list.
+ * A PM-scheduled Inspection (scheduleInspection, above) is unaffected by this and still covers the
+ * WHOLE discipline+phase (Inspections.checklistType stays '' for those, same as always) -- only
+ * self-claimed rows are now scoped to one specific sub-category (see inspectionScopeItems_ below,
+ * which is what actually enforces the narrower scope once claimed). A whole-discipline row (PM-
+ * scheduled OR, historically, self-claimed before this change) closes every sub-category slot under
+ * it, since it already covers everything a narrower pickup would.
+ *
+ * This is deliberately a different, looser gate than scheduleInspection's own InspectorAssignments
+ * check -- that one requires a PM to have explicitly assigned this specific inspector to this
+ * discipline for this event first; self-claiming only requires the inspector's own global Inspector
+ * Qualifications profile (Settings > Inspector Qualifications, same one used to populate the "Assign
+ * inspector" dropdown) to include this discipline, regardless of whether they were ever added to this
+ * event's own Assignments list.
  */
 function disciplinePhasesWithChecklistItems_(disciplineName) {
   var phases = {};
@@ -292,55 +301,83 @@ function disciplinePhasesWithChecklistItems_(disciplineName) {
   return Object.keys(phases).length ? Object.keys(phases) : ['Opening', 'Operational'];
 }
 
-// Every open (discipline, phase) slot for the event, regardless of viewer -- each entry also carries
-// `qualified` for the CALLING user specifically, so the frontend can show every open slot as
-// information to a PM/SystemAdmin while only offering the "Pick up" action on the ones this
-// particular Inspector is actually qualified for.
+// Every distinct checklistType (sub-category) the catalogue actually has for this discipline+phase,
+// in no particular guaranteed order beyond "however Object.keys returns them" -- the frontend/caller
+// sorts if it cares. Empty array means this exact (discipline, phase) has no catalogue items yet.
+function disciplineChecklistTypesForPhase_(disciplineName, phase) {
+  var types = {};
+  getAll('ChecklistItems').forEach(function (c) {
+    if (c.status !== 'Deleted' && c.category === disciplineName && c.phase === phase && c.checklistType) types[c.checklistType] = true;
+  });
+  return Object.keys(types);
+}
+
+// Every open (discipline, phase, checklistType) slot for the event, regardless of viewer -- each
+// entry also carries `qualified` for the CALLING user specifically, so the frontend can show every
+// open slot as information to a PM/SystemAdmin while only offering the "Pick up" action on the ones
+// this particular Inspector is actually qualified for.
 function listOpenInspectionSlots(user, p) {
   if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
   var identified = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId; });
-  var covered = {}; // any existing inspection at all (any inspector) closes this slot
-  findWhere('Inspections', function (i) { return i.eventId === p.eventId; })
-    .forEach(function (i) { covered[i.disciplineId + '|' + i.phase] = true; });
+  // A whole-discipline Inspection (checklistType === '') closes every sub-category under it; a
+  // narrower self-claimed one only closes its own exact sub-category.
+  var wholeCovered = {}; // 'disciplineId|phase' -> true
+  var narrowCovered = {}; // 'disciplineId|phase|checklistType' -> true
+  findWhere('Inspections', function (i) { return i.eventId === p.eventId; }).forEach(function (i) {
+    if (i.checklistType) narrowCovered[i.disciplineId + '|' + i.phase + '|' + i.checklistType] = true;
+    else wholeCovered[i.disciplineId + '|' + i.phase] = true;
+  });
   var myQualifications = isParticipantRoleCode_(user.role) ? [] : inspectorQualifications_(user.id);
   var slots = [];
   identified.forEach(function (ed) {
     var discipline = getById('Disciplines', ed.disciplineId);
     if (!discipline) return;
     disciplinePhasesWithChecklistItems_(discipline.name).forEach(function (phase) {
-      if (covered[ed.disciplineId + '|' + phase]) return;
-      slots.push({
-        disciplineId: ed.disciplineId, disciplineName: discipline.name, phase: phase,
-        qualified: myQualifications.indexOf(ed.disciplineId) !== -1
+      if (wholeCovered[ed.disciplineId + '|' + phase]) return;
+      disciplineChecklistTypesForPhase_(discipline.name, phase).forEach(function (checklistType) {
+        if (narrowCovered[ed.disciplineId + '|' + phase + '|' + checklistType]) return;
+        slots.push({
+          disciplineId: ed.disciplineId, disciplineName: discipline.name, phase: phase, checklistType: checklistType,
+          qualified: myQualifications.indexOf(ed.disciplineId) !== -1
+        });
       });
     });
   });
   return slots;
 }
 
-// Turns one open slot into a real Inspections row, owned by the calling Inspector. Re-validates
-// everything server-side (never trusts listOpenInspectionSlots' client-visible `qualified` flag) --
-// discipline actually identified for this event, phase actually still open, and the caller actually
-// qualified -- so a manipulated client request can't claim a slot it shouldn't be able to.
+// Turns one open (discipline, phase, checklistType) slot into a real Inspections row, owned by the
+// calling Inspector and scoped to just that sub-category (see inspectionScopeItems_ below). Re-
+// validates everything server-side (never trusts listOpenInspectionSlots' client-visible `qualified`
+// flag) -- discipline actually identified for this event, checklistType actually exists for that
+// discipline+phase, slot actually still open, and the caller actually qualified -- so a manipulated
+// client request can't claim a slot it shouldn't be able to.
 function claimOpenInspectionSlot(user, p) {
   requirePermission(user, 'inspection.recordResults'); // same inspector-facing permission recordInspectionResults itself uses
-  if (!p || !p.eventId || !p.disciplineId || !p.phase) throw new HululError('BAD_REQUEST', 'eventId, disciplineId, and phase are required');
+  if (!p || !p.eventId || !p.disciplineId || !p.phase || !p.checklistType) {
+    throw new HululError('BAD_REQUEST', 'eventId, disciplineId, phase, and checklistType are required');
+  }
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
   var isIdentified = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId && ed.disciplineId === p.disciplineId; }).length > 0;
   if (!isIdentified) throw new HululError('BAD_REQUEST', 'This category has not been identified for this event');
-  var alreadyCovered = findWhere('Inspections', function (i) { return i.eventId === p.eventId && i.disciplineId === p.disciplineId && i.phase === p.phase; }).length > 0;
-  if (alreadyCovered) throw new HululError('FORBIDDEN', 'Someone has already picked this one up');
+  var discipline = getById('Disciplines', p.disciplineId);
+  if (!discipline) throw new HululError('NOT_FOUND', 'Category not found');
+  if (disciplineChecklistTypesForPhase_(discipline.name, p.phase).indexOf(p.checklistType) === -1) {
+    throw new HululError('BAD_REQUEST', 'This checklist sub-category does not exist for this category and phase');
+  }
+  var covered = findWhere('Inspections', function (i) { return i.eventId === p.eventId && i.disciplineId === p.disciplineId && i.phase === p.phase; })
+    .some(function (i) { return !i.checklistType || i.checklistType === p.checklistType; });
+  if (covered) throw new HululError('FORBIDDEN', 'Someone has already picked this one up');
   if (inspectorQualifications_(user.id).indexOf(p.disciplineId) === -1) {
     throw new HululError('FORBIDDEN', 'You are not qualified in this category yet -- ask a Project Manager to add it to your Inspector Qualifications.');
   }
-  var discipline = getById('Disciplines', p.disciplineId);
   var inspection = {
     id: newId('Inspections'), eventId: p.eventId, disciplineId: p.disciplineId, inspectorId: user.id,
-    checklistType: '', scheduledAt: nowIso_(), phase: p.phase, status: 'Scheduled', assignedVia: 'self'
+    checklistType: p.checklistType, scheduledAt: nowIso_(), phase: p.phase, status: 'Scheduled', assignedVia: 'self'
   };
   insertRow('Inspections', inspection);
-  audit(user.id, 'CLAIM_INSPECTION_SLOT', 'Inspections', inspection.id, {});
+  audit(user.id, 'CLAIM_INSPECTION_SLOT', 'Inspections', inspection.id, { checklistType: p.checklistType });
   return inspection;
 }
 
@@ -368,11 +405,16 @@ function cancelSelfAssignedInspection(user, p) {
 
 // The set of catalogue Checklist items that fall under an inspection's discipline + phase — this
 // is the full scope of what an inspector *may* record against that inspection, regardless of what
-// was recorded so far.
+// was recorded so far. REQ correction ("inspectors can now pick up one open checklist sub-category"):
+// a self-claimed pickup (Inspections.checklistType non-blank -- see claimOpenInspectionSlot above)
+// narrows this further to just that one sub-category; a PM-scheduled inspection (checklistType '')
+// keeps covering every sub-category under the discipline+phase, unchanged from before this feature.
 function inspectionScopeItems_(inspection) {
   var discipline = getById('Disciplines', inspection.disciplineId);
   var disciplineName = discipline ? discipline.name : '';
-  return getAll('ChecklistItems').filter(function (c) { return c.status !== 'Deleted' && c.category === disciplineName && c.phase === inspection.phase; });
+  var items = getAll('ChecklistItems').filter(function (c) { return c.status !== 'Deleted' && c.category === disciplineName && c.phase === inspection.phase; });
+  if (inspection.checklistType) items = items.filter(function (c) { return c.checklistType === inspection.checklistType; });
+  return items;
 }
 
 // Participants are scoped to a Venue, not an Event (see Participants.gs) -- every lookup of "which

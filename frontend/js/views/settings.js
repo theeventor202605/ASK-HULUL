@@ -53,6 +53,11 @@ async function renderSettings(params) {
   if (canManagePhotoProps) tabs.push({ key: 'photoProperties', label: t('settings_tab_photo_properties') });
   if (canManageConfig) tabs.push({ key: 'escalations', label: t('tab_escalations') });
   if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
+  // REQ: "In settings add a tab for mandatory operators. For example a security operator must be
+  // available in every event, a H&S Operator must be available on every event. EMC just needs to
+  // set up their accounts accordingly." Same SystemAdmin gate as Roles/Permissions -- toggling this
+  // is exactly as consequential as editing a role itself (setMandatoryOperator, Roles.gs).
+  if (canManagePermissions) tabs.push({ key: 'mandatoryOperators', label: t('settings_tab_mandatory_operators') });
   if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
 
   var activeTab = tabs.some(function (tb) { return params && tb.key === params.tab; }) ? params.tab : 'profile';
@@ -82,6 +87,7 @@ async function renderSettings(params) {
   else if (activeTab === 'photoProperties' && canManagePhotoProps) await renderPhotoPropertiesTab_(content);
   else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
+  else if (activeTab === 'mandatoryOperators' && canManagePermissions) await renderMandatoryOperatorsTab_(content);
   else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
   else renderProfileTab_(content, u);
 }
@@ -715,6 +721,47 @@ function renderRolesTabBody_(content, allRoles, customRoles) {
           renderSettings({ tab: 'roles' });
         } catch (err) { UI.error(err); }
       });
+    };
+  });
+}
+
+/* ---------------- Mandatory Operators ----------------
+ * REQ: "a security operator must be available in every event, a H&S Operator must be available on
+ * every event. EMC just needs to set up their accounts accordingly." Only Participant-type roles
+ * (isParticipantType) can be flagged -- a mandatory operator only means anything if it's also
+ * selectable as an Operator/Participant on an event (see mandatoryOperatorCompliance_, Events.gs,
+ * which only ever looks at roles where both flags are true).
+ */
+async function renderMandatoryOperatorsTab_(content) {
+  content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
+  var customRoles = await Api.call('listCustomRoles', {});
+  renderMandatoryOperatorsTabBody_(content, customRoles);
+}
+
+function renderMandatoryOperatorsTabBody_(content, customRoles) {
+  var eligible = customRoles.filter(function (r) { return r.isParticipantType; });
+  content.innerHTML =
+    '<div class="muted" style="font-size:12.5px;max-width:560px;margin-bottom:16px;">' + esc(t('mandatory_operators_intro')) + '</div>' +
+    (eligible.length
+      ? eligible.map(function (r) {
+          return '<div class="perm-row">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
+              '<div><div style="font-weight:700;font-size:13.5px;">' + esc(r.label) + '</div>' +
+                '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(r.code) + '</div></div>' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;flex:none;">' +
+                '<input type="checkbox" class="mandatory-operator-cb" data-role-code="' + esc(r.code) + '"' + (r.isMandatoryOperator ? ' checked' : '') + ' /> ' + esc(t('field_is_mandatory_operator')) +
+              '</label>' +
+            '</div>' +
+          '</div>';
+        }).join('')
+      : '<div class="empty-state">' + esc(t('no_participant_type_roles_yet')) + '</div>');
+
+  content.querySelectorAll('.mandatory-operator-cb').forEach(function (cb) {
+    cb.onchange = async function () {
+      try {
+        await Api.call('setMandatoryOperator', { code: cb.getAttribute('data-role-code'), isMandatoryOperator: cb.checked });
+        UI.toast(t('toast_mandatory_operator_updated'), 'success');
+      } catch (err) { UI.error(err); cb.checked = !cb.checked; }
     };
   });
 }

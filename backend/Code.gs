@@ -103,6 +103,7 @@ var ROUTES = {
   createRole: function (u, p) { return createRole(u, p); },
   updateRole: function (u, p) { return updateRole(u, p); },
   deleteRole: function (u, p) { return deleteRole(u, p); },
+  setMandatoryOperator: function (u, p) { return setMandatoryOperator(u, p); },
   listParticipantTypes: function (u, p) { return listParticipantTypes(u); },
   // Roadmap Plans (RoadmapPlans.gs) -- admin-defined plan templates + their per-Event rollout.
   listRoadmapPlans: function (u, p) { return listRoadmapPlans(u); },
@@ -130,6 +131,7 @@ var ROUTES = {
   // Events / Venues / Zones (EVT)
   listEvents: function (u, p) { return listEvents(u, p); },
   getEvent: function (u, p) { return getEventDetail(u, p.eventId); },
+  getMandatoryOperatorCompliance: function (u, p) { return getMandatoryOperatorCompliance(u, p); },
   createEvent: function (u, p) { return createEvent(u, p); },
   updateEvent: function (u, p) { return updateEvent(u, p); },
   deleteEvent: function (u, p) { return deleteEvent(u, p); },
