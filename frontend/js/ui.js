@@ -940,26 +940,79 @@ hululPagerObserver_.observe(document.body, { childList: true, subtree: true });
 // fully off-screen either direction), the floating one hides so there's never two stacked at once.
 // Applies to every UI.table() on every page (same "every table gets this for free" philosophy as
 // sort/filter/export/paging above) since it's wired generically here, not per view.
+// BUG FIX (reported: "click and drag it doesn't work"): this used to be a real overflow-x:auto strip
+// whose native OS scrollbar was the only interactive part -- but that strip is only 14px tall, and a
+// default Windows scrollbar (and several Linux/GTK themes) render TALLER than that, so the actual
+// clickable/draggable thumb pixel was frequently clipped and unreachable; Firefox also ignores the
+// ::-webkit-scrollbar-* rules entirely (WebKit/Blink-only), so there was nothing to grab there at all.
+// Now a fully custom slider instead: `thumb`'s width/left are just a visual readout of wrap's current
+// scroll position (hululUpdateFloatingScrollbarThumb_ below), and mousedown/touchstart ANYWHERE on the
+// bar -- not just precisely on the thumb -- both jumps to and then scrubs wrap.scrollLeft proportional
+// to the pointer's position across the bar's width, same math as a video seek bar. No native scrollbar
+// rendering involved anywhere, so there's nothing left for a stingy scrollbar theme to clip away.
 function hululEnsureFloatingScrollbar_(wrap) {
   if (wrap._hululFloatBar) return wrap._hululFloatBar;
   var bar = document.createElement('div');
   bar.className = 'table-hscroll-float';
-  var track = document.createElement('div');
-  track.className = 'table-hscroll-float-track';
-  bar.appendChild(track);
+  var thumb = document.createElement('div');
+  thumb.className = 'table-hscroll-float-thumb';
+  bar.appendChild(thumb);
   document.body.appendChild(bar);
-  var syncing = false;
-  bar.addEventListener('scroll', function () {
-    if (syncing) return;
-    syncing = true; wrap.scrollLeft = bar.scrollLeft; syncing = false;
-  });
-  wrap.addEventListener('scroll', function () {
-    if (syncing) return;
-    syncing = true; bar.scrollLeft = wrap.scrollLeft; syncing = false;
-  });
+
+  var dragging = false;
+  function scrollToPointer_(clientX) {
+    var rect = bar.getBoundingClientRect();
+    var maxScroll = wrap.scrollWidth - wrap.clientWidth;
+    if (maxScroll <= 0 || !rect.width) return;
+    var thumbW = Math.max(30, rect.width * (wrap.clientWidth / wrap.scrollWidth));
+    var usable = Math.max(1, rect.width - thumbW);
+    var frac = (clientX - rect.left - thumbW / 2) / usable;
+    frac = Math.max(0, Math.min(1, frac));
+    wrap.scrollLeft = frac * maxScroll;
+  }
+  function pointerX_(e) { return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX; }
+  function onMove_(e) { if (!dragging) return; scrollToPointer_(pointerX_(e)); e.preventDefault(); }
+  function onUp_() {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove_);
+    document.removeEventListener('mouseup', onUp_);
+    document.removeEventListener('touchmove', onMove_);
+    document.removeEventListener('touchend', onUp_);
+  }
+  function onDown_(e) {
+    dragging = true;
+    bar.classList.add('dragging');
+    scrollToPointer_(pointerX_(e));
+    document.addEventListener('mousemove', onMove_);
+    document.addEventListener('mouseup', onUp_);
+    document.addEventListener('touchmove', onMove_, { passive: false });
+    document.addEventListener('touchend', onUp_);
+    e.preventDefault();
+  }
+  bar.addEventListener('mousedown', onDown_);
+  bar.addEventListener('touchstart', onDown_, { passive: false });
+
+  wrap.addEventListener('scroll', function () { hululUpdateFloatingScrollbarThumb_(wrap); });
   wrap._hululFloatBar = bar;
-  wrap._hululFloatTrack = track;
+  wrap._hululFloatThumb = thumb;
   return bar;
+}
+// The thumb's width (proportional to how much of the table is visible at once) and left offset
+// (proportional to current scroll position) -- pulled out on its own so both the drag handlers above
+// and the periodic reposition pass below can call it without duplicating the math.
+function hululUpdateFloatingScrollbarThumb_(wrap) {
+  var bar = wrap._hululFloatBar, thumb = wrap._hululFloatThumb;
+  if (!bar || !thumb) return;
+  var barW = bar.getBoundingClientRect().width;
+  if (!barW) return;
+  var maxScroll = wrap.scrollWidth - wrap.clientWidth;
+  var thumbW = Math.max(30, barW * (wrap.clientWidth / wrap.scrollWidth));
+  var usable = Math.max(0, barW - thumbW);
+  var left = maxScroll > 0 ? usable * (wrap.scrollLeft / maxScroll) : 0;
+  thumb.style.width = thumbW + 'px';
+  thumb.style.left = left + 'px';
 }
 function hululUpdateFloatingScrollbars_() {
   var vh = window.innerHeight || document.documentElement.clientHeight;
@@ -984,8 +1037,7 @@ function hululUpdateFloatingScrollbars_() {
     var right = Math.min(rect.right, vw);
     bar.style.left = left + 'px';
     bar.style.width = Math.max(0, right - left) + 'px';
-    wrap._hululFloatTrack.style.width = wrap.scrollWidth + 'px';
-    if (bar.scrollLeft !== wrap.scrollLeft) bar.scrollLeft = wrap.scrollLeft;
+    hululUpdateFloatingScrollbarThumb_(wrap);
   });
 }
 window.addEventListener('scroll', hululUpdateFloatingScrollbars_, true); // capture:true -- also catches .table-wrap's own horizontal scroll and any scrollable ancestor, not just window scroll

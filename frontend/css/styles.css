@@ -559,16 +559,19 @@ table.data-table th.th-sortable:hover{ color:var(--accent-600); }
 /* REQ: "Keep the bottom bar visible at all times ... scroll right or left on the table." A floating
    stand-in for .table-wrap's own native horizontal scrollbar, pinned to the viewport bottom via
    position:fixed (see hululUpdateFloatingScrollbars_, ui.js) while the real one is out of view.
-   ::-webkit-scrollbar rules force it to always render a visible thumb even on OS/browser
-   configurations that otherwise use a thin overlay scrollbar that only appears on hover/touch --
-   the whole point here is that it's reachable without hunting for it. */
-.table-hscroll-float{ position:fixed; bottom:0; height:14px; overflow-x:auto; overflow-y:hidden;
-  z-index:25; background:var(--card); border-top:1px solid var(--border); display:none; scrollbar-width:auto; }
-.table-hscroll-float-track{ height:1px; }
-.table-hscroll-float::-webkit-scrollbar{ height:12px; }
-.table-hscroll-float::-webkit-scrollbar-track{ background:var(--surface); }
-.table-hscroll-float::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
-.table-hscroll-float::-webkit-scrollbar-thumb:hover{ background:var(--text-400); }
+   BUG FIX ("click and drag it doesn't work"): this used to just be an overflow-x:auto strip relying
+   on the browser's own native scrollbar rendering inside it -- at only 14px tall that native thumb
+   was frequently clipped/unreachable (a default Windows scrollbar is often taller than 14px) and
+   Firefox doesn't honor ::-webkit-scrollbar-* at all. Now a fully custom slider: the outer bar is
+   just an inert track (no overflow/scrolling of its own), and .table-hscroll-float-thumb is a plain
+   absolutely-positioned pill whose width/left ui.js sets directly -- dragging is handled entirely by
+   JS pointer events on the bar (hululEnsureFloatingScrollbar_), not by anything the browser renders. */
+.table-hscroll-float{ position:fixed; bottom:0; height:14px; z-index:25; background:var(--card);
+  border-top:1px solid var(--border); display:none; cursor:pointer; touch-action:none; }
+.table-hscroll-float-thumb{ position:absolute; top:1px; height:12px; border-radius:6px;
+  background:var(--border); cursor:grab; pointer-events:none; }
+.table-hscroll-float:hover .table-hscroll-float-thumb{ background:var(--text-400); }
+.table-hscroll-float.dragging .table-hscroll-float-thumb{ background:var(--accent); cursor:grabbing; }
 table.data-table td{ padding:12px 14px; border-bottom:1px solid #f0f1f6; vertical-align:middle; }
 table.data-table tr:hover td{ background:#fafbff; }
 /* REQ: "Clicking on a log row opens the view of that log. This applies to any table with view

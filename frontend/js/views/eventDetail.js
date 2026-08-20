@@ -1639,7 +1639,19 @@ async function tabDisciplines(content, eventId, detail) {
   var disciplineOptions = identifiedDisciplines.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
 
   content.innerHTML =
-    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('identify_applicable_x', { term: Term('discipline_plural').toLowerCase() })) + '</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('identify_applicable_x', { term: Term('discipline_plural').toLowerCase() })) + '</div>' +
+    // REQ: "In the 'Identify applicable categories' add a Select all option." Only rendered for
+    // canIdentify (view-only visitors have nothing to toggle) -- both buttons only ever touch
+    // NOT-disabled checkboxes (:not(:disabled)), so a discipline locked because an inspector is
+    // already assigned to it (see the `locked` var below) is left untouched either way, same as if
+    // the user had tried to click that one checkbox directly.
+    (canIdentify
+      ? '<div style="display:flex;gap:8px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="discSelectAllBtn">' + esc(t('select_all_btn')) + '</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="discClearAllBtn">' + esc(t('clear_all_btn')) + '</button>' +
+        '</div>'
+      : '') +
+    '</div>' +
     '<div class="card-body">' + disciplines.map(function (d) {
       var checked = identifiedIds.indexOf(d.id) !== -1;
       var locked = !canIdentify || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
@@ -1680,6 +1692,15 @@ async function tabDisciplines(content, eventId, detail) {
     '</div></div>';
 
   if (canIdentify) {
+    // REQ: "In the 'Identify applicable categories' add a Select all option." Both buttons only ever
+    // touch enabled checkboxes -- a discipline locked because an inspector is already assigned to it
+    // (see `locked` above) is left exactly as it was, same as manually clicking that one checkbox.
+    document.getElementById('discSelectAllBtn').onclick = function () {
+      content.querySelectorAll('.disc-check:not(:disabled)').forEach(function (c) { c.checked = true; });
+    };
+    document.getElementById('discClearAllBtn').onclick = function () {
+      content.querySelectorAll('.disc-check:not(:disabled)').forEach(function (c) { c.checked = false; });
+    };
     document.getElementById('saveDiscBtn').onclick = async function () {
       var ids = Array.from(content.querySelectorAll('.disc-check:checked')).map(c => c.value);
       try {
