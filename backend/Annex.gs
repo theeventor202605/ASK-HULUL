@@ -83,6 +83,25 @@ function listEventAnnex(user, p) {
   };
 }
 
+// SystemAdmin-only, in-app trigger for seedAnnexCategories_ (Setup.gs). That seed only ever ran
+// automatically as part of the full setupHulul() provisioning script, so any org whose spreadsheet
+// was already live before the Annex feature shipped (task history: "Under readiness add 'Annex'")
+// never got it -- REQ bug report: "In Annex tab, I can not see an upload option" turned out to be an
+// empty AnnexCategories catalog, not a permissions problem, and the admin reported they couldn't
+// locate seedAnnexCategories_ in the Apps Script editor's function dropdown to run it by hand. This
+// gives SystemAdmin a one-click way to run the exact same (idempotent -- see its own no-op-if-
+// existing-rows guard) seed from inside the app instead. Safe to leave in permanently: the frontend
+// only ever shows the button that calls this when listEventAnnex's own category list is already
+// empty, and the seed itself is a no-op once categories exist either way.
+function runSeedAnnexCategories(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  var before = getAll('AnnexCategories').length;
+  seedAnnexCategories_();
+  var after = getAll('AnnexCategories').length;
+  audit(user.id, 'SEED_ANNEX_CATEGORIES', 'AnnexCategories', '', { seeded: after - before });
+  return { seeded: after - before, total: after };
+}
+
 // PM/Analyst flags whether a category is mandatory for this event -- guides the EMC on what's
 // actually required vs. optional-if-applicable (several categories are explicitly "where
 // applicable" in the source catalog, so not every event needs every category).

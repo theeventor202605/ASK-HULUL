@@ -730,11 +730,26 @@ async function tabAnnex(content, eventId, detail) {
   var canUpload = hasPermission('annex.upload');
   var canManage = hasPermission('annex.manage');
   var summary = data.summary;
+  // BUG REPORT: "In Annex tab, I can not see an upload option" -- turned out to be an org whose
+  // spreadsheet predates the Annex feature, so seedAnnexCategories_ (Setup.gs) never ran and the
+  // catalog every section's table renders from is just empty (no rows -> no per-row Upload button
+  // for anyone, regardless of permission). That seed only ever ran automatically inside the full
+  // setupHulul() provisioning script, and the admin reported not being able to find it in the Apps
+  // Script editor's function dropdown to run by hand. This banner + button calls the new
+  // runSeedAnnexCategories endpoint (Annex.gs) instead, so a SystemAdmin can fix it from the app
+  // itself -- only shown when the catalog is actually empty, so it disappears on its own once seeded.
+  var showSeedBanner = !data.categories.length && HululState.user.role === 'SystemAdmin';
 
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;align-items:center;gap:14px;">' +
     '<div style="font-weight:700;font-size:14px;">' + esc(t('annex_summary_x', { provided: summary.providedCount, required: summary.requiredCount, missing: summary.missingCount })) + '</div>' +
     '</div></div>' +
+    (showSeedBanner
+      ? '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning);"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">' +
+          '<div style="font-size:13px;">' + esc(t('annex_no_categories_hint')) + '</div>' +
+          '<button class="btn btn-primary btn-sm" id="seedAnnexCategoriesBtn">' + esc(t('annex_seed_categories_btn')) + '</button>' +
+        '</div></div>'
+      : '') +
     ANNEX_SECTIONS_.map(function (sec) {
       var rows = data.categories.filter(function (c) { return c.section === sec[0]; });
       return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t(sec[1])) + '</div></div>' +
@@ -750,6 +765,15 @@ async function tabAnnex(content, eventId, detail) {
         ], rows, { emptyText: t('no_data') }) + '</div></div>';
     }).join('');
 
+  if (showSeedBanner) {
+    document.getElementById('seedAnnexCategoriesBtn').onclick = async function () {
+      try {
+        var result = await Api.call('runSeedAnnexCategories', {});
+        UI.toast(t('toast_annex_categories_seeded', { count: result.seeded }), 'success');
+        Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  }
   content.querySelectorAll('.annex-required-cb').forEach(function (cb) {
     cb.onchange = async function () {
       try {

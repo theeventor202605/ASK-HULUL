@@ -191,6 +191,7 @@ var ROUTES = {
 
   // Annex (ANX)
   listEventAnnex: function (u, p) { return listEventAnnex(u, p); },
+  runSeedAnnexCategories: function (u, p) { return runSeedAnnexCategories(u, p); },
   setAnnexCategoryRequired: function (u, p) { return setAnnexCategoryRequired(u, p); },
   uploadAnnexDocument: function (u, p) { return uploadAnnexDocument(u, p); },
   reviewAnnexDocument: function (u, p) { return reviewAnnexDocument(u, p); },
