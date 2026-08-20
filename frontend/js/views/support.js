@@ -275,7 +275,7 @@ async function renderSupport() {
       { key: 'createdAt', label: t('col_raised'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'updatedAt', label: t('col_updated'), render: r => UI.fmtDate(r.updatedAt) },
       { key: 'actions', label: t('actions'), render: r =>
-          UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" data-open="' + r.id + '">' + ICON('view_open') + '</button>') }
+          UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" data-open="' + r.id + '" data-row-view="1">' + ICON('view_open') + '</button>') }
     ], tickets, { exportName: 'support-tickets.csv', emptyText: manager ? t('empty_tickets_manager') : t('empty_tickets_raiser') }) + '</div></div>';
 
   document.getElementById('newTicketBtn').onclick = function () { openSupportCapture(); };

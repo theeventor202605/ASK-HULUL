@@ -547,8 +547,34 @@ html[dir="rtl"] table.data-table th{ text-align:right; }
 table.data-table th.th-sortable{ cursor:pointer; user-select:none; }
 table.data-table th.th-sortable:hover{ color:var(--accent-600); }
 .th-sort-arrow{ display:inline-block; width:9px; font-size:9px; }
+/* REQ: "when clicking on a table header it shows filter functionality" (every table). Header text
+   stays the sort click-target (unchanged); this small funnel button is a second, separate click
+   target in the same header cell that opens the column-value picker instead -- see the th-filter-btn
+   branch in ui.js's delegated click handler, checked before the sort handler so the two never fire
+   together off the same click. */
+.th-label-row{ display:inline-flex; align-items:center; gap:5px; }
+.th-filter-btn{ border:none; background:none; padding:2px; margin:0; line-height:0; cursor:pointer;
+  color:var(--text-400); opacity:.7; border-radius:4px; font-size:10.5px; }
+.th-filter-btn:hover{ opacity:1; color:var(--accent-600); background:var(--surface); }
+/* REQ: "Keep the bottom bar visible at all times ... scroll right or left on the table." A floating
+   stand-in for .table-wrap's own native horizontal scrollbar, pinned to the viewport bottom via
+   position:fixed (see hululUpdateFloatingScrollbars_, ui.js) while the real one is out of view.
+   ::-webkit-scrollbar rules force it to always render a visible thumb even on OS/browser
+   configurations that otherwise use a thin overlay scrollbar that only appears on hover/touch --
+   the whole point here is that it's reachable without hunting for it. */
+.table-hscroll-float{ position:fixed; bottom:0; height:14px; overflow-x:auto; overflow-y:hidden;
+  z-index:25; background:var(--card); border-top:1px solid var(--border); display:none; scrollbar-width:auto; }
+.table-hscroll-float-track{ height:1px; }
+.table-hscroll-float::-webkit-scrollbar{ height:12px; }
+.table-hscroll-float::-webkit-scrollbar-track{ background:var(--surface); }
+.table-hscroll-float::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
+.table-hscroll-float::-webkit-scrollbar-thumb:hover{ background:var(--text-400); }
 table.data-table td{ padding:12px 14px; border-bottom:1px solid #f0f1f6; vertical-align:middle; }
 table.data-table tr:hover td{ background:#fafbff; }
+/* REQ: "Clicking on a log row opens the view of that log. This applies to any table with view
+   action." Cursor hint for rows that opt in (data-row-view, ui.js's delegated click handler) --
+   progressive enhancement only (:has() support), the click behavior itself works regardless. */
+table.data-table tbody tr:has([data-row-view]){ cursor:pointer; }
 /* REQ: "lists may become very long apply the x/page dropdown ... automatically appear to lists
    containing more than 10 items" (UI.table's own pagination, ui.js). */
 .table-pager{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding-top:10px; margin-top:2px; border-top:1px solid var(--border); }
@@ -650,9 +676,27 @@ table.data-table tr:hover td{ background:#fafbff; }
    the shared look. */
 .evidence-thumb{ display:flex; align-items:center; justify-content:center; border-radius:var(--radius-md);
   overflow:hidden; border:1px solid var(--border); background:var(--surface); box-shadow:var(--shadow-sm);
-  transition:.15s; flex:none; }
+  transition:.15s; flex:none; position:relative; }
 .evidence-thumb:hover{ transform:translateY(-2px); box-shadow:var(--shadow-md); border-color:var(--accent); }
 .evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+/* REQ (Risk Logging Image column): "add a badge on top of photo to show image count." Same corner-
+   badge look as .place-marker-badge (map dots) so a numbered pill reads consistently everywhere in
+   the app -- overflow:visible on the parent .evidence-thumb link isn't needed since this sits fully
+   inside the thumb's own box (top-right corner) rather than overlapping its border like the map one. */
+.evidence-thumb-count{ position:absolute; top:2px; right:2px; min-width:15px; height:15px; padding:0 3px;
+  border-radius:999px; background:rgba(15,23,42,.78); color:#fff; font-size:9.5px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; line-height:1; pointer-events:none; }
+html[dir="rtl"] .evidence-thumb-count{ right:auto; left:2px; }
+/* REQ: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also provide distance
+   away from participant in meters." Was previously burned into the photo's own pixels
+   (evidence.js evidenceComposite_); now a UI badge instead, rendered wherever that evidence's
+   thumbnail appears (evidencePendingThumbHtml_/tabFindings' Image column/evidenceThumbsHtml_) using
+   metadata carried alongside the evidence URL (Finding.evidenceMeta) rather than the image file
+   itself -- unlike the count badge above, this sits BELOW the thumb (its own line) since the message
+   ("Outside boundary - 42m from participant") is too long to legibly fit as a small corner pill. */
+.evidence-outside-boundary-badge{ display:inline-flex; align-items:center; gap:4px; font-size:10px;
+  font-weight:700; color:var(--danger); background:var(--danger-soft); border-radius:999px;
+  padding:2px 7px; margin-top:3px; white-space:nowrap; }
 
 /* REQ (Finding detail redesign, follow-up): "Expand Photos to the max when clicked." Plain
    position:fixed overlay (not UI.openModal's modal-box, which caps at 520px + header/footer chrome)

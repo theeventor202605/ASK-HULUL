@@ -627,6 +627,36 @@ function pointInPolygonClient_(lat, lng, points) {
   return inside;
 }
 
+// REQ: "Add Log sidebar ... only works if he is inside a venue boundary or no more than 50 meters
+// from an event." Distance in meters from a point to the nearest edge of a boundary polygon (0 if
+// the point is already inside). Used by the Add Log picker (findings.js) alongside
+// pointInPolygonClient_ above to compute eligibility per event. Projects lat/lng to a local flat
+// plane (meters per degree at the polygon's latitude) since boundaries here are always small enough
+// (single venue) that this approximation is accurate to well under a meter.
+function distanceToPolygonMeters_(lat, lng, points) {
+  if (!points || points.length < 2) return Infinity;
+  if (points.length >= 3 && pointInPolygonClient_(lat, lng, points)) return 0;
+  var latRef = Number(points[0].lat);
+  var mPerDegLat = 111320;
+  var mPerDegLng = 111320 * Math.cos(latRef * Math.PI / 180);
+  function toXY(p) { return { x: (Number(p.lng) - lng) * mPerDegLng, y: (Number(p.lat) - lat) * mPerDegLat }; }
+  var origin = { x: 0, y: 0 };
+  var best = Infinity;
+  var n = points.length;
+  var segCount = n >= 3 ? n : (n - 1);
+  for (var i = 0; i < segCount; i++) {
+    var a = toXY(points[i]);
+    var b = toXY(points[(i + 1) % n]);
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var lenSq = dx * dx + dy * dy;
+    var t = lenSq > 0 ? Math.max(0, Math.min(1, ((origin.x - a.x) * dx + (origin.y - a.y) * dy) / lenSq)) : 0;
+    var px = a.x + t * dx, py = a.y + t * dy;
+    var d = Math.sqrt(px * px + py * py);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 // Debounced OpenStreetMap Nominatim place search. Picking a result fills address/city/lat/lng and
 // moves the map pin -- purely a shortcut for the manual fields, never required to create a venue.
 function wireVenueSearch_() {

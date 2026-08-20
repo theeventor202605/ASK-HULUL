@@ -164,7 +164,7 @@ async function renderEventsList() {
         { key: 'endDateTime', label: t('col_end'), render: function (r) { return UI.fmtDate(r.endDateTime); } },
         { key: 'status', label: t('status'), render: function (r) { return UI.statusBadge(r.status); } },
         { key: 'actions', label: t('actions'), render: function (r) {
-            var html = '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '">' + ICON('view_open') + '</a>';
+            var html = '<a class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_open')) + '" href="#/events/' + r.id + '" data-row-view="1">' + ICON('view_open') + '</a>';
             var canEdit = hasPermission('event.manage');
             if (canEdit) html += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-event="' + r.id + '">' + ICON('edit') + '</button>';
             var canDelete = r.status === 'Planning' && hasPermission('event.delete');

@@ -210,10 +210,22 @@ window.UI = {
       return plainText_(c, row);
     }
 
+    // REQ: "For every table in the platform, when clicking on a table header it shows filter
+    // functionality." filterable reuses the exact same column set as the existing /c-in-search-box
+    // facet picker (isExportable_ -- every column with a data-tx-i, i.e. everything but 'actions')
+    // so the header button and the toolbar's own column-filter feature always agree on which columns
+    // are filterable. The button is a separate click target from the header's own sortable text/arrow
+    // (see the delegated click handler below) so both behaviors coexist on the same <th>.
     var head = columns.map(function (c, i) {
       var sortable = isSortable_(c);
+      var filterable = isExportable_(c);
       return '<th' + (sortable ? ' class="th-sortable" data-sort-idx="' + i + '"' : '') + '>' +
-        esc(c.label) + (sortable ? ' <span class="th-sort-arrow"></span>' : '') + '</th>';
+        '<span class="th-label-row">' +
+          '<span class="th-label-text">' + esc(c.label) + '</span>' +
+          (sortable ? '<span class="th-sort-arrow"></span>' : '') +
+          (filterable ? '<button type="button" class="th-filter-btn" data-filter-idx="' + i + '" title="' + esc(t('filter_column_btn')) + '">' + ICON('table_filter') + '</button>' : '') +
+        '</span>' +
+      '</th>';
     }).join('');
 
     var body = rows.length
@@ -919,6 +931,70 @@ var hululPagerObserver_ = new MutationObserver(function (mutations) {
 });
 hululPagerObserver_.observe(document.body, { childList: true, subtree: true });
 
+// REQ: "Keep the bottom bar visible at all times, so when there is a long list of logs user can
+// still scroll right or left on the table." .table-wrap's own native horizontal scrollbar sits at
+// the very bottom of the table -- for a long list that's far below the fold, so reaching it means
+// scrolling all the way down first. This clones a slim always-reachable scrollbar pinned to the
+// bottom of the *viewport* (position:fixed) while the table-wrap it belongs to is on-screen but its
+// own real scrollbar isn't yet -- the moment the real one comes into view (or the table scrolls
+// fully off-screen either direction), the floating one hides so there's never two stacked at once.
+// Applies to every UI.table() on every page (same "every table gets this for free" philosophy as
+// sort/filter/export/paging above) since it's wired generically here, not per view.
+function hululEnsureFloatingScrollbar_(wrap) {
+  if (wrap._hululFloatBar) return wrap._hululFloatBar;
+  var bar = document.createElement('div');
+  bar.className = 'table-hscroll-float';
+  var track = document.createElement('div');
+  track.className = 'table-hscroll-float-track';
+  bar.appendChild(track);
+  document.body.appendChild(bar);
+  var syncing = false;
+  bar.addEventListener('scroll', function () {
+    if (syncing) return;
+    syncing = true; wrap.scrollLeft = bar.scrollLeft; syncing = false;
+  });
+  wrap.addEventListener('scroll', function () {
+    if (syncing) return;
+    syncing = true; bar.scrollLeft = wrap.scrollLeft; syncing = false;
+  });
+  wrap._hululFloatBar = bar;
+  wrap._hululFloatTrack = track;
+  return bar;
+}
+function hululUpdateFloatingScrollbars_() {
+  var vh = window.innerHeight || document.documentElement.clientHeight;
+  var vw = window.innerWidth || document.documentElement.clientWidth;
+  document.querySelectorAll('.table-wrap').forEach(function (wrap) {
+    if (!document.body.contains(wrap)) { // torn down (tab switch/re-render) -- drop its floating bar too
+      if (wrap._hululFloatBar) { wrap._hululFloatBar.remove(); wrap._hululFloatBar = null; }
+      return;
+    }
+    var scrollable = wrap.scrollWidth > wrap.clientWidth + 1;
+    if (!scrollable) {
+      if (wrap._hululFloatBar) wrap._hululFloatBar.style.display = 'none';
+      return;
+    }
+    var rect = wrap.getBoundingClientRect();
+    var partlyVisible = rect.top < vh && rect.bottom > 0;
+    var ownScrollbarReachable = rect.bottom <= vh; // the table's own trailing edge (where its native scrollbar lives) is already within the viewport -- the floating stand-in would be redundant
+    var bar = hululEnsureFloatingScrollbar_(wrap);
+    if (!partlyVisible || ownScrollbarReachable) { bar.style.display = 'none'; return; }
+    bar.style.display = 'block';
+    var left = Math.max(rect.left, 0);
+    var right = Math.min(rect.right, vw);
+    bar.style.left = left + 'px';
+    bar.style.width = Math.max(0, right - left) + 'px';
+    wrap._hululFloatTrack.style.width = wrap.scrollWidth + 'px';
+    if (bar.scrollLeft !== wrap.scrollLeft) bar.scrollLeft = wrap.scrollLeft;
+  });
+}
+window.addEventListener('scroll', hululUpdateFloatingScrollbars_, true); // capture:true -- also catches .table-wrap's own horizontal scroll and any scrollable ancestor, not just window scroll
+window.addEventListener('resize', hululUpdateFloatingScrollbars_);
+// Catches everything a dedicated event wouldn't (rows added/removed by filtering/pagination/tab
+// switches, a table appearing after an async load) without needing a bespoke hook at every one of
+// those call sites -- cheap enough (a handful of getBoundingClientRect() reads) to just poll.
+setInterval(hululUpdateFloatingScrollbars_, 500);
+
 // UI.actionsCell's three-dot toggle -- delegated once here, same "wired generically for every
 // table on every page, no per-view code needed" approach as everything else in this file. Only
 // one popover is ever open at a time. The popover itself is position:fixed (see styles.css) so it
@@ -1216,6 +1292,26 @@ document.addEventListener('keydown', function (e) {
 }, true);
 
 document.addEventListener('click', function (e) {
+  // REQ: "when clicking on a table header it shows filter functionality" (every table, platform-
+  // wide). Checked before the plain sortable-header branch below since the button lives nested
+  // inside a .th-sortable <th> -- without this early return, e.target.closest('.th-sortable') would
+  // also match and the click would (wrongly) sort the column instead of/along with opening the
+  // filter. Reuses the exact same column-value picker the toolbar's own /c search already drives
+  // (hululShowColumnValues_ etc., further down this file) -- one mechanism, two entry points.
+  var filterBtn = e.target.closest ? e.target.closest('.th-filter-btn') : null;
+  if (filterBtn) {
+    e.stopPropagation();
+    var fWrap = filterBtn.closest('.table-wrap');
+    if (!fWrap) return;
+    var fIdx = Number(filterBtn.getAttribute('data-filter-idx'));
+    var fCol = hululFilterableColumns_(fWrap).filter(function (c) { return c.idx === fIdx; })[0];
+    if (!fCol) return;
+    var fInput = fWrap.querySelector('.table-filter-input');
+    fWrap._hululActiveColumn = fCol;
+    if (fInput) { fInput.value = ''; fInput.focus(); }
+    hululShowColumnValues_(fWrap, fInput, fCol, '');
+    return;
+  }
   // Sortable column header -- reorders the existing <tr> nodes in place (tbody.appendChild on a
   // node already in the document moves it rather than cloning it, so listeners survive).
   var th = e.target.closest ? e.target.closest('.th-sortable') : null;
@@ -1271,6 +1367,22 @@ document.addEventListener('click', function (e) {
     hululApplyPagination_(pagerWrap);
   }
 }, true);
+
+// REQ: "Clicking on a log row opens the view of that log. This applies to any table with view
+// action." A row's designated "View" control opts in by carrying data-row-view (any truthy value --
+// the id isn't actually read here, the element itself is just clicked) alongside whatever
+// per-feature attribute it already had (data-finding-view, data-open, an href, ...) -- nothing about
+// how those buttons/links are wired changes, this only adds a second way to trigger the exact same
+// click. Clicking anywhere else in the row (empty cells, another column's text) fires it; clicking an
+// actual interactive element (a button, a link, an input, the actions-menu three-dot toggle) is left
+// alone so its own handler runs normally instead of being hijacked or double-firing.
+document.addEventListener('click', function (e) {
+  var tr = e.target.closest ? e.target.closest('table.data-table tbody tr') : null;
+  if (!tr) return;
+  if (e.target.closest('a, button, input, textarea, select, label, .actions-menu')) return;
+  var viewEl = tr.querySelector('[data-row-view]');
+  if (viewEl) viewEl.click();
+});
 
 // Pager page-size dropdown.
 document.addEventListener('change', function (e) {

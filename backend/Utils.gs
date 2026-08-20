@@ -147,7 +147,14 @@ var SCHEMA = {
   // while their live-tracking view (startLiveInspectionTracking_, eventDetail.js) is open. Blank on
   // every pre-existing row and on any inspection an inspector hasn't opened yet, which
   // listActiveInspectorLocations correctly treats as "nothing to show" rather than a stale (0,0) dot.
-  Inspections:            ['id','eventId','disciplineId','inspectorId','checklistType','scheduledAt','phase','status','lastLat','lastLng','lastSeenAt'],
+  // assignedVia -- REQ: "Any inspector who has not been assigned can start on a checklist that has
+  // not been assigned to anyone as long as he is qualified in that category. Once he picks up an
+  // opening sub-checklist it becomes unavailable to other inspectors unless cancelled by the
+  // inspector." 'self' on a row created via claimOpenInspectionSlot (Inspections.gs), blank on the
+  // normal PM-driven scheduleInspection path -- distinguishes which ones the assigned Inspector is
+  // allowed to cancel themselves (cancelSelfAssignedInspection) vs. only a PM/SystemAdmin can
+  // (deleteInspection), so a PM's own manually-scheduled visit can never vanish out from under them.
+  Inspections:            ['id','eventId','disciplineId','inspectorId','checklistType','scheduledAt','phase','status','lastLat','lastLng','lastSeenAt','assignedVia'],
   // participantId appended at the end (established pattern, see Venues above) -- pre-existing
   // results from before per-participant tracking existed read back with participantId === '',
   // which correctly counts toward no one's completion rather than silently miscounting.
@@ -166,7 +173,13 @@ var SCHEMA = {
   // automatically creates a new instance from the rejected log and lands it in Open." Points at the
   // Findings.id this row was auto-cloned from; blank on every normally-created finding. See
   // reviewFindingResolution, Findings.gs.
-  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId'],
+  // evidenceMeta -- REQ follow-up: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a
+  // badge also provide distance away from participant in meters." JSON string of
+  // [{url, outsideBoundary, distanceMeters}, ...], one entry per evidence URL that was captured
+  // outside the venue boundary (see evidenceComposite_/prepare, evidence.js) -- entries with no badge
+  // to show are never added, so this stays blank on the vast majority of findings. See enrichFinding_/
+  // createFinding/addFindingEvidence below.
+  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId','evidenceMeta'],
   // REQ: "Some inspectors are junior level and could use help. We have created a guide which should
   // give them a list of descriptions once they select the category and sub-category." A reference
   // catalogue (seeded once from the user's "Log Assistance Guide" spreadsheet, see

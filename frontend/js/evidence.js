@@ -167,11 +167,12 @@ function evidenceGetBranding_(eventId) {
  * REQ: "Any photos taken outside boundaries should be marked." getEvent already returns venue
  * (with its boundary string) as part of the normal event-detail payload -- same shape eventDetail.js
  * itself uses -- so this is one extra cached call, not a new endpoint. parseBoundaryClient_/
- * pointInPolygonClient_ are defined in venues.js, which loads after this file (see index.html) --
- * safe to reference anyway since both are only ever called from inside prepare()'s async pipeline,
- * long after every script has finished loading (same reasoning as this file's own header comment
- * about fileToBase64/Api/QRCode). A venue with no boundary drawn yet resolves null, same as a
- * missing/denied GPS fix -- either way the badge below simply doesn't apply, never a false positive.
+ * pointInPolygonClient_/haversineKm_ are defined in venues.js, which loads after this file (see
+ * index.html) -- safe to reference anyway since all three are only ever called from inside prepare()'s
+ * async pipeline, long after every script has finished loading (same reasoning as this file's own
+ * header comment about fileToBase64/Api/QRCode). A venue with no boundary drawn yet resolves null,
+ * same as a missing/denied GPS fix -- either way the badge below simply doesn't apply, never a false
+ * positive.
  */
 var evidenceVenueBoundaryCache_ = {};
 function evidenceGetVenueBoundary_(eventId) {
@@ -283,23 +284,12 @@ function evidenceComposite_(file, meta) {
           if (meta.inspectionCoLogoEnabled !== false) drawLogo(coLogo, meta.inspectionCoLogoPosition || 'top-left');
           if (meta.gaLogoEnabled !== false) drawLogo(gaLogo, meta.gaLogoPosition || 'top-right');
 
-          // REQ: "Any photos taken outside boundaries should be marked." A full-width red banner
-          // just below the logo row -- deliberately loud/unmissable (not a small corner badge) since
-          // the whole point is that whoever reviews this finding later can't miss it at a glance.
-          if (meta.outsideBoundary) {
-            var bannerH = Math.max(20, Math.round(ch * 0.05));
-            var bannerY = pad + logoH + pad * 0.6;
-            ctx.save();
-            ctx.fillStyle = 'rgba(220,38,38,0.92)';
-            ctx.fillRect(0, bannerY, cw, bannerH);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold ' + Math.round(bannerH * 0.55) + 'px Tajawal, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.direction = 'ltr';
-            ctx.fillText('⚠ OUTSIDE VENUE BOUNDARY', cw / 2, bannerY + bannerH / 2 + 1);
-            ctx.restore();
-          }
+          // REQ follow-up: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge
+          // also provide distance away from participant in meters." No longer burned into the photo's
+          // own pixels -- meta.outsideBoundary/meta.distanceMeters are attached onto the returned File
+          // below (prepare()) instead, so the app can render a proper UI badge (with the distance
+          // figure, which wouldn't fit/update well baked into a banner) wherever this evidence's
+          // thumbnail is shown, see evidenceOutsideBadgeHtml_ (eventDetail.js).
 
           // Geolocation box: date/time, GPS, Arabic address -- REQ (Photos Properties): a single
           // on/off toggle hides the whole box (date/time included, not just GPS/address), placed at
@@ -361,7 +351,18 @@ function evidenceComposite_(file, meta) {
         canvas.toBlob(function (blob) {
           if (!blob) { reject(new Error('Could not process photo')); return; }
           var name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-          resolve(new File([blob], name, { type: 'image/jpeg' }));
+          var outFile = new File([blob], name, { type: 'image/jpeg' });
+          // REQ follow-up: badge + distance metadata, carried on the File itself (not baked into the
+          // image) so callers can read it straight off entry.file (eventDetail.js's
+          // evidencePendingThumbHtml_) and forward it into the Finding's own evidenceMeta once
+          // submitted (findings.js). Not present at all on the plain fallback `file` returned by
+          // prepare()'s outer .catch -- that's fine, evidenceOutsideBadgeHtml_ already treats missing
+          // metadata as "no badge," never a false positive.
+          outFile._hululOutsideBoundary = !!meta.outsideBoundary;
+          outFile._hululDistanceMeters = (meta.distanceMeters != null) ? meta.distanceMeters : null;
+          outFile._hululLat = (meta.lat != null) ? meta.lat : null;
+          outFile._hululLng = (meta.lng != null) ? meta.lng : null;
+          resolve(outFile);
         }, 'image/jpeg', quality);
       });
     };
@@ -381,7 +382,11 @@ window.EvidenceCapture = {
   // slightly different readings (device jitter) between "what's stamped on the photo" and "what's
   // stored for grouping." Pass it through here so both use the exact same fix; omit it and prepare()
   // fetches its own, as before.
-  prepare: function (file, eventId, knownPos) {
+  // participantPos (optional): {lat,lng} of the log's selected Participant -- REQ follow-up: "provide
+  // distance away from participant in meters." Only findings.js's New Log form currently has a
+  // participant to offer; every other caller omits it and simply gets no distance figure (still gets
+  // the plain outsideBoundary flag either way).
+  prepare: function (file, eventId, knownPos, participantPos) {
     if (!file.type || file.type.indexOf('image/') !== 0) return Promise.resolve(file);
     var posPromise = knownPos ? Promise.resolve(knownPos) : evidenceGetPosition_(8000);
     return Promise.all([posPromise, evidenceGetBranding_(eventId), evidenceGetVenueBoundary_(eventId)])
@@ -391,6 +396,12 @@ window.EvidenceCapture = {
         // sets this -- no GPS fix, or no boundary drawn for the venue, both leave it false rather than
         // guessing (see evidenceGetVenueBoundary_'s comment).
         var outsideBoundary = !!(pos && boundary && !pointInPolygonClient_(pos.lat, pos.lng, boundary));
+        // REQ follow-up: "distance away from participant in meters." haversineKm_ (venues.js) is
+        // loaded app-wide, same "safe to reference from inside this async pipeline even though venues.js
+        // loads after this file" reasoning as pointInPolygonClient_ above.
+        var distanceMeters = (pos && participantPos && participantPos.lat != null && participantPos.lat !== '' && participantPos.lng != null && participantPos.lng !== '')
+          ? Math.round(haversineKm_(pos.lat, pos.lng, Number(participantPos.lat), Number(participantPos.lng)) * 1000)
+          : null;
         var addressPromise = pos ? evidenceReverseGeocodeArabic_(pos.lat, pos.lng) : Promise.resolve('');
         var mapsUrl = pos ? ('https://www.google.com/maps?q=' + pos.lat + ',' + pos.lng) : '';
         var qrPromise = evidenceQrDataUrl_(mapsUrl, 220);
@@ -398,7 +409,7 @@ window.EvidenceCapture = {
           return evidenceComposite_(file, {
             lat: pos ? pos.lat : null, lng: pos ? pos.lng : null, address: r2[0],
             gaLogoDataUri: branding.gaLogoDataUri, inspectionCoLogoDataUri: branding.inspectionCoLogoDataUri,
-            qrDataUrl: r2[1], outsideBoundary: outsideBoundary,
+            qrDataUrl: r2[1], outsideBoundary: outsideBoundary, distanceMeters: distanceMeters,
             // REQ (Settings > Photos Properties): per-org enabled/position config, already resolved
             // server-side by getEventBrandingLogos -- see evidenceComposite_'s drawLogo/geo-box/QR.
             gaLogoEnabled: branding.gaLogoEnabled, gaLogoPosition: branding.gaLogoPosition,

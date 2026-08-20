@@ -248,6 +248,10 @@ var ROUTES = {
   updateInspection: function (u, p) { return updateInspection(u, p); },
   deleteInspection: function (u, p) { return deleteInspection(u, p); },
   listInspections: function (u, p) { return listInspections(u, p); },
+  // REQ: self-service "open checklist" pickup for qualified-but-unassigned Inspectors.
+  listOpenInspectionSlots: function (u, p) { return listOpenInspectionSlots(u, p); },
+  claimOpenInspectionSlot: function (u, p) { return claimOpenInspectionSlot(u, p); },
+  cancelSelfAssignedInspection: function (u, p) { return cancelSelfAssignedInspection(u, p); },
   listCompletedChecklists: function (u, p) { return listCompletedChecklists(u, p); },
   listAllCompletedChecklists: function (u, p) { return listAllCompletedChecklists(u, p); },
   listInspectionResults: function (u, p) { return listInspectionResults(u, p); },

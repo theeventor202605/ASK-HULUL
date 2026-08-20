@@ -350,7 +350,22 @@ function listEvents(user, p) {
   }
   if (p && p.status) all = all.filter(function (e) { return e.status === p.status; });
   if (p && p.projectId) all = all.filter(function (e) { return e.projectId === p.projectId; });
-  return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+  all = all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+  // REQ: "Add Log sidebar ... allows inspector to add logs to any event under his inspection
+  // company ... only works if he is inside a venue boundary or no more than 50 meters from an
+  // event." The Add Log picker (findings.js) needs each event's venue name + boundary to compute
+  // eligibility client-side against the inspector's live GPS -- additive/opt-in via p.includeVenue
+  // so every other listEvents caller (unaware of this flag) is unaffected.
+  if (p && p.includeVenue) {
+    all = all.map(function (e) {
+      var venue = e.venueId ? getById('Venues', e.venueId) : null;
+      return Object.assign({}, e, {
+        venueName: venue ? venue.name : '', venueBoundary: venue ? venue.boundary : '',
+        venueLat: venue ? venue.lat : '', venueLng: venue ? venue.lng : ''
+      });
+    });
+  }
+  return all;
 }
 
 function getEventDetail(user, eventId) {

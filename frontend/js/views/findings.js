@@ -44,18 +44,27 @@ function driveEvidenceThumbUrl_(url, size) {
 // opens openEvidenceLightbox_ instead of letting the <a> navigate. Left as a real <a href target=_blank>
 // underneath so ctrl/cmd/middle-click still opens the original in a new tab the normal way (those
 // don't run through our click handler's preventDefault).
-function evidenceThumbsHtml_(urls, size) {
+// evidenceMeta (optional): [{url, outsideBoundary, distanceMeters}, ...] -- REQ follow-up: "Instead
+// of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also provide distance away from
+// participant in meters." Only the Finding's own main evidence grid (evidenceMeta comes from
+// Finding.evidenceMeta, Findings.gs) passes this; Resolution-history evidence call sites simply omit
+// it and get no badge, same "missing metadata -> no badge" rule as everywhere else this shows up.
+function evidenceThumbsHtml_(urls, size, evidenceMeta) {
   size = size || 120;
   if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">' + esc(t('no_evidence_attached')) + '</div>';
   return '<div style="display:flex;flex-wrap:wrap;gap:12px;">' + urls.map(function (u, i) {
     var thumb = driveEvidenceThumbUrl_(u);
     var full = driveEvidenceThumbUrl_(u, 1600) || u;
-    return '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
-      'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
-      (thumb
-        ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" class="evidence-thumb-img" />'
-        : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
-    '</a>';
+    var meta = evidenceMetaFor_(evidenceMeta, u);
+    return '<div style="display:flex;flex-direction:column;align-items:center;">' +
+      '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+        'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
+        (thumb
+          ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" class="evidence-thumb-img" />'
+          : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
+      '</a>' +
+      evidenceOutsideBadgeHtml_(meta) +
+    '</div>';
   }).join('') + '</div>';
 }
 // evidenceThumbsHtml_'s <img> used to carry an inline onerror="..." attribute whose fallback markup
@@ -262,7 +271,7 @@ function renderFindingPhotoTimeline_(container, findings, opts) {
                 UI.riskBadge(f.riskLevel) + UI.statusBadge(f.status) +
               '</div>' +
               (f.description ? '<div class="photo-timeline-desc">' + esc(f.description) + '</div>' : '') +
-              '<div style="margin-top:10px;">' + evidenceThumbsHtml_(f.evidenceUrls, 140) + '</div>' +
+              '<div style="margin-top:10px;">' + evidenceThumbsHtml_(f.evidenceUrls, 140, f.evidenceMeta) + '</div>' +
               (creator ? '<div class="photo-timeline-credit">' + ICON('capture_photo') + ' ' + esc(t('photo_timeline_logged_by', { name: creator.name })) + '</div>' : '') +
             '</div>' +
           '</div>';
@@ -380,6 +389,97 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
   });
 }
 
+/* ---------------- Add Log picker (route: #/add-log) ---------------- */
+// REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
+// company. it only works if he is inside a venue boundary or no more than 50 meters from an
+// event." Unlike the Risk Logging tab inside an Event workspace (scoped to whichever one event
+// you already have open), this is a cross-event entry point: it lists every event under the
+// Inspector's own Inspection Company (listEvents already scopes to user.orgId for
+// orgType === 'INSPECTION' -- see Events.gs), fetched with includeVenue so each row carries its
+// venue's boundary, and gates a "Add Log" action per row on the device's live GPS being inside
+// that venue's drawn boundary or within 50m of it (distanceToPolygonMeters_/pointInPolygonClient_,
+// venues.js). Picking an eligible event just navigates into the existing, already-built
+// #/events/:id/findings/new page (renderNewFinding below) -- no duplicate form here.
+var ADD_LOG_PROXIMITY_M_ = 50;
+var addLogWatchId_ = null;
+
+function destroyAddLogWatch_() {
+  if (addLogWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(addLogWatchId_); }
+  addLogWatchId_ = null;
+}
+
+async function renderAddLogPicker_() {
+  var root = document.getElementById('viewRoot');
+  destroyAddLogWatch_();
+  root.innerHTML =
+    '<div class="page-header"><div><div class="page-title">' + esc(t('add_log_picker_title')) + '</div>' +
+    '<div class="page-subtitle">' + esc(t('add_log_picker_hint')) + '</div></div></div>' +
+    '<div class="card"><div class="card-body">' +
+    '<div id="addLogStatus" class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('add_log_locating')) + '</div>' +
+    '<div id="addLogListWrap"></div>' +
+    '</div></div>';
+
+  var events = [];
+  try { events = await Api.call('listEvents', { includeVenue: true, status: 'Active' }); } catch (e) { events = []; }
+
+  function renderRows(pos) {
+    var statusEl = document.getElementById('addLogStatus');
+    var wrap = document.getElementById('addLogListWrap');
+    if (!wrap) return; // navigated away
+    if (!pos) {
+      if (statusEl) statusEl.textContent = t('add_log_location_error');
+    } else if (statusEl) {
+      statusEl.textContent = '';
+    }
+    if (!events.length) {
+      wrap.innerHTML = '<div class="muted" style="font-size:13px;">' + esc(t('add_log_no_events')) + '</div>';
+      return;
+    }
+    var rows = events.map(function (e) {
+      var boundary = parseBoundaryClient_(e.venueBoundary);
+      var eligible = false, distanceM = null;
+      if (pos && boundary) {
+        var lat = pos.coords.latitude, lng = pos.coords.longitude;
+        distanceM = distanceToPolygonMeters_(lat, lng, boundary);
+        eligible = distanceM <= ADD_LOG_PROXIMITY_M_;
+      }
+      return Object.assign({}, e, { _eligible: eligible, _distanceM: distanceM });
+    });
+    wrap.innerHTML = UI.table([
+      { key: 'name', label: t('col_name') },
+      { key: 'venueName', label: Term('venue'), render: r => esc(r.venueName || '—') },
+      { key: '_eligible', label: t('col_status'), render: r =>
+          r._eligible
+            ? '<span class="badge badge-resolved">' + esc(t('add_log_eligible_badge')) + '</span>'
+            : '<span class="badge badge-neutral">' + esc(t('add_log_ineligible_badge')) +
+              (r._distanceM != null ? ' · ' + Math.round(r._distanceM) + 'm' + esc(t('add_log_distance_suffix')) : '') + '</span>'
+      },
+      { key: 'actions', label: t('actions'), render: r =>
+          r._eligible
+            ? '<button class="btn btn-primary btn-sm" data-add-log-event="' + esc(r.id) + '">' + esc(t('add_log_go_btn')) + '</button>'
+            : '<button class="btn btn-secondary btn-sm" disabled>' + esc(t('add_log_go_btn')) + '</button>'
+      }
+    ], rows, {});
+    wrap.querySelectorAll('[data-add-log-event]').forEach(function (btn) {
+      btn.onclick = function () {
+        destroyAddLogWatch_();
+        window.location.hash = '#/events/' + btn.getAttribute('data-add-log-event') + '/findings/new';
+      };
+    });
+  }
+
+  renderRows(null);
+  if (navigator.geolocation) {
+    addLogWatchId_ = navigator.geolocation.watchPosition(
+      function (pos) { renderRows(pos); },
+      function () { renderRows(null); },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+  } else {
+    renderRows(null);
+  }
+}
+
 /* ---------------- New Finding page (route: #/events/:id/findings/new) ---------------- */
 // REQ: "Log finding must be tied to a participant. Participant must first be selected from
 // searchable dropdown or live location side map (to be added). Discipline: should pick up as a
@@ -479,6 +579,11 @@ async function renderNewFinding(params) {
         '<div class="card-body" style="display:flex;flex-direction:column;flex:1;">' +
           '<div id="findingLocationMap" style="flex:1;min-height:380px;border-radius:var(--radius-sm);border:1px solid var(--border);"></div>' +
           '<div id="findingLocationBanner" class="muted" style="font-size:11.5px;margin-top:8px;"></div>' +
+          // REQ follow-up: "While live on map show estimated distance from real location like: 5 m
+          // etc..." -- how far the inspector's own live GPS dot currently is from the selected
+          // Participant's registered ("real") location, updated on every watchPosition tick (see
+          // updateFindingLocationDistance_ below).
+          '<div id="findingLocationDistance" class="muted" style="font-size:11.5px;margin-top:4px;"></div>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -518,6 +623,11 @@ async function renderNewFinding(params) {
     selectedParticipant = pt;
     pSearch.value = pt.name;
     pSuggest.style.display = 'none';
+    // REQ follow-up: "While live on map show estimated distance from real location." Refresh
+    // immediately using whatever GPS fix is already on record (updateFindingLocationDistance_ below
+    // is a no-op until a fix exists -- the next watchPosition tick fills it in either way).
+    findingLocationSelectedParticipant_ = pt;
+    updateFindingLocationDistance_();
     // REQ: "Discipline: should pick up as a suggestion" -- pre-fills from the participant's own
     // registered discipline (Participants.disciplineIds) but the dropdown stays fully editable; this
     // is a starting suggestion, not a lock.
@@ -612,7 +722,11 @@ async function renderNewFinding(params) {
   var pendingFiles = { newFinding: [] };
   document.getElementById('fFindingCameraBtn').onclick = function () { document.getElementById('fFindingFile').click(); };
   document.getElementById('fFindingFile').onchange = function (e) {
-    Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles); });
+    // REQ follow-up: "provide distance away from participant in meters." Only meaningful once a
+    // Participant has actually been picked (selectedParticipant, above) -- a photo taken before that
+    // simply gets no distance figure (still gets the plain outside-boundary flag either way).
+    var participantPos = selectedParticipant ? { lat: selectedParticipant.lat, lng: selectedParticipant.lng } : null;
+    Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles, false, participantPos); });
     e.target.value = '';
   };
 
@@ -654,7 +768,20 @@ async function renderNewFinding(params) {
     var disciplineId = document.getElementById('fDiscipline').value;
     if (!disciplineId) { UI.toast(t('toast_discipline_required', { term: Term('discipline') }), 'error'); return; }
     var files = pendingFiles.newFinding || [];
-    var doneUrls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
+    var doneFiles = files.filter(function (f) { return f.status === 'done'; });
+    var doneUrls = doneFiles.map(function (f) { return f.url; });
+    // REQ follow-up: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also
+    // provide distance away from participant in meters." Metadata was attached onto each prepared
+    // File at capture time (EvidenceCapture.prepare, evidence.js) -- collect it here, keyed by the
+    // final Drive URL, so it can be persisted on the Finding (createFinding, Findings.gs) and shown as
+    // a badge anywhere this evidence's thumbnail is rendered later.
+    var evidenceMeta = doneFiles.map(function (f) {
+      return {
+        url: f.url,
+        outsideBoundary: !!(f.file && f.file._hululOutsideBoundary),
+        distanceMeters: (f.file && f.file._hululDistanceMeters != null) ? f.file._hululDistanceMeters : null
+      };
+    }).filter(function (m) { return m.outsideBoundary; }); // no badge to show -- no point carrying the row
     var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
     btn.disabled = true;
     try {
@@ -666,7 +793,7 @@ async function renderNewFinding(params) {
         // (Findings.gs) already accepts location and falls back to the participant's own when blank.
         location: document.getElementById('fLogLocation').value,
         riskLevel: document.getElementById('fRisk').value, resolutionWindowHours: Number(document.getElementById('fWindow').value),
-        evidenceUrls: doneUrls
+        evidenceUrls: doneUrls, evidenceMeta: evidenceMeta
         // REQ follow-up: findings used to always fall back to the participant's static coordinates,
         // never the inspector's actual live GPS fix, even though startFindingLocationWatch_ tracks
         // it the whole time this form is open (only used for the map/banner). Attach it when we have
@@ -868,7 +995,15 @@ function attachFindingEvidenceInBackground_(findingId, entries, alreadyAttachedU
       if (entry.status === 'uploading' || entry.status === 'preparing') { stillPending = true; return; }
       if (entry.status === 'done' && entry.url && !attached[entry.url]) {
         attached[entry.url] = true;
-        Api.call('addFindingEvidence', { findingId: findingId, evidenceUrl: entry.url }).catch(function () {});
+        // REQ follow-up: "distance away from participant in meters" -- carry the same per-file
+        // metadata (attached onto entry.file at capture time, evidence.js) that createFinding's own
+        // evidenceMeta payload sends for files that were already 'done' at submit time; addFindingEvidence
+        // (Findings.gs) merges it in the same way.
+        var meta = (entry.file && entry.file._hululOutsideBoundary) ? {
+          outsideBoundary: true,
+          distanceMeters: (entry.file._hululDistanceMeters != null) ? entry.file._hululDistanceMeters : null
+        } : null;
+        Api.call('addFindingEvidence', { findingId: findingId, evidenceUrl: entry.url, evidenceMeta: meta }).catch(function () {});
       }
     });
     if (!stillPending) clearInterval(timer);
@@ -914,6 +1049,11 @@ var findingLocationLastCoords_ = null;
 // outside; findingLocationMap never broadcasts this position to any other user, so a client-side
 // check is sufficient here (nothing server-side needs to change).
 var findingLocationVenueBoundary_ = null;
+// REQ follow-up: "While live on map show estimated distance from real location like: 5 m etc..."
+// The currently-selected Participant (pickParticipant_ below), so updateFindingMyPosition_'s
+// watchPosition tick has something to measure the live GPS fix against. Cleared on teardown same as
+// the other findingLocation* module state above.
+var findingLocationSelectedParticipant_ = null;
 
 function stopFindingLocationWatch_() {
   if (findingLocationWatchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(findingLocationWatchId_); findingLocationWatchId_ = null; }
@@ -925,6 +1065,23 @@ function destroyFindingLocationMap_() {
   findingLocationMyMarker_ = null;
   findingLocationVenueBoundary_ = null;
   findingLocationLastCoords_ = null;
+  findingLocationSelectedParticipant_ = null;
+}
+
+// REQ follow-up: "While live on map show estimated distance from real location like: 5 m etc..."
+// Distance between the inspector's own live GPS fix (findingLocationLastCoords_) and the selected
+// Participant's registered location -- haversineKm_ (venues.js) is the same great-circle helper used
+// for every other "how far is X from Y" figure in the app (live-inspection nearest-participant label,
+// Log Photos grouping, etc.). No-ops (clears the line) whenever either half is missing -- no GPS fix
+// yet, no participant picked yet, or the participant has no registered coordinates.
+function updateFindingLocationDistance_() {
+  var el = document.getElementById('findingLocationDistance');
+  if (!el) return;
+  var pt = findingLocationSelectedParticipant_;
+  var hasParticipantCoords = pt && pt.lat !== '' && pt.lat != null && pt.lng !== '' && pt.lng != null;
+  if (!findingLocationLastCoords_ || !hasParticipantCoords) { el.innerHTML = ''; return; }
+  var meters = Math.round(haversineKm_(findingLocationLastCoords_.lat, findingLocationLastCoords_.lng, Number(pt.lat), Number(pt.lng)) * 1000);
+  el.innerHTML = ICON('location_pin') + ' ' + esc(t('live_distance_from_participant', { m: meters, name: pt.name }));
 }
 
 // onParticipantClick (optional): REQ ("live location side map") -- lets an inspector tap a
@@ -991,9 +1148,11 @@ function updateFindingMyPosition_(latlng) {
     if (findingLocationMyMarker_) { findingLocationMapInstance_.removeLayer(findingLocationMyMarker_); findingLocationMyMarker_ = null; }
     findingLocationLastCoords_ = null; // outside the venue boundary -- don't attach this fix to the finding either
     if (banner) banner.innerHTML = '<div class="muted" style="font-size:11.5px;">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_banner')) + '</div>';
+    updateFindingLocationDistance_(); // no fix to measure from anymore -- clears the distance line
     return;
   }
   findingLocationLastCoords_ = { lat: latlng[0], lng: latlng[1] };
+  updateFindingLocationDistance_();
   if (!findingLocationMyMarker_) {
     var icon = HululLeaflet.divIcon({
       className: 'my-location-icon', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="my-location-dot"></div>'
@@ -1110,7 +1269,7 @@ async function renderFindingDetail(params) {
           ? '<div style="margin-bottom:16px;">' + detailField_(t('suggested_action'), esc(finding.suggestedAction)) + '</div>'
           : '') +
         '<div class="field-label" style="margin-bottom:8px;">' + esc(t('risk_logging_evidence')) + '</div>' +
-        evidenceThumbsHtml_(finding.evidenceUrls, 168) +
+        evidenceThumbsHtml_(finding.evidenceUrls, 168, finding.evidenceMeta) +
       '</div>' +
     '</div>' +
 

@@ -11,12 +11,7 @@ window.Api = {
     // against a page that's no longer there. window.Router may not exist yet the very first time
     // this runs (before router.js's script tag executes), hence the guard.
     var signal = window.Router && window.Router._abortController ? window.Router._abortController.signal : undefined;
-    var res = await fetch(window.HULUL_CONFIG.API_BASE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: body,
-      signal: signal
-    });
+    var res = await Api._fetchWithRetry(body, signal);
     var json;
     try { json = await res.json(); }
     catch (e) { throw new Error('Unexpected response from server. Check API_BASE_URL in config.js.'); }
@@ -30,6 +25,41 @@ window.Api = {
     }
     return json.data;
   },
+
+  // BUG FIX (report): "Getting lots of 'Failed to fetch' errors." fetch() throws a raw, unformatted
+  // TypeError for any transport-layer hiccup -- a momentarily dropped mobile connection, the Apps
+  // Script Web App cold-starting, a brief DNS blip -- and its message really is just "Failed to
+  // fetch" (Chrome), "NetworkError when attempting to fetch resource" (Firefox), or "Load failed"
+  // (Safari). call() above used to let that raw string surface straight into UI.errorModal()
+  // unmodified (uploadWithProgress, below, already wrapped its own fetch() in a try/catch for a
+  // friendlier message -- call() had just never gotten the same treatment). Reported as
+  // "intermittent, been happening a while" and "everywhere," which is exactly what a transient
+  // network blip looks like across an app that calls Api.call() on virtually every page load -- so a
+  // couple of quick automatic retries (600ms, then 1200ms) resolve most of these before the user ever
+  // sees anything at all; only once every attempt has failed does this surface a clear, actionable
+  // message instead of the raw browser string.
+  async _fetchWithRetry(body, signal, attempt) {
+    attempt = attempt || 0;
+    try {
+      return await fetch(window.HULUL_CONFIG.API_BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: body,
+        signal: signal
+      });
+    } catch (e) {
+      // Router navigated away and intentionally aborted this request -- not a network failure, and
+      // retrying/rewrapping it would just produce a confusing error for a page the user already left.
+      // UI.error already has its own dedicated "err.name === 'AbortError'" no-op for exactly this.
+      if (e && e.name === 'AbortError') throw e;
+      if (attempt < 2) {
+        await new Promise(function (resolve) { setTimeout(resolve, 600 * (attempt + 1)); });
+        return Api._fetchWithRetry(body, signal, attempt + 1);
+      }
+      throw new Error('Network error — check your connection and try again.');
+    }
+  },
+
   async ping() {
     var res = await fetch(window.HULUL_CONFIG.API_BASE_URL + '?action=ping');
     return res.json();

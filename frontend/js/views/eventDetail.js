@@ -1907,6 +1907,27 @@ function renderInspectionGapsCard_(gaps, canSchedule) {
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('coverage_gaps_title')) + '</div></div><div class="card-body">' + body + '</div></div>';
 }
 
+// REQ: "Any inspector who has not been assigned can start on a checklist that has not been assigned
+// to anyone as long as he is qualified in that category. Once he picks up an opening sub-checklist it
+// becomes unavailable to other inspectors unless cancelled by the inspector." Shown to every viewer
+// (informational, same as renderInspectionGapsCard_ above it) -- the "Pick up" button itself only
+// renders for slots the CALLING user is actually qualified for (slot.qualified, computed server-side
+// by listOpenInspectionSlots against their own Inspector Qualifications profile) and can act at all
+// (hasPermission('inspection.recordResults')).
+function renderOpenChecklistsCard_(openSlots, canClaim) {
+  var body = !openSlots.length
+    ? '<div class="muted" style="font-size:13px;">' + esc(t('no_open_checklists_hint')) + '</div>'
+    : openSlots.map(function (s) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f0f1f6;font-size:13px;">' +
+          '<div><strong>' + esc(s.disciplineName) + '</strong> <span class="muted">— ' + esc(s.phase) + '</span></div>' +
+          (canClaim && s.qualified
+            ? '<button class="btn btn-primary btn-sm" data-pickup-discipline="' + esc(s.disciplineId) + '" data-pickup-phase="' + esc(s.phase) + '">' + esc(t('pick_up_btn')) + '</button>'
+            : (canClaim ? '<span class="muted" style="font-size:11.5px;">' + esc(t('not_qualified_hint')) + '</span>' : '')) +
+          '</div>';
+      }).join('');
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('open_checklists_title')) + '</div></div><div class="card-body">' + body + '</div></div>';
+}
+
 async function tabInspections(content, eventId, detail) {
   destroyLiveInspectionMap_(); // in case a previous "choose participant" visit left a GPS watch/map running
   // Flush any evidence photos saved locally during a dead connection (a prior visit, or even a
@@ -1918,10 +1939,12 @@ async function tabInspections(content, eventId, detail) {
     });
   }
   var canSchedule = canScheduleInspection_();
-  var [inspections, assignments, checklistItems] = await Promise.all([
+  var canClaim = hasPermission('inspection.recordResults');
+  var [inspections, assignments, checklistItems, openSlots] = await Promise.all([
     Api.call('listInspections', { eventId: eventId }),
     Api.call('listInspectorAssignments', { eventId: eventId }),
-    Api.call('listChecklistItems', {})
+    Api.call('listChecklistItems', {}),
+    Api.call('listOpenInspectionSlots', { eventId: eventId }).catch(function () { return []; })
   ]);
   var inspectorAssignCount = {};
   assignments.forEach(function (a) { inspectorAssignCount[a.inspectorId] = (inspectorAssignCount[a.inspectorId] || 0) + 1; });
@@ -1962,6 +1985,7 @@ async function tabInspections(content, eventId, detail) {
           '<button class="btn btn-primary btn-sm" id="scheduleBtn"' + (assignments.length ? '' : ' disabled') + '>' + esc(t('schedule_btn')) + '</button></div></div>'
       : '') +
     renderInspectionGapsCard_(gaps, canSchedule) +
+    renderOpenChecklistsCard_(openSlots, canClaim) +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(Term('inspection_plural')) + '</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: Term('discipline') }, { key: 'phase', label: t('col_phase') },
@@ -1978,6 +2002,13 @@ async function tabInspections(content, eventId, detail) {
           if (canSchedule && r.status === 'Scheduled') {
             btns += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-inspection="' + r.id + '">' + ICON('edit') + '</button> ' +
               '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_delete')) + '" data-delete-inspection="' + r.id + '">' + ICON('delete') + '</button> ';
+          }
+          // REQ: "unless cancelled by the inspector" -- only the Inspector who picked THIS specific
+          // checklist up themselves (assignedVia === 'self', cancelSelfAssignedInspection's own gate)
+          // gets this button; a PM-scheduled visit (even one assigned to this same inspector) never
+          // shows it -- that one's Edit/Delete pair above is the only way to remove it, PM/SysAdmin only.
+          if (r.assignedVia === 'self' && r.inspectorId === HululState.user.id && r.status === 'Scheduled') {
+            btns += '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('cancel_pickup_btn')) + '" data-cancel-pickup="' + r.id + '">' + ICON('delete') + '</button> ';
           }
           if (canRecordInspection_(r) && r.status !== 'Completed') {
             btns += new Date(r.scheduledAt) > new Date()
@@ -2075,6 +2106,28 @@ async function tabInspections(content, eventId, detail) {
       },
       { confirmLabel: t('delete') }
     );
+  });
+
+  // REQ: self-service open checklist pickup -- "Pick up" claims the (discipline, phase) slot as the
+  // current Inspector's own; the button's own app-wide click-guard (ui.js) already stops a double-
+  // click from firing this twice.
+  content.querySelectorAll('[data-pickup-discipline]').forEach(btn => {
+    btn.onclick = async () => {
+      try {
+        await Api.call('claimOpenInspectionSlot', {
+          eventId: eventId, disciplineId: btn.getAttribute('data-pickup-discipline'), phase: btn.getAttribute('data-pickup-phase')
+        });
+        UI.toast(t('toast_checklist_picked_up'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+  });
+  content.querySelectorAll('[data-cancel-pickup]').forEach(btn => {
+    btn.onclick = () => UI.confirmModal(t('cancel_pickup_confirm'), async () => {
+      try {
+        await Api.call('cancelSelfAssignedInspection', { inspectionId: btn.getAttribute('data-cancel-pickup') });
+        UI.toast(t('toast_pickup_cancelled'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    }, { confirmLabel: t('delete') });
   });
 }
 
@@ -2242,9 +2295,13 @@ async function renderCompletedChecklistDetail(params) {
   completedChecklistViewMode_(root, eventId, inspection, participant, scope, byType, existingByItemId, canManage, params.itemId);
 }
 
-// Read-only rows: description, state, risk/window, and (Crossed only) notes + evidence links -- no
-// inputs, nothing to wire beyond the Back/Edit buttons below. Evidence is just a row of plain links
-// (opens the original upload in a new tab) rather than the editable form's camera-capture control.
+// Read-only rows: description, state, risk/window, and (Crossed only) notes + evidence -- no inputs,
+// nothing to wire beyond the Back/Edit buttons below. REQ follow-up: "instead of showing '[Evidence 1]
+// (url)' ... show a thumbnail ... when clicked enlarge." Evidence renders as real image thumbnails
+// (same .evidence-thumb + lightbox pattern used everywhere else, findings.js's delegated click
+// handler) instead of plain text links -- every url here becomes its own sibling .evidence-thumb
+// element, so that handler's sibling-DOM-scan gallery strategy already gives Prev/Next between them
+// with no extra wiring needed on this page.
 function completedChecklistViewRowHtml_(it, existing, eventId) {
   var state = existing ? existing.state : '';
   var stateIcon = state === 'Ticked' ? ICON('result_ticked') : state === 'Crossed' ? ICON('result_crossed') : state === 'N/A' ? ICON('result_na') : '';
@@ -2269,8 +2326,12 @@ function completedChecklistViewRowHtml_(it, existing, eventId) {
     (state === 'Crossed'
       ? '<div style="margin-top:8px;padding:10px;background:#fff7f0;border-radius:8px;font-size:12.5px;">' +
           ((existing && existing.notes) ? '<div><span class="muted">' + esc(t('field_notes_found')) + ':</span> ' + esc(existing.notes) + '</div>' : '') +
-          (evidenceUrls.length ? '<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;">' + evidenceUrls.map(function (url, idx) {
-            return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;font-size:11.5px;">' + esc(t('word_evidence')) + ' ' + (idx + 1) + '</a>';
+          (evidenceUrls.length ? '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' + evidenceUrls.map(function (url, idx) {
+            var thumb = driveEvidenceThumbUrl_(url) || '';
+            var full = driveEvidenceThumbUrl_(url, 1600) || url;
+            return '<a href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+              'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:52px;height:52px;">' +
+              (thumb ? '<img src="' + esc(thumb) + '" class="evidence-thumb-img" alt="' + esc(t('word_evidence')) + ' ' + (idx + 1) + '" />' : ICON('capture_photo')) + '</a>';
           }).join('') + '</div>' : '') +
           // REQ (checklist<->finding traceability): a Crossed result records a Finding via
           // recordInspectionResults (Inspections.gs), which stamps InspectionResults.findingId right
@@ -2905,17 +2966,40 @@ var EVIDENCE_MAX_UPLOAD_BYTES_ = 15 * 1024 * 1024; // 15MB -- past this, base64 
   // round-trip to Apps Script is very likely to time out or drop mid-transfer on a mobile
   // connection; fail fast with a clear reason instead of a generic "Network error."
 
+// REQ: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also provide distance
+// away from participant in meters." Was previously burned into the photo's own pixels
+// (evidenceComposite_, evidence.js); now a UI badge instead, built from metadata carried alongside
+// the evidence URL (outsideBoundary/distanceMeters, computed at capture time in EvidenceCapture.prepare
+// and attached to the returned File -- see uploadEvidenceFile_ below -- then persisted on the Finding
+// as evidenceMeta once submitted, Findings.gs). meta missing/incomplete (evidence captured before this
+// feature existed, no GPS fix, or no participant selected yet at capture time) simply renders nothing --
+// never a false badge.
+function evidenceOutsideBadgeHtml_(meta) {
+  if (!meta || !meta.outsideBoundary) return '';
+  var distText = (meta.distanceMeters != null) ? t('distance_from_participant_suffix', { m: Math.round(meta.distanceMeters) }) : '';
+  return '<div class="evidence-outside-boundary-badge">' + ICON('warning_banner') + ' ' + esc(t('outside_boundary_badge_label')) + (distText ? ' · ' + esc(distText) : '') + '</div>';
+}
+function evidenceMetaFor_(evidenceMetaArr, url) {
+  if (!evidenceMetaArr || !url) return null;
+  for (var i = 0; i < evidenceMetaArr.length; i++) { if (evidenceMetaArr[i] && evidenceMetaArr[i].url === url) return evidenceMetaArr[i]; }
+  return null;
+}
+
 // skipPrepare (optional): true when `file` has already been through EvidenceCapture.prepare() once --
 // REQ (Log Photos tab): photos staged there are captured/watermarked at capture time, then handed off
 // here when "Create Log" is used; running prepare() again would stamp a second set of logos/QR/GPS
 // text on top of the first. Regular camera-capture callers omit this and get the normal behavior.
-function uploadEvidenceFile_(eventId, itemId, file, pendingFiles, skipPrepare) {
+// participantPos (optional): {lat,lng} of the log's currently-selected Participant -- REQ: "distance
+// away from participant in meters." Passed through to EvidenceCapture.prepare so it can compute the
+// distance between the capture GPS fix and this participant; findings.js is the only caller that has
+// a participant to offer (New Log form), everyone else simply omits it and gets no distance figure.
+function uploadEvidenceFile_(eventId, itemId, file, pendingFiles, skipPrepare, participantPos) {
   var localId = 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
   var entry = { name: file.name, status: 'preparing', pct: 0, url: '', localId: localId, eventId: eventId };
   pendingFiles[itemId].push(entry);
   renderEvidenceList_(itemId, pendingFiles);
 
-  (skipPrepare ? Promise.resolve(file) : EvidenceCapture.prepare(file, eventId)).then(function (readyFile) {
+  (skipPrepare ? Promise.resolve(file) : EvidenceCapture.prepare(file, eventId, null, participantPos)).then(function (readyFile) {
     entry.file = readyFile; // kept for the "Retry now" button below
     if (readyFile.size > EVIDENCE_MAX_UPLOAD_BYTES_) {
       var mb = (readyFile.size / (1024 * 1024)).toFixed(1);
@@ -2979,9 +3063,16 @@ function evidencePendingThumbHtml_(f) {
   }
   var full = (f.status === 'done' && f.url) ? (driveEvidenceThumbUrl_(f.url, 1600) || f.url) : (f._previewUrl || src);
   var original = (f.status === 'done' && f.url) ? f.url : (f._previewUrl || src);
-  return '<a href="' + esc(original) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
-    'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:56px;height:56px;">' +
-    '<img src="' + esc(src) + '" alt="' + esc(f.name) + '" class="evidence-thumb-img" /></a>';
+  // REQ: "make it a badge also provide distance away from participant in meters" -- the metadata is
+  // attached directly onto the prepared File object (EvidenceCapture.prepare, evidence.js), so it's
+  // available here immediately, before this evidence has even been submitted as part of a Finding.
+  var meta = f.file ? { outsideBoundary: f.file._hululOutsideBoundary, distanceMeters: f.file._hululDistanceMeters } : null;
+  return '<div style="display:flex;flex-direction:column;align-items:center;">' +
+    '<a href="' + esc(original) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+      'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:56px;height:56px;">' +
+      '<img src="' + esc(src) + '" alt="' + esc(f.name) + '" class="evidence-thumb-img" /></a>' +
+    evidenceOutsideBadgeHtml_(meta) +
+  '</div>';
 }
 
 function renderEvidenceList_(itemId, pendingFiles) {
@@ -3277,7 +3368,7 @@ async function tabFindings(content, eventId) {
         var canEdit = canEditAny && stillEditable;
         var canDelete = canDeleteAny && stillEditable;
         return UI.actionsCell(
-          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_log')) + '" data-finding-view="' + r.id + '">' + ICON('view_open') + '</button> ' +
+          '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('title_open_log')) + '" data-finding-view="' + r.id + '" data-row-view="1">' + ICON('view_open') + '</button> ' +
           (canEdit ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-finding-edit="' + r.id + '">' + ICON('edit') + '</button> ' : '') +
           (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon btn-danger" title="' + esc(t('action_delete')) + '" data-finding-delete="' + r.id + '">' + ICON('delete') + '</button>' : '')
         );
@@ -3293,9 +3384,15 @@ async function tabFindings(content, eventId) {
         var last = urls[urls.length - 1];
         var thumb = driveEvidenceThumbUrl_(last) || '';
         var full = driveEvidenceThumbUrl_(last, 1600) || last;
-        return '<a href="' + esc(last) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
-          'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" data-gallery-b64="' + esc(btoa(JSON.stringify(urls))) + '" style="width:44px;height:44px;">' +
-          (thumb ? '<img src="' + esc(thumb) + '" class="evidence-thumb-img" alt="Evidence" />' : ICON('capture_photo')) + '</a>';
+        return '<div>' +
+          '<a href="' + esc(last) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+            'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" data-gallery-b64="' + esc(btoa(JSON.stringify(urls))) + '" style="width:44px;height:44px;">' +
+            (thumb ? '<img src="' + esc(thumb) + '" class="evidence-thumb-img" alt="Evidence" />' : ICON('capture_photo')) +
+            // REQ: "Image column add a badge on top of photo to show image count."
+            (urls.length > 1 ? '<span class="evidence-thumb-count">' + (urls.length > 99 ? '99+' : urls.length) + '</span>' : '') +
+          '</a>' +
+          evidenceOutsideBadgeHtml_(evidenceMetaFor_(r.evidenceMeta, last)) +
+        '</div>';
       } },
       { key: 'participantName', label: Term('participant') },
       // Category -- REQ: "Category Code as Category," i.e. the Discipline's short code (see

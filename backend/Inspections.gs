@@ -265,6 +265,107 @@ function deleteInspection(user, p) {
   return { ok: true };
 }
 
+/* ---------------- Self-service "open" checklist pickup ----------------
+ * REQ: "Any inspector who has not been assigned can start on a checklist that has not been assigned
+ * to anyone as long as he is qualified in that category. Once he picks up an opening sub-checklist
+ * it becomes unavailable to other inspectors unless cancelled by the inspector."
+ *
+ * A "slot" here is one (discipline, phase) combination that's been identified for the event
+ * (EventDisciplines -- see identifyDisciplines, Disciplines.gs) and actually has catalogue
+ * ChecklistItems for that phase, but has NO Inspections row yet -- from ANY inspector, whether
+ * scheduled the normal PM-driven way (scheduleInspection, above) or previously self-claimed. This is
+ * deliberately a different, looser gate than scheduleInspection's own InspectorAssignments check --
+ * that one requires a PM to have explicitly assigned this specific inspector to this discipline for
+ * this event first; self-claiming only requires the inspector's own global Inspector Qualifications
+ * profile (Settings > Inspector Qualifications, same one used to populate the "Assign inspector"
+ * dropdown) to include this discipline, regardless of whether they were ever added to this event's
+ * own Assignments list.
+ */
+function disciplinePhasesWithChecklistItems_(disciplineName) {
+  var phases = {};
+  getAll('ChecklistItems').forEach(function (c) {
+    if (c.status !== 'Deleted' && c.category === disciplineName && c.phase) phases[c.phase] = true;
+  });
+  // A discipline with no catalogue items at all yet has nothing to narrow by -- treat both phases as
+  // potentially relevant rather than hiding it entirely (same fallback the frontend's own
+  // computeInspectionGaps_ already uses for the PM-assignment gaps card).
+  return Object.keys(phases).length ? Object.keys(phases) : ['Opening', 'Operational'];
+}
+
+// Every open (discipline, phase) slot for the event, regardless of viewer -- each entry also carries
+// `qualified` for the CALLING user specifically, so the frontend can show every open slot as
+// information to a PM/SystemAdmin while only offering the "Pick up" action on the ones this
+// particular Inspector is actually qualified for.
+function listOpenInspectionSlots(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var identified = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId; });
+  var covered = {}; // any existing inspection at all (any inspector) closes this slot
+  findWhere('Inspections', function (i) { return i.eventId === p.eventId; })
+    .forEach(function (i) { covered[i.disciplineId + '|' + i.phase] = true; });
+  var myQualifications = isParticipantRoleCode_(user.role) ? [] : inspectorQualifications_(user.id);
+  var slots = [];
+  identified.forEach(function (ed) {
+    var discipline = getById('Disciplines', ed.disciplineId);
+    if (!discipline) return;
+    disciplinePhasesWithChecklistItems_(discipline.name).forEach(function (phase) {
+      if (covered[ed.disciplineId + '|' + phase]) return;
+      slots.push({
+        disciplineId: ed.disciplineId, disciplineName: discipline.name, phase: phase,
+        qualified: myQualifications.indexOf(ed.disciplineId) !== -1
+      });
+    });
+  });
+  return slots;
+}
+
+// Turns one open slot into a real Inspections row, owned by the calling Inspector. Re-validates
+// everything server-side (never trusts listOpenInspectionSlots' client-visible `qualified` flag) --
+// discipline actually identified for this event, phase actually still open, and the caller actually
+// qualified -- so a manipulated client request can't claim a slot it shouldn't be able to.
+function claimOpenInspectionSlot(user, p) {
+  requirePermission(user, 'inspection.recordResults'); // same inspector-facing permission recordInspectionResults itself uses
+  if (!p || !p.eventId || !p.disciplineId || !p.phase) throw new HululError('BAD_REQUEST', 'eventId, disciplineId, and phase are required');
+  var event = getById('Events', p.eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  var isIdentified = findWhere('EventDisciplines', function (ed) { return ed.eventId === p.eventId && ed.disciplineId === p.disciplineId; }).length > 0;
+  if (!isIdentified) throw new HululError('BAD_REQUEST', 'This category has not been identified for this event');
+  var alreadyCovered = findWhere('Inspections', function (i) { return i.eventId === p.eventId && i.disciplineId === p.disciplineId && i.phase === p.phase; }).length > 0;
+  if (alreadyCovered) throw new HululError('FORBIDDEN', 'Someone has already picked this one up');
+  if (inspectorQualifications_(user.id).indexOf(p.disciplineId) === -1) {
+    throw new HululError('FORBIDDEN', 'You are not qualified in this category yet -- ask a Project Manager to add it to your Inspector Qualifications.');
+  }
+  var discipline = getById('Disciplines', p.disciplineId);
+  var inspection = {
+    id: newId('Inspections'), eventId: p.eventId, disciplineId: p.disciplineId, inspectorId: user.id,
+    checklistType: '', scheduledAt: nowIso_(), phase: p.phase, status: 'Scheduled', assignedVia: 'self'
+  };
+  insertRow('Inspections', inspection);
+  audit(user.id, 'CLAIM_INSPECTION_SLOT', 'Inspections', inspection.id, {});
+  return inspection;
+}
+
+// The inverse of claimOpenInspectionSlot -- only the Inspector who picked it up can cancel it, and
+// only while it's exactly as they left it (still 'Scheduled', nothing recorded yet), same safety gate
+// deleteInspection already enforces. assignedVia === 'self' is the deciding line between this and
+// deleteInspection: a PM's own manually-scheduled visit is never cancellable through this endpoint,
+// no matter who it's assigned to -- only a PM/SystemAdmin can remove that one (deleteInspection).
+function cancelSelfAssignedInspection(user, p) {
+  if (!p || !p.inspectionId) throw new HululError('BAD_REQUEST', 'inspectionId is required');
+  var inspection = getById('Inspections', p.inspectionId);
+  if (!inspection) throw new HululError('NOT_FOUND', 'Inspection not found');
+  if (inspection.assignedVia !== 'self' || inspection.inspectorId !== user.id) {
+    throw new HululError('FORBIDDEN', 'You can only cancel a checklist you picked up yourself');
+  }
+  if (inspection.status !== 'Scheduled') {
+    throw new HululError('FORBIDDEN', 'This checklist already has results recorded against it and can no longer be cancelled.');
+  }
+  var hasResults = findWhere('InspectionResults', function (r) { return r.inspectionId === p.inspectionId; }).length > 0;
+  if (hasResults) throw new HululError('FORBIDDEN', 'This checklist already has results recorded against it and can no longer be cancelled.');
+  deleteRow('Inspections', p.inspectionId);
+  audit(user.id, 'CANCEL_SELF_ASSIGNED_INSPECTION', 'Inspections', p.inspectionId, {});
+  return { ok: true };
+}
+
 // The set of catalogue Checklist items that fall under an inspection's discipline + phase — this
 // is the full scope of what an inspector *may* record against that inspection, regardless of what
 // was recorded so far.

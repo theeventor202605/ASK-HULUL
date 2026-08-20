@@ -72,8 +72,17 @@ function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById
     disciplineCode: d ? d.code : '',
     checklistItemDescription: item ? item.description : '',
     createdByName: creator ? creator.name : '',
-    evidenceUrls: f.evidenceUrls ? String(f.evidenceUrls).split(',').filter(Boolean) : []
+    evidenceUrls: f.evidenceUrls ? String(f.evidenceUrls).split(',').filter(Boolean) : [],
+    // REQ follow-up: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also
+    // provide distance away from participant in meters." [{url, outsideBoundary, distanceMeters}, ...] --
+    // malformed/blank JSON (older findings, before this field existed) safely falls back to [], same
+    // "missing metadata -> no badge" rule the frontend already follows everywhere else.
+    evidenceMeta: findingEvidenceMeta_(f.evidenceMeta)
   });
+}
+function findingEvidenceMeta_(raw) {
+  if (!raw) return [];
+  try { var parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch (e) { return []; }
 }
 
 function listFindings(user, p) {
@@ -129,7 +138,10 @@ function createFinding(user, p) {
     // Manually-logged findings (this path) have no single checklist item to point at -- only the
     // auto-created-from-a-Crossed-item path (recordInspectionResults, Inspections.gs) sets
     // checklistItemId. p.checklistItemId is still honored if a future caller supplies one explicitly.
-    checklistItemId: p.checklistItemId || '', recreatedFromId: ''
+    checklistItemId: p.checklistItemId || '', recreatedFromId: '',
+    // REQ follow-up: "distance away from participant in meters." Only entries the frontend actually
+    // flagged outsideBoundary are ever sent (findings.js) -- so this stays '' on the common case.
+    evidenceMeta: (p.evidenceMeta && p.evidenceMeta.length) ? JSON.stringify(p.evidenceMeta) : ''
   };
   insertRow('Findings', finding);
   audit(user.id, 'CREATE_FINDING', 'Findings', finding.id, {});
@@ -188,7 +200,18 @@ function addFindingEvidence(user, p) {
   if (!p.evidenceUrl) throw new HululError('BAD_REQUEST', 'evidenceUrl is required');
   var urls = finding.evidenceUrls ? String(finding.evidenceUrls).split(',').filter(Boolean) : [];
   if (urls.indexOf(p.evidenceUrl) === -1) urls.push(p.evidenceUrl);
-  var updated = updateRow('Findings', p.findingId, { evidenceUrls: urls.join(',') });
+  var patch = { evidenceUrls: urls.join(',') };
+  // REQ follow-up: "distance away from participant in meters." Covers evidence that was still
+  // uploading at createFinding time and got attached afterward (attachFindingEvidenceInBackground_,
+  // findings.js) -- same evidenceMeta array, just appended to rather than set from scratch.
+  if (p.evidenceMeta && p.evidenceMeta.outsideBoundary) {
+    var meta = findingEvidenceMeta_(finding.evidenceMeta);
+    if (!meta.some(function (m) { return m.url === p.evidenceUrl; })) {
+      meta.push({ url: p.evidenceUrl, outsideBoundary: true, distanceMeters: (p.evidenceMeta.distanceMeters != null) ? p.evidenceMeta.distanceMeters : null });
+      patch.evidenceMeta = JSON.stringify(meta);
+    }
+  }
+  var updated = updateRow('Findings', p.findingId, patch);
   audit(user.id, 'ADD_FINDING_EVIDENCE', 'Findings', p.findingId, {});
   return updated;
 }

@@ -120,6 +120,10 @@ window.Router = {
     this.add('/settings', renderSettings);
     this.add('/roadmap-plans', renderRoadmapPlans);
     this.add('/roadmap-plans/:id', renderRoadmapPlanDetail);
+    // REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
+    // company." Cross-event proximity-gated event picker (renderAddLogPicker_, findings.js) --
+    // routes into the existing #/events/:id/findings/new page once an eligible event is chosen.
+    this.add('/add-log', renderAddLogPicker_);
     window.addEventListener('hashchange', () => this.resolve());
   }
 };

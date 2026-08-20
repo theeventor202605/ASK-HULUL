@@ -28,6 +28,7 @@
 window.LUCIDE_ICONS = {
   'alarm-clock': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="13" r="8" /> <path d="M12 9v4l2 2" /> <path d="M5 3 2 6" /> <path d="m22 6-3-3" /> <path d="M6.38 18.7 4 21" /> <path d="M17.64 18.67 20 21" /> </svg>',
   'alert-triangle': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /> </svg>',
+  filter: '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /> </svg>',
   'arrow-down': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 5v14" /> <path d="m19 12-7 7-7-7" /> </svg>',
   'arrow-left': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m12 19-7-7 7-7" /> <path d="M19 12H5" /> </svg>',
   'arrow-right': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M5 12h14" /> <path d="m12 5 7 7-7 7" /> </svg>',
@@ -358,6 +359,10 @@ window.ICON_DEFAULTS = {
   'list-ordered': LUCIDE_ICONS['list-ordered'],
   link: LUCIDE_ICONS['link'],
   eraser: LUCIDE_ICONS['eraser'],
+  // REQ: "For every table in the platform, when clicking on a table header it shows filter
+  // functionality." One small funnel button per filterable column header (UI.table, ui.js) opens
+  // the same column-value picker the toolbar's own /c search already offers.
+  table_filter: LUCIDE_ICONS['filter'],
 };
 // Picker metadata: groups + friendly labels for every ICON_DEFAULTS key, shown in Settings > Icons
 // alongside the sidebar nav items. Every key in ICON_DEFAULTS must appear exactly once below.
@@ -380,7 +385,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'logout', label: 'Log out' }, { key: 'capture_photo', label: 'Take photo / video (evidence)' },
     { key: 'map_fullscreen_enter', label: 'Expand map to full screen' }, { key: 'map_fullscreen_exit', label: 'Exit full screen map' },
     { key: 'detect_places', label: 'Detect places in boundary' },
-    { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' }
+    { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' },
+    { key: 'table_filter', label: 'Filter table column' }
   ] },
   { group: 'Status & Badges', keys: [
     { key: 'mark_read', label: 'Mark notification read' }, { key: 'coverage_complete', label: 'Coverage complete banner' },

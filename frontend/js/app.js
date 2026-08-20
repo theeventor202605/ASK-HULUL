@@ -25,6 +25,13 @@ var NAV_ITEMS = [
   // section/position moved.
   { path: '/roadmap-plans', icon: LUCIDE_ICONS['flag'], label: 'nav_roadmap_plans', section: 'section_main',
     roles: ['SystemAdmin', 'GAAdmin'] },
+  // REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
+  // company." A cross-event entry point -- unlike the Risk Logging tab (scoped to whichever one
+  // Event workspace you're already inside), this lets an Inspector jump straight to logging a Risk
+  // Log against ANY event their own Inspection Company runs, gated by proximity (renderAddLogPicker_,
+  // findings.js) rather than by which event tab they happened to have open.
+  { path: '/add-log', icon: LUCIDE_ICONS['plus'], label: 'nav_add_log', section: 'section_main',
+    roles: ['Inspector', 'SystemAdmin'] },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as the reassignment.manage
@@ -78,6 +85,7 @@ var NAV_GROUPS_ = [
   { section: 'section_main', paths: ['/venues'] },
   // REQ follow-up: "Move Roadmap one level up in sidebar" -- promoted out of Administration.
   { section: 'section_main', paths: ['/roadmap-plans'] },
+  { section: 'section_main', paths: ['/add-log'] },
   { section: 'section_main', paths: ['/notifications'] },
   { section: 'section_main', paths: ['/reassignment'] },
   { section: 'section_main', paths: ['/support'] },
