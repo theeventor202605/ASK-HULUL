@@ -616,6 +616,7 @@ async function tabTemplates(content, eventId, detail) {
     if (tpl && tpl.fileUrl) { fireOpenTemplate_(tpl.id); window.open(tpl.fileUrl, '_blank'); }
     else UI.toast(t('toast_no_file_yet'), 'error');
   });
+  UI.wireBoardPagination(content);
 
   content.querySelectorAll('[data-open-template]').forEach(function (a) {
     a.addEventListener('click', function () { fireOpenTemplate_(a.getAttribute('data-open-template')); });
@@ -3692,6 +3693,7 @@ async function tabFindings(content, eventId) {
     ], findings, {}) + '</div></div>';
 
   UI.wireBoard(content, function (id) { window.location.hash = '#/events/' + eventId + '/findings/' + id; });
+  UI.wireBoardPagination(content);
 
   if (canCreate) document.getElementById('newFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '/findings/new'; };
   content.querySelectorAll('[data-finding-view]').forEach(btn => {

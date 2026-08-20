@@ -401,24 +401,47 @@ window.UI = {
   // bodyHtml is optional -- if given, it fully replaces the default title/meta rendering (caller
   // supplies its own already-escaped HTML, same convention as UI.table's column render()); every
   // existing caller that only ever passed title/meta is unaffected.
-  board(columns) {
+  //
+  // REQ: "Pipeline section gets many logs and user has to scroll down a long list. Break it down
+  // into pages." A column with more cards than opts.pageSize (default 8) is split into fixed-size
+  // pages, only one shown at a time, with Prev/Next controls -- caller must call
+  // wireBoardPagination(root) once alongside wireBoard(root, onClick) for those controls to work. A
+  // column at or under the page size renders exactly as before (no pagination controls at all), so
+  // this is a no-op for every existing board that isn't actually long enough to need it.
+  board(columns, opts) {
+    var pageSize = (opts && opts.pageSize) || 8;
     return '<div class="board-wrap" style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;margin-bottom:18px;">' +
-      columns.map(function (col) {
-        return '<div style="min-width:220px;flex-shrink:0;">' +
+      columns.map(function (col, colIdx) {
+        var pages = [];
+        for (var i = 0; i < col.cards.length; i += pageSize) pages.push(col.cards.slice(i, i + pageSize));
+        if (!pages.length) pages = [[]];
+        var cardHtml_ = function (c) {
+          return '<div class="board-card" data-board-card="' + esc(c.id) + '" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:4px solid ' + (c.borderColor || 'var(--border)') + ';cursor:pointer;">' +
+            (c.bodyHtml || (
+              '<div style="font-size:12.5px;font-weight:600;margin-bottom:3px;line-height:1.35;">' + esc(c.title) + '</div>' +
+              '<div style="font-size:11px;color:var(--text-600);">' + esc(c.meta || '') + '</div>'
+            )) +
+          '</div>';
+        };
+        return '<div class="board-col" data-board-col="' + colIdx + '" style="min-width:220px;flex-shrink:0;">' +
           '<div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-600);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">' +
             '<span>' + esc(col.label) + '</span>' +
             '<span style="background:var(--surface);color:var(--text-600);border-radius:10px;padding:1px 8px;font-size:11px;">' + col.cards.length + '</span>' +
           '</div>' +
-          (col.cards.length
-            ? col.cards.map(function (c) {
-                return '<div class="board-card" data-board-card="' + esc(c.id) + '" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:4px solid ' + (c.borderColor || 'var(--border)') + ';cursor:pointer;">' +
-                  (c.bodyHtml || (
-                    '<div style="font-size:12.5px;font-weight:600;margin-bottom:3px;line-height:1.35;">' + esc(c.title) + '</div>' +
-                    '<div style="font-size:11px;color:var(--text-600);">' + esc(c.meta || '') + '</div>'
-                  )) +
-                '</div>';
-              }).join('')
-            : '<div class="muted" style="font-size:11.5px;padding:6px 2px;">—</div>') +
+          pages.map(function (pageCards, pageIdx) {
+            return '<div class="board-page" data-page="' + pageIdx + '" style="display:' + (pageIdx === 0 ? 'block' : 'none') + ';">' +
+              (pageCards.length
+                ? pageCards.map(cardHtml_).join('')
+                : '<div class="muted" style="font-size:11.5px;padding:6px 2px;">—</div>') +
+            '</div>';
+          }).join('') +
+          (pages.length > 1
+            ? '<div class="board-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">' +
+                '<button type="button" class="btn btn-secondary btn-sm board-page-prev" data-col="' + colIdx + '" disabled title="' + esc(t('previous_page')) + '">‹</button>' +
+                '<span class="muted board-page-indicator" style="font-size:11px;">' + esc(t('page_of_total', { page: 1, total: pages.length })) + '</span>' +
+                '<button type="button" class="btn btn-secondary btn-sm board-page-next" data-col="' + colIdx + '" title="' + esc(t('next_page')) + '">›</button>' +
+              '</div>'
+            : '') +
         '</div>';
       }).join('') +
     '</div>';
@@ -429,6 +452,28 @@ window.UI = {
   wireBoard(root, onClick) {
     root.querySelectorAll('[data-board-card]').forEach(function (el) {
       el.onclick = function () { onClick(el.getAttribute('data-board-card')); };
+    });
+  },
+
+  // Wires every column's Prev/Next pagination controls rendered by UI.board() inside `root`. Call
+  // once alongside wireBoard(root, onClick) right after inserting the board's HTML -- a no-op for
+  // any column that didn't render pagination controls (too few cards to need one).
+  wireBoardPagination(root) {
+    root.querySelectorAll('.board-col').forEach(function (colEl) {
+      var pageEls = Array.prototype.slice.call(colEl.querySelectorAll('.board-page'));
+      if (pageEls.length < 2) return;
+      var prevBtn = colEl.querySelector('.board-page-prev');
+      var nextBtn = colEl.querySelector('.board-page-next');
+      var indicator = colEl.querySelector('.board-page-indicator');
+      var current = 0;
+      var render = function () {
+        pageEls.forEach(function (el, i) { el.style.display = i === current ? 'block' : 'none'; });
+        if (indicator) indicator.textContent = t('page_of_total', { page: current + 1, total: pageEls.length });
+        if (prevBtn) prevBtn.disabled = current === 0;
+        if (nextBtn) nextBtn.disabled = current === pageEls.length - 1;
+      };
+      if (prevBtn) prevBtn.onclick = function () { if (current > 0) { current--; render(); } };
+      if (nextBtn) nextBtn.onclick = function () { if (current < pageEls.length - 1) { current++; render(); } };
     });
   },
 
