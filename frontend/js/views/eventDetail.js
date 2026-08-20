@@ -3232,6 +3232,12 @@ async function tabFindings(content, eventId) {
   var canDeleteAny = hasPermission('finding.delete');
 
   content.innerHTML =
+    // REQ follow-up: "Move the '+ Log' button to the top of the page and keep it floating." Was
+    // buried in the Risk Logging table's own card-header, well below the KPI cards and pipeline
+    // board -- now a fixed, always-visible button pinned near the top of the viewport (position:fixed,
+    // not sticky, so it stays put regardless of scroll position instead of just tracking the top of
+    // this tab's content) rather than a normal in-flow element.
+    (canCreate ? '<button class="btn btn-primary floating-log-btn" id="newFindingBtn">' + esc(t('log_x_btn')) + '</button>' : '') +
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', findings.length, ICON('kpi_total'), 'var(--info)') +
       kpiCard('kpi_open', counts.Open, ICON('kpi_open'), 'var(--info)') +
@@ -3243,8 +3249,7 @@ async function tabFindings(content, eventId) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('pipeline_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_log_hint')) + '</div></div>' +
     '<div class="card-body">' + UI.board(boardColumns) + '</div></div>' +
-    '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_findings') + '</div>' +
-    (canCreate ? '<button class="btn btn-primary btn-sm" id="newFindingBtn">' + esc(t('log_x_btn')) + '</button>' : '') + '</div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">' + t('tab_findings') + '</div></div>' +
     // REQ (follow-up): "Change Sub Category to Checklist Type and fill automatically." Findings.category
     // is where the New Finding form's own "Checklist Type" dropdown value actually gets saved
     // (findings.js renderNewFinding -- category: fChecklistType.value, defaulted to 'Other' server-side

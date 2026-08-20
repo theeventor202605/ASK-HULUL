@@ -104,6 +104,13 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .btn-danger{ background:var(--danger); color:#fff; } .btn-danger:hover{ background:#b91c1c; }
 .btn-ghost{ background:transparent; color:var(--text-600); } .btn-ghost:hover{ background:#eef0f6; }
 .btn-sm{ padding:6px 12px; font-size:12.5px; }
+/* REQ follow-up (Risk Logging "+ Log" button): "Move ... to the top of the page and keep it
+   floating." position:fixed (not sticky) -- stays pinned near the top-right of the viewport
+   regardless of how far the page is scrolled, instead of just tracking scroll like a sticky element
+   would. top offset clears .topbar (sticky, ~62px tall); z-index sits above ordinary page content but
+   below the sidebar backdrop/modals/toasts (45/1600/1700) so those still correctly cover it. */
+.floating-log-btn{ position:fixed; top:74px; inset-inline-end:28px; z-index:30;
+  box-shadow:0 6px 18px rgba(15,23,42,.18); }
 /* Icon-only action buttons (table row actions app-wide) -- square-ish padding instead of .btn-sm's
    text padding, and a bit larger font since an emoji glyph at 12.5px reads smaller than text does.
    Always paired with a title="" attribute for a hover tooltip, since there's no visible label. */
