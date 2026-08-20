@@ -1077,3 +1077,20 @@ function scheduledEscalationCheck() {
   deactivateEndedEventPlaceAccounts();
   checkTemplateDeadlines();
 }
+
+// One-time cleanup for REQ ("Logs can not have rejected state. Either resolved or goes back to
+// re-opened. Remove rejected status."): FINDING_STATUSES (Findings.gs) no longer includes 'Rejected'
+// at all -- it was already unreachable going forward since task #209 (every rejection now lands on
+// ReOpen instead), but any Findings row that reached the old terminal 'Rejected' state before that
+// change is still sitting on that now-invalid value. This flips every such row to 'ReOpen' so it
+// re-enters the normal workflow (participant can resubmit) instead of being stuck on a status value
+// the UI/backend no longer recognizes. Idempotent -- matches nothing once already migrated. Run once
+// from the Apps Script editor's function dropdown after pushing this change.
+function migrateRejectedFindingsToReOpen_() {
+  var updated = 0;
+  getAll('Findings').forEach(function (f) {
+    if (f.status === 'Rejected') { updateRow('Findings', f.id, { status: 'ReOpen' }); updated++; }
+  });
+  Logger.log('migrateRejectedFindingsToReOpen_: updated ' + updated + ' row(s).');
+  return { updated: updated };
+}

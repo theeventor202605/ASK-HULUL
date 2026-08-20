@@ -67,7 +67,6 @@ async function dashboardTabOverview_(content) {
     ['kpi_inreview', data.logsOverview.inReview, ICON('kpi_inreview'), 'var(--purple)'],
     ['kpi_resolved', data.logsOverview.resolved, ICON('kpi_resolved'), 'var(--success)'],
     ['kpi_reopen', data.logsOverview.reopen, ICON('kpi_reopen'), 'var(--warning)'],
-    ['kpi_rejected', data.logsOverview.rejected, ICON('kpi_rejected'), 'var(--danger)'],
     ['kpi_active_events', data.activeEvents, ICON('kpi_active_events'), 'var(--accent)']
   ];
 

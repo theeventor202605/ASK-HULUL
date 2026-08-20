@@ -75,8 +75,6 @@ function notifyFindingStatusChange_(finding, status) {
       msg = 'Finding resolved: ' + finding.description; toParticipant = true; toStakeholders = true; break;
     case 'ReOpen':
       msg = 'Resolution rejected — please resubmit: ' + finding.description; toParticipant = true; break;
-    case 'Rejected':
-      msg = 'Finding resolution rejected (final): ' + finding.description; toParticipant = true; toStakeholders = true; break;
     default:
       return;
   }

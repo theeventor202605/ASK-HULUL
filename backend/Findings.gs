@@ -18,20 +18,17 @@
  *                  follow-up: "keep all rejections going back to re-open", superseding the earlier
  *                  first-rejection-only rule and its second-rejection auto-recreate).
  *   Resubmitted -- Participant resubmitted (another photo + remarks) after a ReOpen.
- *   Rejected    -- legacy terminal state from before the above change. No longer reachable from
- *                  reviewFindingResolution, but still a valid value on any finding that already
- *                  landed there, and its recreatedFromId/recreatedInto linkage (viewFinding) still
- *                  resolves for that historical data.
+ * A Log has no terminal "Rejected" state -- every rejected resolution attempt lands back on ReOpen
+ * (see reviewFindingResolution) so it can be fixed and resubmitted. The only terminal state is
+ * Resolved.
  * reopenCount on the Findings row counts how many times a resolution has been rejected -- now a
  * plain visible counter (Risk Logging list's Rejection count column), not a branch condition.
  */
 
-var FINDING_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'Resolved', 'ReOpen', 'Resubmitted', 'Rejected'];
-// "Still outstanding" -- everything except the terminal states. Used by the escalation engine
-// (Resolutions.gs runEscalationCheck) so a finding stuck mid-workflow (e.g. Viewed but never
+var FINDING_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'Resolved', 'ReOpen', 'Resubmitted'];
+// "Still outstanding" -- everything except the terminal state (Resolved). Used by the escalation
+// engine (Resolutions.gs runEscalationCheck) so a finding stuck mid-workflow (e.g. Viewed but never
 // resolved, or ReOpen but never resubmitted) still escalates once its resolutionWindowAt lapses.
-// Rejected stays out of this list (still terminal wherever it exists) even though it's no longer
-// producible going forward.
 var FINDING_OPEN_STATUSES = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted'];
 // REQ (Risk Logging list, follow-up): "Actions (Allow edit and delete if not submitted)." Once a
 // Participant has submitted a resolution (or beyond), the finding is part of a workflow other people
@@ -321,7 +318,7 @@ function viewFinding(user, p) {
 // camera-captured photo/video (evidence requirement enforced here as well as client-side, same
 // pattern as recordInspectionResults). Only valid from Viewed (first attempt) or ReOpen (retry after
 // a first rejection) -- Open (not viewed yet), Submitted/InReview/Resubmitted (already has a pending
-// resolution), and Resolved/Rejected (terminal) can't be resolved from here.
+// resolution), and Resolved (terminal) can't be resolved from here.
 function resolveFinding(user, p) {
   requirePermission(user, 'finding.resolve');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
@@ -361,7 +358,7 @@ function assignFindingParticipant(user, p) {
   var finding = getById('Findings', p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
   if (!findingVisibleTo_(user, finding)) throw new HululError('FORBIDDEN', 'Not your finding');
-  if (['Resolved', 'Rejected'].indexOf(finding.status) !== -1) {
+  if (finding.status === 'Resolved') {
     throw new HululError('BAD_REQUEST', 'This finding is already closed -- its assigned participant can no longer be changed.');
   }
   var participantId = p.participantId || '';
@@ -381,12 +378,10 @@ function assignFindingParticipant(user, p) {
 // REQ workflow steps 5/6/8: Inspector/PM/SysAdmin accepts or rejects the latest pending resolution.
 // Only valid from InReview. Accept -> Resolved (terminal). Reject requires rejection remarks and
 // always -> ReOpen (participant can retry again), no matter how many times a finding has already
-// been rejected -- there is no longer a terminal "Rejected" outcome or auto-recreated replacement
-// finding on this path (REQ follow-up: "keep all rejections going back to re-open"). reopenCount on
-// the Findings row still increments on every rejection purely as a visible counter (Risk Logging
-// list's own Rejection count column) -- it no longer changes which status a rejection lands on.
-// 'Rejected'/recreatedFromId/recreatedInto stay valid and displayed for any finding that already
-// reached that state before this change; new reviews just never produce one going forward.
+// been rejected -- a Log has no terminal "Rejected" outcome, only Resolved or ReOpen (REQ follow-up:
+// "keep all rejections going back to re-open"). reopenCount on the Findings row still increments on
+// every rejection purely as a visible counter (Risk Logging list's own Rejection count column) -- it
+// no longer changes which status a rejection lands on.
 function reviewFindingResolution(user, p) {
   requirePermission(user, 'finding.review');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
@@ -425,11 +420,11 @@ function reviewFindingResolution(user, p) {
   return { finding: updated, resolution: getById('Resolutions', pending.id), recreatedFinding: null };
 }
 
-// Groups findings into the 5 summary buckets the Dashboard/Overview KPI cards already have icons for
-// (kpi_open/kpi_inreview/kpi_resolved/kpi_reopen/kpi_rejected) -- Viewed rolls into "open" (still
-// nobody's submitted a resolution) and Submitted/Resubmitted roll into "in review" (something's
-// pending someone's action), so the fuller 8-status workflow doesn't need 3 more KPI cards to stay
-// accurate. Used by Events.gs getEventDetail and Reports.gs dashboardSummary.
+// Groups findings into the 4 summary buckets the Dashboard/Overview KPI cards already have icons for
+// (kpi_open/kpi_inreview/kpi_resolved/kpi_reopen) -- Viewed rolls into "open" (still nobody's
+// submitted a resolution) and Submitted/Resubmitted roll into "in review" (something's pending
+// someone's action), so the fuller 7-status workflow doesn't need 3 more KPI cards to stay accurate.
+// Used by Events.gs getEventDetail and Reports.gs dashboardSummary.
 function findingKpiBuckets_(findings) {
   var count = function (statuses) { return findings.filter(function (f) { return statuses.indexOf(f.status) !== -1; }).length; };
   return {
@@ -437,7 +432,6 @@ function findingKpiBuckets_(findings) {
     open: count(['Open', 'Viewed']),
     inReview: count(['InReview', 'Submitted', 'Resubmitted']),
     resolved: count(['Resolved']),
-    reopen: count(['ReOpen']),
-    rejected: count(['Rejected'])
+    reopen: count(['ReOpen'])
   };
 }

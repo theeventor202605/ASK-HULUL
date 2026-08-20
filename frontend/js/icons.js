@@ -338,7 +338,6 @@ window.ICON_DEFAULTS = {
   kpi_open: LUCIDE_ICONS['circle-dot'],
   kpi_inreview: LUCIDE_ICONS['eye'],
   kpi_reopen: LUCIDE_ICONS['repeat'],
-  kpi_rejected: LUCIDE_ICONS['circle-x'],
   kpi_resolved: LUCIDE_ICONS['circle-check-big'],
   kpi_active_events: LUCIDE_ICONS['calendar-check'],
   mic_record: LUCIDE_ICONS['mic'],
@@ -399,7 +398,7 @@ window.ICON_KEY_GROUPS = [
   ] },
   { group: 'Dashboard KPI icons', keys: [
     { key: 'kpi_total', label: 'Total' }, { key: 'kpi_open', label: 'Open' }, { key: 'kpi_inreview', label: 'In Review' },
-    { key: 'kpi_reopen', label: 'Re-open' }, { key: 'kpi_rejected', label: 'Rejected' }, { key: 'kpi_resolved', label: 'Resolved' },
+    { key: 'kpi_reopen', label: 'Re-open' }, { key: 'kpi_resolved', label: 'Resolved' },
     { key: 'kpi_active_events', label: 'Active events' }
   ] },
   { group: 'Support tickets', keys: [

@@ -1208,7 +1208,7 @@ async function renderFindingDetail(params) {
   // set/changed from here any time before it's closed -- gated on the finding.assignParticipant
   // permission, separate from resolve/review since assigning responsibility isn't the same action as
   // submitting or reviewing the fix.
-  var canAssign = hasPermission('finding.assignParticipant') && ['Resolved', 'Rejected'].indexOf(finding.status) === -1;
+  var canAssign = hasPermission('finding.assignParticipant') && finding.status !== 'Resolved';
   var operators = [];
   if (canAssign) {
     try {
@@ -1288,10 +1288,10 @@ async function renderFindingDetail(params) {
       '</div>' +
     '</div>' +
 
-    (latestRejected && (finding.status === 'ReOpen' || finding.status === 'Rejected')
+    (latestRejected && finding.status === 'ReOpen'
       ? '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--danger);"><div class="card-body">' +
           '<div style="font-weight:700;font-size:12.5px;color:var(--danger);margin-bottom:4px;">' + esc(t('rejected_by_inspector')) +
-          esc(finding.status === 'Rejected' ? t('rejected_final') : t('rejected_fix_resubmit')) + '</div>' +
+          esc(t('rejected_fix_resubmit')) + '</div>' +
           '<div style="font-size:13px;">' + esc(latestRejected.comments || '—') + '</div></div></div>'
       : '') +
 

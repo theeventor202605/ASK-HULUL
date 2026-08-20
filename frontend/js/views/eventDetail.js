@@ -290,7 +290,6 @@ async function tabOverview(content, eventId, detail) {
       kpiCard('kpi_inreview', detail.kpi.inReview, ICON('kpi_inreview'), 'var(--purple)') +
       kpiCard('kpi_resolved', detail.kpi.resolved, ICON('kpi_resolved'), 'var(--success)') +
       kpiCard('kpi_reopen', detail.kpi.reopened, ICON('kpi_reopen'), 'var(--warning)') +
-      kpiCard('kpi_rejected', detail.kpi.rejected, ICON('kpi_rejected'), 'var(--danger)') +
     '</div>' +
     '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap;">' +
       '<div style="flex:1 1 420px;display:flex;flex-direction:column;gap:16px;">' +
@@ -2104,20 +2103,36 @@ function canRecordInspection_(r) {
 // items at all yet (nothing to narrow by). Computed client-side from data already fetched for this
 // tab -- no extra backend call beyond the existing listChecklistItems.
 var INSPECTION_PHASES_ = ['Opening', 'Operational'];
-function computeInspectionGaps_(assignments, inspections, checklistItems) {
-  var scheduledKey = {};
-  inspections.forEach(function (i) { scheduledKey[i.disciplineId + '|' + i.inspectorId + '|' + i.phase] = true; });
+// Shared by computeInspectionGaps_ below AND the Schedule inspection form's own phase/category
+// filtering (BUG: "Operational phase selected but Crowd Safety (an Opening-only category) still
+// shows" -- the Category field there was just mirroring whichever Inspector/assignment happened to
+// be selected, with nothing narrowing that assignment list by the chosen Phase first). Reads which
+// phases a discipline actually has catalogue checklist items for, straight from the same catalogue
+// Inspections.gs's inspectionScopeItems_ matches against (category === discipline name) -- so both
+// places narrow by phase using the exact same source of truth instead of one drifting from the other.
+function checklistItemPhasesByDiscipline_(checklistItems) {
   var phasesByDiscipline = {};
   checklistItems.forEach(function (c) {
     if (!c.category || !c.phase) return;
     (phasesByDiscipline[c.category] = phasesByDiscipline[c.category] || {})[c.phase] = true;
   });
+  return phasesByDiscipline;
+}
+// A discipline with no catalogue items yet at all (not in the map) has nothing to narrow by, so it
+// stays selectable for every phase rather than being hidden outright -- same fallback rule
+// computeInspectionGaps_ below already used before this was pulled out into its own function.
+function disciplinePhaseRelevant_(disciplineName, phase, phasesByDiscipline) {
+  var known = phasesByDiscipline[disciplineName];
+  return !known || !!known[phase];
+}
+function computeInspectionGaps_(assignments, inspections, checklistItems) {
+  var scheduledKey = {};
+  inspections.forEach(function (i) { scheduledKey[i.disciplineId + '|' + i.inspectorId + '|' + i.phase] = true; });
+  var phasesByDiscipline = checklistItemPhasesByDiscipline_(checklistItems);
   var gaps = [];
   assignments.forEach(function (a) {
-    var known = phasesByDiscipline[a.disciplineName];
-    var relevantPhases = known ? Object.keys(known) : INSPECTION_PHASES_;
     INSPECTION_PHASES_.forEach(function (phase) {
-      if (relevantPhases.indexOf(phase) === -1) return; // this discipline has no catalogue items for this phase at all
+      if (!disciplinePhaseRelevant_(a.disciplineName, phase, phasesByDiscipline)) return; // no catalogue items for this phase at all
       if (!scheduledKey[a.disciplineId + '|' + a.inspectorId + '|' + phase]) {
         gaps.push({ assignmentId: a.id, disciplineName: a.disciplineName, inspectorName: a.inspectorName, phase: phase });
       }
@@ -2282,7 +2297,36 @@ async function tabInspections(content, eventId, detail) {
       discField.value = opt ? (opt.getAttribute('data-discipline') || '') : '';
     };
     assignSelect.onchange = syncFromAssignment;
-    if (assignments.length) syncFromAssignment();
+
+    // BUG FIX: "Operational phase selected but Crowd Safety (an Opening-only category) still shows
+    // in Category" -- the readonly Category field above just mirrors whichever Inspector/assignment
+    // option happens to be selected, and nothing was narrowing that option list by the chosen Phase
+    // first, so a category with zero catalogue items for the selected phase could still get scheduled
+    // against it (nothing to actually inspect). Hides every assignment option whose discipline has no
+    // catalogue items for the current Phase (checklistItemPhasesByDiscipline_/disciplinePhaseRelevant_,
+    // shared with the Coverage gaps card's own phase-narrowing above), and re-picks the first still-
+    // visible option if the previously-selected one just got hidden -- same "there'd be nothing to
+    // inspect against" reasoning computeInspectionGaps_ already uses.
+    var phasesByDiscipline = checklistItemPhasesByDiscipline_(checklistItems);
+    var refreshAssignmentOptionsForPhase_ = function () {
+      var phase = phaseSelect.value;
+      var previousValue = assignSelect.value;
+      var firstVisibleValue = '';
+      Array.prototype.forEach.call(assignSelect.options, function (opt) {
+        if (!opt.value) return; // the "no inspectors assigned yet" placeholder option
+        var relevant = disciplinePhaseRelevant_(opt.getAttribute('data-discipline') || '', phase, phasesByDiscipline);
+        opt.hidden = !relevant;
+        opt.disabled = !relevant;
+        if (relevant && !firstVisibleValue) firstVisibleValue = opt.value;
+      });
+      if (assignSelect.options[assignSelect.selectedIndex] && assignSelect.options[assignSelect.selectedIndex].disabled) {
+        assignSelect.value = firstVisibleValue; // '' (nothing valid for this phase) is a legitimate outcome too
+      } else if (assignSelect.value !== previousValue) {
+        assignSelect.value = previousValue;
+      }
+    };
+    phaseSelect.onchange = function () { refreshAssignmentOptionsForPhase_(); syncFromAssignment(); };
+    if (assignments.length) { refreshAssignmentOptionsForPhase_(); syncFromAssignment(); }
 
     // Hours-before/after-start assistant -- only rendered when the event has a known start date.
     var offsetHoursInput = document.getElementById('fInsOffsetHours');
@@ -2328,9 +2372,13 @@ async function tabInspections(content, eventId, detail) {
     // has to pick a time (or use the hours assistant) and hit Schedule.
     content.querySelectorAll('[data-qs-assignment]').forEach(function (btn) {
       btn.onclick = function () {
+        // Phase first, then re-filter the assignment list for it, THEN select the assignment --
+        // otherwise refreshAssignmentOptionsForPhase_ (still on the old Phase at that point) could
+        // hide the very option this chip is about to select.
+        phaseSelect.value = btn.getAttribute('data-qs-phase');
+        refreshAssignmentOptionsForPhase_();
         assignSelect.value = btn.getAttribute('data-qs-assignment');
         syncFromAssignment();
-        phaseSelect.value = btn.getAttribute('data-qs-phase');
         document.getElementById('scheduleBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
       };
     });
@@ -2350,7 +2398,7 @@ async function tabInspections(content, eventId, detail) {
 
   content.querySelectorAll('[data-edit-inspection]').forEach(btn => {
     var inspection = inspections.filter(i => i.id === btn.getAttribute('data-edit-inspection'))[0];
-    btn.onclick = () => openEditInspectionModal_(eventId, inspection, assignments, assignOptions);
+    btn.onclick = () => openEditInspectionModal_(eventId, inspection, assignments, assignOptions, checklistItems);
   });
 
   content.querySelectorAll('[data-delete-inspection]').forEach(btn => {
@@ -2701,7 +2749,7 @@ function completedChecklistEditMode_(root, eventId, inspection, participant, sco
 // editing feels like the same form -- pre-filled with the inspection's current values. Only ever
 // opened for inspections still in 'Scheduled' status (see the actions column render above), which
 // the backend also enforces.
-function openEditInspectionModal_(eventId, inspection, assignments, assignOptions) {
+function openEditInspectionModal_(eventId, inspection, assignments, assignOptions, checklistItems) {
   var currentAssignment = assignments.filter(function (a) {
     return a.disciplineId === inspection.disciplineId && a.inspectorId === inspection.inspectorId;
   })[0];
@@ -2738,12 +2786,37 @@ function openEditInspectionModal_(eventId, inspection, assignments, assignOption
   ]);
   var assignSelect = document.getElementById('mInsAssignment');
   var discField = document.getElementById('mInsDisc');
+  var phaseSelect = document.getElementById('mInsPhase');
   var sync = function () {
     var opt = assignSelect.options[assignSelect.selectedIndex];
     discField.value = opt ? (opt.getAttribute('data-discipline') || '') : '';
   };
+  // Same bug fix as the Schedule card above (checklistItemPhasesByDiscipline_/disciplinePhaseRelevant_):
+  // hide assignment options whose discipline has no catalogue items for the currently-selected Phase,
+  // so switching Phase in this modal can't leave a phase-irrelevant category sitting in the readonly
+  // Category field either.
+  var phasesByDiscipline = checklistItemPhasesByDiscipline_(checklistItems || []);
+  var refreshForPhase = function () {
+    var phase = phaseSelect.value;
+    var previousValue = assignSelect.value;
+    var firstVisibleValue = '';
+    Array.prototype.forEach.call(assignSelect.options, function (opt) {
+      if (!opt.value) return;
+      var relevant = disciplinePhaseRelevant_(opt.getAttribute('data-discipline') || '', phase, phasesByDiscipline);
+      opt.hidden = !relevant;
+      opt.disabled = !relevant;
+      if (relevant && !firstVisibleValue) firstVisibleValue = opt.value;
+    });
+    if (assignSelect.options[assignSelect.selectedIndex] && assignSelect.options[assignSelect.selectedIndex].disabled) {
+      assignSelect.value = firstVisibleValue;
+    } else if (assignSelect.value !== previousValue) {
+      assignSelect.value = previousValue;
+    }
+  };
   if (currentAssignment) assignSelect.value = currentAssignment.id;
+  refreshForPhase();
   assignSelect.onchange = sync;
+  phaseSelect.onchange = function () { refreshForPhase(); sync(); };
   sync();
 }
 
@@ -3524,13 +3597,14 @@ function printInspectionResults_(participant, inspection, filteredItems) {
  * Log finding / view a log / resolve / accept / reject are full pages now (findings.js, routes
  * #/events/:id/findings/new and #/events/:id/findings/:findingId) -- this tab is just the Pipeline
  * board + table entry points into those pages. See Findings.gs's header comment for the full
- * 8-status workflow (Open -> Viewed -> Submitted -> InReview -> Resolved/ReOpen -> Resubmitted ->
- * Resolved/Rejected); the standalone Resolutions tab that used to live here has been folded into
- * the finding detail page's own Resolve/Accept/Reject actions (see findings.js) and removed.
+ * 7-status workflow (Open -> Viewed -> Submitted -> InReview -> Resolved/ReOpen -> Resubmitted ->
+ * Resolved); there is no terminal Rejected state -- every rejected resolution lands back on ReOpen.
+ * The standalone Resolutions tab that used to live here has been folded into the finding detail
+ * page's own Resolve/Accept/Reject actions (see findings.js) and removed.
  */
 // REQ: "In pipeline move all resolved cards to end of list" -- Resolved moved to the very last
-// column (after Rejected) so the board reads open/in-progress work first, done work last.
-var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted', 'Rejected', 'Resolved'];
+// column so the board reads open/in-progress work first, done work last.
+var FINDING_BOARD_COLUMNS = ['Open', 'Viewed', 'Submitted', 'InReview', 'ReOpen', 'Resubmitted', 'Resolved'];
 // FINDING_BOARD_LABELS (a second, separate hardcoded English label map) used to live here -- removed
 // in favor of UI.statusLabel(status), which is the exact same lookup UI.statusBadge itself now uses
 // (ui.js), so this board's headers translate for free instead of needing their own copy kept in sync.
@@ -3552,7 +3626,7 @@ var FINDING_EDITABLE_STATUSES_ = ['Open', 'Viewed'];
 // (see UI.board's bodyHtml support) rather than the default title/meta rendering.
 function findingBoardCard_(f) {
   var overdue = f.resolutionWindowAt && new Date(f.resolutionWindowAt) < new Date();
-  var isTerminal = f.status === 'Resolved' || f.status === 'Rejected';
+  var isTerminal = f.status === 'Resolved';
   var countdownColor = isTerminal ? 'var(--text-600)' : (overdue ? 'var(--danger)' : 'var(--text-600)');
   return {
     id: f.id, borderColor: RISK_BORDER_COLOR[f.riskLevel],
@@ -3571,7 +3645,7 @@ async function tabFindings(content, eventId) {
   // Same 5-bucket grouping as the backend's findingKpiBuckets_ (Findings.gs) -- Viewed rolls into
   // "open", Submitted/Resubmitted roll into "in review" -- so these 6 KPI cards (which already have
   // dedicated icons) stay accurate without needing 3 more cards for the extra statuses.
-  var counts = { Open: 0, InReview: 0, Resolved: 0, ReOpen: 0, Rejected: 0 };
+  var counts = { Open: 0, InReview: 0, Resolved: 0, ReOpen: 0 };
   findings.forEach(function (f) {
     if (f.status === 'Open' || f.status === 'Viewed') counts.Open++;
     else if (f.status === 'InReview' || f.status === 'Submitted' || f.status === 'Resubmitted') counts.InReview++;
@@ -3607,7 +3681,6 @@ async function tabFindings(content, eventId) {
       kpiCard('kpi_inreview', counts.InReview, ICON('kpi_inreview'), 'var(--purple)') +
       kpiCard('kpi_resolved', counts.Resolved, ICON('kpi_resolved'), 'var(--success)') +
       kpiCard('kpi_reopen', counts.ReOpen, ICON('kpi_reopen'), 'var(--warning)') +
-      kpiCard('kpi_rejected', counts.Rejected, ICON('kpi_rejected'), 'var(--danger)') +
     '</div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('pipeline_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('click_card_open_log_hint')) + '</div></div>' +

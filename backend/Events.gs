@@ -397,7 +397,7 @@ function getEventDetail(user, eventId) {
     emc: emc, inspectionCo: inspectionCo, eventManager: eventManager,
     kpi: {
       totalLogs: buckets.total, open: buckets.open, inReview: buckets.inReview,
-      resolved: buckets.resolved, reopened: buckets.reopen, rejected: buckets.rejected
+      resolved: buckets.resolved, reopened: buckets.reopen
     },
     // REQ ("a security operator must be available in every event ... EMC just needs to set up their
     // accounts accordingly" + follow-up: "Show compliance status") -- rolled into getEventDetail
