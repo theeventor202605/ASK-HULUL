@@ -356,12 +356,18 @@ function listEvents(user, p) {
   // event." The Add Log picker (findings.js) needs each event's venue name + boundary to compute
   // eligibility client-side against the inspector's live GPS -- additive/opt-in via p.includeVenue
   // so every other listEvents caller (unaware of this flag) is unaffected.
+  // REQ follow-up: "On the table add Distance from venue, EMC, Inspection Company." -- same
+  // includeVenue opt-in also resolves the renting EMC and Inspection Company org names, mirroring
+  // getEventDetail's own emcId/inspectionCoId -> Organizations resolution below.
   if (p && p.includeVenue) {
     all = all.map(function (e) {
       var venue = e.venueId ? getById('Venues', e.venueId) : null;
+      var emc = e.emcId ? getById('Organizations', e.emcId) : null;
+      var inspectionCo = e.inspectionCoId ? getById('Organizations', e.inspectionCoId) : null;
       return Object.assign({}, e, {
         venueName: venue ? venue.name : '', venueBoundary: venue ? venue.boundary : '',
-        venueLat: venue ? venue.lat : '', venueLng: venue ? venue.lng : ''
+        venueLat: venue ? venue.lat : '', venueLng: venue ? venue.lng : '',
+        emcName: emc ? emc.name : '', inspectionCoName: inspectionCo ? inspectionCo.name : ''
       });
     });
   }

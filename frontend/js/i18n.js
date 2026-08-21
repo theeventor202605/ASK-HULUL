@@ -651,6 +651,10 @@ window.HULUL_I18N = {
     // proximity-based badge above for these two closed states.
     add_log_venue_rejected_badge: 'Venue rejected', add_log_event_ended_badge: 'Event ended',
     add_log_no_events: 'No events found under your inspection company.', add_log_go_btn: 'Add Log',
+    // REQ follow-up: "On the table add Distance from venue, EMC, Inspection Company. Sort by
+    // Distance from Venue ascending order." EMC/Inspection Company columns reuse the existing
+    // field_renting_emc/field_inspection_co labels (same terms used on the Create/Edit Event form).
+    col_distance_from_venue: 'Distance from Venue',
     col_status: 'Status',
     field_phase: 'Phase', no_x_assigned_yet: 'No {{term}} assigned yet',
     toggle_before_start: 'Before start', toggle_after_start: 'After start',
@@ -1345,6 +1349,7 @@ window.HULUL_I18N = {
     add_log_eligible_badge: 'ضمن النطاق', add_log_ineligible_badge: 'بعيد جدًا', add_log_distance_suffix: ' بعيدًا',
     add_log_venue_rejected_badge: 'تم رفض المكان', add_log_event_ended_badge: 'انتهت الفعالية',
     add_log_no_events: 'لا توجد فعاليات ضمن شركة التفتيش الخاصة بك.', add_log_go_btn: 'إضافة سجل',
+    col_distance_from_venue: 'المسافة من الموقع',
     col_status: 'الحالة',
     field_phase: 'المرحلة', no_x_assigned_yet: 'لا يوجد {{term}} مُكلَّف بعد',
     toggle_before_start: 'قبل البدء', toggle_after_start: 'بعد البدء',

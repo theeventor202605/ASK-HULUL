@@ -499,14 +499,29 @@ async function renderAddLogPicker_() {
       }
       return Object.assign({}, e, { _eligible: eligible, _distanceM: distanceM, _closedReason: closedReason });
     });
+    // REQ follow-up: "On the table add Distance from venue, EMC, Inspection Company. Sort by
+    // Distance from Venue ascending order." Sorted here (not left to the table's own header-click
+    // sort) so the default view on every render -- including each live GPS tick via renderRows(pos)
+    // above -- is already nearest-first. Events with no computable distance yet (no GPS fix, or the
+    // venue has no boundary drawn) sort last rather than first/randomly.
+    rows.sort(function (a, b) {
+      var ad = a._distanceM == null ? Infinity : a._distanceM;
+      var bd = b._distanceM == null ? Infinity : b._distanceM;
+      return ad - bd;
+    });
     wrap.innerHTML = UI.table([
       { key: 'name', label: t('col_name') },
       { key: 'venueName', label: Term('venue'), render: r => esc(r.venueName || '—') },
+      { key: '_distanceM', label: t('col_distance_from_venue'),
+        sortValue: r => r._distanceM == null ? Infinity : r._distanceM,
+        render: r => r._distanceM == null ? '—' : (Math.round(r._distanceM) + ' m')
+      },
+      { key: 'emcName', label: t('field_renting_emc'), render: r => esc(r.emcName || '—') },
+      { key: 'inspectionCoName', label: t('field_inspection_co'), render: r => esc(r.inspectionCoName || '—') },
       { key: '_eligible', label: t('col_status'), render: r =>
           r._eligible
             ? '<span class="badge badge-resolved">' + esc(t('add_log_eligible_badge')) + '</span>'
-            : '<span class="badge badge-neutral">' + esc(r._closedReason || t('add_log_ineligible_badge')) +
-              (!r._closedReason && r._distanceM != null ? ' · ' + Math.round(r._distanceM) + 'm' + esc(t('add_log_distance_suffix')) : '') + '</span>'
+            : '<span class="badge badge-neutral">' + esc(r._closedReason || t('add_log_ineligible_badge')) + '</span>'
       },
       { key: 'actions', label: t('actions'), render: r =>
           r._eligible
