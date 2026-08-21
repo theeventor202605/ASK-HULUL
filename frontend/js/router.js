@@ -102,6 +102,7 @@ window.Router = {
     this.add('/venues/:id/places', renderVenuePlacesRedirect_);
     this.add('/sub-events', renderSubEvents);
     this.add('/meetings', renderMeetings);
+    this.add('/meetings/templates', renderMeetingTemplates);
     this.add('/meetings/new', renderNewMeeting);
     this.add('/meetings/:meetingId/edit', renderEditMeeting);
     this.add('/disciplines', renderDisciplinesAdmin);

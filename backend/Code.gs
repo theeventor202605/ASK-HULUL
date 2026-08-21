@@ -208,6 +208,10 @@ var ROUTES = {
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },
   deleteMeeting: function (u, p) { return deleteMeeting(u, p); },
+  listMeetingTemplates: function (u, p) { return listMeetingTemplates(u, p); },
+  getMeetingTemplatesBySubject: function (u, p) { return getMeetingTemplatesBySubject(u, p); },
+  saveMeetingTemplate: function (u, p) { return saveMeetingTemplate(u, p); },
+  deleteMeetingTemplate: function (u, p) { return deleteMeetingTemplate(u, p); },
 
   // Venue approval (VAP)
   recordRecommendation: function (u, p) { return recordRecommendation(u, p); },

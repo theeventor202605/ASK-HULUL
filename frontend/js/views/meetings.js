@@ -39,11 +39,26 @@ var MEETING_TYPES = [
 // checks HululState.participantTypes dynamically; was a fixed 3-item array here before this feature
 // existed.
 
+// REQ: "In Meetings sidebar allow creation of templates ... Allow admins to modify these templates
+// and create new ones." Entry point into meetingTemplates.js's own admin page (#/meetings/templates)
+// -- reused in both of renderMeetings' two header render spots (the "no events yet" early return and
+// the normal filtered-list view) so it's always reachable regardless of whether any meeting has ever
+// been scheduled.
+function manageMeetingTemplatesLinkHtml_(canManageTemplates) {
+  return canManageTemplates
+    ? '<a class="btn btn-secondary" href="#/meetings/templates">' + ICON('meeting_template') + ' ' + esc(t('manage_templates_btn')) + '</a>'
+    : '';
+}
+
 async function renderMeetings(params) {
   var root = document.getElementById('viewRoot');
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Meetings >
   // "Schedule, edit, or delete a meeting".
   var canManage = hasPermission('meeting.manage');
+  // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Meetings >
+  // "Create, edit, or delete meeting agenda templates". REQ: "In Meetings sidebar allow creation of
+  // templates."
+  var canManageTemplates = hasPermission('meetingTemplate.manage');
   var [events, venues, projects, subEvents, meetings] = await Promise.all([
     Api.call('listEvents', {}), Api.call('listVenues', {}), Api.call('listProjects', {}),
     Api.call('listSubEvents', {}), Api.call('listMeetings', {})
@@ -56,7 +71,8 @@ async function renderMeetings(params) {
   if (!events.length) {
     root.innerHTML =
       '<div class="page-header"><div><div class="page-title">' + esc(Term('meeting_plural')) + '</div>' +
-      '<div class="page-subtitle">' + esc(t('meetings_subtitle', { term: Term('meeting_plural'), eventTerm: Term('event') })) + '</div></div></div>' +
+      '<div class="page-subtitle">' + esc(t('meetings_subtitle', { term: Term('meeting_plural'), eventTerm: Term('event') })) + '</div></div>' +
+      manageMeetingTemplatesLinkHtml_(canManageTemplates) + '</div>' +
       '<div class="empty-state">' + t('no_data') + '</div>';
     return;
   }
@@ -80,6 +96,7 @@ async function renderMeetings(params) {
     // meeting at all. This one links to the same full-page form but with its own Event picker, so
     // it works from any filter state.
     (canManage ? '<a class="btn btn-primary" id="newMtgHeaderBtn" href="#">' + esc(t('schedule_x_btn', { term: Term('meeting').toLowerCase() })) + '</a>' : '') +
+    manageMeetingTemplatesLinkHtml_(canManageTemplates) +
     '</div>' +
     '<div class="list-page-layout">' +
       '<div class="card list-page-sidebar" style="width:250px;">' +
@@ -460,10 +477,21 @@ function subjectFieldHtml_(currentType) {
     '<input id="fMtgTypeOther" class="field-input" placeholder="' + esc(t('field_meeting_type')) + '" style="margin-top:6px;' + (matched || !currentType ? 'display:none;' : '') + '" value="' + esc(!matched && currentType ? currentType : '') + '" />'
   );
 }
-function wireSubjectField_() {
+// onSubjectChosen (optional): REQ: "create a template for each meeting subject" -- fired after the
+// dropdown's own show/hide-Other toggle, whenever the picklist changes to a real subject (not the
+// "Other" placeholder itself, which has no fixed subject yet to look a template up by) -- see
+// renderMeetingFormPage_'s own callback for the actual auto-fill-Notes-from-template behavior.
+function wireSubjectField_(onSubjectChosen) {
   var sel = document.getElementById('fMtgTypeSelect');
   var other = document.getElementById('fMtgTypeOther');
-  sel.onchange = function () { other.style.display = sel.value === '__other__' ? '' : 'none'; if (sel.value === '__other__') other.focus(); };
+  sel.onchange = function () {
+    other.style.display = sel.value === '__other__' ? '' : 'none';
+    if (sel.value === '__other__') { other.focus(); return; }
+    if (onSubjectChosen) onSubjectChosen(sel.value);
+  };
+  if (onSubjectChosen) {
+    other.addEventListener('blur', function () { if (other.value.trim()) onSubjectChosen(other.value.trim()); });
+  }
 }
 function readSubjectValue_() {
   var sel = document.getElementById('fMtgTypeSelect');
@@ -635,7 +663,28 @@ async function renderMeetingFormPage_(mode, params) {
 
   document.getElementById('backMtgFormBtn').onclick = function () { window.location.hash = backHash; };
 
-  wireSubjectField_();
+  // REQ: "create a template for each meeting subject ... Allow admins to modify these templates."
+  // meetingTemplatesBySubject_ is a {subjectLowercase: body} map for whichever Inspection Company
+  // runs the currently-picked Event (getMeetingTemplatesBySubject, Templates.gs) -- refreshed
+  // whenever the Event changes, since a different Event can belong to a different Inspection Company
+  // with its own template set. applyTemplateToNotes_ only ever fills in an EMPTY Notes field, and
+  // only when creating a new meeting (never on Edit) -- it should suggest a starting point, never
+  // silently overwrite something already typed or already saved.
+  var meetingTemplatesBySubject_ = {};
+  async function refreshMeetingTemplates_(eventId) {
+    if (!eventId) { meetingTemplatesBySubject_ = {}; return; }
+    try { meetingTemplatesBySubject_ = await Api.call('getMeetingTemplatesBySubject', { eventId: eventId }); }
+    catch (e) { meetingTemplatesBySubject_ = {}; }
+  }
+  function applyTemplateToNotes_(subject) {
+    if (isEdit || !subject) return;
+    var body = meetingTemplatesBySubject_[subject.toLowerCase()];
+    if (!body) return;
+    var notesEl = document.getElementById('fMtgNotes');
+    if (notesEl && !notesEl.innerHTML.trim()) notesEl.innerHTML = body;
+  }
+
+  wireSubjectField_(applyTemplateToNotes_);
   wireUserPickerSearch_('fMtgTo');
   wireUserPickerSearch_('fMtgCc');
   wireRichTextField_('fMtgNotes');
@@ -654,10 +703,15 @@ async function renderMeetingFormPage_(mode, params) {
   var projectSel = document.getElementById('fMtgProject');
   var eventSel = document.getElementById('fMtgEvent');
   syncSubEventOptions(eventSel.value);
-  eventSel.onchange = function () { syncSubEventOptions(eventSel.value); };
+  refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
+  eventSel.onchange = function () {
+    syncSubEventOptions(eventSel.value);
+    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
+  };
   projectSel.onchange = function () {
     eventSel.innerHTML = eventOptionsHtml_(events, projectSel.value, '');
     syncSubEventOptions('');
+    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
   };
 
   document.getElementById('saveMtgFormBtn').onclick = async function () {

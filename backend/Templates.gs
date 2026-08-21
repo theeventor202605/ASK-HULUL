@@ -979,6 +979,128 @@ var MEETING_TYPES = [
   'Final Inspection Close-Out Meeting'
 ];
 
+/* ---------------- Meeting Templates (REQ: "In Meetings sidebar allow creation of templates and
+ * create a template for each meeting subject. Allow admins to modify these templates and create new
+ * ones.") -----------------------------------------------------------------------------------------
+ * A reusable rich-text agenda/notes body per meeting Subject, scoped per Inspection Company (same
+ * "org owns its own catalog" convention as TemplateLibrary above). Nothing is written to the sheet
+ * for a subject until an admin actually saves content for it -- listMeetingTemplates below merges
+ * whatever real rows exist with a virtual placeholder for every MEETING_TYPES subject that doesn't
+ * have one yet, exactly like getEventTemplates does for TemplateLibrary entries with no Templates row
+ * -- so "a template for each meeting subject" is satisfied on every read with no seed/migration step,
+ * and a library that grows (a new MEETING_TYPES entry added later) is reflected automatically too.
+ * saveMeetingTemplate (frontend's New Meeting form calls getMeetingTemplatesBySubject, a lighter
+ * read-only lookup) is what actually materializes a row, whether editing one of the 12 built-in
+ * subjects' virtual placeholder or creating a template for a brand-new custom subject.
+ */
+
+// Read-only, open to any authenticated user (same visibility as listTemplateLibrary) -- the New
+// Meeting form's auto-fill needs this even for a role with no meetingTemplate.manage permission.
+// Returns real + virtual rows, built-ins first in their defined lifecycle order, any custom subjects
+// after (alphabetically) -- same shape/order philosophy as MEETING_TYPES itself.
+function listMeetingTemplates(user, p) {
+  var orgId = (user.role === ROLES.SYSTEM_ADMIN && p && p.orgId) ? p.orgId : user.orgId;
+  if (!orgId) return [];
+  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted'; });
+  var bySubjectLower = {};
+  rows.forEach(function (r) { bySubjectLower[String(r.subject).toLowerCase()] = true; });
+  var virtual = MEETING_TYPES.filter(function (mt) { return !bySubjectLower[mt.toLowerCase()]; }).map(function (mt) {
+    return { id: '', orgId: orgId, subject: mt, body: '', status: 'Active', createdBy: '', createdAt: '', updatedBy: '', updatedAt: '' };
+  });
+  var builtInIdx = {};
+  MEETING_TYPES.forEach(function (mt, i) { builtInIdx[mt.toLowerCase()] = i; });
+  return rows.concat(virtual).sort(function (a, b) {
+    var ai = builtInIdx[String(a.subject).toLowerCase()], bi = builtInIdx[String(b.subject).toLowerCase()];
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return String(a.subject).localeCompare(String(b.subject));
+  });
+}
+
+// Lightweight read for the New Meeting/Edit Meeting form's own auto-fill (meetings.js) -- just a
+// {subjectLowercase: body} map for whichever org actually runs this event, not the full admin
+// list/audit-field shape above. Scoped by the EVENT's own inspectionCoId (same resolution
+// getEventTemplates uses) rather than the caller's own orgId, since an EMC-side user scheduling a
+// meeting isn't themselves part of the Inspection Company whose templates should apply.
+function getMeetingTemplatesBySubject(user, p) {
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var event = getById('Events', p.eventId);
+  var orgId = event ? event.inspectionCoId : '';
+  if (!orgId) return {};
+  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted' && r.body; });
+  var map = {};
+  rows.forEach(function (r) { map[String(r.subject).toLowerCase()] = r.body; });
+  return map;
+}
+
+// Upsert -- REQ: "allow ... to modify these templates and create new ones" is really one action
+// either way (fill in/replace a subject's agenda body), so a single endpoint handles both rather than
+// separate create/update calls the frontend would have to choose between. Matches by p.id first (an
+// existing real row being edited); failing that, by an exact case-insensitive subject match within
+// this org (so saving content for one of the 12 virtual built-in placeholders correctly materializes
+// into/updates the one real row for that subject instead of ever creating a duplicate) -- otherwise
+// inserts a brand-new row, which is how a template for a new custom subject gets created.
+function saveMeetingTemplate(user, p) {
+  var orgId = user.role === ROLES.SYSTEM_ADMIN ? (p && p.orgId || user.orgId) : user.orgId;
+  if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
+  requirePermission(user, 'meetingTemplate.manage', orgId);
+  if (!p || !p.subject || !String(p.subject).trim()) throw new HululError('BAD_REQUEST', 'subject is required');
+  var subject = String(p.subject).trim();
+  var body = sanitizeMeetingTemplateBody_(p.body);
+
+  var existing = p.id ? getById('MeetingTemplates', p.id) : null;
+  if (existing && user.role !== ROLES.SYSTEM_ADMIN && existing.orgId !== orgId) {
+    throw new HululError('FORBIDDEN', 'Not your organization\'s template');
+  }
+  if (!existing) {
+    existing = findWhere('MeetingTemplates', function (r) {
+      return r.orgId === orgId && r.status !== 'Deleted' && String(r.subject).toLowerCase() === subject.toLowerCase();
+    })[0] || null;
+  }
+
+  if (existing) {
+    var updated = updateRow('MeetingTemplates', existing.id, {
+      subject: subject, body: body, status: 'Active', updatedBy: user.id, updatedAt: nowIso_()
+    });
+    audit(user.id, 'SAVE_MEETING_TEMPLATE', 'MeetingTemplates', existing.id, {});
+    return updated;
+  }
+  var row = {
+    id: newId('MeetingTemplates'), orgId: orgId, subject: subject, body: body, status: 'Active',
+    createdBy: user.id, createdAt: nowIso_(), updatedBy: user.id, updatedAt: nowIso_()
+  };
+  insertRow('MeetingTemplates', row);
+  audit(user.id, 'SAVE_MEETING_TEMPLATE', 'MeetingTemplates', row.id, {});
+  return row;
+}
+
+function deleteMeetingTemplate(user, p) {
+  if (!p || !p.id) throw new HululError('BAD_REQUEST', 'id is required');
+  var tpl = getById('MeetingTemplates', p.id);
+  if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
+  requirePermission(user, 'meetingTemplate.manage', tpl.orgId);
+  if (user.role !== ROLES.SYSTEM_ADMIN && tpl.orgId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s template');
+  updateRow('MeetingTemplates', tpl.id, { status: 'Deleted', updatedBy: user.id, updatedAt: nowIso_() });
+  audit(user.id, 'DELETE_MEETING_TEMPLATE', 'MeetingTemplates', tpl.id, {});
+  return { ok: true };
+}
+
+// Server-side backstop mirroring meetings.js's own sanitizeRichText_ tag allowlist (Apps Script has
+// no DOM to walk server-side, so this is a regex-based strip of anything that isn't a plain
+// formatting tag, not a full parse) -- a saved template's body ends up back in a contenteditable
+// region on the New Meeting form exactly like Meetings.notes does, so it needs the same "never trust
+// what reached the server" posture even though the client already sanitizes before sending.
+function sanitizeMeetingTemplateBody_(html) {
+  if (!html) return '';
+  var s = String(html);
+  s = s.replace(/<(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(/<!--[\s\S]*?-->/g, '');
+  s = s.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  s = s.replace(/\s(href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*')/gi, '');
+  return s;
+}
+
 // Who may schedule/edit/delete a meeting -- RBAC pilot: admin-configurable via 'meeting.manage'
 // (Settings > Permissions > Meetings), same default 4 roles this used to hardcode. (Superseded the
 // old meetingManageRoles_() helper, which existed only to defer a ROLES.X lookup past Apps Script's

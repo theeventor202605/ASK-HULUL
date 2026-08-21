@@ -446,7 +446,18 @@ var SCHEMA = {
   // 'Trashed' (default) / 'Restored' -- a permanent purge (past LOG_PHOTO_TRASH_RETENTION_DAYS_) or an
   // explicit "empty now" just deleteRow()s it outright (no PurgedPermanently status kept around --
   // nothing left worth showing once it's gone).
-  FindingEvidenceTrash:   ['id','findingId','eventId','url','evidenceMetaJson','deletedBy','deletedAt','status','restoredBy','restoredAt']
+  FindingEvidenceTrash:   ['id','findingId','eventId','url','evidenceMetaJson','deletedBy','deletedAt','status','restoredBy','restoredAt'],
+  // REQ: "In Meetings sidebar allow creation of templates and create a template for each meeting
+  // subject. Allow admins to modify these templates and create new ones." Org-scoped (per Inspection
+  // Company, same convention as TemplateLibrary) reusable agenda/notes bodies, one per meeting
+  // Subject -- listMeetingTemplates (Templates.gs) merges real rows here with a virtual placeholder
+  // for every MEETING_TYPES subject that doesn't have one yet, same "nothing written until an admin
+  // actually saves something" convention getEventTemplates uses for TemplateLibrary. subject isn't
+  // constrained to the built-in MEETING_TYPES list -- an admin can also create a template for a
+  // custom/"Other" subject their org uses often. body is rich-text HTML (same sanitize-on-read
+  // convention as Meetings.notes -- see sanitizeRichText_, meetings.js). status: 'Active'/'Deleted'
+  // (soft delete, same convention as ChecklistItems/Roles).
+  MeetingTemplates:       ['id','orgId','subject','body','status','createdBy','createdAt','updatedBy','updatedAt']
 };
 
 var ROLES = {
@@ -727,7 +738,7 @@ var ID_PREFIX = {
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
   FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
   AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND',
-  FindingEvidenceTrash: 'FET'
+  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

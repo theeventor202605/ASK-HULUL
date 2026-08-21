@@ -3845,8 +3845,14 @@ async function tabFindings(content, eventId, detail) {
     // checklist the user completed not to the main Checklist page").
     '<div class="card-body">' + UI.table([
       // Do -- the same view/edit/delete actions that used to be the LAST column, now first and
-      // relabeled per the REQ (was an unlabeled/"Actions" trailing column).
-      { key: 'actions', label: t('col_do'), render: r => {
+      // relabeled per the REQ (was an unlabeled/"Actions" trailing column). Deliberately NOT
+      // key:'actions' -- that literal key is what UI.table (ui.js) uses to auto-pin a column last and
+      // exclude it from the column manager (manageableCols/actionCols split), which would silently
+      // fight this column's whole "move it first" REQ and make it permanently un-hideable/
+      // un-reorderable. sortable/exportable are still explicitly turned off by hand instead, so this
+      // keeps the exact same "don't try to sort/filter/export button HTML" behavior a real 'actions'
+      // column gets automatically.
+      { key: 'do', label: t('col_do'), sortable: false, exportable: false, render: r => {
         var stillEditable = FINDING_EDITABLE_STATUSES_.indexOf(r.status) !== -1;
         var canEdit = canEditAny && stillEditable;
         var canDelete = canDeleteAny && stillEditable;

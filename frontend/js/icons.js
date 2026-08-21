@@ -371,6 +371,9 @@ window.ICON_DEFAULTS = {
   // REQ: "Every user wants the ability to hide and arrange columns according to their needs." One
   // button per table (UI.table, ui.js) opening the show/hide + reorder popover.
   table_columns: LUCIDE_ICONS['columns-3'],
+  // REQ: "In Meetings sidebar allow creation of templates ..." -- the "Manage Templates" entry point
+  // on the Meetings page (meetings.js) and its admin list (meetingTemplates.js).
+  meeting_template: LUCIDE_ICONS['clipboard-list'],
   // REQ follow-up: "For all maps, disable the interact rule, and instead make it a toggle button
   // within the map boundaries." (UI.requireClickToActivateMap, ui.js) -- swapped depending on
   // whether the button's next click will lock or unlock the map, same "icon = destination state" as
@@ -401,7 +404,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'detect_places', label: 'Detect places in boundary' },
     { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' },
     { key: 'table_filter', label: 'Filter table column' }, { key: 'table_columns', label: 'Manage table columns' },
-    { key: 'map_interact_lock', label: 'Lock map interaction' }, { key: 'map_interact_unlock', label: 'Unlock map interaction' }
+    { key: 'map_interact_lock', label: 'Lock map interaction' }, { key: 'map_interact_unlock', label: 'Unlock map interaction' },
+    { key: 'meeting_template', label: 'Manage meeting templates' }
   ] },
   { group: 'Status & Badges', keys: [
     { key: 'mark_read', label: 'Mark notification read' }, { key: 'coverage_complete', label: 'Coverage complete banner' },

@@ -214,6 +214,17 @@ var PERMISSION_REGISTRY_ = {
     module: 'Meetings', label: 'Schedule, edit, or delete a meeting', page: 'meetings', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager', 'EMCManager']
   },
+  // REQ: "In Meetings sidebar allow creation of templates ... Allow admins to modify these templates
+  // and create new ones." Separate from meeting.manage (scheduling an actual meeting) the same way
+  // templateLibrary.manage is separate from template.send -- curating the org's reusable agenda
+  // catalog is a lower-frequency, more "define the standard" action than day-to-day scheduling, so it
+  // gets its own key even though today's default roles happen to overlap. EMCManager deliberately
+  // excluded (templates are an Inspection Company's own agenda catalog, same org-ownership scoping as
+  // templateLibrary.manage, which is InspectionAdmin/SystemAdmin only).
+  'meetingTemplate.manage': {
+    module: 'Meetings', label: 'Create, edit, or delete meeting agenda templates', page: 'meetings', crud: ['create', 'update', 'delete'],
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
+  },
   'checklistItem.manage': {
     module: 'Inspections', label: 'Create, edit, or delete a checklist catalogue item', page: 'checklistItems', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
