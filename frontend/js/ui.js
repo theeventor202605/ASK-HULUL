@@ -210,16 +210,55 @@ window.UI = {
       return plainText_(c, row);
     }
 
+    // REQ: "Every user wants the ability to hide and arrange columns according to their needs." --
+    // show/hide + reorder, wired generically for every UI.table() the same "every table gets this
+    // for free" way as filter/sort/export/paging (no per-call-site changes needed anywhere in the
+    // app). Preferences are stored client-side only (localStorage, same convention as theme.js/
+    // app.js's own UI prefs -- see hululLoadColumnPrefs_ below), keyed by a fingerprint of this
+    // table's own column set (hululColumnsFingerprint_) so two different tables never collide and
+    // the SAME table (e.g. the Risk Logging tab, revisited across many different events) keeps its
+    // saved layout across visits without needing an explicit per-call-site id. The 'actions' column
+    // (icon buttons only -- already excluded from sort/filter/export above) is never hideable or
+    // reorderable and always renders last, matching where every existing call site already puts it.
+    // Every column is still ALWAYS rendered into the DOM, in the order below, whether hidden or not
+    // -- hiding only ever toggles a CSS class (.col-hidden) on its existing <th>/<td> nodes, exactly
+    // like sorting only ever moves existing <tr> nodes -- so a hidden column can be re-shown later
+    // with no data/handlers ever needing to be regenerated (same hard rule as the rest of this file).
+    function colId_(c) { return c.key !== undefined ? String(c.key) : ('lbl:' + (c.label || '')); }
+    var manageableCols = columns.filter(function (c) { return c.key !== 'actions'; });
+    var actionCols = columns.filter(function (c) { return c.key === 'actions'; });
+    var colsFp = hululColumnsFingerprint_(columns);
+    var savedColPrefs = hululLoadColumnPrefs_(colsFp);
+    var orderedManageable = manageableCols;
+    if (savedColPrefs && savedColPrefs.order && savedColPrefs.order.length) {
+      var colById_ = {};
+      manageableCols.forEach(function (c) { colById_[colId_(c)] = c; });
+      var seenCol_ = {}, newOrder_ = [];
+      savedColPrefs.order.forEach(function (id) { if (colById_[id] && !seenCol_[id]) { newOrder_.push(colById_[id]); seenCol_[id] = true; } });
+      // Any column not mentioned in the saved order is new since the prefs were saved (or the
+      // caller changed its columns) -- append it at the end rather than silently dropping it.
+      manageableCols.forEach(function (c) { var id = colId_(c); if (!seenCol_[id]) { newOrder_.push(c); seenCol_[id] = true; } });
+      orderedManageable = newOrder_;
+    }
+    var hiddenColIds_ = {};
+    if (savedColPrefs && savedColPrefs.hidden) savedColPrefs.hidden.forEach(function (id) { hiddenColIds_[id] = true; });
+    var orderedColumns = orderedManageable.concat(actionCols);
+
     // REQ: "For every table in the platform, when clicking on a table header it shows filter
     // functionality." filterable reuses the exact same column set as the existing /c-in-search-box
     // facet picker (isExportable_ -- every column with a data-tx-i, i.e. everything but 'actions')
     // so the header button and the toolbar's own column-filter feature always agree on which columns
     // are filterable. The button is a separate click target from the header's own sortable text/arrow
     // (see the delegated click handler below) so both behaviors coexist on the same <th>.
-    var head = columns.map(function (c, i) {
+    var head = orderedColumns.map(function (c, i) {
       var sortable = isSortable_(c);
       var filterable = isExportable_(c);
-      return '<th' + (sortable ? ' class="th-sortable" data-sort-idx="' + i + '"' : '') + '>' +
+      var hidden = !!hiddenColIds_[colId_(c)];
+      var thClasses = [];
+      if (sortable) thClasses.push('th-sortable');
+      if (hidden) thClasses.push('col-hidden');
+      return '<th' + (thClasses.length ? ' class="' + thClasses.join(' ') + '"' : '') +
+        (sortable ? ' data-sort-idx="' + i + '"' : '') + ' data-col-key="' + esc(colId_(c)) + '">' +
         '<span class="th-label-row">' +
           '<span class="th-label-text">' + esc(c.label) + '</span>' +
           (sortable ? '<span class="th-sort-arrow"></span>' : '') +
@@ -228,12 +267,14 @@ window.UI = {
       '</th>';
     }).join('');
 
+    var visibleColCount = orderedColumns.filter(function (c) { return !hiddenColIds_[colId_(c)]; }).length || 1;
+
     var body = rows.length
       ? rows.map(function (row) {
           var trAttrs = [];
           if (row && row.id != null) trAttrs.push('data-row-id="' + esc(String(row.id)) + '"'); // generic row->data hook, e.g. UI.syncMapDotsToTableFilter below
           var searchParts = [];
-          var cellsHtml = columns.map(function (c, i) {
+          var cellsHtml = orderedColumns.map(function (c, i) {
             var html = typeof c.render === 'function' ? c.render(row) : esc(row[c.key] != null ? row[c.key] : '—');
             if (isExportable_(c)) {
               var txt = plainText_(c, row);
@@ -241,20 +282,21 @@ window.UI = {
               searchParts.push(txt.toLowerCase());
             }
             if (isSortable_(c)) trAttrs.push('data-sv-' + i + '="' + esc(String(sortValue_(c, row))) + '"');
-            return '<td>' + html + '</td>';
+            var hidden = hiddenColIds_[colId_(c)];
+            return '<td' + (hidden ? ' class="col-hidden"' : '') + ' data-col-key="' + esc(colId_(c)) + '">' + html + '</td>';
           }).join('');
           return '<tr ' + trAttrs.join(' ') + ' data-search="' + esc(searchParts.join(' ')) + '">' + cellsHtml + '</tr>';
         }).join('')
-      : '<tr class="table-empty-row"><td colspan="' + columns.length + '"><div class="empty-state">' + (opts.emptyText || t('no_data')) + '</div></td></tr>';
-    body += '<tr class="table-filter-empty-row" style="display:none;"><td colspan="' + columns.length + '"><div class="empty-state">' + esc(t('no_matches')) + '</div></td></tr>';
+      : '<tr class="table-empty-row"><td colspan="' + visibleColCount + '"><div class="empty-state">' + (opts.emptyText || t('no_data')) + '</div></td></tr>';
+    body += '<tr class="table-filter-empty-row" style="display:none;"><td colspan="' + visibleColCount + '"><div class="empty-state">' + esc(t('no_matches')) + '</div></td></tr>';
 
     var toolbarHtml = '';
-    var wrapAttrs = '';
+    var wrapAttrs = ' data-cols-fp="' + esc(colsFp) + '" data-default-col-order="' + esc(JSON.stringify(manageableCols.map(colId_))) + '"';
     if (toolbarOn) {
       var exportCols = [];
-      columns.forEach(function (c, i) { if (isExportable_(c)) exportCols.push(i); });
-      var exportHeaders = exportCols.map(function (i) { return columns[i].label; });
-      wrapAttrs = ' data-export-cols="' + exportCols.join(',') + '" data-export-headers="' + esc(JSON.stringify(exportHeaders)) + '" data-export-name="' + esc(opts.exportName || 'export.csv') + '"';
+      orderedColumns.forEach(function (c, i) { if (isExportable_(c)) exportCols.push(i); });
+      var exportHeaders = exportCols.map(function (i) { return orderedColumns[i].label; });
+      wrapAttrs += ' data-export-cols="' + exportCols.join(',') + '" data-export-headers="' + esc(JSON.stringify(exportHeaders)) + '" data-export-name="' + esc(opts.exportName || 'export.csv') + '"';
       // REQ: "in any list search box typing /c lists all columns ... selecting a column will
       // suggest values user can select multi-values from the suggestions or continue typing to
       // narrow down." .table-filter-suggest/.table-filter-chips are wired generically for every
@@ -265,6 +307,10 @@ window.UI = {
           '<input type="search" class="table-filter-input field-input" placeholder="' + esc(t('filter')) + '… /c for columns" />' +
           '<div class="table-filter-suggest chat-suggest-box" style="display:none;"></div>' +
         '</div>' +
+        // Manage-columns button: skipped when there's nothing worth managing (0 or 1 non-'actions'
+        // column). Its popover content is built/refreshed by JS from the live <thead> each time it
+        // opens (hululRenderColumnsPopover_) rather than baked in here, so it never goes stale.
+        (manageableCols.length > 1 ? '<div class="table-columns-wrap"><button type="button" class="btn btn-secondary btn-sm btn-icon table-columns-btn" title="' + esc(t('manage_columns_btn')) + '">' + ICON('table_columns') + '</button><div class="table-columns-popover"></div></div>' : '') +
         // Icon-only (title tooltip, not a text label) -- REQ: Import/Export CSV controls read as
         // icons everywhere, not text buttons; this one call site covers every table in the app.
         // opts.hideExportButton: for the handful of pages (Events, Checklist Items) that already
@@ -561,37 +607,46 @@ window.UI = {
     };
   },
 
-  // REQ bug report: "When scrolling down or up on a page and the mouse pointer comes on the map the
-  // map starts to zoom. No map interactions unless user clicks on the map." Every interactive map in
-  // the app (venue/place/zone/participant-discipline/live-inspection maps -- NOT the Overview tab's
-  // read-only zone thumbnail, which already has every interaction permanently off on purpose) starts
-  // fully inert: dragging, scroll-wheel zoom, double-click zoom, box zoom, keyboard panning, and
-  // touch zoom are all disabled right after creation, so a page scroll that happens to pass over the
-  // map behaves like a normal page scroll instead of hijacking it into a map zoom. Clicking anywhere
-  // on the map re-enables all of them; a small side hint makes that discoverable.
+  // REQ bug report (original rule, since replaced -- see REQ follow-up below): "When scrolling down
+  // or up on a page and the mouse pointer comes on the map the map starts to zoom. No map
+  // interactions unless user clicks on the map." Every interactive map in the app (venue/place/zone/
+  // participant-discipline/live-inspection maps -- NOT the Overview tab's read-only zone thumbnail,
+  // which already has every interaction permanently off on purpose) still starts fully inert:
+  // dragging, scroll-wheel zoom, double-click zoom, box zoom, keyboard panning, and touch zoom are
+  // all disabled right after creation, so a page scroll that happens to pass over the map still
+  // behaves like a normal page scroll instead of hijacking it into a map zoom.
   //
-  // REQ: "After clicking on map and interacting, if focus is set outside map, then map locks again.
-  // This rule applies to all maps." -- registers with hululMapLocks_ (below) instead of wiring its
-  // own one-shot listener per map, so the single delegated document click handler down there can
-  // re-lock ANY registered map the instant a click lands outside it, and unlock it again the instant
-  // a click lands back inside -- one shared mechanism for every map this is called on, not something
-  // each call site has to remember to re-implement (or every existing call site to be updated for).
-  // No cleanup function needed either: that same delegated handler drops an entry itself the first
-  // time it notices mapEl is no longer in the document (the view that owned it was re-rendered/torn
-  // down), so callers don't need to unregister on destroy.
+  // REQ follow-up: "For all maps, disable the interact rule, and instead make it a toggle button
+  // within the map boundaries." Replaces the old click-inside-to-unlock/click-outside-to-relock
+  // gesture (originally driven by hululMapLocks_, now removed) with an explicit .map-toggle-btn --
+  // same look as the existing Satellite/"Use my location" buttons, placed inside mapEl via
+  // UI.mapControls, i.e. "within the map boundaries" -- that the user clicks to turn interaction on
+  // or off. Interaction now only ever changes on a deliberate click of THIS button, so it can't
+  // unexpectedly re-lock out from under someone still using the map the moment focus moves elsewhere
+  // (the old rule's own failure mode) -- no per-call-site change needed, same call signature as before.
   requireClickToActivateMap(map, mapEl) {
     if (!map || !mapEl) return;
     var handlers = ['dragging', 'scrollWheelZoom', 'doubleClickZoom', 'boxZoom', 'keyboard', 'touchZoom', 'tap']
       .map(function (name) { return map[name]; })
       .filter(function (h) { return h && typeof h.disable === 'function'; });
+    handlers.forEach(function (h) { h.disable(); }); // starting state: inert, same as before
 
-    var hint = document.createElement('div');
-    hint.className = 'hulul-map-click-hint';
-    hint.textContent = t('click_to_interact_map');
-
-    var entry = { mapEl: mapEl, handlers: handlers, hint: hint, locked: true };
-    hululLockMap_(entry); // starting state: inert, hint shown
-    hululMapLocks_.push(entry);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'map-toggle-btn';
+    var active = false;
+    function render() {
+      btn.innerHTML = ICON(active ? 'map_interact_lock' : 'map_interact_unlock') + ' ' +
+        esc(active ? t('map_interact_disable_btn') : t('map_interact_enable_btn'));
+    }
+    render();
+    btn.onclick = function (e) {
+      e.stopPropagation(); // don't let this land on hululCloseActionsMenus_/other outside-click listeners
+      active = !active;
+      handlers.forEach(function (h) { active ? h.enable() : h.disable(); });
+      render();
+    };
+    UI.mapControls(mapEl, [btn]);
   },
 
   // REQ: "Move the Use my location / Satellite buttons inside map canvas. This applies to all maps."
@@ -846,33 +901,6 @@ window.UI = {
   }
 };
 
-// Backing state + delegated listener for UI.requireClickToActivateMap above -- one shared mechanism
-// so every map registered through it (venue/place/zone/participant-discipline/live-inspection, etc.)
-// gets both halves of the same rule: a click inside unlocks it, a click anywhere else re-locks it.
-// Capture phase, same as the other delegated listeners in this file, so it sees every click
-// regardless of what else on the page might stop propagation.
-var hululMapLocks_ = [];
-function hululLockMap_(entry) {
-  entry.locked = true;
-  entry.handlers.forEach(function (h) { h.disable(); });
-  if (!entry.hint.parentNode) entry.mapEl.appendChild(entry.hint);
-}
-function hululUnlockMap_(entry) {
-  entry.locked = false;
-  entry.handlers.forEach(function (h) { h.enable(); });
-  entry.hint.remove();
-}
-document.addEventListener('click', function (e) {
-  if (!hululMapLocks_.length) return;
-  // Drop any entry whose mapEl is no longer in the document -- the view that owned it was
-  // re-rendered/torn down (e.g. innerHTML replaced on tab switch), so there's nothing left to
-  // lock/unlock and no listener to leak by leaving it registered forever.
-  hululMapLocks_ = hululMapLocks_.filter(function (entry) { return document.body.contains(entry.mapEl); });
-  hululMapLocks_.forEach(function (entry) {
-    if (entry.mapEl.contains(e.target)) { if (entry.locked) hululUnlockMap_(entry); }
-    else if (!entry.locked) hululLockMap_(entry);
-  });
-}, true);
 
 // App-wide click guard: the instant ANY .btn is clicked, disable it and mark it visibly clicked
 // (see .btn-clicked / :disabled in styles.css) for 10s. Delegated once here on document, in the
@@ -915,6 +943,134 @@ function hululTableRows_(tbody) {
   return Array.prototype.slice.call(tbody.querySelectorAll('tr')).filter(function (r) {
     return !r.classList.contains('table-empty-row') && !r.classList.contains('table-filter-empty-row');
   });
+}
+
+// REQ: "Every user wants the ability to hide and arrange columns according to their needs." --
+// persistence half of UI.table's column manager (see the big comment inside UI.table above for how
+// these prefs get applied at render time). Stored client-side only, in localStorage, exactly like
+// theme.js/app.js's own UI prefs ("per-browser, not synced server-side") -- wrapped in try/catch for
+// private-browsing/quota edge cases, same as every other localStorage call in this app. Keyed by a
+// fingerprint of the table's own column keys (order-sensitive, so a genuinely different column set
+// never collides) rather than a route or per-call-site id, so no view anywhere needs to opt in.
+var HULUL_TABLE_COLS_PREFIX_ = 'hulul_table_cols_';
+function hululColumnsFingerprint_(columns) {
+  var s = columns.map(function (c) { return c.key !== undefined ? String(c.key) : ('lbl:' + (c.label || '')); }).join('|');
+  var h = 5381;
+  for (var i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) | 0; }
+  return Math.abs(h).toString(36);
+}
+function hululLoadColumnPrefs_(fp) {
+  try {
+    var raw = localStorage.getItem(HULUL_TABLE_COLS_PREFIX_ + fp);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function hululSaveColumnPrefs_(fp, prefs) {
+  try { localStorage.setItem(HULUL_TABLE_COLS_PREFIX_ + fp, JSON.stringify(prefs)); } catch (e) { /* private browsing/quota -- just skip persisting */ }
+}
+function hululClearColumnPrefs_(fp) {
+  try { localStorage.removeItem(HULUL_TABLE_COLS_PREFIX_ + fp); } catch (e) { /* ignore */ }
+}
+
+// DOM half of the column manager: every column is always rendered (UI.table above), so hiding is
+// only ever a class toggle and reordering is only ever moving existing <th>/<td> nodes -- never
+// regenerating them from row data -- so per-row button handlers a view wired up right after
+// rendering always survive, exactly like the sort/pagination code above.
+function hululColumnThs_(wrap) {
+  return Array.prototype.slice.call(wrap.querySelectorAll('thead th[data-col-key]'));
+}
+function hululColumnCellsForKey_(wrap, key) {
+  var sel = '[data-col-key="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]';
+  var th = wrap.querySelector('thead th' + sel);
+  var tds = Array.prototype.slice.call(wrap.querySelectorAll('tbody td' + sel));
+  return { th: th, tds: tds };
+}
+// colspan of the two empty-state rows must track how many columns are CURRENTLY visible, not the
+// full column count baked in at render time -- a column hidden after render would otherwise leave
+// the empty-state message off-center (over-spanning past where the visible columns actually end).
+function hululUpdateEmptyRowColspans_(wrap) {
+  var visibleCount = hululColumnThs_(wrap).filter(function (th) { return !th.classList.contains('col-hidden'); }).length;
+  wrap.querySelectorAll('tr.table-empty-row > td, tr.table-filter-empty-row > td').forEach(function (td) {
+    td.setAttribute('colspan', String(Math.max(1, visibleCount)));
+  });
+}
+// Export CSV / the toolbar's own /c column-value facet picker both key off data-export-cols/
+// data-export-headers (baked in at render time from the ORIGINAL column order) and data-tx-<i>/
+// data-sv-<i> attributes on each row (also fixed at render time) -- reordering columns afterward
+// moves the <th>/<td> nodes but their attributes travel WITH them, so data-tx-<i> keeps pointing at
+// the right data with no renumbering needed. Only the wrap's own cached data-export-cols/-headers
+// (a snapshot of the ORIGINAL order) would otherwise go stale after a reorder -- refreshed here from
+// the live <thead> so Export CSV always matches what's currently on screen.
+function hululRefreshExportMeta_(wrap) {
+  var ths = hululColumnThs_(wrap);
+  var cols = [], headers = [];
+  ths.forEach(function (th) {
+    var btn = th.querySelector('.th-filter-btn');
+    if (!btn) return;
+    var idxAttr = btn.getAttribute('data-filter-idx');
+    if (idxAttr == null) return;
+    cols.push(idxAttr);
+    var labelSpan = th.querySelector('.th-label-text');
+    headers.push(labelSpan ? labelSpan.textContent : '');
+  });
+  wrap.setAttribute('data-export-cols', cols.join(','));
+  wrap.setAttribute('data-export-headers', JSON.stringify(headers));
+}
+function hululPersistColumnState_(wrap) {
+  var fp = wrap.dataset.colsFp;
+  if (!fp) return;
+  var ths = hululColumnThs_(wrap).filter(function (th) { return th.getAttribute('data-col-key') !== 'actions'; });
+  var order = ths.map(function (th) { return th.getAttribute('data-col-key'); });
+  var hidden = ths.filter(function (th) { return th.classList.contains('col-hidden'); }).map(function (th) { return th.getAttribute('data-col-key'); });
+  hululSaveColumnPrefs_(fp, { order: order, hidden: hidden });
+}
+function hululSetColumnHidden_(wrap, key, hidden) {
+  var cells = hululColumnCellsForKey_(wrap, key);
+  if (cells.th) cells.th.classList.toggle('col-hidden', hidden);
+  cells.tds.forEach(function (td) { td.classList.toggle('col-hidden', hidden); });
+  hululUpdateEmptyRowColspans_(wrap);
+}
+// Swaps two DOM nodes' positions in place (works whether or not they're adjacent) -- used to swap a
+// <th> pair and every row's matching <td> pair for the popover's move-up/move-down buttons. Moves
+// the actual existing nodes (insertBefore on a node already in the document relocates it rather than
+// cloning it), so any handlers/content inside either cell survive untouched.
+function hululSwapNodes_(a, b) {
+  var aNext = a.nextSibling, aParent = a.parentNode;
+  var bNext = b.nextSibling, bParent = b.parentNode;
+  bParent.insertBefore(a, bNext);
+  aParent.insertBefore(b, aNext);
+}
+function hululSwapColumns_(wrap, keyA, keyB) {
+  var a = hululColumnCellsForKey_(wrap, keyA), b = hululColumnCellsForKey_(wrap, keyB);
+  if (!a.th || !b.th) return;
+  hululSwapNodes_(a.th, b.th);
+  for (var i = 0; i < a.tds.length && i < b.tds.length; i++) hululSwapNodes_(a.tds[i], b.tds[i]);
+}
+// (Re)builds the popover's column list from the live <thead> -- current DOM order/hidden state IS
+// the source of truth (see the big comment block above), so this is always accurate, including right
+// after a toggle/reorder/reset, with nothing else to keep in sync.
+function hululRenderColumnsPopover_(popover, wrap) {
+  var ths = hululColumnThs_(wrap).filter(function (th) { return th.getAttribute('data-col-key') !== 'actions'; });
+  var itemsHtml = ths.map(function (th, i) {
+    var key = th.getAttribute('data-col-key');
+    var labelSpan = th.querySelector('.th-label-text');
+    var label = labelSpan ? labelSpan.textContent : key;
+    var hidden = th.classList.contains('col-hidden');
+    return '<div class="table-columns-item" data-col-key="' + esc(key) + '">' +
+      '<label class="table-columns-item-check">' +
+        '<input type="checkbox"' + (hidden ? '' : ' checked') + ' />' +
+        '<span>' + esc(label) + '</span>' +
+      '</label>' +
+      '<div class="table-columns-item-move">' +
+        '<button type="button" class="table-columns-move-up" title="' + esc(t('move_col_up_title')) + '"' + (i === 0 ? ' disabled' : '') + '>' + ICON('chevron_up') + '</button>' +
+        '<button type="button" class="table-columns-move-down" title="' + esc(t('move_col_down_title')) + '"' + (i === ths.length - 1 ? ' disabled' : '') + '>' + ICON('chevron_down') + '</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  popover.innerHTML = '<div class="table-columns-list">' + itemsHtml + '</div>' +
+    '<div class="table-columns-popover-footer">' +
+      '<button type="button" class="btn btn-secondary btn-sm table-columns-reset-btn">' + esc(t('reset_to_default')) + '</button>' +
+    '</div>';
 }
 
 // A row can be hidden for two independent reasons -- it doesn't match the filter box, or it's on a
@@ -1122,6 +1278,106 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hulu
 window.addEventListener('scroll', hululCloseActionsMenus_, true); // capture:true -- also catches .table-wrap's own horizontal scroll, not just window scroll
 window.addEventListener('resize', hululCloseActionsMenus_);
 
+// REQ: "Every user wants the ability to hide and arrange columns according to their needs." --
+// same position:fixed/getBoundingClientRect popover mechanism as the actions-menu toggle just above
+// (own delegated listener though, not merged into it -- every other distinct popover/menu concern in
+// this file gets its own listener rather than one shared mega-handler).
+function hululCloseColumnsPopovers_() {
+  document.querySelectorAll('.table-columns-popover.show').forEach(function (p) { p.classList.remove('show'); });
+}
+// Restores a table to its original (pre-any-preference) column order and full visibility, and clears
+// the saved localStorage prefs -- the popover's own "Reset to default" button. Walking
+// data-default-col-order and re-appending each column's <th>/every row's matching <td> at the end,
+// in that saved sequence, puts everything back in that exact order (appendChild on a node already in
+// the document relocates it); the 'actions' column (excluded from data-default-col-order, exactly
+// like it's excluded from the popover itself) is explicitly re-appended last afterward so it stays
+// pinned at the end, matching where UI.table always puts it at render time.
+function hululResetColumnState_(wrap) {
+  var fp = wrap.dataset.colsFp;
+  if (fp) hululClearColumnPrefs_(fp);
+  var defaultOrder = [];
+  try { defaultOrder = JSON.parse(wrap.getAttribute('data-default-col-order') || '[]'); } catch (e) { defaultOrder = []; }
+  function appendKeyEverywhere_(key) {
+    var sel = '[data-col-key="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]';
+    var th = wrap.querySelector('thead th' + sel);
+    if (th) th.parentNode.appendChild(th);
+    Array.prototype.forEach.call(wrap.querySelectorAll('tbody td' + sel), function (td) { td.parentNode.appendChild(td); });
+  }
+  defaultOrder.forEach(appendKeyEverywhere_);
+  appendKeyEverywhere_('actions');
+  wrap.querySelectorAll('[data-col-key].col-hidden').forEach(function (el) { el.classList.remove('col-hidden'); });
+  hululUpdateEmptyRowColspans_(wrap);
+  hululRefreshExportMeta_(wrap);
+}
+document.addEventListener('click', function (e) {
+  // Move up/down and Reset live INSIDE an open popover -- checked first so they don't also fall into
+  // the "click outside the toggle button" branch below, which would just close the popover instead.
+  var moveUp = e.target.closest ? e.target.closest('.table-columns-move-up') : null;
+  var moveDown = e.target.closest ? e.target.closest('.table-columns-move-down') : null;
+  if ((moveUp || moveDown) && !(moveUp || moveDown).disabled) {
+    e.stopPropagation();
+    var moveBtn = moveUp || moveDown;
+    var itemEl = moveBtn.closest('.table-columns-item');
+    var popoverEl = moveBtn.closest('.table-columns-popover');
+    var wrapEl = popoverEl ? popoverEl.closest('.table-wrap') : null;
+    if (!itemEl || !wrapEl) return;
+    var siblingEl = moveUp ? itemEl.previousElementSibling : itemEl.nextElementSibling;
+    if (!siblingEl) return;
+    hululSwapColumns_(wrapEl, itemEl.getAttribute('data-col-key'), siblingEl.getAttribute('data-col-key'));
+    hululRefreshExportMeta_(wrapEl);
+    hululPersistColumnState_(wrapEl);
+    hululRenderColumnsPopover_(popoverEl, wrapEl);
+    return;
+  }
+  var resetBtn = e.target.closest ? e.target.closest('.table-columns-reset-btn') : null;
+  if (resetBtn) {
+    e.stopPropagation();
+    var rPopover = resetBtn.closest('.table-columns-popover');
+    var rWrap = rPopover ? rPopover.closest('.table-wrap') : null;
+    if (!rWrap) return;
+    hululResetColumnState_(rWrap);
+    hululRenderColumnsPopover_(rPopover, rWrap);
+    return;
+  }
+  var colsToggle = e.target.closest ? e.target.closest('.table-columns-btn') : null;
+  if (!colsToggle) {
+    // A click on the checkbox/label inside an open popover is handled by the 'change' listener below
+    // -- don't also close the popover out from under that same click.
+    if (!e.target.closest || !e.target.closest('.table-columns-popover')) hululCloseColumnsPopovers_();
+    return;
+  }
+  e.stopPropagation();
+  var popover = colsToggle.parentElement.querySelector('.table-columns-popover');
+  var wasOpen = popover.classList.contains('show');
+  hululCloseColumnsPopovers_();
+  hululCloseActionsMenus_(); // only one kind of table popover open at a time
+  if (wasOpen) return; // second click on the same toggle just closes it
+  var wrap = colsToggle.closest('.table-wrap');
+  hululRenderColumnsPopover_(popover, wrap);
+  popover.classList.add('show'); // display:flex now, so it has real dimensions to measure below
+  var rect = colsToggle.getBoundingClientRect();
+  var pw = popover.offsetWidth;
+  var left = document.documentElement.dir === 'rtl' ? rect.left : (rect.right - pw);
+  left = Math.max(8, Math.min(left, window.innerWidth - pw - 8)); // never run off either edge
+  popover.style.left = left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+}, true);
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hululCloseColumnsPopovers_(); });
+window.addEventListener('scroll', hululCloseColumnsPopovers_, true); // capture:true -- also catches .table-wrap's own horizontal scroll, not just window scroll
+window.addEventListener('resize', hululCloseColumnsPopovers_);
+// Show/hide checkbox -- separate delegated 'change' listener, same convention as the pager page-size
+// dropdown further down this file.
+document.addEventListener('change', function (e) {
+  var cb = e.target.closest ? e.target.closest('.table-columns-item input[type=checkbox]') : null;
+  if (!cb) return;
+  var itemEl = cb.closest('.table-columns-item');
+  var wrapEl = cb.closest('.table-wrap');
+  if (!itemEl || !wrapEl) return;
+  hululSetColumnHidden_(wrapEl, itemEl.getAttribute('data-col-key'), !cb.checked);
+  hululRefreshExportMeta_(wrapEl);
+  hululPersistColumnState_(wrapEl);
+}, true);
+
 // REQ: "in any list search box typing /c lists all columns typing or selecting a column will
 // suggest values user can select multi-values from the suggestions or continue typing to narrow
 // down." -- a column-value faceted filter layered on top of the plain free-text search below,
@@ -1140,13 +1396,28 @@ window.addEventListener('resize', hululCloseActionsMenus_);
 // Every column a row actually carries a data-tx-i for -- exactly the exportable-column set
 // table() computed at render time (isExportable_), read back off the live DOM since table() only
 // ever returns an HTML string, not the original columns array.
+// BUG FIX (column manager, this pass): idx used to be recomputed from each <th>'s current DOM
+// POSITION (map's own (th, i) => i) -- correct at initial render, but wrong the moment a column gets
+// physically reordered by the column manager (hululSwapColumns_ above), since a <th>'s data-tx-<N>/
+// data-sv-<N> correlation is fixed to N at render time and travels with the node, not with whatever
+// position it currently sits in. Now reads the STABLE idx off the header's own .th-filter-btn
+// (data-filter-idx, baked in at render time and never renumbered) instead of recomputing position,
+// so the /c column-value facet picker (and the header's own filter button, which shares this) keep
+// working correctly after any reorder.
 function hululFilterableColumns_(wrap) {
   var table = wrap.querySelector('table');
   var sampleRow = wrap.querySelector('tbody tr:not(.table-empty-row):not(.table-filter-empty-row)');
   if (!table || !sampleRow) return [];
   return Array.prototype.slice.call(table.querySelectorAll('thead th'))
-    .map(function (th, i) { return { idx: i, label: th.textContent.replace(/[▲▼]/g, '').trim() }; })
-    .filter(function (c) { return sampleRow.hasAttribute('data-tx-' + c.idx); });
+    .map(function (th) {
+      var btn = th.querySelector('.th-filter-btn');
+      if (!btn) return null;
+      var idx = Number(btn.getAttribute('data-filter-idx'));
+      var labelSpan = th.querySelector('.th-label-text');
+      var label = (labelSpan ? labelSpan.textContent : th.textContent).replace(/[▲▼]/g, '').trim();
+      return { idx: idx, label: label };
+    })
+    .filter(function (c) { return c && sampleRow.hasAttribute('data-tx-' + c.idx); });
 }
 
 // Every distinct value currently on record for one column, across ALL rows (not just the

@@ -94,8 +94,8 @@ window.HULUL_I18N = {
     // ---- Events list + New/Edit Event modal (events.js) ----
     events_subtitle: 'All {{term}} across your organisation',
     import_csv: 'Import CSV', field_x_name: '{{term}} name', field_venue: 'Venue', field_address_city_hint: 'Address & city are pulled from the selected {{term}}.',
-    field_renting_emc: 'Renting Event Management Company', field_inspection_co: 'Inspection Company', field_project_optional: '{{term}} (optional)',
-    toast_emc_required: 'Renting Event Management Company is required', label_no_project: 'No {{term}}',
+    field_renting_emc: 'Event Management Company', field_inspection_co: 'Inspection Company', field_project_optional: '{{term}} (optional)',
+    toast_emc_required: 'Event Management Company is required', label_no_project: 'No {{term}}',
     venue_edit_hint: '{{venueTerm}}: {{venueName}} — not editable here (fixed at creation)',
     import_results_title: 'Import results', import_created_count: '{{count}} {{term}} created successfully.',
     import_failed_count: '{{count}} row(s) failed:', importing_events: 'Importing events…',
@@ -624,6 +624,12 @@ window.HULUL_I18N = {
     x_saved: '{{term}} saved', no_qualified_x_for_y: 'No qualified {{x}} for this {{y}}',
     toast_no_qualified_x_selected: 'No qualified {{term}} selected',
     toast_x_multiple_zones_select_one: 'This {{venue}} has multiple {{zonePlural}} -- select at least one',
+    // REQ follow-up: "In Assign inspector section, Sub category can be selected or by default all
+    // sub-categories are selected. If a sub-category has already been picked up it can not appear in
+    // the sub-category section."
+    toast_subcat_select_one: 'Select at least one {{term}}',
+    subcat_all_covered_hint: 'Every {{term}} for this category is already covered by another assignment.',
+    subcat_some_covered_hint: '{{count}} {{term}} already covered by another assignment and not shown here.',
     x_assigned_toast: '{{term}} assigned', remove_x_assignment_confirm: 'Remove this {{term}} assignment?',
     toast_assignment_removed: 'Assignment removed',
     adjust_time_hint: 'Adjust this {{inspector}}\'s scheduled time in {{inspectionAndChecklist}} to resolve the conflict.',
@@ -730,9 +736,16 @@ window.HULUL_I18N = {
     not_permitted_title: 'Not permitted', show_label: 'Show', per_page_label: 'per page',
     previous_page: 'Previous page', next_page: 'Next page', page_of_total: 'Page {{page}} of {{total}}',
     expand_fullscreen: 'Expand map to full screen', exit_fullscreen: 'Exit full screen',
-    click_to_interact_map: 'Click to interact with the map', choose_value_multiselect: '{{col}} — choose a value (multi-select)',
+    // REQ follow-up: "For all maps, disable the interact rule, and instead make it a toggle button
+    // within the map boundaries." Replaces click_to_interact_map (now unused).
+    map_interact_enable_btn: 'Interact with map', map_interact_disable_btn: 'Lock map',
+    choose_value_multiselect: '{{col}} — choose a value (multi-select)',
     clear_filters_btn: 'Clear filters', filter_by_column: 'Filter by column', filter_column_btn: 'Filter this column',
     overdue_prefix: 'Overdue ', left_suffix: ' left',
+    // REQ: "Every user wants the ability to hide and arrange columns according to their needs."
+    // Manage-columns popover (UI.table, ui.js) -- its Reset button reuses the existing generic
+    // reset_to_default key (defined earlier in this file) rather than a new one.
+    manage_columns_btn: 'Manage columns', move_col_up_title: 'Move up', move_col_down_title: 'Move down',
 
     // ---- App chrome (app.js) ----
     search_placeholder: 'Search {{events}}, {{findings}}, users…', tier_x_escalation: 'Tier {{tier}} Escalation',
@@ -827,8 +840,8 @@ window.HULUL_I18N = {
     // ---- Events list + New/Edit Event modal (events.js) ----
     events_subtitle: 'كل {{term}} في مؤسستك',
     import_csv: 'استيراد CSV', field_x_name: 'اسم {{term}}', field_venue: 'الموقع', field_address_city_hint: 'العنوان والمدينة مأخوذان من {{term}} المحدد.',
-    field_renting_emc: 'شركة إدارة الفعاليات المستأجرة', field_inspection_co: 'شركة التفتيش', field_project_optional: '{{term}} (اختياري)',
-    toast_emc_required: 'شركة إدارة الفعاليات المستأجرة مطلوبة', label_no_project: 'بدون {{term}}',
+    field_renting_emc: 'شركة إدارة الفعاليات', field_inspection_co: 'شركة التفتيش', field_project_optional: '{{term}} (اختياري)',
+    toast_emc_required: 'شركة إدارة الفعاليات مطلوبة', label_no_project: 'بدون {{term}}',
     venue_edit_hint: '{{venueTerm}}: {{venueName}} — غير قابل للتعديل هنا (يُحدَّد عند الإنشاء)',
     import_results_title: 'نتائج الاستيراد', import_created_count: 'تم إنشاء {{count}} {{term}} بنجاح.',
     import_failed_count: 'فشل {{count}} من الصفوف:', importing_events: 'جارٍ استيراد الفعاليات…',
@@ -1324,6 +1337,9 @@ window.HULUL_I18N = {
     x_saved: 'تم حفظ {{term}}', no_qualified_x_for_y: 'لا يوجد {{x}} مؤهَّل لهذا {{y}}',
     toast_no_qualified_x_selected: 'لم يتم اختيار {{term}} مؤهَّل',
     toast_x_multiple_zones_select_one: 'يحتوي هذا {{venue}} على أكثر من {{zonePlural}} — اختر واحدة على الأقل',
+    toast_subcat_select_one: 'اختر {{term}} واحدة على الأقل',
+    subcat_all_covered_hint: 'كل {{term}} لهذه الفئة مغطاة بالفعل بواسطة تكليف آخر.',
+    subcat_some_covered_hint: '{{count}} {{term}} مغطاة بالفعل بواسطة تكليف آخر ولا تظهر هنا.',
     x_assigned_toast: 'تم تكليف {{term}}', remove_x_assignment_confirm: 'هل تريد إزالة تكليف {{term}} هذا؟',
     toast_assignment_removed: 'تمت إزالة التكليف',
     adjust_time_hint: 'اضبط الوقت المجدول لهذا {{inspector}} في {{inspectionAndChecklist}} لحل التعارض.',
@@ -1423,9 +1439,11 @@ window.HULUL_I18N = {
     not_permitted_title: 'غير مسموح', show_label: 'عرض', per_page_label: 'لكل صفحة',
     previous_page: 'الصفحة السابقة', next_page: 'الصفحة التالية', page_of_total: 'صفحة {{page}} من {{total}}',
     expand_fullscreen: 'توسيع الخريطة لملء الشاشة', exit_fullscreen: 'الخروج من وضع ملء الشاشة',
-    click_to_interact_map: 'انقر للتفاعل مع الخريطة', choose_value_multiselect: '{{col}} — اختر قيمة (تحديد متعدد)',
+    map_interact_enable_btn: 'التفاعل مع الخريطة', map_interact_disable_btn: 'قفل الخريطة',
+    choose_value_multiselect: '{{col}} — اختر قيمة (تحديد متعدد)',
     clear_filters_btn: 'مسح عوامل التصفية', filter_by_column: 'تصفية حسب العمود', filter_column_btn: 'تصفية هذا العمود',
     overdue_prefix: 'متأخر ', left_suffix: ' متبقٍ',
+    manage_columns_btn: 'إدارة الأعمدة', move_col_up_title: 'تحريك لأعلى', move_col_down_title: 'تحريك لأسفل',
 
     // ---- App chrome (app.js) ----
     search_placeholder: 'ابحث في {{events}}، {{findings}}، المستخدمين…', tier_x_escalation: 'تصعيد المستوى {{tier}}',

@@ -140,6 +140,14 @@ function createFinding(user, p) {
   assertEventAcceptsNewLogs_(p.eventId);
   var participant = getById('Participants', p.participantId);
   if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
+  // REQ follow-up: "PM can assign an inspector to only work on Zone x which will force all
+  // checklists and logs to only be done in that zone." Only the Inspector's OWN zone restriction
+  // applies here -- a PM/SystemAdmin logging something on an inspector's behalf isn't the one who
+  // was zone-scoped, so this only ever fires for the inspector actually doing the work themselves
+  // (the normal Add Log flow, findings.js).
+  if (user.role === ROLES.INSPECTOR) {
+    assertParticipantZoneAllowed_(user.id, p.eventId, p.disciplineId, participant);
+  }
   var zone = participant.zoneId ? getById('Zones', participant.zoneId) : null;
   var windowHours = p.resolutionWindowHours || 24;
   var finding = {

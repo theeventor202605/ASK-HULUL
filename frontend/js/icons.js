@@ -63,6 +63,9 @@ window.LUCIDE_ICONS = {
   'clipboard-check': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /> <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /> <path d="m9 14 2 2 4-4" /> </svg>',
   'clipboard-list': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /> <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /> <path d="M12 11h4" /> <path d="M12 16h4" /> <path d="M8 11h.01" /> <path d="M8 16h.01" /> </svg>',
   'compass': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z" /> </svg>',
+  // REQ: "Every user wants the ability to hide and arrange columns according to their needs." Manage-
+  // columns toolbar button (UI.table, ui.js).
+  'columns-3': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="18" x="3" y="3" rx="2" /> <path d="M9 3v18" /> <path d="M15 3v18" /> </svg>',
   'construction': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect x="2" y="6" width="20" height="8" rx="1" /> <path d="M17 14v7" /> <path d="M7 14v7" /> <path d="M17 3v3" /> <path d="M7 3v3" /> <path d="M10 14 2.3 6.3" /> <path d="m14 6 7.7 7.7" /> <path d="m8 6 8 8" /> </svg>',
   'contact': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M16 2v2" /> <path d="M7 21v-2a2 2 0 012-2h6a2 2 0 012 2v2" /> <path d="M8 2v2" /> <circle cx="12" cy="10" r="3" /> <rect x="3" y="3" width="18" height="18" rx="2" /> </svg>',
   'download': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" /> </svg>',
@@ -98,6 +101,9 @@ window.LUCIDE_ICONS = {
   'list-checks': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M13 5h8" /> <path d="M13 12h8" /> <path d="M13 19h8" /> <path d="m3 17 2 2 4-4" /> <path d="m3 7 2 2 4-4" /> </svg>',
   'list-ordered': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M11 5h10" /> <path d="M11 12h10" /> <path d="M11 19h10" /> <path d="M4 4h1v5" /> <path d="M4 9h2" /> <path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" /> </svg>',
   'lock': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 10 0v4" /> </svg>',
+  // REQ follow-up: "For all maps, disable the interact rule, and instead make it a toggle button
+  // within the map boundaries." (UI.requireClickToActivateMap, ui.js).
+  'unlock': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 9.9-1" /> </svg>',
   'log-out': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m16 17 5-5-5-5" /> <path d="M21 12H9" /> <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /> </svg>',
   'map': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" /> <path d="M15 5.764v15" /> <path d="M9 3.236v15" /> </svg>',
   'map-pin': '<svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /> <circle cx="12" cy="10" r="3" /> </svg>',
@@ -362,6 +368,15 @@ window.ICON_DEFAULTS = {
   // functionality." One small funnel button per filterable column header (UI.table, ui.js) opens
   // the same column-value picker the toolbar's own /c search already offers.
   table_filter: LUCIDE_ICONS['filter'],
+  // REQ: "Every user wants the ability to hide and arrange columns according to their needs." One
+  // button per table (UI.table, ui.js) opening the show/hide + reorder popover.
+  table_columns: LUCIDE_ICONS['columns-3'],
+  // REQ follow-up: "For all maps, disable the interact rule, and instead make it a toggle button
+  // within the map boundaries." (UI.requireClickToActivateMap, ui.js) -- swapped depending on
+  // whether the button's next click will lock or unlock the map, same "icon = destination state" as
+  // the existing satellite/standard map_toggle/satellite_toggle pair just above.
+  map_interact_lock: LUCIDE_ICONS['lock'],
+  map_interact_unlock: LUCIDE_ICONS['unlock'],
 };
 // Picker metadata: groups + friendly labels for every ICON_DEFAULTS key, shown in Settings > Icons
 // alongside the sidebar nav items. Every key in ICON_DEFAULTS must appear exactly once below.
@@ -385,7 +400,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'map_fullscreen_enter', label: 'Expand map to full screen' }, { key: 'map_fullscreen_exit', label: 'Exit full screen map' },
     { key: 'detect_places', label: 'Detect places in boundary' },
     { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' },
-    { key: 'table_filter', label: 'Filter table column' }
+    { key: 'table_filter', label: 'Filter table column' }, { key: 'table_columns', label: 'Manage table columns' },
+    { key: 'map_interact_lock', label: 'Lock map interaction' }, { key: 'map_interact_unlock', label: 'Unlock map interaction' }
   ] },
   { group: 'Status & Badges', keys: [
     { key: 'mark_read', label: 'Mark notification read' }, { key: 'coverage_complete', label: 'Coverage complete banner' },

@@ -1914,7 +1914,10 @@ async function tabDisciplines(content, eventId, detail) {
       : '') +
     '</div>' +
     '<div class="card-body">' + disciplines.map(function (d) {
-      var checked = identifiedIds.indexOf(d.id) !== -1;
+      // REQ follow-up: "set default to Select all." Only applies before anything has ever been
+      // saved for this event (identifiedIds.length === 0) -- once the PM has saved a selection at
+      // least once, that saved set is what should keep showing, same as any other persisted form.
+      var checked = identifiedIds.length === 0 ? true : identifiedIds.indexOf(d.id) !== -1;
       var locked = !canIdentify || (checked && assignedDisciplineIds.indexOf(d.id) !== -1);
       var lockReason = !canIdentify ? t('only_pm_admin_hint') : t('x_assigned_remove_first_hint', { inspector: Term('inspector').toLowerCase(), discipline: Term('discipline').toLowerCase() });
       return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;' + (locked ? 'opacity:0.65;' : '') + '"' +
@@ -1935,6 +1938,12 @@ async function tabDisciplines(content, eventId, detail) {
           UI.field(Term('discipline'), '<select id="fAssignDisc" class="field-input">' + (disciplineOptions || '<option value="">' + esc(t('no_x_identified_yet', { term: Term('discipline_plural').toLowerCase() })) + '</option>') + '</select>') +
           UI.field(t('field_qualified_x', { term: Term('inspector').toLowerCase() }), '<select id="fAssignInsp" class="field-input"></select>') +
         '</div>' +
+        // REQ follow-up: "In Assign inspector section, Sub category can be selected or by default
+        // all sub-categories are selected. If a sub-category has already been picked up it can not
+        // appear in the sub-category section." Populated once a Discipline is chosen (see
+        // renderSubCatPicker below) -- empty until then, same lazy-fill pattern fAssignInsp already
+        // uses for loadQualifiedInspectors.
+        '<div class="card-body" id="assignSubCatWrap" style="padding-top:0;"></div>' +
         (zonesRequired
           ? '<div class="card-body" style="padding-top:0;">' + UI.field(t('zones_required_field_label', { zonePluralCap: Term('zone_plural'), venue: Term('venue').toLowerCase(), zonePlural: Term('zone_plural').toLowerCase() }),
               zones.map(function (z) { return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
@@ -1946,6 +1955,7 @@ async function tabDisciplines(content, eventId, detail) {
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('assignments_title')) + '</div></div><div class="card-body">' +
     UI.table([
       { key: 'disciplineName', label: Term('discipline') }, { key: 'inspectorName', label: Term('inspector') },
+      { key: 'checklistTypeNames', label: Term('checklistType_plural'), render: r => (r.checklistTypeNames && r.checklistTypeNames.length) ? esc(r.checklistTypeNames.join(', ')) : '—' },
       { key: 'zoneNames', label: Term('zone_plural'), render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
       { key: 'assignedAt', label: t('col_assigned'), render: r => UI.fmtDate(r.assignedAt) }
     ].concat(canAssign ? [{ key: 'actions', label: t('actions'), render: r => UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>') }] : []),
@@ -1975,6 +1985,7 @@ async function tabDisciplines(content, eventId, detail) {
 
   var discSelect = document.getElementById('fAssignDisc');
   var inspSelect = document.getElementById('fAssignInsp');
+  var subCatWrap = document.getElementById('assignSubCatWrap');
   async function loadQualifiedInspectors() {
     if (!discSelect.value) { inspSelect.innerHTML = ''; return; }
     inspSelect.innerHTML = '<option value="">' + t('loading') + '</option>';
@@ -1985,15 +1996,41 @@ async function tabDisciplines(content, eventId, detail) {
         : '<option value="">' + esc(t('no_qualified_x_for_y', { x: Term('inspector_plural').toLowerCase(), y: Term('discipline').toLowerCase() })) + '</option>';
     } catch (err) { UI.error(err); }
   }
-  discSelect.onchange = loadQualifiedInspectors;
-  if (identifiedDisciplines.length) loadQualifiedInspectors();
+  // REQ follow-up: "Sub category can be selected or by default all sub-categories are selected. If
+  // a sub-category has already been picked up it can not appear in the sub-category section." --
+  // `available` (already excludes anything covered by another assignment for this discipline+event,
+  // see assignableChecklistTypes_, Disciplines.gs) is what actually gets checkboxes; `all` is only
+  // used to decide whether to show this section at all (a discipline with no sub-category catalogue
+  // renders nothing here, same as before this feature) and to explain why the list looks short.
+  async function renderSubCatPicker() {
+    if (!discSelect.value) { subCatWrap.innerHTML = ''; return; }
+    subCatWrap.innerHTML = '<div class="muted" style="font-size:12px;">' + esc(t('loading')) + '</div>';
+    try {
+      var scope = await Api.call('listAssignableChecklistTypes', { eventId: eventId, disciplineId: discSelect.value });
+      if (!scope.all.length) { subCatWrap.innerHTML = ''; return; }
+      if (!scope.available.length) {
+        subCatWrap.innerHTML = '<div class="muted" style="font-size:12px;">' + esc(t('subcat_all_covered_hint', { term: Term('checklistType_plural').toLowerCase() })) + '</div>';
+        return;
+      }
+      var coveredCount = scope.all.length - scope.available.length;
+      subCatWrap.innerHTML = UI.field(Term('checklistType_plural'),
+        scope.available.map(function (ty) { return '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
+          '<input type="checkbox" class="assign-subcat-check" value="' + esc(ty) + '" checked /> ' + esc(ty) + '</label>'; }).join('')
+      ) + (coveredCount ? '<div class="muted" style="font-size:11px;margin-top:4px;">' + esc(t('subcat_some_covered_hint', { count: coveredCount, term: Term('checklistType_plural').toLowerCase() })) + '</div>' : '');
+    } catch (err) { UI.error(err); }
+  }
+  discSelect.onchange = function () { loadQualifiedInspectors(); renderSubCatPicker(); };
+  if (identifiedDisciplines.length) { loadQualifiedInspectors(); renderSubCatPicker(); }
 
   document.getElementById('assignBtn').onclick = async function () {
     if (!inspSelect.value) { UI.toast(t('toast_no_qualified_x_selected', { term: Term('inspector').toLowerCase() }), 'error'); return; }
+    var subCatChecks = content.querySelectorAll('.assign-subcat-check');
+    var checklistTypes = Array.from(subCatChecks).filter(c => c.checked).map(c => c.value);
+    if (subCatChecks.length && !checklistTypes.length) { UI.toast(t('toast_subcat_select_one', { term: Term('checklistType').toLowerCase() }), 'error'); return; }
     var zoneIds = Array.from(content.querySelectorAll('.assign-zone-check:checked')).map(c => c.value);
     if (zonesRequired && !zoneIds.length) { UI.toast(t('toast_x_multiple_zones_select_one', { venue: Term('venue').toLowerCase(), zonePlural: Term('zone_plural').toLowerCase() }), 'error'); return; }
     try {
-      await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value, zoneIds: zoneIds });
+      await Api.call('assignInspector', { eventId: eventId, disciplineId: discSelect.value, inspectorId: inspSelect.value, zoneIds: zoneIds, checklistTypes: checklistTypes });
       UI.toast(t('x_assigned_toast', { term: Term('inspector') }), 'success'); Router.resolve();
     } catch (err) { UI.error(err); }
   };
@@ -2015,9 +2052,17 @@ async function tabDisciplines(content, eventId, detail) {
   content.querySelectorAll('[data-qa-insp]').forEach(function (btn) {
     btn.onclick = async function () {
       discSelect.value = btn.getAttribute('data-qa-disc');
-      await loadQualifiedInspectors();
+      await Promise.all([loadQualifiedInspectors(), renderSubCatPicker()]);
       inspSelect.value = btn.getAttribute('data-qa-insp');
-      var zoneIds = (btn.getAttribute('data-qa-zones') || '').split(',').filter(Boolean);
+      var uncoveredZoneIds = (btn.getAttribute('data-qa-zones') || '').split(',').filter(Boolean);
+      var prevZoneIds = (btn.getAttribute('data-qa-prev-zones') || '').split(',').filter(Boolean);
+      // REQ follow-up: "If an inspector has been chosen to do a zone for example Zone A, then making
+      // quick assign would also suggest same previous zone." Prefer whichever of this inspector's
+      // own previously-assigned zones (this event, any discipline) are actually still uncovered for
+      // THIS gap -- falls back to every uncovered zone (the original behavior) when there's no
+      // overlap, e.g. a brand-new inspector with no prior assignment on this event yet.
+      var overlap = prevZoneIds.filter(function (zid) { return uncoveredZoneIds.indexOf(zid) !== -1; });
+      var zoneIds = overlap.length ? overlap : uncoveredZoneIds;
       content.querySelectorAll('.assign-zone-check').forEach(function (cb) { cb.checked = zoneIds.indexOf(cb.value) !== -1; });
       document.getElementById('assignBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
@@ -2094,7 +2139,11 @@ function renderCoverageGapsCard_(gaps, canManage) {
             return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f6f7fb;border-radius:8px;margin-top:6px;font-size:12.5px;">' +
               '<span><strong style="' + nameStyle + '">' + esc(i.name) + '</strong> <span class="muted">' + esc(i.email) + '</span>' +
               (i.assigned ? ' <span class="muted" style="font-size:11px;">' + esc(t('already_assigned_paren')) + '</span>' : '') + conflictNote + '</span>' +
-              (canManage && !i.assigned ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '">' + esc(t('quick_assign_btn')) + '</button>' : '') +
+              // REQ follow-up: "...quick assign would also suggest same previous zone." data-qa-prev-
+              // zones carries this inspector's zoneIds from their OTHER assignments on this event
+              // (listCoverageGaps, Disciplines.gs) -- the click handler below prefers whatever
+              // overlaps this gap's own uncovered zones over pre-checking all of them.
+              (canManage && !i.assigned ? '<button class="btn btn-secondary btn-sm" data-qa-disc="' + item.disciplineId + '" data-qa-insp="' + i.id + '" data-qa-zones="' + esc(zoneIdsAttr) + '" data-qa-prev-zones="' + esc((i.previousZoneIds || []).join(',')) + '">' + esc(t('quick_assign_btn')) + '</button>' : '') +
               '</div>';
           }).join('')
         : '<div style="font-size:12px;margin-top:6px;color:var(--danger);">' + esc(t('no_qualified_x_plain', { term: Term('inspector') })) + '</div>';

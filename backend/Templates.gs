@@ -194,9 +194,12 @@ function sendTemplates(user, p) {
     if (already) { sent.push(already); return; }
     var lib = getById('TemplateLibrary', libId);
     if (!lib) return;
+    // Independent Drive copy, not a reference to the library's own file -- see copyTemplateDriveFile_
+    // above for why (this is the actual fix for the cross-event leakage bug).
+    var fileCopy = copyTemplateDriveFile_(lib.fileUrl, event.inspectionCoId, lib.fileName);
     var row = {
       id: newId('Templates'), eventId: p.eventId, libraryTemplateId: libId, name: lib.name, status: 'Sent',
-      fileUrl: lib.fileUrl, fileName: lib.fileName, mimeType: lib.mimeType, sentBy: user.id, sentAt: nowIso_(),
+      fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName, mimeType: lib.mimeType, sentBy: user.id, sentAt: nowIso_(),
       uploadedBy: '', updatedAt: nowIso_(), reviewedBy: '', reviewedAt: '', reviewReason: '', createdAt: nowIso_(),
       // REQ follow-up: "convert the templates to forms and include evaluation process" -- locked-in
       // snapshot of the library entry's docType, same reasoning as the fileUrl/fileName/mimeType
@@ -647,11 +650,18 @@ function snapshotOverdueVersionsIfNeeded_(eventId, versionNumber) {
   var already = {};
   findWhere('TemplateVersionSnapshots', function (s) { return s.eventId === eventId && Number(s.versionNumber) === Number(versionNumber); })
     .forEach(function (s) { already[s.templateId] = true; });
+  var event = getById('Events', eventId);
+  var orgId = event ? event.inspectionCoId : 'General';
   findWhere('Templates', function (t) { return t.eventId === eventId; }).forEach(function (t) {
     if (already[t.id]) return;
+    // Independent Drive copy at the moment this round is archived -- see copyTemplateDriveFile_
+    // above. Without this, the live row (which may carry the SAME file forward into the next
+    // version, unchanged, per resetTemplatesForNewVersion_'s own comment) could still have its file
+    // edited in place later, silently altering what this "reserved" historical snapshot shows too.
+    var fileCopy = copyTemplateDriveFile_(t.fileUrl, orgId, t.fileName);
     insertRow('TemplateVersionSnapshots', {
       id: newId('TemplateVersionSnapshots'), eventId: eventId, templateId: t.id, libraryTemplateId: t.libraryTemplateId,
-      versionNumber: versionNumber, name: t.name, status: t.status, fileUrl: t.fileUrl, fileName: t.fileName,
+      versionNumber: versionNumber, name: t.name, status: t.status, fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName,
       mimeType: t.mimeType, reviewedBy: t.reviewedBy, reviewedAt: t.reviewedAt, reviewReason: t.reviewReason,
       snapshotAt: nowIso_()
     });
@@ -917,6 +927,37 @@ function getOrCreateFolder_(name) {
   var it = DriveApp.getFoldersByName(name);
   if (it.hasNext()) return it.next();
   return DriveApp.createFolder(name);
+}
+
+// URGENT FIX (REQ: "Readiness templates should be a copy for each event and each version...
+// Changing a Readiness template in event X affects Readiness templates in event Y"): the actual bug
+// -- sendTemplates (below) used to stamp a new Templates row with `fileUrl: lib.fileUrl` verbatim,
+// i.e. a reference to the library's OWN Drive file, not an independent copy. Any two events sent the
+// same library template (before the library was re-versioned) ended up with Templates rows pointing
+// at the literal SAME underlying Drive file -- so opening/editing that file online for one event's
+// "Sent" document (the normal, documented workflow -- see openEventTemplate's own comment: "opening
+// the link IS viewing it online") silently edited every other event's copy too, since there was only
+// ever one physical file behind all of them. snapshotOverdueVersionsIfNeeded_ had the same problem
+// for version history: a snapshot's fileUrl was just a copy of the STRING, not the file, so the
+// "reserved" state of an old version could still be mutated by later edits to the still-shared file.
+// This makes an independent Drive copy at the moment a document is (a) sent to an event, and (b)
+// snapshotted into version history -- from that point on, nothing done to one event's or one
+// version's file can ever touch another's again.
+function copyTemplateDriveFile_(fileUrl, orgId, newFileName) {
+  if (!fileUrl) return { fileUrl: '', fileName: '' };
+  var m = String(fileUrl).match(/[-\w]{25,}/); // Drive file IDs are always a 25+ char token
+  if (!m) return { fileUrl: fileUrl, fileName: newFileName || '' }; // unrecognized link -- don't block the send over it
+  try {
+    var src = DriveApp.getFileById(m[0]);
+    var folder = getOrCreateFolder_('HULUL Template Library - ' + orgId);
+    var copy = src.makeCopy(newFileName || src.getName(), folder);
+    copy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return { fileUrl: copy.getUrl(), fileName: copy.getName() };
+  } catch (e) {
+    // Source file inaccessible/deleted -- fall back to the original reference rather than failing
+    // the whole send/snapshot over one bad file.
+    return { fileUrl: fileUrl, fileName: newFileName || '' };
+  }
 }
 
 // REQ-TPL-02: the fixed set of meeting types selectable when scheduling a meeting, in the order

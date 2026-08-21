@@ -134,7 +134,15 @@ var SCHEMA = {
   Disciplines:            ['id','name','code','catRef'],
   EventDisciplines:       ['id','eventId','disciplineId','venueId','identifiedBy','createdAt'],
   InspectorQualifications:['id','userId','disciplineId'],
-  InspectorAssignments:   ['id','eventId','disciplineId','inspectorId','assignedBy','assignedAt','zoneIds'],
+  // checklistTypes (REQ follow-up: "In Assign inspector section, Sub category can be selected or by
+  // default all sub-categories are selected.") -- comma-joined ChecklistItems.checklistType values
+  // this assignment covers, same convention as zoneIds just above. Blank means "covers every
+  // sub-category under this discipline" -- both for assignments made before this field existed AND
+  // for a deliberate blanket assignment on a discipline with no sub-category catalogue -- so nothing
+  // about existing rows/behavior changes just from this column appearing. See
+  // coveredChecklistTypesForDiscipline_ (Disciplines.gs) for how "already picked up" sub-categories
+  // are excluded from a later assignment's picker.
+  InspectorAssignments:   ['id','eventId','disciplineId','inspectorId','assignedBy','assignedAt','zoneIds','checklistTypes'],
   // subRef/itemRef appended at the end (established pattern, see Venues above) -- REQ: "Sub-Category
   // must also have 'Sub Ref.' which is a whole number but always displayed as two digits ... each
   // item in the checklist must have 'Item Ref.' ... always displayed as three digits." Both stored

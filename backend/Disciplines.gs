@@ -148,10 +148,54 @@ function listQualifiedInspectors(user, p) {
   return inspectors.map(stripSecrets_);
 }
 
+// Every distinct ChecklistItems.checklistType (sub-category) under a discipline, across every
+// phase -- InspectorAssignments aren't phase-specific, so unlike
+// disciplineChecklistTypesForPhase_ (Inspections.gs, used for self-service pickup slots) this
+// doesn't narrow by phase either.
+function disciplineChecklistTypes_(disciplineName) {
+  var types = {};
+  getAll('ChecklistItems').forEach(function (c) {
+    if (c.status !== 'Deleted' && c.category === disciplineName && c.checklistType) types[c.checklistType] = true;
+  });
+  return Object.keys(types);
+}
+
+// REQ follow-up: "If a sub-category has already been picked up it can not appear in the sub-category
+// section." A sub-category counts as covered the moment ANY existing assignment for this
+// discipline+event names it explicitly, OR the moment any existing assignment has blank
+// checklistTypes at all (blanket = covers everything, see the SCHEMA comment on
+// InspectorAssignments.checklistTypes, Utils.gs) -- a discipline already fully assigned to one
+// Inspector has nothing left to hand to a second one. Returns { all, available } so the frontend can
+// render "N of M already covered" context, not just the leftover list.
+function assignableChecklistTypes_(eventId, disciplineId) {
+  var discipline = getById('Disciplines', disciplineId);
+  var all = discipline ? disciplineChecklistTypes_(discipline.name) : [];
+  var assignments = findWhere('InspectorAssignments', function (a) { return a.eventId === eventId && a.disciplineId === disciplineId; });
+  var covered = {};
+  assignments.forEach(function (a) {
+    var types = a.checklistTypes ? String(a.checklistTypes).split(',').filter(Boolean) : [];
+    if (!types.length) { all.forEach(function (ty) { covered[ty] = true; }); }
+    else { types.forEach(function (ty) { covered[ty] = true; }); }
+  });
+  return { all: all, available: all.filter(function (ty) { return !covered[ty]; }) };
+}
+
+// Frontend entry point for the Assign Inspector sub-category picker (eventDetail.js) -- called once
+// a Discipline is chosen, same trigger as loadQualifiedInspectors.
+function listAssignableChecklistTypes(user, p) {
+  if (!p || !p.eventId || !p.disciplineId) throw new HululError('BAD_REQUEST', 'eventId and disciplineId are required');
+  return assignableChecklistTypes_(p.eventId, p.disciplineId);
+}
+
 // REQ-DIS-03/04/05: PM assigns qualified Inspectors to disciplines for the venue; blocks unqualified assignment.
 // If the venue has more than one Zone, the assignment must say which Zone(s) the Inspector
 // covers — otherwise it's ambiguous which part of the venue they're responsible for. A
 // single-zone (or zone-less) venue has nothing to disambiguate, so zones stay optional there.
+// REQ follow-up: "Sub category can be selected or by default all sub-categories are selected."
+// checklistTypes works the same way -- optional, and only meaningful when the discipline actually
+// has sub-categories to choose from (assignableChecklistTypes_.all.length > 0); everything already
+// picked up by another assignment is rejected here too, not just hidden from the picker, so a stale
+// form (opened before someone else grabbed a sub-category) can't sneak past it.
 function assignInspector(user, p) {
   var event = getById('Events', p.eventId);
   if (!event) throw new HululError('NOT_FOUND', 'Event not found');
@@ -168,13 +212,26 @@ function assignInspector(user, p) {
     var invalid = zoneIds.filter(function (zid) { return validZoneIds.indexOf(zid) === -1; });
     if (invalid.length) throw new HululError('BAD_REQUEST', 'One or more selected zones do not belong to this venue');
   }
-  // Same Discipline + Inspector + Zone set already assigned for this event is a duplicate, not a
-  // new assignment — block it instead of creating an indistinguishable second row.
+  var scope = assignableChecklistTypes_(p.eventId, p.disciplineId);
+  var checklistTypes = p.checklistTypes || [];
+  if (scope.all.length) {
+    if (!checklistTypes.length) throw new HululError('BAD_REQUEST', 'Select at least one sub-category for the inspector');
+    var invalidTypes = checklistTypes.filter(function (ty) { return scope.all.indexOf(ty) === -1; });
+    if (invalidTypes.length) throw new HululError('BAD_REQUEST', 'One or more selected sub-categories do not belong to this category');
+    var alreadyCovered = checklistTypes.filter(function (ty) { return scope.available.indexOf(ty) === -1; });
+    if (alreadyCovered.length) throw new HululError('BAD_REQUEST', alreadyCovered.join(', ') + ' — already covered by another assignment for this category.');
+  } else {
+    checklistTypes = []; // no sub-category catalogue on this discipline -- blanket assignment, unchanged from before this feature
+  }
+  // Same Discipline + Inspector + Zone set + sub-category set already assigned for this event is a
+  // duplicate, not a new assignment — block it instead of creating an indistinguishable second row.
   var zoneKey_ = function (ids) { return ids.slice().sort().join(','); };
-  var newKey = zoneKey_(zoneIds);
+  var newZoneKey = zoneKey_(zoneIds);
+  var newTypeKey = zoneKey_(checklistTypes);
   var isDuplicate = findWhere('InspectorAssignments', function (a) {
     return a.eventId === p.eventId && a.disciplineId === p.disciplineId && a.inspectorId === p.inspectorId &&
-      zoneKey_(a.zoneIds ? String(a.zoneIds).split(',').filter(Boolean) : []) === newKey;
+      zoneKey_(a.zoneIds ? String(a.zoneIds).split(',').filter(Boolean) : []) === newZoneKey &&
+      zoneKey_(a.checklistTypes ? String(a.checklistTypes).split(',').filter(Boolean) : []) === newTypeKey;
   }).length > 0;
   if (isDuplicate) {
     var discipline = getById('Disciplines', p.disciplineId);
@@ -185,10 +242,10 @@ function assignInspector(user, p) {
   }
   var row = {
     id: newId('InspectorAssignments'), eventId: p.eventId, disciplineId: p.disciplineId, inspectorId: p.inspectorId,
-    assignedBy: user.id, assignedAt: nowIso_(), zoneIds: zoneIds.join(',')
+    assignedBy: user.id, assignedAt: nowIso_(), zoneIds: zoneIds.join(','), checklistTypes: checklistTypes.join(',')
   };
   insertRow('InspectorAssignments', row);
-  audit(user.id, 'ASSIGN_INSPECTOR', 'InspectorAssignments', row.id, { zoneIds: zoneIds });
+  audit(user.id, 'ASSIGN_INSPECTOR', 'InspectorAssignments', row.id, { zoneIds: zoneIds, checklistTypes: checklistTypes });
   notify_(p.inspectorId, 'ASSIGNMENT', 'You were assigned to a discipline for ' + event.name, 'InspectorAssignments', row.id, p.eventId);
   return row;
 }
@@ -291,10 +348,22 @@ function listCoverageGaps(user, p) {
       return u.role === ROLES.INSPECTOR && u.status === 'Active' && qualifiedUserIds.indexOf(u.id) !== -1 &&
         (!event.inspectionCoId || u.orgId === event.inspectionCoId);
     }).map(stripSecrets_).map(function (u) {
+      // REQ follow-up: "If an inspector has been chosen to do a zone for example Zone A, then making
+      // quick assign would also suggest same previous zone." Union of zoneIds across every OTHER
+      // assignment this inspector already has on THIS event (any discipline, not just this gap's) --
+      // the quick-assign click handler (eventDetail.js) prefers whichever of these overlap the gap's
+      // own uncoveredZones, so an inspector already working Zone A elsewhere on this event gets Zone
+      // A pre-checked here too instead of defaulting to every uncovered zone.
+      var previousZoneIds = {};
+      assignments.forEach(function (a) {
+        if (a.inspectorId !== u.id) return;
+        (a.zoneIds ? String(a.zoneIds).split(',').filter(Boolean) : []).forEach(function (zid) { previousZoneIds[zid] = true; });
+      });
       return {
         id: u.id, name: u.name, email: u.email,
         assigned: assignedInspectorIds.indexOf(u.id) !== -1,
-        conflict: inspectorConflict_(event, u.id, otherAssignments)
+        conflict: inspectorConflict_(event, u.id, otherAssignments),
+        previousZoneIds: Object.keys(previousZoneIds)
       };
     });
 
@@ -333,9 +402,54 @@ function reassignInspector(user, p) {
   var assignment = getById('InspectorAssignments', p.oldAssignmentId);
   if (!assignment || assignment.eventId !== p.eventId) throw new HululError('NOT_FOUND', 'Assignment not found');
   var zoneIds = assignment.zoneIds ? String(assignment.zoneIds).split(',').filter(Boolean) : [];
+  // Carries the old assignment's sub-category scope forward too -- removeInspectorAssignment below
+  // frees those sub-categories again (they're no longer "covered" once the row is gone), so
+  // assignInspector's own already-covered check would otherwise let a THIRD assignment race in
+  // ahead of this swap; same-request remove-then-add makes that a non-issue in practice.
+  var checklistTypes = assignment.checklistTypes ? String(assignment.checklistTypes).split(',').filter(Boolean) : [];
   var disciplineId = assignment.disciplineId;
   removeInspectorAssignment(user, { eventId: p.eventId, assignmentId: p.oldAssignmentId });
-  return assignInspector(user, { eventId: p.eventId, disciplineId: disciplineId, inspectorId: p.newInspectorId, zoneIds: zoneIds });
+  return assignInspector(user, { eventId: p.eventId, disciplineId: disciplineId, inspectorId: p.newInspectorId, zoneIds: zoneIds, checklistTypes: checklistTypes });
+}
+
+// REQ follow-up: "PM can assign an inspector to only work on Zone x which will force all checklists
+// and logs to only be done in that zone." Reuses the SAME zoneIds already captured on
+// InspectorAssignments (previously just informational/coverage-tracking, see listCoverageGaps
+// above, and a soft "who counts toward completion" filter, see participantRelevantToInspection_ in
+// Inspections.gs) -- once a PM scopes an assignment to specific zone(s), this is what actually
+// enforces it as a hard boundary everywhere the inspector touches this discipline for this event,
+// instead of only shaping progress numbers. Empty result (no zoneIds ever set on ANY of the
+// inspector's assignments for this discipline+event -- the common single/no-zone-venue case, or an
+// old assignment made before zones existed) means unrestricted, same meaning blank zoneIds already
+// has everywhere else in this file.
+function inspectorAllowedZoneIds_(inspectorId, eventId, disciplineId) {
+  var ids = {};
+  findWhere('InspectorAssignments', function (a) {
+    return a.inspectorId === inspectorId && a.eventId === eventId && a.disciplineId === disciplineId;
+  }).forEach(function (a) {
+    (a.zoneIds ? String(a.zoneIds).split(',').filter(Boolean) : []).forEach(function (zid) { ids[zid] = true; });
+  });
+  return Object.keys(ids);
+}
+
+// Shared by createFinding (Findings.gs, manual Log) and recordInspectionResults (Inspections.gs,
+// auto-created-from-Crossed-item Log + the InspectionResult itself) -- one place enforcing "this
+// participant must be in a zone this inspector is actually assigned to." Mirrors
+// participantRelevantToInspection_'s own zone-matching rule (Inspections.gs) exactly: a participant
+// with no zone / 'ALL' on record applies everywhere (REQ: "usually operators operate in all zones"),
+// and an unrestricted assignment (see inspectorAllowedZoneIds_ above) allows anything. No-op if
+// there's no participant to check (e.g. an Opening-phase checklist result, which has no participant
+// dimension at all).
+function assertParticipantZoneAllowed_(inspectorId, eventId, disciplineId, participant) {
+  if (!participant) return;
+  var allowedZoneIds = inspectorAllowedZoneIds_(inspectorId, eventId, disciplineId);
+  if (!allowedZoneIds.length) return;
+  var participantZoneIds = zoneFieldIds_(participant.zoneId);
+  if (!participantZoneIds.length) return;
+  var overlaps = participantZoneIds.some(function (zid) { return allowedZoneIds.indexOf(zid) !== -1; });
+  if (!overlaps) {
+    throw new HululError('FORBIDDEN', 'You are only assigned to specific zone(s) for this category — this participant is outside your assigned zone(s).');
+  }
 }
 
 function listInspectorAssignments(user, p) {
@@ -344,11 +458,15 @@ function listInspectorAssignments(user, p) {
     var inspector = getById('Users', a.inspectorId);
     var zoneIds = a.zoneIds ? String(a.zoneIds).split(',').filter(Boolean) : [];
     var zoneNames = zoneIds.map(function (zid) { var z = getById('Zones', zid); return z ? z.name : zid; });
+    // REQ follow-up: "Sub category can be selected..." -- blank stays displayed as "All" rather than
+    // an empty cell, matching how a blank zoneIds already implicitly means "whole venue" above.
+    var checklistTypes = a.checklistTypes ? String(a.checklistTypes).split(',').filter(Boolean) : [];
     return Object.assign({}, a, {
       disciplineName: discipline ? discipline.name : a.disciplineId,
       inspectorName: inspector ? inspector.name : a.inspectorId,
       inspectorEmail: inspector ? inspector.email : '',
-      zoneNames: zoneNames
+      zoneNames: zoneNames,
+      checklistTypeNames: checklistTypes
     });
   });
 }

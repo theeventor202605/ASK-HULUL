@@ -767,15 +767,27 @@ function recordInspectionResults(user, p) {
   // data-record button), so p.participantId is simply absent here, and that's fine. Every other phase
   // (Operational) keeps the original "a checklist is completed *for a participant*" requirement
   // unchanged -- the inspector must choose one before recording anything (see the choose-participant
-  // screen in tabInspections). Any participant on the event is accepted (not just "relevant" ones) so
-  // an inspector can still log something unexpected found on site; the frontend's guided flow is what
-  // steers them to the relevant list.
+  // screen in tabInspections). Any participant on the event is accepted regardless of discipline/zone
+  // relevance -- the frontend's guided flow is what steers an inspector to the relevant list -- EXCEPT
+  // for zone: REQ follow-up ("PM can assign an inspector to only work on Zone x which will force all
+  // checklists and logs to only be done in that zone") turns that into a hard block below, once the
+  // inspector's own assignment is actually zone-restricted.
   var isOpeningPhase = inspection.phase === 'Opening';
   var venueId = inspectionVenueId_(inspection);
   if (!isOpeningPhase) {
     if (!p.participantId) throw new HululError('BAD_REQUEST', 'participantId is required — choose which participant this checklist is for.');
     var participant = getById('Participants', p.participantId);
     if (!participant || !venueId || participant.venueId !== venueId) throw new HululError('BAD_REQUEST', 'participantId must belong to this event\'s venue');
+    // REQ follow-up: "PM can assign an inspector to only work on Zone x which will force all
+    // checklists and logs to only be done in that zone." Was previously only a SOFT filter (this
+    // participant just wouldn't count toward "how many are relevant/completed," see
+    // inspectionCoverage_/participantRelevantToInspection_ below) -- now a hard block, same rule,
+    // reused via assertParticipantZoneAllowed_ (Disciplines.gs). Only applies when the inspector is
+    // recording their own checklist (not a PM/Admin recording on their behalf), same scoping as the
+    // equivalent check in createFinding (Findings.gs).
+    if (user.role === ROLES.INSPECTOR) {
+      assertParticipantZoneAllowed_(inspection.inspectorId, inspection.eventId, inspection.disciplineId, participant);
+    }
   }
   // REQ: "Logs can not be created ... if event ended or Venue Rejected." A Crossed item auto-creates
   // a Finding below (assertEventAcceptsNewLogs_, Findings.gs, same rule createFinding enforces for a

@@ -600,6 +600,30 @@ table.data-table tbody tr:has([data-row-view]){ cursor:pointer; }
   background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md); }
 .actions-menu-popover.show{ display:flex; }
 
+/* REQ: "Every user wants the ability to hide and arrange columns according to their needs." --
+   toolbar button + show/hide/reorder popover (UI.table, ui.js). Same position:fixed/z-index tier and
+   look as .actions-menu-popover just above -- a second, independent instance of the same mechanism. */
+.table-columns-wrap{ position:relative; display:inline-block; }
+.table-columns-popover{ display:none; position:fixed; z-index:60; width:240px; padding:8px;
+  background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-md); }
+.table-columns-popover.show{ display:block; }
+.table-columns-list{ display:flex; flex-direction:column; gap:2px; max-height:280px; overflow-y:auto; }
+.table-columns-item{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:5px 4px; border-radius:6px; }
+.table-columns-item:hover{ background:#f6f7fb; }
+.table-columns-item-check{ display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer; flex:1; min-width:0; }
+.table-columns-item-check span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.table-columns-item-move{ display:flex; gap:2px; flex-shrink:0; }
+.table-columns-item-move button{ border:none; background:none; padding:2px; margin:0; line-height:0; cursor:pointer;
+  color:var(--text-400); border-radius:4px; font-size:11px; }
+.table-columns-item-move button:hover:not(:disabled){ color:var(--accent-600); background:var(--surface); }
+.table-columns-item-move button:disabled{ opacity:.3; cursor:default; }
+.table-columns-popover-footer{ margin-top:6px; padding-top:6px; border-top:1px solid var(--border); text-align:end; }
+
+/* Hidden column (UI.table's column manager, same feature): a class toggle only, never removes the
+   cell from the DOM, so a hidden column can be re-shown later with no data/handlers regenerated. */
+.data-table .col-hidden{ display:none; }
+
 /* Event Chat slash-command suggestion dropdown (/u /p /e #) -- anchored under the textarea, see
    tabEventChat in eventDetail.js. */
 .chat-suggest-box{ position:absolute; top:100%; left:0; right:0; margin-top:4px; z-index:60;
@@ -820,20 +844,6 @@ html[dir="rtl"] .evidence-thumb-count{ right:auto; left:3px; }
 }
 .hulul-map-fullscreen-extra-controls:empty{ display:none; }
 .hulul-map-fullscreen-btn:hover{ background:var(--surface); }
-
-/* UI.requireClickToActivateMap (ui.js) -- shown while the map is locked (before the first click, and
-   again any time focus moves outside the map after that -- see hululMapLocks_ in ui.js). REQ: "Move
-   it to the side and make it blink to catch user attention" -- was dead-centered over the tiles,
-   which sat right on top of whatever the user most wanted to look at; inset-inline-start (not left)
-   so it moves to the correct side in RTL too. Ignores pointer events itself so it can't intercept the
-   very click meant to dismiss it. Reuses supportPulse (below) -- same blink every other "needs
-   attention" indicator in this app already uses (support ticket rec dot, escalation alert icon). */
-.hulul-map-click-hint{
-  position:absolute; top:50%; inset-inline-start:12px; transform:translateY(-50%); z-index:999;
-  background:rgba(17,24,39,.72); color:#fff; font-size:12px; font-weight:600; padding:6px 14px;
-  border-radius:999px; pointer-events:none; white-space:nowrap;
-  animation:supportPulse 1.2s ease-in-out infinite;
-}
 
 /* ---------- Toasts ---------- */
 .toast-root{ position:fixed; bottom:20px; inset-inline-end:20px; display:flex; flex-direction:column; gap:8px; z-index:1700; }

@@ -269,6 +269,70 @@ function dedupeTemplateDeadlineVersioningRows() {
   return { removedSnapshots: removedSnapshots, removedVersions: removedVersions };
 }
 
+// URGENT one-time fix for the cross-event Readiness Template data leak reported live in production
+// (REQ: "Changing a Readiness template in event X affects Readiness templates in event Y... Fix this
+// ASAP"). Root cause: sendTemplates (Templates.gs) used to stamp a new per-event Templates row with
+// `fileUrl: lib.fileUrl` verbatim -- a reference to the library's own Drive file, not an independent
+// copy. Any two events that were ever sent the same library template (while the library sat on the
+// same version) ended up with Templates rows pointing at the literal SAME underlying Drive file, so
+// opening/editing that file online for one event's document (the normal workflow -- see
+// openEventTemplate's comment) silently edited every other event's "own" copy too. The same problem
+// existed for TemplateVersionSnapshots (a "reserved" version's fileUrl was just a copy of the STRING,
+// not the file). copyTemplateDriveFile_ + the fixed sendTemplates/snapshotOverdueVersionsIfNeeded_
+// (Templates.gs) stop this from happening going forward; THIS function retroactively breaks the
+// sharing for every row that was already created under the old behavior, by giving each one its own
+// independent Drive copy today. Safe to re-run (re-copying an already-independent file is harmless,
+// just wastes a little Drive storage) -- run once from the Apps Script editor's function dropdown
+// right after pushing the Templates.gs fix. Check the Execution log for counts/failures.
+function backfillTemplateFileCopies() {
+  var events = {};
+  getAll('Events').forEach(function (e) { events[e.id] = e; });
+  var copied = 0, skipped = 0, failed = 0;
+
+  getAll('Templates').forEach(function (t) {
+    if (!t.fileUrl) { skipped++; return; }
+    var event = events[t.eventId];
+    var orgId = event ? event.inspectionCoId : 'General';
+    try {
+      var fileCopy = copyTemplateDriveFile_(t.fileUrl, orgId, t.fileName);
+      if (fileCopy.fileUrl && fileCopy.fileUrl !== t.fileUrl) {
+        updateRow('Templates', t.id, { fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName });
+        copied++;
+      } else {
+        skipped++;
+      }
+    } catch (e) {
+      Logger.log('backfillTemplateFileCopies: FAILED on Templates ' + t.id + ' -- ' + e.message);
+      failed++;
+    }
+  });
+
+  var snapCopied = 0, snapSkipped = 0, snapFailed = 0;
+  getAll('TemplateVersionSnapshots').forEach(function (s) {
+    if (!s.fileUrl) { snapSkipped++; return; }
+    var event = events[s.eventId];
+    var orgId = event ? event.inspectionCoId : 'General';
+    try {
+      var fileCopy = copyTemplateDriveFile_(s.fileUrl, orgId, s.fileName);
+      if (fileCopy.fileUrl && fileCopy.fileUrl !== s.fileUrl) {
+        updateRow('TemplateVersionSnapshots', s.id, { fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName });
+        snapCopied++;
+      } else {
+        snapSkipped++;
+      }
+    } catch (e) {
+      Logger.log('backfillTemplateFileCopies: FAILED on TemplateVersionSnapshots ' + s.id + ' -- ' + e.message);
+      snapFailed++;
+    }
+  });
+
+  Logger.log('backfillTemplateFileCopies: Templates -- copied ' + copied + ', skipped ' + skipped +
+    ' (blank file), failed ' + failed + '. TemplateVersionSnapshots -- copied ' + snapCopied +
+    ', skipped ' + snapSkipped + ', failed ' + snapFailed + '.');
+  return { templatesCopied: copied, templatesSkipped: skipped, templatesFailed: failed,
+    snapshotsCopied: snapCopied, snapshotsSkipped: snapSkipped, snapshotsFailed: snapFailed };
+}
+
 // Diagnostic for "backfillTemplateDocTypes: updated 0 row(s)" when a row is still visibly missing
 // its Score button -- logs exactly why each docType-less Templates row wasn't (or couldn't be)
 // backfilled, instead of guessing. Read-only, safe to run any time. Check the Execution log after

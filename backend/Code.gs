@@ -224,6 +224,7 @@ var ROUTES = {
   setInspectorQualifications: function (u, p) { return setInspectorQualifications(u, p); },
   listInspectorQualifications: function (u, p) { return listInspectorQualifications(u, p); },
   listQualifiedInspectors: function (u, p) { return listQualifiedInspectors(u, p); },
+  listAssignableChecklistTypes: function (u, p) { return listAssignableChecklistTypes(u, p); },
   assignInspector: function (u, p) { return assignInspector(u, p); },
   removeInspectorAssignment: function (u, p) { return removeInspectorAssignment(u, p); },
   listInspectorAssignments: function (u, p) { return listInspectorAssignments(u, p); },
