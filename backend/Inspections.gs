@@ -520,7 +520,7 @@ function inspectionCoverage_(inspection) {
     .filter(function (pt) { return participantRelevantToInspection_(pt, inspection, inspectorZoneIds); });
   var perParticipant = relevant.map(function (pt) {
     var c = inspectionParticipantCoverage_(inspection, pt.id);
-    return { participantId: pt.id, participantName: pt.name, total: c.total, done: c.done, completed: c.total > 0 && c.openItems.length === 0 };
+    return { participantId: pt.id, participantName: pt.name, participantNameAr: pt.nameAr || '', total: c.total, done: c.done, completed: c.total > 0 && c.openItems.length === 0 };
   });
   var done = perParticipant.filter(function (x) { return x.completed; }).length;
   return { total: perParticipant.length, done: done, perParticipant: perParticipant, mode: 'participant' };
@@ -710,7 +710,7 @@ function listCompletedChecklists(user, p) {
           inspectionId: insp.id, disciplineName: insp.disciplineName, disciplineNameAr: insp.disciplineNameAr || '',
           phase: insp.phase, checklistType: checklistType, checklistTypeAr: items[0] ? (items[0].checklistTypeAr || '') : '',
           inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
-          participantId: pt.id, participantName: pt.name,
+          participantId: pt.id, participantName: pt.name, participantNameAr: pt.nameAr || '',
           done: items.length, total: items.length, lastRecordedAt: lastRecordedAt
         });
       });

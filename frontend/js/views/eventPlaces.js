@@ -85,7 +85,7 @@ async function tabParticipants(content, eventId, detail) {
       // isVenueWide (listPlaces, Places.gs) is only true for rows folded in from the venue's permanent
       // catalog -- badged here so it's obvious at a glance which rows came from Venues > Places vs
       // this event's own "New" form.
-      { key: 'name', label: t('col_name'), render: r => esc(r.name) + (r.isVenueWide
+      { key: 'name', label: t('col_name'), render: r => esc(bi_(r.name, r.nameAr)) + (r.isVenueWide
           ? ' <span class="badge badge-neutral" style="margin-left:6px;font-weight:600;">' + esc(t('venue_wide_badge')) + '</span>'
           : '') },
       { key: 'type', label: t('col_type') },
@@ -267,7 +267,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   function renderList_() {
     var visible = filteredParticipants_();
     tableWrapEl.innerHTML = UI.table((canManageDisciplines ? [{ key: 'select', label: '', render: r => '<input type="checkbox" class="participant-select" value="' + r.id + '" />' }] : []).concat([
-      { key: 'name', label: t('col_name') }, { key: 'type', label: t('col_type') },
+      { key: 'name', label: t('col_name'), render: r => esc(bi_(r.name, r.nameAr)) }, { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById, t('all_zones_option')) },
       { key: 'disciplineIds', label: Term('discipline_plural'), render: disciplineNamesFor_ }
     ]), visible, {});
@@ -372,7 +372,7 @@ function initParticipantDisciplineMap_(venue, zones, participants) {
       // the dot..." -- UI.placeMarkerIcon (ui.js) is the shared builder every map's dots go through.
       var icon = UI.placeMarkerIcon(color, pt.openFindingsCount);
       var marker = HululLeaflet.marker(latlng, { icon: icon }).addTo(participantDisciplineMapInstance_);
-      marker.bindTooltip(esc(pt.name), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
+      marker.bindTooltip(esc(bi_(pt.name, pt.nameAr)), { direction: 'top', offset: [0, -10], className: 'place-marker-tooltip' });
       participantDisciplineMarkers_[pt.id] = marker;
     });
     if (bounds.length) participantDisciplineMapInstance_.fitBounds(bounds, { padding: [24, 24], maxZoom: 17 });
@@ -413,6 +413,7 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
         UI.field(t('col_name'), '<input id="fEPName" class="field-input" />') +
+        UI.field(t('col_name_ar'), '<input id="fEPNameAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('col_type'), '<select id="fEPType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fEP') + '</div>' +
@@ -448,7 +449,7 @@ function wireEventPlaceForm_(eventId, venue, zones, places) {
       var name = document.getElementById('fEPName').value.trim();
       if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
       var payload = {
-        eventId: eventId, name: name, type: document.getElementById('fEPType').value,
+        eventId: eventId, name: name, nameAr: document.getElementById('fEPNameAr').value.trim(), type: document.getElementById('fEPType').value,
         zoneId: getZoneFieldValue_('fEP'), location: document.getElementById('fEPLocation').value,
         lat: document.getElementById('fEPLat').value, lng: document.getElementById('fEPLng').value
       };

@@ -1200,7 +1200,7 @@ async function venueTabPlaces_(content, venue) {
       : '') +
     (canManage ? renderAddPlaceCard_(zones, hasBoundary) : '') +
     '<div class="card"><div class="card-body"><div id="venuePlacesListWrap">' + UI.table([
-      { key: 'name', label: t('col_name') },
+      { key: 'name', label: t('col_name'), render: r => esc(bi_(r.name, r.nameAr)) },
       { key: 'type', label: t('col_type') },
       { key: 'zoneId', label: Term('zone'), render: r => zoneDisplayNames_(r.zoneId, zonesById) },
       { key: 'location', label: t('col_location'), render: r => r.location ? esc(r.location) : '—' },
@@ -1489,6 +1489,7 @@ function renderAddPlaceCard_(zones, hasBoundary) {
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
         UI.field(t('col_name'), '<input id="fPlName" class="field-input" />') +
+        UI.field(t('col_name_ar'), '<input id="fPlNameAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('col_type'), '<select id="fPlType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fPl') + '</div>' +
@@ -1524,7 +1525,7 @@ function wirePlaceForm_(venue, zones, places) {
       var name = document.getElementById('fPlName').value.trim();
       if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
       var payload = {
-        venueId: venue.id, name: name, type: document.getElementById('fPlType').value,
+        venueId: venue.id, name: name, nameAr: document.getElementById('fPlNameAr').value.trim(), type: document.getElementById('fPlType').value,
         zoneId: getZoneFieldValue_('fPl'), location: document.getElementById('fPlLocation').value,
         lat: document.getElementById('fPlLat').value, lng: document.getElementById('fPlLng').value
       };
@@ -1544,6 +1545,7 @@ function openEditPlaceModal_(place, zones) {
   var prefix = 'ePl';
   var body =
     UI.field(t('col_name'), '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
+    UI.field(t('col_name_ar'), '<input id="' + prefix + 'NameAr" class="field-input" dir="rtl" value="' + esc(place.nameAr || '') + '" />') +
     '<div class="form-row">' +
       UI.field(t('col_type'), '<select id="' + prefix + 'Type" class="field-input">' + placeTypeOptionsHtml_(place.type) + '</select>') +
       '<div>' + zoneFieldHtml_(zones, prefix) + '</div>' +
@@ -1561,7 +1563,7 @@ function openEditPlaceModal_(place, zones) {
           var name = document.getElementById(prefix + 'Name').value.trim();
           if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
           var payload = {
-            placeId: place.id, name: name, type: document.getElementById(prefix + 'Type').value,
+            placeId: place.id, name: name, nameAr: document.getElementById(prefix + 'NameAr').value.trim(), type: document.getElementById(prefix + 'Type').value,
             zoneId: getZoneFieldValue_(prefix), location: document.getElementById(prefix + 'Location').value,
             lat: document.getElementById(prefix + 'Lat').value, lng: document.getElementById(prefix + 'Lng').value
           };

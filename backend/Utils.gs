@@ -200,7 +200,13 @@ var SCHEMA = {
   // outside the venue boundary (see evidenceComposite_/prepare, evidence.js) -- entries with no badge
   // to show are never added, so this stays blank on the vast majority of findings. See enrichFinding_/
   // createFinding/addFindingEvidence below.
-  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId','evidenceMeta'],
+  // descriptionAr/suggestedActionAr -- REQ follow-up: "there will be no Arabic for Finding
+  // descriptions...!" appended at the end, same convention as every other *Ar column added so far --
+  // optional, blank on any pre-existing row created before this field existed. Unlike the catalog *Ar
+  // fields (Disciplines.nameAr etc.), these are filled in by whoever logs/edits the Finding itself,
+  // not a separate admin -- see the Arabic textareas next to Description/Suggested Action on the New
+  // Log and Edit Finding forms (findings.js).
+  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId','evidenceMeta','descriptionAr','suggestedActionAr'],
   // REQ: "Some inspectors are junior level and could use help. We have created a guide which should
   // give them a list of descriptions once they select the category and sub-category." A reference
   // catalogue (seeded once from the user's "Log Assistance Guide" spreadsheet, see
@@ -239,7 +245,11 @@ var SCHEMA = {
   // (e.g. a vendor attending just this one season), auto-deactivated once that Event ends (see
   // deactivateEndedEventPlaceAccounts in Places.gs) instead of persisting across every future Event
   // at the venue. Blank eventId = permanent/venue-wide, as before.
-  Participants:           ['id','eventId','type','name','zoneId','location','contactEmail','userId','createdAt','lat','lng','disciplineIds','venueId'],
+  // nameAr -- REQ follow-up: "Add an optional Arabic field to Findings (and ... Participants)."
+  // Participants don't actually have their own create/edit form -- a Participant's name is copied
+  // from its linked Place (provisionPlaceAccount_/updatePlace, Places.gs) whenever an account is
+  // provisioned/edited there, so nameAr is kept in sync the same way (blank on pre-existing rows).
+  Participants:           ['id','eventId','type','name','zoneId','location','contactEmail','userId','createdAt','lat','lng','disciplineIds','venueId','nameAr'],
   // A persistent, reusable, opaque login token minted once for a Place-account's auto-generated
   // login, so a QR code printed and left at that physical spot can encode just the token (never
   // the plaintext password) and keep working every shift, not just once -- see
@@ -338,7 +348,9 @@ var SCHEMA = {
   // every Event at the venue); set means this Place (and the Participant/login it provisions) only
   // exists for that one Event and gets deactivated once the Event ends -- see the Event Places page
   // (findings.js-style dedicated route) and deactivateEndedEventPlaceAccounts below.
-  Places:                 ['id','venueId','zoneId','name','type','location','lat','lng','createdBy','createdAt','accountIds','eventId'],
+  // nameAr -- REQ follow-up: "When turning platform to Arabic, some information is still in
+  // English" (Participants follow-up). Optional, admin/creator-filled, blank on pre-existing rows.
+  Places:                 ['id','venueId','zoneId','name','type','location','lat','lng','createdBy','createdAt','accountIds','eventId','nameAr'],
   // In-app technical support ticketing (see Support.gs) -- platform-level, not scoped to an Event or
   // Organization. screenshotUrl/voiceNoteUrl are the raiser's initial capture (see
   // frontend/js/views/support.js's raise-a-ticket flow); the back-and-forth after that lives in

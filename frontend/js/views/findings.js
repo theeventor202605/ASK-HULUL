@@ -302,10 +302,10 @@ function renderFindingPhotoTimeline_(container, findings, opts) {
             '<div class="photo-timeline-card" style="border-inline-start-color:' + rm.color + ';">' +
               '<div class="photo-timeline-meta">' +
                 '<span class="photo-timeline-time">' + esc(timeLabel_(f.createdAt)) + '</span>' +
-                '<strong>' + esc(f.participantName || '—') + '</strong>' +
+                '<strong>' + esc(bi_(f.participantName, f.participantNameAr) || '—') + '</strong>' +
                 UI.riskBadge(f.riskLevel) + UI.statusBadge(f.status) +
               '</div>' +
-              (f.description ? '<div class="photo-timeline-desc">' + esc(f.description) + '</div>' : '') +
+              (f.description ? '<div class="photo-timeline-desc">' + esc(bi_(f.description, f.descriptionAr)) + '</div>' : '') +
               '<div style="margin-top:10px;">' + evidenceThumbsHtml_(f.evidenceUrls, 140, f.evidenceMeta) + '</div>' +
               (creator ? '<div class="photo-timeline-credit">' + ICON('capture_photo') + ' ' + esc(t('photo_timeline_logged_by', { name: creator.name })) + '</div>' : '') +
             '</div>' +
@@ -418,12 +418,15 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
     el.addEventListener('mousedown', function (e) {
       e.preventDefault();
       var match = matches[Number(el.getAttribute('data-fg-idx'))];
-      // bi_() here (not a raw match.description) -- Findings themselves have no Arabic sibling field
-      // (out of scope, see i18n.js header), so an Arabic-mode inspector picking a suggestion should
-      // still get the Arabic text this catalog entry was authored with, since that's the only Arabic
-      // version of this description that will ever exist for them to start from.
-      descInput.value = bi_(match.description, match.descriptionAr);
-      if (match.suggestion) actionInput.value = bi_(match.suggestion, match.suggestionAr);
+      // Findings now have their own descriptionAr/suggestedActionAr fields (fDescAr/fActionAr,
+      // matching *Input.id + 'Ar' by convention) -- fill both languages straight from the guide entry
+      // rather than picking one via bi_(), since the logger can now keep (and edit) both.
+      descInput.value = match.description;
+      var descArInput = document.getElementById(descInput.id + 'Ar');
+      if (descArInput) descArInput.value = match.descriptionAr || '';
+      if (match.suggestion) actionInput.value = match.suggestion;
+      var actionArInput = document.getElementById(actionInput.id + 'Ar');
+      if (actionArInput) actionArInput.value = match.suggestionAr || '';
     });
   });
 }
@@ -632,9 +635,14 @@ async function renderNewFinding(params) {
           '<div id="fSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
         '</div>' +
         UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
+        // REQ follow-up: "Add an optional Arabic field to Findings" -- filled in by whoever logs the
+        // finding (not auto-translated); blank falls back to the English Description via bi_()
+        // wherever this Finding is displayed later.
+        UI.field(t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3"></textarea>') +
         // REQ follow-up: "Add Log Location (editable field below Description)."
         UI.field(t('field_log_location'), '<input id="fLogLocation" class="field-input" />') +
         UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
+        UI.field(t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Info</option><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
           UI.field(t('resolution_window_hours'), '<input id="fWindow" type="number" class="field-input" value="24" />') +
@@ -689,7 +697,7 @@ async function renderNewFinding(params) {
     pSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(Term('participant_plural')) + '</div>' +
       (pMatches.length
         ? pMatches.slice(0, 20).map(function (pt, i) {
-            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(bi_(pt.name, pt.nameAr)) +
               '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
           }).join('')
         : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
@@ -791,11 +799,12 @@ async function renderNewFinding(params) {
     });
   }
   function pickSuggestion_(g) {
-    var desc = bi_(g.description, g.descriptionAr);
-    sSearch.value = desc;
+    sSearch.value = g.description;
     sSuggest.style.display = 'none';
-    document.getElementById('fDesc').value = desc;
-    if (g.suggestion) document.getElementById('fAction').value = bi_(g.suggestion, g.suggestionAr);
+    document.getElementById('fDesc').value = g.description;
+    document.getElementById('fDescAr').value = g.descriptionAr || '';
+    if (g.suggestion) document.getElementById('fAction').value = g.suggestion;
+    document.getElementById('fActionAr').value = g.suggestionAr || '';
     var disc = disciplines.filter(function (d) { return d.name === g.category; })[0];
     if (disc) {
       document.getElementById('fDiscipline').value = disc.id;
@@ -884,6 +893,7 @@ async function renderNewFinding(params) {
       var f = await Api.call('createFinding', Object.assign({
         eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
+        descriptionAr: document.getElementById('fDescAr').value, suggestedActionAr: document.getElementById('fActionAr').value,
         category: document.getElementById('fChecklistType').value,
         // REQ follow-up: "Add Log Location (editable field below Description)." createFinding
         // (Findings.gs) already accepts location and falls back to the participant's own when blank.
@@ -961,7 +971,7 @@ async function renderEditFinding(params) {
   checklistItems.forEach(function (c) { if (c.checklistType && c.checklistTypeAr && !typeArByType_[c.checklistType]) typeArByType_[c.checklistType] = c.checklistTypeAr; });
 
   root.innerHTML =
-    '<div class="breadcrumb"><a href="#/events/' + eventId + '/findings/' + findingId + '">' + esc(finding.description || t('tab_findings')) + '</a></div>' +
+    '<div class="breadcrumb"><a href="#/events/' + eventId + '/findings/' + findingId + '">' + esc(bi_(finding.description, finding.descriptionAr) || t('tab_findings')) + '</a></div>' +
     '<div class="page-header"><div><div class="page-title">' + esc(t('edit_x_title', { term: Term('finding') })) + '</div>' +
     '<div class="page-subtitle">' + esc(t('edit_finding_subtitle', { term: Term('finding').toLowerCase() })) + '</div></div>' +
     '<button class="btn btn-secondary" id="backEditFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
@@ -975,8 +985,10 @@ async function renderEditFinding(params) {
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(bi_(d.name, d.nameAr)) + '</option>'; }).join('') + '</select>') +
       UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
       UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
+      UI.field(t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3">' + esc(finding.descriptionAr || '') + '</textarea>') +
       '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
       UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
+      UI.field(t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" value="' + esc(finding.suggestedActionAr || '') + '" />') +
       UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
         ['Info', 'Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
       '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('save_changes')) + '</button>' +
@@ -996,7 +1008,7 @@ async function renderEditFinding(params) {
     pSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(Term('participant_plural')) + '</div>' +
       (pMatches.length
         ? pMatches.slice(0, 20).map(function (pt, i) {
-            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(pt.name) +
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(bi_(pt.name, pt.nameAr)) +
               '<span class="muted" style="font-size:11px;"> · ' + esc(pt.type) + '</span></div>';
           }).join('')
         : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
@@ -1061,6 +1073,7 @@ async function renderEditFinding(params) {
       await Api.call('updateFinding', {
         findingId: findingId, participantId: selectedParticipant.id, disciplineId: disciplineId,
         description: document.getElementById('fDesc').value, suggestedAction: document.getElementById('fAction').value,
+        descriptionAr: document.getElementById('fDescAr').value, suggestedActionAr: document.getElementById('fActionAr').value,
         // Same "blank -> Other" convention createFinding applies at creation time -- updateFinding
         // itself doesn't reapply it (see its own comment), so it's done here instead.
         category: document.getElementById('fChecklistType').value || 'Other',
@@ -1324,7 +1337,7 @@ async function renderFindingDetail(params) {
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
-    '<div class="page-header"><div><div class="page-title">' + esc(finding.description || '(no description)') + '</div>' +
+    '<div class="page-header"><div><div class="page-title">' + esc(bi_(finding.description, finding.descriptionAr) || '(no description)') + '</div>' +
     '<div class="page-subtitle">' + esc(bi_(finding.disciplineName, finding.disciplineNameAr) || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
 
@@ -1344,7 +1357,7 @@ async function renderFindingDetail(params) {
       findingHeroStripHtml_(finding) +
       '<div class="card-body">' +
         '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
-          findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
+          findingMetaChipHtml_('👤', Term('participant'), esc(bi_(finding.participantName, finding.participantNameAr) || '—')) +
           findingMetaChipHtml_('📍', t('sub_x', { term: Term('zone').toLowerCase() }), esc(finding.subZone || '—')) +
           findingMetaChipHtml_('🧩', Term('discipline'), esc(bi_(finding.disciplineName, finding.disciplineNameAr) || '—')) +
           // REQ: "Throughout the platform change: Discipline to Category." Discipline now displays as
@@ -1376,10 +1389,10 @@ async function renderFindingDetail(params) {
           : '') +
         '<div style="background:var(--surface);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">' +
           '<div class="field-label" style="margin-top:0;">' + esc(t('description')) + '</div>' +
-          '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(finding.description || '—') + '</div>' +
+          '<div style="font-size:15px;line-height:1.55;margin-top:4px;color:var(--text-900);">' + esc(bi_(finding.description, finding.descriptionAr) || '—') + '</div>' +
         '</div>' +
         (finding.suggestedAction
-          ? '<div style="margin-bottom:16px;">' + detailField_(t('suggested_action'), esc(finding.suggestedAction)) + '</div>'
+          ? '<div style="margin-bottom:16px;">' + detailField_(t('suggested_action'), esc(bi_(finding.suggestedAction, finding.suggestedActionAr))) + '</div>'
           : '') +
         '<div class="field-label" style="margin-bottom:8px;">' + esc(t('risk_logging_evidence')) + '</div>' +
         evidenceThumbsHtml_(finding.evidenceUrls, 168, finding.evidenceMeta, { findingId: findingId, deletable: true }) +
@@ -1436,7 +1449,7 @@ function findingResolutionHistoryRowHtml_(r) {
 function assignOperatorSectionHtml_(finding, canAssign, operators) {
   if (!canAssign) return '';
   var options = '<option value="">' + esc(t('assign_operator_unassigned_option')) + '</option>' +
-    operators.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === finding.participantId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('');
+    operators.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === finding.participantId ? ' selected' : '') + '>' + esc(bi_(o.name, o.nameAr)) + '</option>'; }).join('');
   return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('assign_operator_title')) + '</div></div>' +
     '<div class="card-body">' +
       (operators.length ? '' : '<div class="muted" style="font-size:12px;margin-bottom:8px;">' + esc(t('assign_operator_none_hint')) + '</div>') +

@@ -2624,8 +2624,8 @@ async function tabCompletedChecklists(content, eventId, detail) {
     UI.table([
       { key: 'participantName', label: Term('participant'), render: r =>
           canRecordInspection_({ inspectorId: r.inspectorId })
-            ? '<a href="#/events/' + esc(eventId) + '/completed-checklist/' + esc(r.inspectionId) + '/' + esc(r.participantId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.participantName) + '</a>'
-            : esc(r.participantName)
+            ? '<a href="#/events/' + esc(eventId) + '/completed-checklist/' + esc(r.inspectionId) + '/' + esc(r.participantId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(bi_(r.participantName, r.participantNameAr)) + '</a>'
+            : esc(bi_(r.participantName, r.participantNameAr))
       },
       { key: 'disciplineName', label: Term('discipline'), render: r => esc(bi_(r.disciplineName, r.disciplineNameAr)) },
       // REQ follow-up: "Not all sub-categories are applicable ... when Sub-Category of a checklist is
@@ -3883,7 +3883,7 @@ async function tabFindings(content, eventId, detail) {
           evidenceOutsideBadgeHtml_(evidenceMetaFor_(r.evidenceMeta, last)) +
         '</div>';
       } },
-      { key: 'participantName', label: Term('participant') },
+      { key: 'participantName', label: Term('participant'), render: r => esc(bi_(r.participantName, r.participantNameAr)) },
       // Category -- REQ: "Category Code as Category," i.e. the Discipline's short code (see
       // enrichFinding_, Findings.gs), not its full name, to keep this column compact.
       { key: 'disciplineCode', label: Term('discipline'), render: r => esc(r.disciplineCode || r.disciplineName || '—') },
@@ -3904,8 +3904,8 @@ async function tabFindings(content, eventId, detail) {
       // increments on every rejection regardless of outcome (every rejection lands back on ReOpen,
       // see reviewFindingResolution) -- this is the one visible place it's surfaced as a plain count.
       { key: 'reopenCount', label: t('col_rejection_count'), render: r => r.reopenCount || 0 },
-      { key: 'description', label: t('field_description') },
-      { key: 'suggestedAction', label: t('col_suggestion'), render: r => esc(r.suggestedAction || '—') },
+      { key: 'description', label: t('field_description'), render: r => esc(bi_(r.description, r.descriptionAr)) },
+      { key: 'suggestedAction', label: t('col_suggestion'), render: r => esc(bi_(r.suggestedAction, r.suggestedActionAr) || '—') },
       { key: 'location', label: t('field_log_location'), render: r => esc(r.location || '—') },
       { key: 'createdAt', label: t('col_date_time'), render: r => UI.fmtDate(r.createdAt) },
       { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || r.createdBy || '—') }

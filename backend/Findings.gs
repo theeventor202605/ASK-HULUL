@@ -76,6 +76,9 @@ function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById
   }
   return Object.assign({}, f, {
     participantName: pt ? pt.name : '',
+    // REQ follow-up: "Add an optional Arabic field to Findings (and ... Participants)" -- a
+    // Participant's nameAr is sourced from its Place (provisionPlaceAccount_/updatePlace, Places.gs).
+    participantNameAr: pt ? pt.nameAr : '',
     disciplineName: d ? d.name : '',
     disciplineNameAr: d ? d.nameAr : '',
     subCategoryAr: subCategoryAr,
@@ -171,6 +174,10 @@ function createFinding(user, p) {
     // REQ: "Checklist Type: should be picked if left blank it will reflect as Other."
     category: p.category || 'Other', subCategory: p.subCategory || '', description: p.description,
     suggestedAction: p.suggestedAction || '', riskLevel: p.riskLevel,
+    // REQ follow-up: "there will be no Arabic for Finding descriptions...!" -- optional, filled in by
+    // whoever logs the finding (not auto-translated), same "blank = fall back to English" rule bi_()
+    // applies everywhere else.
+    descriptionAr: p.descriptionAr || '', suggestedActionAr: p.suggestedActionAr || '',
     resolutionWindowAt: new Date(Date.now() + Number(windowHours) * 3600 * 1000).toISOString(),
     nextInspectionAt: p.nextInspectionAt || '', participantId: p.participantId,
     subZone: p.subZone || (zone ? zone.name : ''), location: p.location || participant.location || '',
@@ -204,7 +211,7 @@ function updateFinding(user, p) {
   // status is deliberately NOT patchable here -- it only moves through the workflow actions below
   // (viewFinding / resolveFinding / reviewFindingResolution), each of which enforces its own
   // valid-from-status + role + evidence/remarks rules that a raw status edit would bypass.
-  ['description', 'suggestedAction', 'riskLevel', 'subZone', 'location', 'participantId', 'disciplineId', 'category', 'subCategory'].forEach(function (f) {
+  ['description', 'suggestedAction', 'descriptionAr', 'suggestedActionAr', 'riskLevel', 'subZone', 'location', 'participantId', 'disciplineId', 'category', 'subCategory'].forEach(function (f) {
     if (p[f] !== undefined) patch[f] = p[f];
   });
   var updated = updateRow('Findings', p.findingId, patch);

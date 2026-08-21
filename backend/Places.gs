@@ -188,7 +188,10 @@ function createPlace(user, p) {
   var place = {
     id: newId('Places'), venueId: venueId, zoneId: p.zoneId || '', name: p.name, type: p.type,
     location: p.location || '', lat: lat, lng: lng, createdBy: user.id, createdAt: nowIso_(), accountIds: '',
-    eventId: event ? event.id : ''
+    eventId: event ? event.id : '',
+    // REQ follow-up: "Add an optional Arabic field to ... Participants" -- a Participant's name is
+    // sourced from its Place (provisionPlaceAccount_ below), so nameAr lives here too.
+    nameAr: p.nameAr || ''
   };
   insertRow('Places', place);
   audit(user.id, 'CREATE_PLACE', 'Places', place.id, { type: p.type, eventId: place.eventId });
@@ -315,12 +318,13 @@ function updatePlace(user, p) {
   }
 
   var location = p.location !== undefined ? p.location : place.location;
+  var nameAr = p.nameAr !== undefined ? String(p.nameAr).trim() : place.nameAr;
 
-  updateRow('Places', place.id, { name: name, type: type, zoneId: zoneId || '', location: location || '', lat: lat, lng: lng });
+  updateRow('Places', place.id, { name: name, nameAr: nameAr || '', type: type, zoneId: zoneId || '', location: location || '', lat: lat, lng: lng });
 
   var accountIds = place.accountIds ? String(place.accountIds).split(',').filter(Boolean) : [];
   if (accountIds.length) {
-    var sharedPatch = { name: name, zoneId: zoneId || '', location: location || '', lat: lat, lng: lng };
+    var sharedPatch = { name: name, nameAr: nameAr || '', zoneId: zoneId || '', location: location || '', lat: lat, lng: lng };
     getAll('Participants').forEach(function (pt) {
       if (accountIds.indexOf(pt.userId) !== -1) updateRow('Participants', pt.id, sharedPatch);
     });
@@ -402,7 +406,7 @@ function provisionPlaceAccount_(actingUser, place, event) {
   var participant = {
     id: newId('Participants'), eventId: place.eventId || '', venueId: place.venueId, type: place.type, name: place.name,
     zoneId: place.zoneId || '', location: place.location || '', contactEmail: email, userId: loginUser.id,
-    createdAt: nowIso_(), lat: place.lat, lng: place.lng, disciplineIds: ''
+    createdAt: nowIso_(), lat: place.lat, lng: place.lng, disciplineIds: '', nameAr: place.nameAr || ''
   };
   insertRow('Participants', participant);
 
