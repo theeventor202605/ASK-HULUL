@@ -21,11 +21,20 @@
  * untouched -- mostly SystemAdmin-only bootstrapping (account/org creation, escalation/template
  * config) that intentionally isn't meant to become admin-configurable.
  *
- * Storage: a single global row (id 'GLOBAL') in the Permissions sheet holding a JSON blob of
- * permissionKey -> array of role codes -- same one-row-JSON-blob convention as AppIcons
- * (getAppIcons/setAppIcons, Accounts.gs). A key absent from the blob simply means "no override yet,
- * use the default" -- so a brand new install (empty Permissions sheet) behaves byte-for-byte like the
- * old hardcoded requireRole calls.
+ * Storage: a single global row (id 'GLOBAL') in the Permissions sheet holding a JSON blob -- same
+ * one-row-JSON-blob convention as AppIcons (getAppIcons/setAppIcons, Accounts.gs). A key absent from
+ * the blob simply means "no override yet, use the default" -- so a brand new install (empty
+ * Permissions sheet) behaves byte-for-byte like the old hardcoded requireRole calls.
+ *
+ * REQ follow-up: "set for an Organisation the permissions they can set ... when an organization's
+ * admin wants to reconfigure permissions they can but are limited according to system admin
+ * Organization set permissions." The blob now has two layers -- overrides.global (what used to be the
+ * WHOLE blob: a SystemAdmin's platform-wide default) and overrides.orgs[orgId] (one Organization's own
+ * override, settable only by that org's own GAAdmin/EMCAdmin/InspectionAdmin, only for a key their org
+ * has been unlocked for via Organizations.permissionCeilingJson/setOrgPermissionCeiling). See
+ * effectivePermissionRoles_'s own comment for exactly how the two layers + the built-in default
+ * resolve, and requirePermission's for why this needed no changes at any of its ~90 existing call
+ * sites.
  */
 
 // The permission catalog. Each entry's defaultRoles is exactly the allowedRoles array that used to be
@@ -407,10 +416,25 @@ var PERMISSION_REGISTRY_ = {
   }
 };
 
+// REQ: "In Permissions I would like to set for an Organisation the permissions they can set. So when
+// an organization's admin wants to reconfigure permissions they can but are limited according to
+// system admin Organization set permissions." Two layers now live in this same JSON blob:
+//   overrides.global  -- exactly what used to be the whole blob before this REQ: a SystemAdmin's
+//                        platform-wide override, applies to every org that hasn't set its own.
+//   overrides.orgs[orgId] -- one Organization's own override of a permission key, settable ONLY by
+//                        that org's own GAAdmin/EMCAdmin/InspectionAdmin, and ONLY for a key their
+//                        org has been unlocked for (Organizations.permissionCeilingJson, set by
+//                        SystemAdmin via setOrgPermissionCeiling below).
+// getPermissionOverrides_ back-compat-parses the OLD flat {key:[roles]} shape (no global/orgs wrapper)
+// as if it were `global` -- so every override a SystemAdmin already saved before this REQ keeps
+// working unchanged, no migration script needed.
 function getPermissionOverrides_() {
   var row = findWhere('Permissions', function (r) { return r.id === 'GLOBAL'; })[0];
-  if (!row || !row.overridesJson) return {};
-  try { return JSON.parse(row.overridesJson); } catch (e) { return {}; }
+  if (!row || !row.overridesJson) return { global: {}, orgs: {} };
+  var parsed;
+  try { parsed = JSON.parse(row.overridesJson); } catch (e) { return { global: {}, orgs: {} }; }
+  if (parsed && !parsed.global && !parsed.orgs) return { global: parsed, orgs: {} };
+  return { global: (parsed && parsed.global) || {}, orgs: (parsed && parsed.orgs) || {} };
 }
 
 function savePermissionOverrides_(user, overrides) {
@@ -420,22 +444,32 @@ function savePermissionOverrides_(user, overrides) {
   else insertRow('Permissions', Object.assign({ id: 'GLOBAL' }, row));
 }
 
-// The role list actually in effect for a permission key right now -- an admin override if one's been
-// saved for it, else the key's built-in default. Falls back to an empty array (nobody allowed) for an
-// unknown key rather than throwing, so a stale override referencing a since-removed key can't crash a
-// live request.
-function effectivePermissionRoles_(key, overrides) {
+// The role list actually in effect for a permission key right now, for ONE org (or none, for
+// SystemAdmin/platform-level checks): that org's own override if it has one, else the platform-wide
+// override if a SystemAdmin has set one, else the key's built-in default. Falls back to an empty array
+// (nobody allowed) for an unknown key rather than throwing, so a stale override referencing a
+// since-removed key can't crash a live request.
+function effectivePermissionRoles_(key, overrides, orgId) {
   var entry = PERMISSION_REGISTRY_[key];
   if (!entry) return [];
-  var override = overrides ? overrides[key] : undefined;
-  return (override && override.length) ? override : entry.defaultRoles;
+  var orgOverride = orgId && overrides.orgs ? overrides.orgs[orgId] : null;
+  if (orgOverride && orgOverride[key] && orgOverride[key].length) return orgOverride[key];
+  var globalOverride = overrides.global ? overrides.global[key] : undefined;
+  if (globalOverride && globalOverride.length) return globalOverride;
+  return entry.defaultRoles;
 }
 
 // Drop-in replacement for requireRole at any migrated call site -- same signature plus the
-// permission key in place of a literal allowedRoles array.
+// permission key in place of a literal allowedRoles array. Org-scoping is always the ACTING user's own
+// orgId (never contextOrgId, which keeps its pre-existing, unrelated job below of listing "who at that
+// org could do this" in the 403 message) -- so a permission check for a GA/EMC/Inspection-org user
+// always reflects THEIR OWN organization's override, regardless of which org's data they're touching,
+// and SystemAdmin (no orgId of their own) always sees the platform-wide default, never any single org's
+// override. This is what makes an org's admin's Settings > Permissions edits affect only their own
+// org's staff, with no changes needed at any of this function's ~90 existing call sites.
 function requirePermission(user, key, contextOrgId) {
   if (!PERMISSION_REGISTRY_[key]) throw new HululError('SERVER_ERROR', 'Unknown permission key: ' + key);
-  var roles = effectivePermissionRoles_(key, getPermissionOverrides_());
+  var roles = effectivePermissionRoles_(key, getPermissionOverrides_(), user && user.orgId);
   return requireRole(user, roles, contextOrgId);
 }
 
@@ -444,63 +478,161 @@ function requirePermission(user, key, contextOrgId) {
 // whole request when they can't. Returns false (not an error) for a signed-out user.
 function hasPermissionRole_(user, key) {
   if (!user) return false;
-  return effectivePermissionRoles_(key, getPermissionOverrides_()).indexOf(user.role) !== -1;
+  return effectivePermissionRoles_(key, getPermissionOverrides_(), user.orgId).indexOf(user.role) !== -1;
 }
 
-// SystemAdmin-only: the full catalog (every registered key, its module/label/defaultRoles) merged
-// with whatever's currently overridden, for the Settings > Permissions admin screen. allRoles (every
-// role code + display label) rides along too -- same "server hands back its own picklist" convention
-// as getEscalationConfig (Resolutions.gs), so the frontend never needs its own hardcoded copy of the
-// role list.
-function listPermissions(user, p) {
+// Every GA/EMC/Inspection Company "org admin" role -- the tier REQ means by "an organization's admin".
+var ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin']; // plain strings, not ROLES.X -- see
+// the load-order note above PERMISSION_REGISTRY_: Permissions.gs (P) loads before Utils.gs (U).
+
+// Which permission keys `orgId`'s own admin has been unlocked to reconfigure themselves -- set by
+// SystemAdmin via setOrgPermissionCeiling. Blank/malformed -> empty (nothing unlocked), never throws,
+// same defensive convention as effectivePermissionRoles_ above.
+function getOrgPermissionCeiling_(orgId) {
+  if (!orgId) return [];
+  var org = getById('Organizations', orgId);
+  if (!org || !org.permissionCeilingJson) return [];
+  try {
+    var arr = JSON.parse(org.permissionCeilingJson);
+    return Array.isArray(arr) ? arr.filter(function (k) { return !!PERMISSION_REGISTRY_[k]; }) : [];
+  } catch (e) { return []; }
+}
+
+// SystemAdmin-only: the full catalog (every registered key, its module/label/page) so the ceiling
+// editor (Settings > Permissions) can render a checklist without a second endpoint, plus which keys
+// `p.orgId` is currently unlocked for.
+function getOrgPermissionCeiling(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
-  var overrides = getPermissionOverrides_();
-  var permissions = Object.keys(PERMISSION_REGISTRY_).map(function (key) {
+  if (!p || !p.orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
+  var org = getById('Organizations', p.orgId);
+  if (!org) throw new HululError('NOT_FOUND', 'Organization not found');
+  var catalog = Object.keys(PERMISSION_REGISTRY_).map(function (key) {
     var entry = PERMISSION_REGISTRY_[key];
-    var override = overrides[key];
+    return { key: key, module: entry.module, label: entry.label, page: entry.page || null };
+  });
+  return { orgId: p.orgId, keys: getOrgPermissionCeiling_(p.orgId), catalog: catalog };
+}
+
+// SystemAdmin-only: set which permission keys `p.orgId`'s own admin may reconfigure. Replaces the
+// whole set (not a per-key toggle endpoint) -- the frontend always sends the full checked list, same
+// "resend everything" convention as updateInspectionResult's full-item-array saves.
+function setOrgPermissionCeiling(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  if (!p || !p.orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
+  var org = getById('Organizations', p.orgId);
+  if (!org) throw new HululError('NOT_FOUND', 'Organization not found');
+  var keys = Array.isArray(p.keys) ? p.keys.filter(function (k) { return !!PERMISSION_REGISTRY_[k]; }) : [];
+  updateRow('Organizations', p.orgId, { permissionCeilingJson: JSON.stringify(keys) });
+  audit(user.id, 'SET_ORG_PERMISSION_CEILING', 'Organizations', p.orgId, { keys: keys });
+  return { orgId: p.orgId, keys: keys };
+}
+
+// SystemAdmin sees the full platform-wide catalog + current global overrides (unchanged behavior from
+// before this REQ). An org admin (ORG_ADMIN_ROLES_) sees a FILTERED view instead: only the permission
+// keys their own org has been unlocked for (getOrgPermissionCeiling_), each showing what's currently
+// effective for their org (their own org-scoped override if they've already set one, else whatever the
+// platform-wide default currently is, so their starting point in the editor is accurate). allRoles
+// (every role code + display label) rides along either way -- same "server hands back its own
+// picklist" convention as getEscalationConfig (Resolutions.gs).
+function listPermissions(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  var overrides = getPermissionOverrides_();
+  var allRoles = allRolePicklist_();
+
+  if (user.role === ROLES.SYSTEM_ADMIN) {
+    var permissions = Object.keys(PERMISSION_REGISTRY_).map(function (key) {
+      var entry = PERMISSION_REGISTRY_[key];
+      var override = overrides.global[key];
+      return {
+        key: key, module: entry.module, label: entry.label,
+        page: entry.page || null, crud: entry.crud || [],
+        defaultRoles: entry.defaultRoles,
+        roles: (override && override.length) ? override : entry.defaultRoles,
+        isOverridden: !!(override && override.length)
+      };
+    });
+    return { permissions: permissions, allRoles: allRoles, scope: 'global' };
+  }
+
+  if (ORG_ADMIN_ROLES_.indexOf(user.role) === -1) throw new HululError('FORBIDDEN', 'Not permitted to view permissions');
+  if (!user.orgId) throw new HululError('FORBIDDEN', 'No organization on this account');
+  var ceiling = getOrgPermissionCeiling_(user.orgId);
+  var orgOverrides = (overrides.orgs && overrides.orgs[user.orgId]) || {};
+  var scopedPermissions = ceiling.map(function (key) {
+    var entry = PERMISSION_REGISTRY_[key];
+    if (!entry) return null;
+    var override = orgOverrides[key];
     return {
       key: key, module: entry.module, label: entry.label,
       page: entry.page || null, crud: entry.crud || [],
-      defaultRoles: entry.defaultRoles,
-      roles: (override && override.length) ? override : entry.defaultRoles,
+      defaultRoles: effectivePermissionRoles_(key, overrides, null), // the platform default (no org
+      // scoping) -- shown in the editor as "Reset to" target, same meaning defaultRoles has for
+      // SystemAdmin's own view above.
+      roles: (override && override.length) ? override : effectivePermissionRoles_(key, overrides, user.orgId),
       isOverridden: !!(override && override.length)
     };
-  });
-  // allRolePicklist_ (Roles.gs) is built-in ROLES + any active custom roles -- a custom role needs to
-  // show up here to be checkable in the CRUD matrix's role-chip editor at all.
-  var allRoles = allRolePicklist_();
-  return { permissions: permissions, allRoles: allRoles };
+  }).filter(Boolean);
+  return { permissions: scopedPermissions, allRoles: allRoles, scope: 'org', orgId: user.orgId };
 }
 
-// SystemAdmin-only: set the effective role list for one permission key.
+// SystemAdmin: sets the platform-wide default for one permission key (unchanged behavior). An org
+// admin: sets THEIR OWN org's override instead -- gated to only keys their org has been unlocked for
+// (getOrgPermissionCeiling_), and never allowed to grant the SystemAdmin role itself through this path
+// (belt-and-suspenders on top of the org-scoping in effectivePermissionRoles_ already making such a
+// grant a no-op in practice, since SystemAdmin has no orgId of its own to be scoped by).
 function updatePermission(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
   if (!p || !p.key || !PERMISSION_REGISTRY_[p.key]) throw new HululError('BAD_REQUEST', 'A valid permission key is required');
   if (!p.roles || !p.roles.length) throw new HululError('BAD_REQUEST', 'At least one role must be allowed');
   var validRoles = allRoleCodes_(); // built-in + active custom roles (Roles.gs) -- else a grant to a
   // newly-created custom role would be silently filtered out right here and never actually save.
   var clean = p.roles.filter(function (r) { return validRoles.indexOf(r) !== -1; });
-  if (!clean.length) throw new HululError('BAD_REQUEST', 'No valid roles supplied');
-  var overrides = getPermissionOverrides_();
-  overrides[p.key] = clean;
-  savePermissionOverrides_(user, overrides);
-  audit(user.id, 'UPDATE_PERMISSION', 'Permissions', p.key, { roles: clean });
-  return { key: p.key, roles: clean };
+
+  if (user.role === ROLES.SYSTEM_ADMIN) {
+    if (!clean.length) throw new HululError('BAD_REQUEST', 'No valid roles supplied');
+    var overrides = getPermissionOverrides_();
+    overrides.global[p.key] = clean;
+    savePermissionOverrides_(user, overrides);
+    audit(user.id, 'UPDATE_PERMISSION', 'Permissions', p.key, { roles: clean, scope: 'global' });
+    return { key: p.key, roles: clean };
+  }
+
+  if (ORG_ADMIN_ROLES_.indexOf(user.role) === -1 || !user.orgId) throw new HululError('FORBIDDEN', 'Not permitted to change permissions');
+  var ceiling = getOrgPermissionCeiling_(user.orgId);
+  if (ceiling.indexOf(p.key) === -1) throw new HululError('FORBIDDEN', 'Your organization has not been granted control over this permission');
+  var orgClean = clean.filter(function (r) { return r !== ROLES.SYSTEM_ADMIN; });
+  if (!orgClean.length) throw new HululError('BAD_REQUEST', 'No valid roles supplied');
+  var orgOverrides_ = getPermissionOverrides_();
+  if (!orgOverrides_.orgs[user.orgId]) orgOverrides_.orgs[user.orgId] = {};
+  orgOverrides_.orgs[user.orgId][p.key] = orgClean;
+  savePermissionOverrides_(user, orgOverrides_);
+  audit(user.id, 'UPDATE_PERMISSION', 'Permissions', p.key, { roles: orgClean, scope: 'org', orgId: user.orgId });
+  return { key: p.key, roles: orgClean };
 }
 
-// SystemAdmin-only: clear an override, reverting a permission key back to its built-in default.
+// Symmetric with updatePermission -- SystemAdmin clears the platform-wide override; an org admin
+// clears (only) their own org's override, both reverting to whatever's effective one level up.
 function resetPermission(user, p) {
-  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
   if (!p || !p.key || !PERMISSION_REGISTRY_[p.key]) throw new HululError('BAD_REQUEST', 'A valid permission key is required');
   var overrides = getPermissionOverrides_();
-  delete overrides[p.key];
+
+  if (user.role === ROLES.SYSTEM_ADMIN) {
+    delete overrides.global[p.key];
+    savePermissionOverrides_(user, overrides);
+    audit(user.id, 'RESET_PERMISSION', 'Permissions', p.key, { scope: 'global' });
+    return { key: p.key, roles: PERMISSION_REGISTRY_[p.key].defaultRoles };
+  }
+
+  if (ORG_ADMIN_ROLES_.indexOf(user.role) === -1 || !user.orgId) throw new HululError('FORBIDDEN', 'Not permitted to change permissions');
+  if (overrides.orgs[user.orgId]) delete overrides.orgs[user.orgId][p.key];
   savePermissionOverrides_(user, overrides);
-  audit(user.id, 'RESET_PERMISSION', 'Permissions', p.key, {});
-  return { key: p.key, roles: PERMISSION_REGISTRY_[p.key].defaultRoles };
+  audit(user.id, 'RESET_PERMISSION', 'Permissions', p.key, { scope: 'org', orgId: user.orgId });
+  return { key: p.key, roles: effectivePermissionRoles_(p.key, overrides, null) };
 }
 
-// Any authenticated user: a plain boolean map (permissionKey -> can-I-do-this) for their OWN role,
-// covering every registered key -- this (not listPermissions, which is SystemAdmin-only and exposes
+// Any authenticated user: a plain boolean map (permissionKey -> can-I-do-this) for their OWN role AND
+// org, covering every registered key -- this (not listPermissions, which is admin-only and exposes
 // every role's access) is what the frontend fetches once at login and uses to show/hide
 // create/edit/delete controls consistently with what the backend will actually allow.
 function getMyPermissions(user, p) {
@@ -508,7 +640,7 @@ function getMyPermissions(user, p) {
   var overrides = getPermissionOverrides_();
   var out = {};
   Object.keys(PERMISSION_REGISTRY_).forEach(function (key) {
-    out[key] = effectivePermissionRoles_(key, overrides).indexOf(user.role) !== -1;
+    out[key] = effectivePermissionRoles_(key, overrides, user.orgId).indexOf(user.role) !== -1;
   });
   return out;
 }
@@ -531,7 +663,7 @@ function getMyPageAccess(user, p) {
   Object.keys(PERMISSION_REGISTRY_).forEach(function (key) {
     var entry = PERMISSION_REGISTRY_[key];
     if (!entry.page || pages[entry.page]) return;
-    if (effectivePermissionRoles_(key, overrides).indexOf(user.role) !== -1) pages[entry.page] = true;
+    if (effectivePermissionRoles_(key, overrides, user.orgId).indexOf(user.role) !== -1) pages[entry.page] = true;
   });
   return pages;
 }

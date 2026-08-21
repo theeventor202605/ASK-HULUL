@@ -96,6 +96,11 @@ var ROUTES = {
   listPermissions: function (u, p) { return listPermissions(u, p); },
   updatePermission: function (u, p) { return updatePermission(u, p); },
   resetPermission: function (u, p) { return resetPermission(u, p); },
+  // REQ: "set for an Organisation the permissions they can set" -- SystemAdmin-only ceiling editor;
+  // listPermissions/updatePermission/resetPermission above already branch on the ACTING user's own
+  // role/org to enforce it (Permissions.gs), no separate routes needed for the org-admin side.
+  getOrgPermissionCeiling: function (u, p) { return getOrgPermissionCeiling(u, p); },
+  setOrgPermissionCeiling: function (u, p) { return setOrgPermissionCeiling(u, p); },
   getMyPermissions: function (u, p) { return getMyPermissions(u, p); },
   getMyPageAccess: function (u, p) { return getMyPageAccess(u, p); },
   // Translation Hub (Translations.gs) -- REQ: dedicated worklist for a translator team, with

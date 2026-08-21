@@ -14,7 +14,12 @@ var SCHEMA = {
   // {geoEnabled, geoPosition, qrEnabled, qrPosition} for the geolocation stamp + QR code. Blank/absent
   // means "use the pre-existing hardcoded defaults" -- see photoProps_ (Accounts.gs). Same single-JSON-
   // column pattern as AppIcons.iconsJson, just scoped per-org instead of one global row.
-  Organizations:          ['id','type','name','status','createdAt','logoUrl','domain','photoPropsJson'],
+  // permissionCeilingJson appended at the end -- blank on any pre-existing row (an org with no ceiling
+  // set yet simply has nothing its own admin can reconfigure, same "blank means not configured" convention
+  // as photoPropsJson above). REQ: "set for an Organisation the permissions they can set" -- a JSON array
+  // of PERMISSION_REGISTRY_ keys (Permissions.gs) this org's own GAAdmin/EMCAdmin/InspectionAdmin may
+  // edit for their own org via the Settings > Permissions tab; see getOrgPermissionCeiling_.
+  Organizations:          ['id','type','name','status','createdAt','logoUrl','domain','photoPropsJson','permissionCeilingJson'],
   // unavailable/unavailableReason/unavailableSince appended at the end -- REQ: "If a user is absent
   // then he will be added to list in this page as unavailable" (Sidebar Re-assignment, see
   // Reassignment.gs). Deliberately separate from `status` (Active/Inactive, which gates login) --

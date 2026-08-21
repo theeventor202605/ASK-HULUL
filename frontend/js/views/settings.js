@@ -6,6 +6,13 @@
  */
 var ICON_MANAGE_ROLES = ['SystemAdmin'];
 var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
+// REQ: "In Permissions I would like to set for an Organisation the permissions they can set. So when
+// an organization's admin wants to reconfigure permissions they can but are limited according to
+// system admin Organization set permissions." Opens the Permissions tab itself to an org's own admin
+// too -- but NOT the Roles/Mandatory Operators tabs (still PERMISSIONS_MANAGE_ROLES/SystemAdmin-only
+// above, unchanged), since those are platform-wide catalogs, not something the backend scopes per org
+// the way listPermissions/updatePermission/resetPermission now do (Permissions.gs).
+var PERMISSIONS_ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin'];
 // REQ follow-up: "check the tabs within Config, move what's still needed into Settings." The old
 // standalone Config page (frontend/js/views/config.js, now deleted) had 3 tabs: General (a raw
 // Config-sheet key/value editor), Process (readiness-template uploader/reviewer roles), and
@@ -40,6 +47,7 @@ async function renderSettings(params) {
   var canManageLabels = hasPermission('orgLabels.manage');
   var canManageIcons = ICON_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManagePermissions = PERMISSIONS_MANAGE_ROLES.indexOf(u.role) !== -1;
+  var canViewPermissionsTab = canManagePermissions || PERMISSIONS_ORG_ADMIN_ROLES_.indexOf(u.role) !== -1;
   var canManageConfig = CONFIG_MANAGE_ROLES.indexOf(u.role) !== -1;
   var canManagePhotoProps = PHOTO_PROPS_MANAGE_ROLES.indexOf(u.role) !== -1;
 
@@ -58,7 +66,7 @@ async function renderSettings(params) {
   // set up their accounts accordingly." Same SystemAdmin gate as Roles/Permissions -- toggling this
   // is exactly as consequential as editing a role itself (setMandatoryOperator, Roles.gs).
   if (canManagePermissions) tabs.push({ key: 'mandatoryOperators', label: t('settings_tab_mandatory_operators') });
-  if (canManagePermissions) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
+  if (canViewPermissionsTab) tabs.push({ key: 'permissions', label: t('settings_tab_permissions') });
 
   var activeTab = tabs.some(function (tb) { return params && tb.key === params.tab; }) ? params.tab : 'profile';
 
@@ -88,7 +96,7 @@ async function renderSettings(params) {
   else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'mandatoryOperators' && canManagePermissions) await renderMandatoryOperatorsTab_(content);
-  else if (activeTab === 'permissions' && canManagePermissions) await renderPermissionsTab_(content);
+  else if (activeTab === 'permissions' && canViewPermissionsTab) await renderPermissionsTab_(content);
   else renderProfileTab_(content, u);
 }
 
@@ -983,10 +991,25 @@ async function renderPermissionsTab_(content) {
   renderPermissionsTabBody_(content, data, '');
 }
 
+// REQ: "In Permissions I would like to set for an Organisation the permissions they can set." data.scope
+// ('global' for SystemAdmin, 'org' for a GAAdmin/EMCAdmin/InspectionAdmin -- listPermissions,
+// Permissions.gs) drives two things below: (1) SystemAdmin ALSO gets the org-ceiling editor section
+// prepended above the matrix (renderOrgCeilingSection_), which an org admin never sees since they can't
+// grant ceiling access to anyone; (2) the matrix itself only lists pages that actually have at least
+// one permission in `data.permissions` for an org-scoped view, since a page with nothing granted would
+// otherwise render as an all-dashes row that just looks broken rather than "not unlocked for you yet".
+//
 // activeRole ('' = "All") is threaded through every re-render (including the ones triggered by a
 // modal Save/Reset below) so picking a filter and then editing a chip doesn't silently reset it.
 function renderPermissionsTabBody_(content, data, activeRole) {
   activeRole = activeRole || '';
+
+  if (data.scope === 'org' && !data.permissions.length) {
+    content.innerHTML =
+      '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(t('permissions_org_scope_intro')) + '</div>' +
+      '<div class="empty-state">' + esc(t('permissions_org_no_ceiling')) + '</div>';
+    return;
+  }
 
   var roleCounts = {};
   data.allRoles.forEach(function (r) { roleCounts[r.value] = 0; });
@@ -1007,7 +1030,12 @@ function renderPermissionsTabBody_(content, data, activeRole) {
     (perm.crud || []).forEach(function (c) { if (byPage[perm.page][c]) byPage[perm.page][c].push(perm); });
   });
 
-  var rowsHtml = permissionPages_().map(function (page) {
+  // Org-scoped view: only pages that actually have at least one of this org's unlocked keys -- see
+  // this function's own header comment above for why (an all-dashes row for a page with nothing
+  // granted would read as broken, not "not unlocked yet").
+  var pagesToShow = data.scope === 'org' ? permissionPages_().filter(function (page) { return !!byPage[page.id]; }) : permissionPages_();
+
+  var rowsHtml = pagesToShow.map(function (page) {
     var bucket = byPage[page.id] || { create: [], read: [], update: [], delete: [] };
     var gotoLink = page.eventTab
       ? '<a href="#" class="perm-matrix-goto-link" data-goto-tab="' + esc(page.eventTab) + '">' + esc(t('go_to_page_link')) + '</a>'
@@ -1034,7 +1062,8 @@ function renderPermissionsTabBody_(content, data, activeRole) {
   }).join('');
 
   content.innerHTML =
-    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(t('permissions_matrix_intro')) + '</div>' +
+    (data.scope === 'global' ? '<div id="orgCeilingSectionWrap"></div>' : '') +
+    '<div class="muted" style="font-size:12.5px;margin-bottom:16px;">' + esc(data.scope === 'org' ? t('permissions_org_scope_intro') : t('permissions_matrix_intro')) + '</div>' +
     '<div class="perm-filter-group" style="margin-bottom:16px;">' +
       '<div class="perm-filter-title">' + esc(t('roles_label')) + '</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + roleFilterHtml + '</div>' +
@@ -1046,6 +1075,8 @@ function renderPermissionsTabBody_(content, data, activeRole) {
       '<th class="perm-matrix-crud-col">' + esc(t('crud_update')) + '</th>' +
       '<th class="perm-matrix-crud-col">' + esc(t('crud_delete')) + '</th>' +
       '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+
+  if (data.scope === 'global') renderOrgCeilingSection_(document.getElementById('orgCeilingSectionWrap'));
 
   content.querySelectorAll('[data-filter-role]').forEach(function (el) {
     el.onclick = function () { renderPermissionsTabBody_(content, data, el.getAttribute('data-filter-role')); };
@@ -1070,6 +1101,111 @@ function renderPermissionsTabBody_(content, data, activeRole) {
       if (perm) openPermissionEditorModal_(perm, data.allRoles, content, data, activeRole);
     };
   });
+}
+
+// REQ: "In Permissions I would like to set for an Organisation the permissions they can set." SystemAdmin
+// -only section (see renderPermissionsTabBody_'s data.scope === 'global' branch above) that lets them pick
+// an org and choose exactly which permission keys that org's own admins (GAAdmin/EMCAdmin/InspectionAdmin)
+// are allowed to reconfigure via the matrix above -- backed by Organizations.permissionCeilingJson
+// (Utils.gs) through getOrgPermissionCeiling/setOrgPermissionCeiling (Permissions.gs). An org with nothing
+// checked here is exactly the case renderPermissionsTabBody_'s org-scope empty-state handles for that org's
+// own admins.
+//
+// Orgs list and the last-picked org persist at module level (not local to one render) for the same reason
+// HululTranslationState_ does in translations.js -- this whole section gets torn down and rebuilt by
+// renderPermissionsTabBody_ on every role-filter click and every matrix chip Save/Reset, and re-fetching
+// listOrganizations or losing the admin's org selection on every one of those would be wasteful/annoying.
+var HululPermOrgsCache_ = null;
+var HululCeilingOrgId_ = null;
+
+async function renderOrgCeilingSection_(wrap) {
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="card" style="margin-bottom:16px;"><div class="card-body"><div class="empty-state">' + esc(t('loading')) + '</div></div></div>';
+
+  if (!HululPermOrgsCache_) {
+    try { HululPermOrgsCache_ = await Api.call('listOrganizations', {}); }
+    catch (err) { UI.error(err); HululPermOrgsCache_ = []; }
+  }
+  var orgs = HululPermOrgsCache_;
+
+  if (!orgs.length) {
+    wrap.innerHTML =
+      '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
+        '<div class="perm-filter-title" style="margin-bottom:6px;">' + esc(t('permissions_ceiling_title')) + '</div>' +
+        '<div class="empty-state">' + esc(t('permissions_ceiling_no_orgs')) + '</div>' +
+      '</div></div>';
+    return;
+  }
+
+  var orgId = (HululCeilingOrgId_ && orgs.some(function (o) { return o.id === HululCeilingOrgId_; }))
+    ? HululCeilingOrgId_ : orgs[0].id;
+  await loadAndRenderOrgCeilingFor_(wrap, orgId, orgs);
+}
+
+async function loadAndRenderOrgCeilingFor_(wrap, orgId, orgs) {
+  HululCeilingOrgId_ = orgId;
+  wrap.innerHTML = '<div class="card" style="margin-bottom:16px;"><div class="card-body"><div class="empty-state">' + esc(t('loading')) + '</div></div></div>';
+
+  var data;
+  try { data = await Api.call('getOrgPermissionCeiling', { orgId: orgId }); }
+  catch (err) { UI.error(err); return; }
+
+  var checkedSet = {};
+  (data.keys || []).forEach(function (k) { checkedSet[k] = true; });
+
+  // catalog (every PERMISSION_REGISTRY_ key, Permissions.gs) grouped by module -- same "module" field
+  // the backend already attaches to each entry, mirroring the matrix's own page-based grouping above
+  // without needing a second lookup table here.
+  var byModule = {};
+  var moduleOrder = [];
+  (data.catalog || []).forEach(function (entry) {
+    if (!byModule[entry.module]) { byModule[entry.module] = []; moduleOrder.push(entry.module); }
+    byModule[entry.module].push(entry);
+  });
+
+  var groupsHtml = moduleOrder.map(function (mod) {
+    var itemsHtml = byModule[mod].map(function (entry) {
+      return '<label class="perm-ceiling-item" style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12.5px;">' +
+        '<input type="checkbox" class="ceiling-key-chk" value="' + esc(entry.key) + '"' + (checkedSet[entry.key] ? ' checked' : '') + ' /> ' +
+        esc(entry.label) +
+        '</label>';
+    }).join('');
+    return '<div style="margin-bottom:10px;">' +
+      '<div style="font-weight:600;font-size:12px;color:var(--text-600);margin-bottom:4px;">' + esc(mod) + '</div>' +
+      itemsHtml +
+      '</div>';
+  }).join('');
+
+  var orgPickerHtml = '<div style="margin-bottom:14px;max-width:280px;">' + UI.field(t('field_organization'),
+    '<select id="fCeilingOrg" class="field-input">' +
+      orgs.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === orgId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') +
+    '</select>') + '</div>';
+
+  wrap.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
+      '<div class="perm-filter-title" style="margin-bottom:6px;">' + esc(t('permissions_ceiling_title')) + '</div>' +
+      '<div class="muted" style="font-size:12.5px;margin-bottom:12px;">' + esc(t('permissions_ceiling_intro')) + '</div>' +
+      orgPickerHtml +
+      '<div style="max-height:320px;overflow:auto;border:1px solid #f0f1f6;border-radius:8px;padding:10px 12px;margin-bottom:12px;">' +
+        (groupsHtml || '<div class="empty-state">' + esc(t('no_matches')) + '</div>') +
+      '</div>' +
+      '<button class="btn btn-primary btn-sm" id="saveCeilingBtn">' + esc(t('save')) + '</button>' +
+    '</div></div>';
+
+  document.getElementById('fCeilingOrg').onchange = function () {
+    loadAndRenderOrgCeilingFor_(wrap, this.value, orgs);
+  };
+
+  document.getElementById('saveCeilingBtn').onclick = async function () {
+    var keys = Array.prototype.slice.call(wrap.querySelectorAll('.ceiling-key-chk:checked')).map(function (chk) { return chk.value; });
+    var btn = document.getElementById('saveCeilingBtn');
+    btn.disabled = true;
+    try {
+      await Api.call('setOrgPermissionCeiling', { orgId: orgId, keys: keys });
+      UI.toast(t('permissions_ceiling_saved'), 'success');
+    } catch (err) { UI.error(err); }
+    btn.disabled = false;
+  };
 }
 
 function permFilterItemHtml_(kind, value, label, count, active) {
