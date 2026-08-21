@@ -107,6 +107,24 @@ function listFindings(user, p) {
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 
+// REQ: "A log can be created on any event from the time it is initiated even if it event did not
+// start yet. Logs can not be created only if event ended or Venue Rejected." A brand-new/not-yet-
+// started event is deliberately fine (no lower bound at all) -- only the two explicit end states are
+// blocked. Shared by both places that ever insert a Findings row: createFinding just below (manual
+// Log) and recordInspectionResults (Inspections.gs, the auto-created-from-a-Crossed-checklist-item
+// path), so the rule can't be bypassed by going through the other entry point.
+function assertEventAcceptsNewLogs_(eventId) {
+  var event = getById('Events', eventId);
+  if (!event) throw new HululError('NOT_FOUND', 'Event not found');
+  if (event.status === 'VenueRejected') {
+    throw new HululError('BAD_REQUEST', 'This event\'s venue was rejected -- logs can no longer be created against it.');
+  }
+  if (event.endDateTime && new Date(event.endDateTime) < new Date()) {
+    throw new HululError('BAD_REQUEST', 'This event has already ended -- logs can no longer be created against it.');
+  }
+  return event;
+}
+
 // REQ: "Log finding must be tied to a participant. Participant must first be selected... Discipline
 // ... is a mandatory field... Remove location and sub-zone." participantId/disciplineId are now
 // required inputs (previously optional); subZone/location/lat/lng are no longer collected directly
@@ -114,10 +132,12 @@ function listFindings(user, p) {
 // Participant's own record instead (p.subZone/p.location/p.lat/p.lng are still honored if a future
 // caller supplies them explicitly, so this stays backward compatible). Note: the auto-created-from-
 // checklist-crossing path (recordInspectionResults, Inspections.gs) builds its own Findings row
-// directly via insertRow and does NOT go through createFinding, so it's unaffected by any of this.
+// directly via insertRow and does NOT go through createFinding, so it's unaffected by any of this
+// (it enforces assertEventAcceptsNewLogs_ itself instead, see that function).
 function createFinding(user, p) {
   requirePermission(user, 'finding.create');
   ['eventId', 'description', 'riskLevel', 'participantId', 'disciplineId'].forEach(function (f) { if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required'); });
+  assertEventAcceptsNewLogs_(p.eventId);
   var participant = getById('Participants', p.participantId);
   if (!participant) throw new HululError('NOT_FOUND', 'Participant not found');
   var zone = participant.zoneId ? getById('Zones', participant.zoneId) : null;

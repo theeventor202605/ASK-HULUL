@@ -647,6 +647,9 @@ window.HULUL_I18N = {
     add_log_picker_title: 'Add Log', add_log_picker_hint: 'Pick an event to log against. You can only log against events you are close enough to.',
     add_log_locating: 'Getting your location…', add_log_location_error: 'Could not get your location. Enable location access and try again.',
     add_log_eligible_badge: 'In range', add_log_ineligible_badge: 'Too far', add_log_distance_suffix: ' away',
+    // REQ: "Logs can not be created only if event ended or Venue Rejected." Overrides the
+    // proximity-based badge above for these two closed states.
+    add_log_venue_rejected_badge: 'Venue rejected', add_log_event_ended_badge: 'Event ended',
     add_log_no_events: 'No events found under your inspection company.', add_log_go_btn: 'Add Log',
     col_status: 'Status',
     field_phase: 'Phase', no_x_assigned_yet: 'No {{term}} assigned yet',
@@ -686,6 +689,10 @@ window.HULUL_I18N = {
     toast_nothing_to_save: 'No changes to save', toast_results_saved: '{{saved}} result(s) saved',
     findings_created_toast: '{{count}} {{term}} created', click_card_open_log_hint: 'Click a card to open the log',
     log_x_btn: '+ Log', col_severity: 'Severity',
+    // REQ: "Logs can not be created only if event ended or Venue Rejected." Shown in place of the
+    // "+ Log" button (Risk Logging tab) for someone who could otherwise create one.
+    event_closed_venue_rejected: 'This event\'s venue was rejected -- new logs can no longer be added.',
+    event_closed_ended: 'This event has ended -- new logs can no longer be added.',
     col_do: 'Do', col_image: 'Image', col_suggestion: 'Suggestion', col_date_time: 'Date time',
     title_open_log: 'Open log', delete_x_cant_undo_confirm: 'Delete this {{term}}? This can\'t be undone.',
     escalations_auto_hint: '{{term}} run automatically every 30 minutes, using the To/Cc roles and timers set in Config → Escalations. You can also trigger a check manually.',
@@ -1336,6 +1343,7 @@ window.HULUL_I18N = {
     add_log_picker_title: 'إضافة سجل', add_log_picker_hint: 'اختر فعالية لتسجيل السجل عليها. يمكنك فقط التسجيل على الفعاليات القريبة منك بما يكفي.',
     add_log_locating: 'جارٍ تحديد موقعك…', add_log_location_error: 'تعذر تحديد موقعك. فعّل الوصول للموقع وحاول مرة أخرى.',
     add_log_eligible_badge: 'ضمن النطاق', add_log_ineligible_badge: 'بعيد جدًا', add_log_distance_suffix: ' بعيدًا',
+    add_log_venue_rejected_badge: 'تم رفض المكان', add_log_event_ended_badge: 'انتهت الفعالية',
     add_log_no_events: 'لا توجد فعاليات ضمن شركة التفتيش الخاصة بك.', add_log_go_btn: 'إضافة سجل',
     col_status: 'الحالة',
     field_phase: 'المرحلة', no_x_assigned_yet: 'لا يوجد {{term}} مُكلَّف بعد',
@@ -1375,6 +1383,8 @@ window.HULUL_I18N = {
     toast_nothing_to_save: 'لا توجد تغييرات لحفظها', toast_results_saved: 'تم حفظ {{saved}} نتيجة',
     findings_created_toast: 'تم إنشاء {{count}} {{term}}', click_card_open_log_hint: 'انقر على بطاقة لفتح السجل',
     log_x_btn: '+ تسجيل', col_severity: 'الخطورة',
+    event_closed_venue_rejected: 'تم رفض مكان هذه الفعالية — لا يمكن إضافة سجلات جديدة بعد الآن.',
+    event_closed_ended: 'انتهت هذه الفعالية — لا يمكن إضافة سجلات جديدة بعد الآن.',
     col_do: 'إجراء', col_image: 'صورة', col_suggestion: 'الاقتراح', col_date_time: 'التاريخ والوقت',
     title_open_log: 'فتح السجل', delete_x_cant_undo_confirm: 'هل تريد حذف هذا {{term}}؟ لا يمكن التراجع عن هذا.',
     escalations_auto_hint: 'تعمل {{term}} تلقائيًا كل 30 دقيقة، باستخدام أدوار إلى/نسخة إلى والمؤقتات المحددة في الإعدادات ← التصعيد. يمكنك أيضًا تشغيل فحص يدويًا.',

@@ -3714,8 +3714,17 @@ function findingBoardCard_(f) {
   };
 }
 
-async function tabFindings(content, eventId) {
+async function tabFindings(content, eventId, detail) {
   var findings = await Api.call('listFindings', { eventId: eventId });
+  // REQ: "A log can be created on any event from the time it is initiated even if it event did not
+  // start yet. Logs can not be created only if event ended or Venue Rejected." Same rule
+  // assertEventAcceptsNewLogs_ (Findings.gs) enforces server-side -- checked here too so the "+ Log"
+  // button doesn't invite a tap that only bounces off a backend error once this event is closed.
+  var event = detail && detail.event;
+  var eventClosedReason = !event ? null
+    : event.status === 'VenueRejected' ? t('event_closed_venue_rejected')
+    : (event.endDateTime && new Date(event.endDateTime) < new Date()) ? t('event_closed_ended')
+    : null;
   // Same 5-bucket grouping as the backend's findingKpiBuckets_ (Findings.gs) -- Viewed rolls into
   // "open", Submitted/Resubmitted roll into "in review" -- so these 6 KPI cards (which already have
   // dedicated icons) stay accurate without needing 3 more cards for the extra statuses.
@@ -3738,7 +3747,7 @@ async function tabFindings(content, eventId) {
   // own admin-configurable permission key, so a SystemAdmin can e.g. allow editing without allowing
   // deletion, without a code change. FINDING_CREATE_ROLES is kept as the still-correct default array
   // reference in Permissions.gs's PERMISSION_REGISTRY_, not read directly here anymore.
-  var canCreate = hasPermission('finding.create');
+  var canCreate = hasPermission('finding.create') && !eventClosedReason;
   var canEditAny = hasPermission('finding.edit');
   var canDeleteAny = hasPermission('finding.delete');
 
@@ -3749,6 +3758,12 @@ async function tabFindings(content, eventId) {
     // not sticky, so it stays put regardless of scroll position instead of just tracking the top of
     // this tab's content) rather than a normal in-flow element.
     (canCreate ? '<button class="btn btn-primary floating-log-btn" id="newFindingBtn">' + esc(t('log_x_btn')) + '</button>' : '') +
+    // REQ: "Logs can not be created only if event ended or Venue Rejected." hasPermission('finding.create')
+    // holders would otherwise just lose the button with no explanation -- this banner is only shown to
+    // them (someone who could normally log, but can't right now because of this specific event).
+    (hasPermission('finding.create') && eventClosedReason
+      ? '<div class="muted" style="font-size:12.5px;margin:-8px 0 12px;">' + esc(eventClosedReason) + '</div>'
+      : '') +
     '<div class="kpi-grid">' +
       kpiCard('kpi_total', findings.length, ICON('kpi_total'), 'var(--info)') +
       kpiCard('kpi_open', counts.Open, ICON('kpi_open'), 'var(--info)') +

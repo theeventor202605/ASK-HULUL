@@ -435,6 +435,16 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
 // that venue's drawn boundary or within 50m of it (distanceToPolygonMeters_/pointInPolygonClient_,
 // venues.js). Picking an eligible event just navigates into the existing, already-built
 // #/events/:id/findings/new page (renderNewFinding below) -- no duplicate form here.
+//
+// BUG FIX (reported: an Inspector standing inside a real event's own venue boundary still got "No
+// events found under your inspection company"): the listEvents call below used to pass
+// status: 'Active', but Events.status is never actually set to 'Active' anywhere in the app --
+// createEvent always starts a new Event at 'Planning' (Events.gs), and the only other values it can
+// ever take are 'VenueApproved'/'VenueRejected' (the GA venue-decision workflow, VenueApproval.gs).
+// So that filter silently excluded every single event for every Inspector, unconditionally -- it
+// never even reached the proximity check. Dropped entirely so this matches the REQ's own wording
+// ("any event under his inspection company"), same as how the Risk Logging tab inside an Event
+// workspace doesn't filter by status either.
 var ADD_LOG_PROXIMITY_M_ = 50;
 var addLogWatchId_ = null;
 
@@ -455,7 +465,7 @@ async function renderAddLogPicker_() {
     '</div></div>';
 
   var events = [];
-  try { events = await Api.call('listEvents', { includeVenue: true, status: 'Active' }); } catch (e) { events = []; }
+  try { events = await Api.call('listEvents', { includeVenue: true }); } catch (e) { events = []; }
 
   function renderRows(pos) {
     var statusEl = document.getElementById('addLogStatus');
@@ -470,15 +480,24 @@ async function renderAddLogPicker_() {
       wrap.innerHTML = '<div class="muted" style="font-size:13px;">' + esc(t('add_log_no_events')) + '</div>';
       return;
     }
+    // REQ: "A log can be created on any event from the time it is initiated even if it event did not
+    // start yet. Logs can not be created only if event ended or Venue Rejected." Checked client-side
+    // here too (not just createFinding's own assertEventAcceptsNewLogs_, Findings.gs) so a closed
+    // event shows up with an honest reason instead of inviting a tap that just bounces off a backend
+    // error -- same "closed" state overrides proximity entirely (no amount of standing in the venue
+    // makes a rejected/ended event loggable again).
     var rows = events.map(function (e) {
+      var closedReason = e.status === 'VenueRejected' ? t('add_log_venue_rejected_badge')
+        : (e.endDateTime && new Date(e.endDateTime) < new Date()) ? t('add_log_event_ended_badge')
+        : null;
       var boundary = parseBoundaryClient_(e.venueBoundary);
       var eligible = false, distanceM = null;
-      if (pos && boundary) {
+      if (!closedReason && pos && boundary) {
         var lat = pos.coords.latitude, lng = pos.coords.longitude;
         distanceM = distanceToPolygonMeters_(lat, lng, boundary);
         eligible = distanceM <= ADD_LOG_PROXIMITY_M_;
       }
-      return Object.assign({}, e, { _eligible: eligible, _distanceM: distanceM });
+      return Object.assign({}, e, { _eligible: eligible, _distanceM: distanceM, _closedReason: closedReason });
     });
     wrap.innerHTML = UI.table([
       { key: 'name', label: t('col_name') },
@@ -486,8 +505,8 @@ async function renderAddLogPicker_() {
       { key: '_eligible', label: t('col_status'), render: r =>
           r._eligible
             ? '<span class="badge badge-resolved">' + esc(t('add_log_eligible_badge')) + '</span>'
-            : '<span class="badge badge-neutral">' + esc(t('add_log_ineligible_badge')) +
-              (r._distanceM != null ? ' · ' + Math.round(r._distanceM) + 'm' + esc(t('add_log_distance_suffix')) : '') + '</span>'
+            : '<span class="badge badge-neutral">' + esc(r._closedReason || t('add_log_ineligible_badge')) +
+              (!r._closedReason && r._distanceM != null ? ' · ' + Math.round(r._distanceM) + 'm' + esc(t('add_log_distance_suffix')) : '') + '</span>'
       },
       { key: 'actions', label: t('actions'), render: r =>
           r._eligible

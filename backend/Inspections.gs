@@ -777,6 +777,16 @@ function recordInspectionResults(user, p) {
     var participant = getById('Participants', p.participantId);
     if (!participant || !venueId || participant.venueId !== venueId) throw new HululError('BAD_REQUEST', 'participantId must belong to this event\'s venue');
   }
+  // REQ: "Logs can not be created ... if event ended or Venue Rejected." A Crossed item auto-creates
+  // a Finding below (assertEventAcceptsNewLogs_, Findings.gs, same rule createFinding enforces for a
+  // manual Log) -- checked once, up front, before anything is written, rather than per-row mid-loop:
+  // failing partway through would leave some InspectionResults rows saved and others not, and a
+  // Crossed item with no Finding behind it is broken data (its evidenceUrls requirement exists
+  // specifically because a Finding is supposed to carry it forward). Ticked/N/A-only submissions
+  // never create a Finding, so they're unaffected even for an event that's since ended.
+  if ((p.results || []).some(function (r) { return r.state === 'Crossed'; })) {
+    assertEventAcceptsNewLogs_(inspection.eventId);
+  }
 
   var createdFindings = [];
   (p.results || []).forEach(function (r) {
