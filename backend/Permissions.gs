@@ -28,13 +28,17 @@
  *
  * REQ follow-up: "set for an Organisation the permissions they can set ... when an organization's
  * admin wants to reconfigure permissions they can but are limited according to system admin
- * Organization set permissions." The blob now has two layers -- overrides.global (what used to be the
- * WHOLE blob: a SystemAdmin's platform-wide default) and overrides.orgs[orgId] (one Organization's own
- * override, settable only by that org's own GAAdmin/EMCAdmin/InspectionAdmin, only for a key their org
- * has been unlocked for via Organizations.permissionCeilingJson/setOrgPermissionCeiling). See
- * effectivePermissionRoles_'s own comment for exactly how the two layers + the built-in default
- * resolve, and requirePermission's for why this needed no changes at any of its ~90 existing call
- * sites.
+ * Organization [Type] set permissions." (clarified: the SystemAdmin's ceiling is set per Organization
+ * TYPE -- GA/EMC/INSPECTION -- not per individual organization; see ORG_TYPE_CEILING_CONFIG_KEY_/
+ * getOrgTypeCeiling_ below.) The blob now has two layers -- overrides.global (what used to be the WHOLE
+ * blob: a SystemAdmin's platform-wide default) and overrides.orgs[orgId] (one Organization's OWN
+ * override, settable only by that org's own GAAdmin/EMCAdmin/InspectionAdmin, only for a key their
+ * organization's TYPE has been unlocked for via getOrgTypeCeiling_/setOrgTypePermissionCeiling). So the
+ * ceiling (which keys are unlockable at all) is per-type, shared by every org of that type, while each
+ * org's actual override (which roles it's chosen within that ceiling) stays independently scoped to
+ * `orgId`, same as before. See effectivePermissionRoles_'s own comment for exactly how the two override
+ * layers + the built-in default resolve, and requirePermission's for why this needed no changes at any
+ * of its ~90 existing call sites.
  */
 
 // The permission catalog. Each entry's defaultRoles is exactly the allowedRoles array that used to be
@@ -423,8 +427,8 @@ var PERMISSION_REGISTRY_ = {
 //                        platform-wide override, applies to every org that hasn't set its own.
 //   overrides.orgs[orgId] -- one Organization's own override of a permission key, settable ONLY by
 //                        that org's own GAAdmin/EMCAdmin/InspectionAdmin, and ONLY for a key their
-//                        org has been unlocked for (Organizations.permissionCeilingJson, set by
-//                        SystemAdmin via setOrgPermissionCeiling below).
+//                        organization's TYPE has been unlocked for (getOrgTypeCeiling_, set by
+//                        SystemAdmin via setOrgTypePermissionCeiling below).
 // getPermissionOverrides_ back-compat-parses the OLD flat {key:[roles]} shape (no global/orgs wrapper)
 // as if it were `global` -- so every override a SystemAdmin already saved before this REQ keeps
 // working unchanged, no migration script needed.
@@ -485,46 +489,52 @@ function hasPermissionRole_(user, key) {
 var ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin']; // plain strings, not ROLES.X -- see
 // the load-order note above PERMISSION_REGISTRY_: Permissions.gs (P) loads before Utils.gs (U).
 
-// Which permission keys `orgId`'s own admin has been unlocked to reconfigure themselves -- set by
-// SystemAdmin via setOrgPermissionCeiling. Blank/malformed -> empty (nothing unlocked), never throws,
-// same defensive convention as effectivePermissionRoles_ above.
-function getOrgPermissionCeiling_(orgId) {
-  if (!orgId) return [];
-  var org = getById('Organizations', orgId);
-  if (!org || !org.permissionCeilingJson) return [];
-  try {
-    var arr = JSON.parse(org.permissionCeilingJson);
-    return Array.isArray(arr) ? arr.filter(function (k) { return !!PERMISSION_REGISTRY_[k]; }) : [];
-  } catch (e) { return []; }
+// REQ follow-up: "I meant as in Organization Type" -- the ceiling is unlocked per Organization TYPE
+// (GA/EMC/INSPECTION, the same three values as Users.orgType/Organizations.type -- see users.js'
+// ROLE_ORG_TYPE and organizations.js' New Organization Type dropdown), not per individual organization.
+// One ceiling covers every org of that type, including ones created after it's set, with nothing to
+// re-configure per new org. Stored as one Config row (getConfigJson_/setConfigJson_, Utils.gs) rather
+// than a field on Organizations -- there's no per-org state left to keep here at all.
+var ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION'];
+var ORG_TYPE_CEILING_CONFIG_KEY_ = 'orgTypePermissionCeilings';
+
+// Which permission keys `orgType`'s own admins have been unlocked to reconfigure themselves -- set by
+// SystemAdmin via setOrgTypePermissionCeiling. Blank/malformed -> empty (nothing unlocked), never
+// throws, same defensive convention as effectivePermissionRoles_ above.
+function getOrgTypeCeiling_(orgType) {
+  if (!orgType) return [];
+  var ceilings = getConfigJson_(ORG_TYPE_CEILING_CONFIG_KEY_, {});
+  var arr = ceilings[orgType];
+  return Array.isArray(arr) ? arr.filter(function (k) { return !!PERMISSION_REGISTRY_[k]; }) : [];
 }
 
 // SystemAdmin-only: the full catalog (every registered key, its module/label/page) so the ceiling
 // editor (Settings > Permissions) can render a checklist without a second endpoint, plus which keys
-// `p.orgId` is currently unlocked for.
-function getOrgPermissionCeiling(user, p) {
+// `p.orgType` is currently unlocked for.
+function getOrgTypePermissionCeiling(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
-  if (!p || !p.orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
-  var org = getById('Organizations', p.orgId);
-  if (!org) throw new HululError('NOT_FOUND', 'Organization not found');
+  if (!p || !p.orgType) throw new HululError('BAD_REQUEST', 'orgType is required');
+  if (ORG_TYPES_.indexOf(p.orgType) === -1) throw new HululError('BAD_REQUEST', 'Invalid orgType');
   var catalog = Object.keys(PERMISSION_REGISTRY_).map(function (key) {
     var entry = PERMISSION_REGISTRY_[key];
     return { key: key, module: entry.module, label: entry.label, page: entry.page || null };
   });
-  return { orgId: p.orgId, keys: getOrgPermissionCeiling_(p.orgId), catalog: catalog };
+  return { orgType: p.orgType, keys: getOrgTypeCeiling_(p.orgType), catalog: catalog };
 }
 
-// SystemAdmin-only: set which permission keys `p.orgId`'s own admin may reconfigure. Replaces the
+// SystemAdmin-only: set which permission keys `p.orgType`'s own admins may reconfigure. Replaces the
 // whole set (not a per-key toggle endpoint) -- the frontend always sends the full checked list, same
 // "resend everything" convention as updateInspectionResult's full-item-array saves.
-function setOrgPermissionCeiling(user, p) {
+function setOrgTypePermissionCeiling(user, p) {
   requireRole(user, [ROLES.SYSTEM_ADMIN]);
-  if (!p || !p.orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
-  var org = getById('Organizations', p.orgId);
-  if (!org) throw new HululError('NOT_FOUND', 'Organization not found');
+  if (!p || !p.orgType) throw new HululError('BAD_REQUEST', 'orgType is required');
+  if (ORG_TYPES_.indexOf(p.orgType) === -1) throw new HululError('BAD_REQUEST', 'Invalid orgType');
   var keys = Array.isArray(p.keys) ? p.keys.filter(function (k) { return !!PERMISSION_REGISTRY_[k]; }) : [];
-  updateRow('Organizations', p.orgId, { permissionCeilingJson: JSON.stringify(keys) });
-  audit(user.id, 'SET_ORG_PERMISSION_CEILING', 'Organizations', p.orgId, { keys: keys });
-  return { orgId: p.orgId, keys: keys };
+  var ceilings = getConfigJson_(ORG_TYPE_CEILING_CONFIG_KEY_, {});
+  ceilings[p.orgType] = keys;
+  setConfigJson_(ORG_TYPE_CEILING_CONFIG_KEY_, ceilings);
+  audit(user.id, 'SET_ORG_TYPE_PERMISSION_CEILING', 'Config', ORG_TYPE_CEILING_CONFIG_KEY_, { orgType: p.orgType, keys: keys });
+  return { orgType: p.orgType, keys: keys };
 }
 
 // SystemAdmin sees the full platform-wide catalog + current global overrides (unchanged behavior from
@@ -556,7 +566,7 @@ function listPermissions(user, p) {
 
   if (ORG_ADMIN_ROLES_.indexOf(user.role) === -1) throw new HululError('FORBIDDEN', 'Not permitted to view permissions');
   if (!user.orgId) throw new HululError('FORBIDDEN', 'No organization on this account');
-  var ceiling = getOrgPermissionCeiling_(user.orgId);
+  var ceiling = getOrgTypeCeiling_(user.orgType);
   var orgOverrides = (overrides.orgs && overrides.orgs[user.orgId]) || {};
   var scopedPermissions = ceiling.map(function (key) {
     var entry = PERMISSION_REGISTRY_[key];
@@ -598,7 +608,7 @@ function updatePermission(user, p) {
   }
 
   if (ORG_ADMIN_ROLES_.indexOf(user.role) === -1 || !user.orgId) throw new HululError('FORBIDDEN', 'Not permitted to change permissions');
-  var ceiling = getOrgPermissionCeiling_(user.orgId);
+  var ceiling = getOrgTypeCeiling_(user.orgType);
   if (ceiling.indexOf(p.key) === -1) throw new HululError('FORBIDDEN', 'Your organization has not been granted control over this permission');
   var orgClean = clean.filter(function (r) { return r !== ROLES.SYSTEM_ADMIN; });
   if (!orgClean.length) throw new HululError('BAD_REQUEST', 'No valid roles supplied');

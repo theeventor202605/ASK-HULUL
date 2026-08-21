@@ -1103,51 +1103,39 @@ function renderPermissionsTabBody_(content, data, activeRole) {
   });
 }
 
-// REQ: "In Permissions I would like to set for an Organisation the permissions they can set." SystemAdmin
-// -only section (see renderPermissionsTabBody_'s data.scope === 'global' branch above) that lets them pick
-// an org and choose exactly which permission keys that org's own admins (GAAdmin/EMCAdmin/InspectionAdmin)
-// are allowed to reconfigure via the matrix above -- backed by Organizations.permissionCeilingJson
-// (Utils.gs) through getOrgPermissionCeiling/setOrgPermissionCeiling (Permissions.gs). An org with nothing
-// checked here is exactly the case renderPermissionsTabBody_'s org-scope empty-state handles for that org's
-// own admins.
+// REQ: "In Permissions I would like to set for an Organisation the permissions they can set... I meant as
+// in Organization Type." SystemAdmin-only section (see renderPermissionsTabBody_'s data.scope === 'global'
+// branch above) that lets them pick an Organization Type (GA/EMC/INSPECTION -- same three values as
+// Organizations.type/Users.orgType, users.js' ROLE_ORG_TYPE) and choose exactly which permission keys
+// every org of that type's own admins (GAAdmin/EMCAdmin/InspectionAdmin) are allowed to reconfigure via
+// the matrix above -- backed by getOrgTypePermissionCeiling/setOrgTypePermissionCeiling (Permissions.gs,
+// stored in Config, not on any individual Organizations row: one ceiling covers every org of that type).
+// A type with nothing checked here is exactly the case renderPermissionsTabBody_'s org-scope empty-state
+// handles for that type's own admins.
 //
-// Orgs list and the last-picked org persist at module level (not local to one render) for the same reason
+// The last-picked type persists at module level (not local to one render) for the same reason
 // HululTranslationState_ does in translations.js -- this whole section gets torn down and rebuilt by
-// renderPermissionsTabBody_ on every role-filter click and every matrix chip Save/Reset, and re-fetching
-// listOrganizations or losing the admin's org selection on every one of those would be wasteful/annoying.
-var HululPermOrgsCache_ = null;
-var HululCeilingOrgId_ = null;
+// renderPermissionsTabBody_ on every role-filter click and every matrix chip Save/Reset, and losing the
+// admin's type selection on every one of those would be annoying.
+var HululCeilingOrgType_ = null;
+var CEILING_ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION'];
+
+function ceilingOrgTypeLabel_(orgType) {
+  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : t('org_type_inspection');
+}
 
 async function renderOrgCeilingSection_(wrap) {
   if (!wrap) return;
-  wrap.innerHTML = '<div class="card" style="margin-bottom:16px;"><div class="card-body"><div class="empty-state">' + esc(t('loading')) + '</div></div></div>';
-
-  if (!HululPermOrgsCache_) {
-    try { HululPermOrgsCache_ = await Api.call('listOrganizations', {}); }
-    catch (err) { UI.error(err); HululPermOrgsCache_ = []; }
-  }
-  var orgs = HululPermOrgsCache_;
-
-  if (!orgs.length) {
-    wrap.innerHTML =
-      '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
-        '<div class="perm-filter-title" style="margin-bottom:6px;">' + esc(t('permissions_ceiling_title')) + '</div>' +
-        '<div class="empty-state">' + esc(t('permissions_ceiling_no_orgs')) + '</div>' +
-      '</div></div>';
-    return;
-  }
-
-  var orgId = (HululCeilingOrgId_ && orgs.some(function (o) { return o.id === HululCeilingOrgId_; }))
-    ? HululCeilingOrgId_ : orgs[0].id;
-  await loadAndRenderOrgCeilingFor_(wrap, orgId, orgs);
+  var orgType = CEILING_ORG_TYPES_.indexOf(HululCeilingOrgType_) !== -1 ? HululCeilingOrgType_ : CEILING_ORG_TYPES_[0];
+  await loadAndRenderOrgCeilingFor_(wrap, orgType);
 }
 
-async function loadAndRenderOrgCeilingFor_(wrap, orgId, orgs) {
-  HululCeilingOrgId_ = orgId;
+async function loadAndRenderOrgCeilingFor_(wrap, orgType) {
+  HululCeilingOrgType_ = orgType;
   wrap.innerHTML = '<div class="card" style="margin-bottom:16px;"><div class="card-body"><div class="empty-state">' + esc(t('loading')) + '</div></div></div>';
 
   var data;
-  try { data = await Api.call('getOrgPermissionCeiling', { orgId: orgId }); }
+  try { data = await Api.call('getOrgTypePermissionCeiling', { orgType: orgType }); }
   catch (err) { UI.error(err); return; }
 
   var checkedSet = {};
@@ -1176,24 +1164,24 @@ async function loadAndRenderOrgCeilingFor_(wrap, orgId, orgs) {
       '</div>';
   }).join('');
 
-  var orgPickerHtml = '<div style="margin-bottom:14px;max-width:280px;">' + UI.field(t('field_organization'),
-    '<select id="fCeilingOrg" class="field-input">' +
-      orgs.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === orgId ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') +
+  var typePickerHtml = '<div style="margin-bottom:14px;max-width:280px;">' + UI.field(t('field_organization_type'),
+    '<select id="fCeilingOrgType" class="field-input">' +
+      CEILING_ORG_TYPES_.map(function (ot) { return '<option value="' + ot + '"' + (ot === orgType ? ' selected' : '') + '>' + esc(ceilingOrgTypeLabel_(ot)) + '</option>'; }).join('') +
     '</select>') + '</div>';
 
   wrap.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-body">' +
       '<div class="perm-filter-title" style="margin-bottom:6px;">' + esc(t('permissions_ceiling_title')) + '</div>' +
       '<div class="muted" style="font-size:12.5px;margin-bottom:12px;">' + esc(t('permissions_ceiling_intro')) + '</div>' +
-      orgPickerHtml +
+      typePickerHtml +
       '<div style="max-height:320px;overflow:auto;border:1px solid #f0f1f6;border-radius:8px;padding:10px 12px;margin-bottom:12px;">' +
         (groupsHtml || '<div class="empty-state">' + esc(t('no_matches')) + '</div>') +
       '</div>' +
       '<button class="btn btn-primary btn-sm" id="saveCeilingBtn">' + esc(t('save')) + '</button>' +
     '</div></div>';
 
-  document.getElementById('fCeilingOrg').onchange = function () {
-    loadAndRenderOrgCeilingFor_(wrap, this.value, orgs);
+  document.getElementById('fCeilingOrgType').onchange = function () {
+    loadAndRenderOrgCeilingFor_(wrap, this.value);
   };
 
   document.getElementById('saveCeilingBtn').onclick = async function () {
@@ -1201,7 +1189,7 @@ async function loadAndRenderOrgCeilingFor_(wrap, orgId, orgs) {
     var btn = document.getElementById('saveCeilingBtn');
     btn.disabled = true;
     try {
-      await Api.call('setOrgPermissionCeiling', { orgId: orgId, keys: keys });
+      await Api.call('setOrgTypePermissionCeiling', { orgType: orgType, keys: keys });
       UI.toast(t('permissions_ceiling_saved'), 'success');
     } catch (err) { UI.error(err); }
     btn.disabled = false;
