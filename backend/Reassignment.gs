@@ -62,6 +62,7 @@ function listUserAssignments(user, p) {
       id: a.id, eventId: a.eventId, eventName: event ? event.name : a.eventId,
       eventStart: event ? event.startDateTime : '', eventEnd: event ? event.endDateTime : '',
       disciplineId: a.disciplineId, disciplineName: discipline ? discipline.name : a.disciplineId,
+      disciplineNameAr: discipline ? discipline.nameAr || '' : '',
       zoneNames: zoneNames
     };
   });

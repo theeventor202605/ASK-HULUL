@@ -209,7 +209,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
   function disciplineNamesFor_(participant) {
     var ids = participant.disciplineIds ? String(participant.disciplineIds).split(',').filter(Boolean) : [];
     if (!ids.length) return '—';
-    return ids.map(function (id) { return disciplinesById[id] ? esc(disciplinesById[id].name) : id; }).join(', ');
+    return ids.map(function (id) { return disciplinesById[id] ? esc(bi_(disciplinesById[id].name, disciplinesById[id].nameAr)) : id; }).join(', ');
   }
   function hasDiscipline_(pt) { return !!(pt.disciplineIds && String(pt.disciplineIds).split(',').filter(Boolean).length); }
 
@@ -311,7 +311,7 @@ async function tabParticipantDisciplines(content, eventId, detail) {
       })) + '</div>' +
       disciplines.map(function (d) {
         return '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;margin:6px 0;">' +
-          '<input type="checkbox" class="apply-disc-check" value="' + d.id + '"' + (preCheckedIds[d.id] ? ' checked' : '') + ' /> ' + esc(d.name) + '</label>';
+          '<input type="checkbox" class="apply-disc-check" value="' + d.id + '"' + (preCheckedIds[d.id] ? ' checked' : '') + ' /> ' + esc(bi_(d.name, d.nameAr)) + '</label>';
       }).join('');
     UI.openModal(t('apply_x_title', { term: Term('discipline_plural').toLowerCase() }), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },

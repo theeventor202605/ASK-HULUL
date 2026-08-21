@@ -410,7 +410,7 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
   box.classList.remove('hidden');
   box.innerHTML = '<div class="finding-guide-suggestions-header">' + esc(t('suggested_descriptions')) + '</div>' +
     matches.map(function (g, i) {
-      return '<div class="finding-guide-suggestion-item" data-fg-idx="' + i + '">' + esc(g.description) + '</div>';
+      return '<div class="finding-guide-suggestion-item" data-fg-idx="' + i + '">' + esc(bi_(g.description, g.descriptionAr)) + '</div>';
     }).join('');
   box.querySelectorAll('[data-fg-idx]').forEach(function (el) {
     // mousedown+preventDefault (not click) -- same pattern as the Participant suggest box above,
@@ -418,8 +418,12 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
     el.addEventListener('mousedown', function (e) {
       e.preventDefault();
       var match = matches[Number(el.getAttribute('data-fg-idx'))];
-      descInput.value = match.description;
-      if (match.suggestion) actionInput.value = match.suggestion;
+      // bi_() here (not a raw match.description) -- Findings themselves have no Arabic sibling field
+      // (out of scope, see i18n.js header), so an Arabic-mode inspector picking a suggestion should
+      // still get the Arabic text this catalog entry was authored with, since that's the only Arabic
+      // version of this description that will ever exist for them to start from.
+      descInput.value = bi_(match.description, match.descriptionAr);
+      if (match.suggestion) actionInput.value = bi_(match.suggestion, match.suggestionAr);
     });
   });
 }
@@ -585,6 +589,11 @@ async function renderNewFinding(params) {
     disciplines = results[0]; checklistItems = results[1]; participants = results[2]; findingGuide = results[3];
   } catch (e) { /* fall back to whichever loaded -- the pickers below just end up with fewer options */ }
   var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
+  // REQ: "When turning platform to Arabic, some information is still in English" -- best-effort
+  // first-non-blank-wins lookup, same convention as checklistItems.js/findingGuide.js, for the
+  // Checklist Type dropdown below (whose option values are raw checklistType strings, not ids).
+  var typeArByType_ = {};
+  checklistItems.forEach(function (c) { if (c.checklistType && c.checklistTypeAr && !typeArByType_[c.checklistType]) typeArByType_[c.checklistType] = c.checklistTypeAr; });
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
@@ -607,7 +616,7 @@ async function renderNewFinding(params) {
           '<div class="muted" style="font-size:11px;margin-top:4px;">🗺️ ' + esc(t('live_location_map_hint')) + '</div>' +
         '</div>' +
         UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
-          disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
+          disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(bi_(d.name, d.nameAr)) + '</option>'; }).join('') + '</select>') +
         // REQ (follow-up): "Move Checklist Type to be after Discipline."
         UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
         // REQ follow-up: "Move Suggested description above description and make it a searchable
@@ -735,7 +744,7 @@ async function renderNewFinding(params) {
     // coverage but no real checklist items yet still offers something to pick.
     var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).concat(findingGuideTypesFor_(findingGuide, disciplineName)).filter(Boolean))).sort();
     typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
-      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
+      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(bi_(ty, typeArByType_[ty])) + '</option>'; }).join('');
     if (types.indexOf(prev) !== -1) typeSelect.value = prev;
   }
   document.getElementById('fDiscipline').addEventListener('change', renderChecklistTypeOptions_);
@@ -752,6 +761,11 @@ async function renderNewFinding(params) {
   var sSearch = document.getElementById('fSuggestSearch');
   var sSuggest = document.getElementById('fSuggestBox');
   var sMatches = [];
+  // REQ: "When turning platform to Arabic, some information is still in English" -- disciplineArByName_
+  // mirrors the same lookup findingGuide.js/checklistItems.js use; typeArByType_ is the one already
+  // built above (shared with the Checklist Type dropdown).
+  var disciplineArByName_ = {};
+  disciplines.forEach(function (d) { if (d.nameAr) disciplineArByName_[d.name] = d.nameAr; });
   function renderSuggestBox_(query) {
     var q = (query || '').toLowerCase();
     sMatches = !q ? findingGuide.slice(0, 20) : findingGuide.filter(function (g) {
@@ -762,8 +776,8 @@ async function renderNewFinding(params) {
     sSuggest.innerHTML = '<div class="chat-suggest-header">' + esc(t('suggested_descriptions')) + '</div>' +
       (sMatches.length
         ? sMatches.slice(0, 20).map(function (g, i) {
-            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(g.description) +
-              '<span class="muted" style="font-size:11px;"> · ' + esc(g.category) + (g.subCategory ? ' / ' + esc(g.subCategory) : '') + '</span></div>';
+            return '<div class="chat-suggest-item" data-idx="' + i + '">' + esc(bi_(g.description, g.descriptionAr)) +
+              '<span class="muted" style="font-size:11px;"> · ' + esc(bi_(g.category, disciplineArByName_[g.category])) + (g.subCategory ? ' / ' + esc(bi_(g.subCategory, typeArByType_[g.subCategory])) : '') + '</span></div>';
           }).join('')
         : '<div class="chat-suggest-empty">' + esc(t('no_matches_suggest')) + '</div>');
     sSuggest.style.display = '';
@@ -777,10 +791,11 @@ async function renderNewFinding(params) {
     });
   }
   function pickSuggestion_(g) {
-    sSearch.value = g.description;
+    var desc = bi_(g.description, g.descriptionAr);
+    sSearch.value = desc;
     sSuggest.style.display = 'none';
-    document.getElementById('fDesc').value = g.description;
-    if (g.suggestion) document.getElementById('fAction').value = g.suggestion;
+    document.getElementById('fDesc').value = desc;
+    if (g.suggestion) document.getElementById('fAction').value = bi_(g.suggestion, g.suggestionAr);
     var disc = disciplines.filter(function (d) { return d.name === g.category; })[0];
     if (disc) {
       document.getElementById('fDiscipline').value = disc.id;
@@ -942,6 +957,8 @@ async function renderEditFinding(params) {
     disciplines = results[0]; checklistItems = results[1]; participants = results[2]; findingGuide = results[3];
   } catch (e) { /* pickers below just end up with fewer options */ }
   var disciplinesById = {}; disciplines.forEach(function (d) { disciplinesById[d.id] = d; });
+  var typeArByType_ = {};
+  checklistItems.forEach(function (c) { if (c.checklistType && c.checklistTypeAr && !typeArByType_[c.checklistType]) typeArByType_[c.checklistType] = c.checklistTypeAr; });
 
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '/findings/' + findingId + '">' + esc(finding.description || t('tab_findings')) + '</a></div>' +
@@ -955,7 +972,7 @@ async function renderEditFinding(params) {
         '<div id="participantSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
       '</div>' +
       UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
-        disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + '</option>'; }).join('') + '</select>') +
+        disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(bi_(d.name, d.nameAr)) + '</option>'; }).join('') + '</select>') +
       UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
       UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
       '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
@@ -1016,7 +1033,7 @@ async function renderEditFinding(params) {
     // subCategories for this Discipline are unioned in, same as the New Finding form above.
     var types = Array.from(new Set(relevant.map(function (i) { return i.checklistType; }).concat(findingGuideTypesFor_(findingGuide, disciplineName)).filter(Boolean))).sort();
     typeSelect.innerHTML = '<option value="">— (defaults to Other)</option>' +
-      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(ty) + '</option>'; }).join('');
+      types.map(function (ty) { return '<option value="' + esc(ty) + '">' + esc(bi_(ty, typeArByType_[ty])) + '</option>'; }).join('');
     if (types.indexOf(prev) !== -1) typeSelect.value = prev;
     updateFindingGuideSuggestions_();
   }
@@ -1308,7 +1325,7 @@ async function renderFindingDetail(params) {
   root.innerHTML =
     '<div class="breadcrumb"><a href="#/events/' + eventId + '?tab=findings">' + esc(t('tab_findings')) + '</a></div>' +
     '<div class="page-header"><div><div class="page-title">' + esc(finding.description || '(no description)') + '</div>' +
-    '<div class="page-subtitle">' + esc(finding.disciplineName || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
+    '<div class="page-subtitle">' + esc(bi_(finding.disciplineName, finding.disciplineNameAr) || '—') + (finding.category ? ' · ' + esc(finding.category) : '') + '</div></div>' +
     '<button class="btn btn-secondary" id="backFindingBtn">' + ICON('back') + ' ' + esc(t('back')) + '</button></div>' +
 
     // REQ: "A second rejection lands on Rejected, which is terminal, but automatically creates a new
@@ -1329,13 +1346,13 @@ async function renderFindingDetail(params) {
         '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">' +
           findingMetaChipHtml_('👤', Term('participant'), esc(finding.participantName || '—')) +
           findingMetaChipHtml_('📍', t('sub_x', { term: Term('zone').toLowerCase() }), esc(finding.subZone || '—')) +
-          findingMetaChipHtml_('🧩', Term('discipline'), esc(finding.disciplineName || '—')) +
+          findingMetaChipHtml_('🧩', Term('discipline'), esc(bi_(finding.disciplineName, finding.disciplineNameAr) || '—')) +
           // REQ: "Throughout the platform change: Discipline to Category." Discipline now displays as
           // "Category" (chip above), so this chip -- which actually shows finding.category (the New
           // Finding form's own Checklist Type field, see the REQ log at eventDetail.js's findings
           // table below) -- is relabeled to Term('checklistType') too, both to stay consistent with
           // what it really holds and to avoid two differently-meaning chips both saying "Category".
-          findingMetaChipHtml_('📋', Term('checklistType'), esc([finding.category, finding.subCategory].filter(Boolean).join(' / ') || '—')) +
+          findingMetaChipHtml_('📋', Term('checklistType'), esc([finding.category, bi_(finding.subCategory, finding.subCategoryAr)].filter(Boolean).join(' / ') || '—')) +
           findingMetaChipHtml_('🕓', t('logged'), UI.fmtDate(finding.createdAt)) +
           findingMetaChipHtml_('⏱️', t('resolution_window'), UI.fmtDate(finding.resolutionWindowAt)) +
           // Not in the requested list (no Location field going forward -- see createFinding's own

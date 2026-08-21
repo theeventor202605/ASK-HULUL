@@ -42,7 +42,7 @@ function createFindingGuideEntry(user, p) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
   if (!findingGuideValidCategory_(p.category)) throw new HululError('BAD_REQUEST', 'Category must match an existing Discipline (see the Categories page).');
-  var row = { id: newId('FindingGuide'), category: p.category, subCategory: p.subCategory, description: p.description, suggestion: p.suggestion || '' };
+  var row = { id: newId('FindingGuide'), category: p.category, subCategory: p.subCategory, description: p.description, suggestion: p.suggestion || '', descriptionAr: p.descriptionAr || '', suggestionAr: p.suggestionAr || '' };
   var key = findingGuideDupKey_(row);
   var dup = findWhere('FindingGuide', function (g) { return findingGuideDupKey_(g) === key; })[0];
   if (dup) throw new HululError('BAD_REQUEST', 'A guide entry with this Category, Sub-Category, and Description already exists.');
@@ -81,7 +81,7 @@ function bulkCreateFindingGuideEntries(user, p) {
       failed.push({ row: raw.row, name: label, reason: 'Category "' + raw.category + '" doesn\'t match an existing Discipline name exactly (see the Categories page).' });
       return;
     }
-    var row = { category: raw.category, subCategory: raw.subCategory, description: raw.description, suggestion: raw.suggestion || '' };
+    var row = { category: raw.category, subCategory: raw.subCategory, description: raw.description, suggestion: raw.suggestion || '', descriptionAr: raw.descriptionAr || '', suggestionAr: raw.suggestionAr || '' };
     var key = findingGuideDupKey_(row);
     if (existingKeys[key] || batchKeys[key]) {
       failed.push({ row: raw.row, name: label, reason: 'A guide entry with this Category, Sub-Category, and Description already exists.' });
@@ -110,7 +110,7 @@ function updateFindingGuideEntry(user, p) {
   var entry = getById('FindingGuide', p.entryId);
   if (!entry) throw new HululError('NOT_FOUND', 'Guide entry not found');
   var patch = {};
-  ['category', 'subCategory', 'description', 'suggestion'].forEach(function (f) { if (p[f] !== undefined) patch[f] = p[f]; });
+  ['category', 'subCategory', 'description', 'suggestion', 'descriptionAr', 'suggestionAr'].forEach(function (f) { if (p[f] !== undefined) patch[f] = p[f]; });
   ['category', 'subCategory', 'description'].forEach(function (f) {
     if (patch[f] !== undefined && !String(patch[f]).trim()) throw new HululError('BAD_REQUEST', f + ' is required');
   });

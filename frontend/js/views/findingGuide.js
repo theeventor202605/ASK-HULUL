@@ -34,6 +34,14 @@ async function renderFindingGuide() {
     Api.call('listFindingGuide', {}), Api.call('listDisciplines', {}), Api.call('listChecklistItems', {})
   ]);
   var view = { category: '' };
+  // REQ: "When turning platform to Arabic, some information is still in English" -- Category (a
+  // Discipline name) has its own nameAr; Sub-Category has no Ar field of its own on FindingGuide (it's
+  // the same concept as ChecklistItems.checklistType, which does), so its Arabic text is looked up
+  // there instead -- same best-effort-first-match approach checklistItems.js/enrichFinding_ use.
+  var disciplineArByName_ = {};
+  disciplines.forEach(function (d) { if (d.nameAr) disciplineArByName_[d.name] = d.nameAr; });
+  var typeArByType_ = {};
+  checklistItems.forEach(function (c) { if (c.checklistType && c.checklistTypeAr && !typeArByType_[c.checklistType]) typeArByType_[c.checklistType] = c.checklistTypeAr; });
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(t('finding_guide_title')) + '</div>' +
@@ -111,7 +119,7 @@ async function renderFindingGuide() {
       categories.map(function (c) {
         var active = c === view.category;
         var count = entries.filter(function (g) { return g.category === c; }).length;
-        return '<div class="ci-phase-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(c) + ' <span class="muted" style="font-size:11px;">(' + count + ')</span></div>';
+        return '<div class="ci-phase-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(bi_(c, disciplineArByName_[c])) + ' <span class="muted" style="font-size:11px;">(' + count + ')</span></div>';
       }).join('');
     panel.querySelectorAll('[data-cat]').forEach(function (row) {
       row.onclick = function () { view.category = row.getAttribute('data-cat'); renderCategoryPanel(); renderTable(); };
@@ -126,10 +134,10 @@ async function renderFindingGuide() {
     var filtered = entries.filter(function (g) { return !view.category || g.category === view.category; });
     var wrap = document.getElementById('fgTableWrap');
     wrap.innerHTML = '<div class="card"><div class="card-body">' + UI.table([
-      { key: 'category', label: t('col_category') },
-      { key: 'subCategory', label: t('col_sub_category') },
-      { key: 'description', label: t('field_description') },
-      { key: 'suggestion', label: t('col_suggestion') }
+      { key: 'category', label: t('col_category'), render: r => esc(bi_(r.category, disciplineArByName_[r.category])) },
+      { key: 'subCategory', label: t('col_sub_category'), render: r => esc(bi_(r.subCategory, typeArByType_[r.subCategory])) },
+      { key: 'description', label: t('field_description'), render: r => esc(bi_(r.description, r.descriptionAr)) },
+      { key: 'suggestion', label: t('col_suggestion'), render: r => esc(bi_(r.suggestion, r.suggestionAr)) }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
         UI.actionsCell(
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-fg="' + r.id + '">' + ICON('edit') + '</button> ' +
@@ -215,7 +223,9 @@ function openFindingGuideForm_(entries, disciplines, checklistItems, opts) {
       '<datalist id="fgSubCategoryList">' + subCategoriesFor_(initialCategory).map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist>'
     ) +
     UI.field(t('field_description'), '<textarea id="fFgDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>') +
-    UI.field(t('col_suggestion'), '<textarea id="fFgSuggestion" class="field-input" rows="2">' + esc(initial.suggestion || '') + '</textarea>');
+    UI.field(t('field_arabic_x', { term: t('field_description') }), '<textarea id="fFgDescAr" class="field-input" dir="rtl" rows="2">' + esc(initial.descriptionAr || '') + '</textarea>') +
+    UI.field(t('col_suggestion'), '<textarea id="fFgSuggestion" class="field-input" rows="2">' + esc(initial.suggestion || '') + '</textarea>') +
+    UI.field(t('field_arabic_x', { term: t('col_suggestion') }), '<textarea id="fFgSuggestionAr" class="field-input" dir="rtl" rows="2">' + esc(initial.suggestionAr || '') + '</textarea>');
 
   UI.openModal(opts.title, body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -227,7 +237,12 @@ function openFindingGuideForm_(entries, disciplines, checklistItems, opts) {
         if (!category) { UI.toast(t('toast_category_required'), 'error'); return; }
         if (!subCategory) { UI.toast(t('toast_sub_category_required'), 'error'); return; }
         if (!description) { UI.toast(t('toast_description_required'), 'error'); return; }
-        var payload = { category: category, subCategory: subCategory, description: description, suggestion: document.getElementById('fFgSuggestion').value.trim() };
+        var payload = {
+          category: category, subCategory: subCategory, description: description,
+          suggestion: document.getElementById('fFgSuggestion').value.trim(),
+          descriptionAr: document.getElementById('fFgDescAr').value.trim(),
+          suggestionAr: document.getElementById('fFgSuggestionAr').value.trim()
+        };
         try { await opts.onSubmit(payload); } catch (err) { UI.error(err); }
       } }
   ]);

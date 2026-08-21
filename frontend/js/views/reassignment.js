@@ -139,7 +139,7 @@ function wireRescheduleButtons_(scope) {
       var body = '<div style="font-size:13px;margin-bottom:10px;">' + esc(t('reschedule_intro', { term: Term('inspector').toLowerCase(), eventTerm: Term('event').toLowerCase() })) + '</div>' +
         inspections.map(function (i) {
           return '<div style="display:flex;align-items:center;gap:8px;margin:8px 0;">' +
-            '<span style="font-size:12.5px;flex:1;">' + esc(i.disciplineName) + ' · ' + esc(i.phase) + '</span>' +
+            '<span style="font-size:12.5px;flex:1;">' + esc(bi_(i.disciplineName, i.disciplineNameAr)) + ' · ' + esc(i.phase) + '</span>' +
             '<input type="datetime-local" class="field-input reschedule-input" data-inspection="' + esc(i.id) + '" value="' + toDatetimeLocalValue_(i.scheduledAt) + '" style="width:auto;" />' +
           '</div>';
         }).join('');
@@ -175,7 +175,7 @@ function unavailableUserCardHtml_(u, assignments, suggestionsByAssignment, event
   var rows = inspectorAssignments.map(function (a) {
     var suggestions = suggestionsByAssignment[a.id] || [];
     return '<div style="padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
-      '<div style="font-size:13px;"><strong>' + esc(a.disciplineName) + '</strong> — ' + esc(a.eventName) +
+      '<div style="font-size:13px;"><strong>' + esc(bi_(a.disciplineName, a.disciplineNameAr)) + '</strong> — ' + esc(a.eventName) +
         '<span class="muted"> (' + esc(UI.fmtDate(a.eventStart)) + ' – ' + esc(UI.fmtDate(a.eventEnd)) + ')</span>' +
         (a.zoneNames.length ? '<span class="muted"> · ' + esc(a.zoneNames.join(', ')) + '</span>' : '') + '</div>' +
       (suggestions.length

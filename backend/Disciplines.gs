@@ -19,7 +19,7 @@ function createDiscipline(user, p) {
   if (p.catRef === undefined || p.catRef === null || p.catRef === '' || !Number.isInteger(catRef) || catRef < 1) {
     throw new HululError('BAD_REQUEST', 'Cat Ref. is required and must be a whole number of 1 or more.');
   }
-  var row = { id: newId('Disciplines'), name: p.name, code: code, catRef: catRef };
+  var row = { id: newId('Disciplines'), name: p.name, code: code, catRef: catRef, nameAr: p.nameAr || '' };
   insertRow('Disciplines', row);
   audit(user.id, 'CREATE_DISCIPLINE', 'Disciplines', row.id, {});
   return row;
@@ -52,7 +52,7 @@ function updateDiscipline(user, p) {
     throw new HululError('BAD_REQUEST', 'Cat Ref. is required and must be a whole number of 1 or more.');
   }
   var oldName = existing.name;
-  var updated = updateRow('Disciplines', p.disciplineId, { name: p.name, code: code, catRef: catRef });
+  var updated = updateRow('Disciplines', p.disciplineId, { name: p.name, code: code, catRef: catRef, nameAr: p.nameAr !== undefined ? p.nameAr : existing.nameAr });
   var renamedCount = 0;
   if (oldName && oldName !== p.name) {
     findWhere('ChecklistItems', function (c) { return c.category === oldName; })
@@ -461,12 +461,19 @@ function listInspectorAssignments(user, p) {
     // REQ follow-up: "Sub category can be selected..." -- blank stays displayed as "All" rather than
     // an empty cell, matching how a blank zoneIds already implicitly means "whole venue" above.
     var checklistTypes = a.checklistTypes ? String(a.checklistTypes).split(',').filter(Boolean) : [];
+    var checklistTypeArByType_ = {};
+    if (checklistTypes.length) {
+      findWhere('ChecklistItems', function (c) { return c.disciplineId === a.disciplineId && c.checklistTypeAr; })
+        .forEach(function (c) { if (!checklistTypeArByType_[c.checklistType]) checklistTypeArByType_[c.checklistType] = c.checklistTypeAr; });
+    }
     return Object.assign({}, a, {
       disciplineName: discipline ? discipline.name : a.disciplineId,
+      disciplineNameAr: discipline ? discipline.nameAr || '' : '',
       inspectorName: inspector ? inspector.name : a.inspectorId,
       inspectorEmail: inspector ? inspector.email : '',
       zoneNames: zoneNames,
-      checklistTypeNames: checklistTypes
+      checklistTypeNames: checklistTypes,
+      checklistTypeNamesAr: checklistTypes.map(function (ty) { return checklistTypeArByType_[ty] || ''; })
     });
   });
 }

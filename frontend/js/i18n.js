@@ -89,6 +89,9 @@ window.HULUL_I18N = {
     // REQ: "Code can not be less or more than 3 characters. Add new column name it 'Cat Ref.'"
     col_cat_ref: 'Cat Ref.', cat_ref_hint: 'A whole number -- shown as a Roman numeral (e.g. 2 -> II).',
     toast_code_must_be_3: 'Code must be exactly 3 characters', toast_cat_ref_required: 'Cat Ref. is required and must be a whole number of 1 or more',
+    // REQ: "When turning platform to Arabic, some information is still in English" -- optional Arabic
+    // sibling fields on the Disciplines/ChecklistItems/FindingGuide admin forms (see bi_(), i18n.js).
+    col_name_ar: 'Arabic Name', field_arabic_x: 'Arabic {{term}}',
     action_open: 'Open', action_edit: 'Edit', action_delete: 'Delete', ok: 'OK', delete: 'Delete',
 
     // ---- Events list + New/Edit Event modal (events.js) ----
@@ -840,6 +843,7 @@ window.HULUL_I18N = {
     col_code: 'الرمز', col_city: 'المدينة', col_start: 'البداية', col_end: 'النهاية', col_address: 'العنوان',
     col_cat_ref: 'مرجع الفئة', cat_ref_hint: 'رقم صحيح -- يُعرض كرقم روماني (مثال: 2 تصبح II).',
     toast_code_must_be_3: 'يجب أن يتكون الرمز من 3 أحرف بالضبط', toast_cat_ref_required: 'مرجع الفئة مطلوب ويجب أن يكون رقمًا صحيحًا 1 أو أكثر',
+    col_name_ar: 'الاسم بالعربية', field_arabic_x: '{{term}} بالعربية',
     action_open: 'فتح', action_edit: 'تعديل', action_delete: 'حذف', ok: 'موافق', delete: 'حذف',
 
     // ---- Events list + New/Edit Event modal (events.js) ----
@@ -1503,6 +1507,18 @@ function t(key, vars) {
     });
   }
   return str;
+}
+
+// REQ: "When turning platform to Arabic, some information is still in English" -- for open-ended
+// DATA (a Discipline's name, a Checklist Type, a Log Assistance Guide suggestion), not the fixed UI
+// chrome t()/Term() already cover. Those entities now carry an optional *Ar sibling field
+// (Disciplines.nameAr, ChecklistItems.checklistTypeAr, FindingGuide.descriptionAr/suggestionAr --
+// see Utils.gs SCHEMA) that an admin can fill in once; this picks whichever one the current UI
+// language actually wants, falling back to the English value whenever no Arabic one has been
+// entered yet (or the UI is in English) -- same "blank means not set yet, never a hard requirement"
+// rule every other appended-later field in this app follows.
+function bi_(en, ar) {
+  return (HululState.lang === 'ar' && ar) ? ar : (en || '');
 }
 
 function applyI18n(root) {

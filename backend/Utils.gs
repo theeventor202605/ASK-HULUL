@@ -131,7 +131,13 @@ var SCHEMA = {
   // displayed in Roman values." Stored as a plain whole number; the Roman-numeral conversion is
   // display-only, done client-side (disciplines.js's toRoman_) so sorting/CSV/etc. stay numeric.
   // Blank on any pre-existing row created before this field existed.
-  Disciplines:            ['id','name','code','catRef'],
+  // nameAr appended at the end -- REQ: "When turning platform to Arabic, some information is still
+  // in English" (Discipline/Category names, e.g. "Crowd Safety"). Optional: an admin fills it in
+  // once, and the frontend shows it instead of `name` whenever HululState.lang === 'ar' (see bi_(),
+  // i18n.js), falling back to `name` when blank -- same "blank == not set yet" convention as every
+  // other appended column, so nothing about an existing row changes until someone deliberately adds
+  // an Arabic name.
+  Disciplines:            ['id','name','code','catRef','nameAr'],
   EventDisciplines:       ['id','eventId','disciplineId','venueId','identifiedBy','createdAt'],
   InspectorQualifications:['id','userId','disciplineId'],
   // checklistTypes (REQ follow-up: "In Assign inspector section, Sub category can be selected or by
@@ -148,7 +154,14 @@ var SCHEMA = {
   // item in the checklist must have 'Item Ref.' ... always displayed as three digits." Both stored
   // as plain whole numbers; the zero-padded display formatting is done client-side (checklistItems.js)
   // so sorting/CSV/etc. stay numeric. Blank on any pre-existing row created before these fields existed.
-  ChecklistItems:         ['id','checklistType','category','description','defaultRisk','defaultWindowHours','phase','status','subRef','itemRef'],
+  // checklistTypeAr appended at the end -- REQ: "When turning platform to Arabic, some information
+  // is still in English" (Sub-Category/Checklist Type names, e.g. "CSM Queue & Flow Management").
+  // Same optional/fallback convention as Disciplines.nameAr just above: blank until an admin fills
+  // it in, shown instead of `checklistType` only when HululState.lang === 'ar' (bi_(), i18n.js).
+  // `category` (the Discipline name snapshot) doesn't get its own Ar copy here -- its Arabic value
+  // comes from resolving the linked Discipline's own nameAr instead, so there's exactly one place
+  // an Arabic Discipline name is ever stored, not one per ChecklistItems row.
+  ChecklistItems:         ['id','checklistType','category','description','defaultRisk','defaultWindowHours','phase','status','subRef','itemRef','checklistTypeAr'],
   // lastLat/lastLng/lastSeenAt appended at the end (established pattern, see Venues above) -- REQ:
   // "Inspectors live location as they start inspections. This applies to all maps." Written by
   // pingInspectionLocation (Inspections.gs), called periodically from the inspector's own device
@@ -198,7 +211,12 @@ var SCHEMA = {
   // Disciplines.name / the Checklist Type field by exact string (case-insensitive) at read time in
   // the frontend, not a foreign key -- same "match by name" convention ChecklistItems.category
   // already uses for Disciplines.
-  FindingGuide:           ['id','category','subCategory','description','suggestion'],
+  // descriptionAr/suggestionAr appended at the end -- REQ: "When turning platform to Arabic, some
+  // information is still in English" (the suggested Description/Suggestion text this catalogue
+  // hands the New/Edit Finding form). Same optional/fallback convention as Disciplines.nameAr:
+  // blank until an admin fills them in, shown instead of description/suggestion only when
+  // HululState.lang === 'ar' (bi_(), i18n.js).
+  FindingGuide:           ['id','category','subCategory','description','suggestion','descriptionAr','suggestionAr'],
   // toUserIds/ccUserIds/notedUserIds replace the old single recipientUserId -- REQ: "ability to
   // modify the To user role and the Cc: user roles", each tier can now resolve to MULTIPLE users
   // per role (e.g. every EMCManager in the org), and each of them needs their own independent

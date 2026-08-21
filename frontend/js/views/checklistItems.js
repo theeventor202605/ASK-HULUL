@@ -32,6 +32,17 @@ async function renderChecklistItems(params) {
   var canDedupe = hasPermission('checklistItem.dedupe');
   var [items, disciplines] = await Promise.all([Api.call('listChecklistItems', {}), Api.call('listDisciplines', {})]);
   var phases = Array.from(new Set(items.map(function (i) { return i.phase; }))).sort();
+  // REQ: "When turning platform to Arabic, some information is still in English" -- Category (a
+  // Discipline name) and Sub-Category (checklistType) are both shown as plain tab labels below, built
+  // from `items`/`disciplines` rather than from a single record, so there's no one row's nameAr/
+  // checklistTypeAr to read per label -- look each one up once here instead. checklistType is a value
+  // repeated across every item sharing that type (not its own row), so its Arabic text is whichever
+  // one of those items happens to carry it first -- same "best effort, not a strict source of truth"
+  // approach enrichFinding_ (Findings.gs) uses for the same field.
+  var disciplineArByName_ = {};
+  disciplines.forEach(function (d) { if (d.nameAr) disciplineArByName_[d.name] = d.nameAr; });
+  var typeArByType_ = {};
+  items.forEach(function (i) { if (i.checklistType && i.checklistTypeAr && !typeArByType_[i.checklistType]) typeArByType_[i.checklistType] = i.checklistTypeAr; });
   // Deep-link support, e.g. '#/checklist-items?itemId=CHK-0042' from a Finding's "From checklist
   // item" link (findings.js) -- pre-scope Phase/Category/Sub-Category to the linked item's own
   // values instead of the usual defaults, then scroll to + briefly highlight its row once rendered
@@ -158,7 +169,7 @@ async function renderChecklistItems(params) {
     panel.innerHTML = categoriesInPhase.length
       ? categoriesInPhase.map(function (c) {
           var active = c === view.category;
-          return '<div class="ci-cat-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(c) + '</div>';
+          return '<div class="ci-cat-row" data-cat="' + esc(c) + '" style="' + rowStyle + (active ? 'background:var(--accent);color:#fff;font-weight:600;' : '') + '">' + esc(bi_(c, disciplineArByName_[c])) + '</div>';
         }).join('')
       : '<div class="muted" style="font-size:12px;padding:6px 10px;">' + esc(t('no_x_under_phase', { term: Term('discipline_plural').toLowerCase() })) + '</div>';
     panel.querySelectorAll('.ci-cat-row').forEach(function (row) {
@@ -174,7 +185,7 @@ async function renderChecklistItems(params) {
     if (!view.checklistType || typesInCat.indexOf(view.checklistType) === -1) view.checklistType = typesInCat[0] || '';
     var typeTabbar = document.getElementById('typeTabbar');
     typeTabbar.innerHTML = typesInCat.map(function (ty) {
-      return '<div class="tab-btn ' + (ty === view.checklistType ? 'active' : '') + '" data-type="' + esc(ty) + '">' + esc(ty) + '</div>';
+      return '<div class="tab-btn ' + (ty === view.checklistType ? 'active' : '') + '" data-type="' + esc(ty) + '">' + esc(bi_(ty, typeArByType_[ty])) + '</div>';
     }).join('');
     typeTabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
       btn.onclick = function () { view.checklistType = btn.getAttribute('data-type'); renderTypeTabs(); };
@@ -268,6 +279,12 @@ function openChecklistItemForm_(items, disciplines, opts) {
   var typesForDiscipline_ = function (disciplineName) {
     return typesByDiscipline[disciplineName] ? Object.keys(typesByDiscipline[disciplineName]).sort() : [];
   };
+  // Best-known Arabic text for a given checklistType, same as renderChecklistItems' own
+  // typeArByType_ -- recomputed here too since openChecklistItemForm_ only receives items/disciplines,
+  // not the caller's local variables. Used to prefill fCiTypeAr when picking an *existing* type from
+  // the dropdown, so an admin editing/reusing a type they already translated doesn't have to retype it.
+  var typeArByType_ = {};
+  items.forEach(function (i) { if (i.checklistType && i.checklistTypeAr && !typeArByType_[i.checklistType]) typeArByType_[i.checklistType] = i.checklistTypeAr; });
   var typeSelectHtml_ = function (types, selectedType) {
     var matched = selectedType && types.indexOf(selectedType) !== -1;
     return types.map(function (ty) { return '<option value="' + esc(ty) + '"' + (ty === selectedType ? ' selected' : '') + '>' + esc(ty) + '</option>'; }).join('') +
@@ -288,6 +305,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
       '<select id="fCiTypeSelect" class="field-input">' + typeSelectHtml_(initialTypes, initial.checklistType) + '</select>' +
       '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />'
     ) +
+    UI.field(t('field_arabic_x', { term: Term('checklistType') }), '<input id="fCiTypeAr" class="field-input" dir="rtl" value="' + esc(initial.checklistTypeAr || typeArByType_[initial.checklistType] || '') + '" />') +
     // REQ: "Sub-Category must also have 'Sub Ref.' ... each item ... must have 'Item Ref.'" -- plain
     // whole-number inputs; padRef_ formats them for display everywhere else (table, CSV export text
     // stays the raw number for clean re-import).
@@ -319,7 +337,7 @@ function openChecklistItemForm_(items, disciplines, opts) {
           checklistType: checklistType, category: document.getElementById('fCiCategory').value,
           description: document.getElementById('fCiDesc').value, defaultRisk: document.getElementById('fCiRisk').value,
           defaultWindowHours: Number(document.getElementById('fCiWindow').value), phase: document.getElementById('fCiPhase').value,
-          subRef: subRef, itemRef: itemRef
+          subRef: subRef, itemRef: itemRef, checklistTypeAr: document.getElementById('fCiTypeAr').value.trim()
         };
         try { await opts.onSubmit(payload); } catch (err) { UI.error(err); }
       } }
@@ -328,17 +346,25 @@ function openChecklistItemForm_(items, disciplines, opts) {
   var disciplineSelectEl = document.getElementById('fCiCategory');
   var typeSelectEl = document.getElementById('fCiTypeSelect');
   var typeNewEl = document.getElementById('fCiTypeNew');
+  var typeArEl = document.getElementById('fCiTypeAr');
   var syncNewTypeVisibility_ = function () {
     typeNewEl.style.display = typeSelectEl.value === '__new__' ? '' : 'none';
     if (typeSelectEl.value === '__new__') typeNewEl.focus();
   };
-  typeSelectEl.onchange = syncNewTypeVisibility_;
+  // Picking an existing type from the dropdown prefills its already-known Arabic text (if any admin
+  // has entered one before) instead of leaving it blank -- switching to "Add new type" clears it
+  // since there's nothing to prefill yet.
+  var syncTypeAr_ = function () {
+    typeArEl.value = typeSelectEl.value === '__new__' ? '' : (typeArByType_[typeSelectEl.value] || '');
+  };
+  typeSelectEl.onchange = function () { syncNewTypeVisibility_(); syncTypeAr_(); };
   if (disciplineSelectEl && !disciplineSelectEl.disabled) {
     disciplineSelectEl.onchange = function () {
       var types = typesForDiscipline_(disciplineSelectEl.value);
       typeSelectEl.innerHTML = typeSelectHtml_(types, null);
       typeNewEl.value = '';
       syncNewTypeVisibility_();
+      syncTypeAr_();
     };
   }
 }

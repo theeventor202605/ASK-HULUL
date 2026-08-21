@@ -1954,8 +1954,8 @@ async function tabDisciplines(content, eventId, detail) {
       : '') +
     '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('assignments_title')) + '</div></div><div class="card-body">' +
     UI.table([
-      { key: 'disciplineName', label: Term('discipline') }, { key: 'inspectorName', label: Term('inspector') },
-      { key: 'checklistTypeNames', label: Term('checklistType_plural'), render: r => (r.checklistTypeNames && r.checklistTypeNames.length) ? esc(r.checklistTypeNames.join(', ')) : '—' },
+      { key: 'disciplineName', label: Term('discipline'), render: r => esc(bi_(r.disciplineName, r.disciplineNameAr)) }, { key: 'inspectorName', label: Term('inspector') },
+      { key: 'checklistTypeNames', label: Term('checklistType_plural'), render: r => (r.checklistTypeNames && r.checklistTypeNames.length) ? esc(r.checklistTypeNames.map(function (ty, i) { return bi_(ty, r.checklistTypeNamesAr && r.checklistTypeNamesAr[i]); }).join(', ')) : '—' },
       { key: 'zoneNames', label: Term('zone_plural'), render: r => (r.zoneNames && r.zoneNames.length) ? esc(r.zoneNames.join(', ')) : '—' },
       { key: 'assignedAt', label: t('col_assigned'), render: r => UI.fmtDate(r.assignedAt) }
     ].concat(canAssign ? [{ key: 'actions', label: t('actions'), render: r => UI.actionsCell('<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('remove_btn')) + '" data-remove-assign="' + r.id + '">' + ICON('delete') + '</button>') }] : []),
@@ -2342,7 +2342,7 @@ async function tabInspections(content, eventId, detail) {
       // pickup (assignedVia === 'self') now covers just one checklistType instead of the whole
       // discipline, so its sub-category is shown alongside the discipline name to distinguish it from
       // a PM-scheduled row (checklistType blank, covers everything) for the same discipline+phase.
-      { key: 'disciplineName', label: Term('discipline'), render: r => esc(r.disciplineName) + (r.checklistType ? ' <span class="muted" style="font-size:11px;">— ' + esc(r.checklistType) + '</span>' : '') },
+      { key: 'disciplineName', label: Term('discipline'), render: r => esc(bi_(r.disciplineName, r.disciplineNameAr)) + (r.checklistType ? ' <span class="muted" style="font-size:11px;">— ' + esc(r.checklistType) + '</span>' : '') },
       { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'scheduledAt', label: t('col_when'), render: r => UI.fmtDate(r.scheduledAt) },
@@ -2627,12 +2627,12 @@ async function tabCompletedChecklists(content, eventId, detail) {
             ? '<a href="#/events/' + esc(eventId) + '/completed-checklist/' + esc(r.inspectionId) + '/' + esc(r.participantId) + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.participantName) + '</a>'
             : esc(r.participantName)
       },
-      { key: 'disciplineName', label: Term('discipline') },
+      { key: 'disciplineName', label: Term('discipline'), render: r => esc(bi_(r.disciplineName, r.disciplineNameAr)) },
       // REQ follow-up: "Not all sub-categories are applicable ... when Sub-Category of a checklist is
       // completed then it must appear in the Completed Checklist tab." listCompletedChecklists now
       // emits one row per completed sub-category (not one per whole inspection) -- this column is what
       // distinguishes a participant's separate completed rows from each other.
-      { key: 'checklistType', label: Term('checklistType') },
+      { key: 'checklistType', label: Term('checklistType'), render: r => esc(bi_(r.checklistType, r.checklistTypeAr)) },
       { key: 'phase', label: t('col_phase') },
       { key: 'inspectorName', label: Term('inspector') },
       { key: 'progress', label: t('col_progress'), render: r => t('progress_fraction', { done: r.done, total: r.total, term: Term('checklistItem_plural').toLowerCase() }) },
@@ -3758,8 +3758,8 @@ function findingBoardCard_(f) {
         UI.riskBadge(f.riskLevel) +
         (isTerminal ? '' : '<span style="font-size:10.5px;font-weight:600;white-space:nowrap;color:' + countdownColor + ';">' + esc(UI.fmtCountdown(f.resolutionWindowAt)) + '</span>') +
       '</div>' +
-      '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px;line-height:1.35;">' + esc(f.disciplineName || '—') + '</div>' +
-      '<div style="font-size:11px;color:var(--text-600);">' + esc([f.category, f.subCategory].filter(Boolean).join(' / ') || '—') + '</div>'
+      '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px;line-height:1.35;">' + esc(bi_(f.disciplineName, f.disciplineNameAr) || '—') + '</div>' +
+      '<div style="font-size:11px;color:var(--text-600);">' + esc([f.category, bi_(f.subCategory, f.subCategoryAr)].filter(Boolean).join(' / ') || '—') + '</div>'
   };
 }
 
@@ -4777,7 +4777,7 @@ function eventRoadmapMilestones_(detail, templates, meetings, inspections, roadm
   });
 
   (inspections || []).forEach(function (insp) {
-    add(insp.scheduledAt, 'tl-dot-amber', false, 'inspection', t('roadmap_ms_inspection', { discipline: insp.disciplineName, term: Term('inspection') }));
+    add(insp.scheduledAt, 'tl-dot-amber', false, 'inspection', t('roadmap_ms_inspection', { discipline: bi_(insp.disciplineName, insp.disciplineNameAr), term: Term('inspection') }));
   });
 
   // Roadmap Plan items -- REQ: "configure how it will rollout." Done/Overdue reuse the same green/

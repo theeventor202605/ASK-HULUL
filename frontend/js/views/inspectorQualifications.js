@@ -30,12 +30,12 @@ async function renderInspectorQualifications(params) {
           : '') +
         '<div style="margin-top:4px;">' + disciplines.map(d =>
           '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
-          '<input type="checkbox" class="qual-check" value="' + d.id + '"' + (currentIds.indexOf(d.id) !== -1 ? ' checked' : '') + ' /> ' + esc(d.name) + '</label>').join('') + '</div>' +
+          '<input type="checkbox" class="qual-check" value="' + d.id + '"' + (currentIds.indexOf(d.id) !== -1 ? ' checked' : '') + ' /> ' + esc(bi_(d.name, d.nameAr)) + '</label>').join('') + '</div>' +
         '<div><button class="btn btn-primary btn-sm" id="saveQualBtn" style="margin-top:12px;">' + t('save') + '</button></div>' +
         '<div class="muted" style="font-size:12px;margin-top:8px;">' + esc(t('save_replaces_qual_hint', { inspectorTerm: Term('inspector'), disciplineTerm: Term('discipline_plural').toLowerCase() })) + '</div>' +
         '</div></div>' +
         '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('currently_qualified_in')) + '</div></div><div class="card-body">' +
-        UI.table([{ key: 'name', label: Term('discipline') }, { key: 'code', label: t('col_code') }], currentQuals, { emptyText: esc(t('empty_qualifications', { disciplineTerm: Term('discipline_plural').toLowerCase(), inspectorTerm: Term('inspector') })) }) +
+        UI.table([{ key: 'name', label: Term('discipline'), render: r => esc(bi_(r.name, r.nameAr)) }, { key: 'code', label: t('col_code') }], currentQuals, { emptyText: esc(t('empty_qualifications', { disciplineTerm: Term('discipline_plural').toLowerCase(), inspectorTerm: Term('inspector') })) }) +
         '</div></div>'
       : '<div class="empty-state">' + esc(t('empty_no_inspector_accounts', { term: Term('inspector') })) + '</div>');
 

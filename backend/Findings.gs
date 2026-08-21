@@ -60,9 +60,25 @@ function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById
   var d = disciplinesById[f.disciplineId];
   var item = checklistItemsById && f.checklistItemId ? checklistItemsById[f.checklistItemId] : null;
   var creator = usersById && f.createdBy ? usersById[f.createdBy] : null;
+  // REQ: "When turning platform to Arabic, some information is still in English" -- category/
+  // subCategory on Findings are plain-text snapshots (see the Findings schema comment in Utils.gs),
+  // not foreign keys, so there's no single row to read an Arabic value off of the way disciplineName
+  // above does via disciplineId. Resolve the best we can: disciplineId IS a real FK, so
+  // disciplineNameAr comes straight from it. subCategory has no FK when the Finding was logged
+  // manually (checklistItemId blank) -- fall back to a best-effort match against every known
+  // ChecklistItems row by its checklistType text (same "match by name" convention
+  // ChecklistItems.category/FindingGuide.category already use for Disciplines names).
+  var subCategoryAr = item ? item.checklistTypeAr : '';
+  if (!subCategoryAr && f.subCategory && checklistItemsById) {
+    var matchByType = Object.keys(checklistItemsById).map(function (k) { return checklistItemsById[k]; })
+      .filter(function (ci) { return ci.checklistType === f.subCategory && ci.checklistTypeAr; })[0];
+    if (matchByType) subCategoryAr = matchByType.checklistTypeAr;
+  }
   return Object.assign({}, f, {
     participantName: pt ? pt.name : '',
     disciplineName: d ? d.name : '',
+    disciplineNameAr: d ? d.nameAr : '',
+    subCategoryAr: subCategoryAr,
     // REQ follow-up: "Category Code as Category" -- the Risk Logging table's Category column shows
     // the Discipline's short code (e.g. "CSM") instead of its full name to stay compact; disciplineName
     // (full name) stays available too for anywhere else that still wants it (e.g. the detail page chip).

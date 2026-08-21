@@ -44,7 +44,7 @@ function createChecklistItem(user, p) {
   var row = {
     id: newId('ChecklistItems'), checklistType: p.checklistType, category: p.category, description: p.description,
     defaultRisk: p.defaultRisk || 'Medium', defaultWindowHours: p.defaultWindowHours || 24, phase: p.phase || 'Opening',
-    status: 'Active', subRef: Number(p.subRef), itemRef: Number(p.itemRef)
+    status: 'Active', subRef: Number(p.subRef), itemRef: Number(p.itemRef), checklistTypeAr: p.checklistTypeAr || ''
   };
   var key = checklistItemDupKey_(row);
   var dup = findWhere('ChecklistItems', function (c) { return c.status !== 'Deleted' && checklistItemDupKey_(c) === key; })[0];
@@ -90,7 +90,8 @@ function bulkCreateChecklistItems(user, p) {
     var row = {
       checklistType: raw.checklistType, category: raw.category, description: raw.description,
       defaultRisk: raw.defaultRisk || 'Medium', defaultWindowHours: raw.defaultWindowHours || 24,
-      phase: raw.phase || 'Opening', status: 'Active', subRef: Number(raw.subRef), itemRef: Number(raw.itemRef)
+      phase: raw.phase || 'Opening', status: 'Active', subRef: Number(raw.subRef), itemRef: Number(raw.itemRef),
+      checklistTypeAr: raw.checklistTypeAr || ''
     };
     var key = checklistItemDupKey_(row);
     if (existingKeys[key] || batchKeys[key]) {
@@ -122,7 +123,7 @@ function updateChecklistItem(user, p) {
   var item = getById('ChecklistItems', p.itemId);
   if (!item) throw new HululError('NOT_FOUND', 'Checklist item not found');
   var patch = {};
-  ['checklistType', 'category', 'description', 'defaultRisk', 'defaultWindowHours', 'phase', 'subRef', 'itemRef'].forEach(function (f) {
+  ['checklistType', 'category', 'description', 'defaultRisk', 'defaultWindowHours', 'phase', 'subRef', 'itemRef', 'checklistTypeAr'].forEach(function (f) {
     if (p[f] !== undefined) patch[f] = p[f];
   });
   ['checklistType', 'category', 'description'].forEach(function (f) {
@@ -337,7 +338,8 @@ function listOpenInspectionSlots(user, p) {
       disciplineChecklistTypesForPhase_(discipline.name, phase).forEach(function (checklistType) {
         if (narrowCovered[ed.disciplineId + '|' + phase + '|' + checklistType]) return;
         slots.push({
-          disciplineId: ed.disciplineId, disciplineName: discipline.name, phase: phase, checklistType: checklistType,
+          disciplineId: ed.disciplineId, disciplineName: discipline.name, disciplineNameAr: discipline.nameAr || '',
+          phase: phase, checklistType: checklistType,
           qualified: myQualifications.indexOf(ed.disciplineId) !== -1
         });
       });
@@ -641,6 +643,7 @@ function listInspections(user, p) {
       var coverage = inspectionCoverage_(i);
       return Object.assign({}, i, {
         disciplineName: discipline ? discipline.name : i.disciplineId,
+        disciplineNameAr: discipline ? discipline.nameAr || '' : '',
         inspectorName: inspector ? inspector.name : i.inspectorId,
         // total/done count *relevant participants* completed for an Operational-phase inspection, or
         // just 0/1 (not-yet-done/done) for an Opening-phase one -- see inspectionCoverage_. `mode`
@@ -704,7 +707,8 @@ function listCompletedChecklists(user, p) {
           return (!max || new Date(r.recordedAt) > new Date(max)) ? r.recordedAt : max;
         }, '');
         out.push({
-          inspectionId: insp.id, disciplineName: insp.disciplineName, phase: insp.phase, checklistType: checklistType,
+          inspectionId: insp.id, disciplineName: insp.disciplineName, disciplineNameAr: insp.disciplineNameAr || '',
+          phase: insp.phase, checklistType: checklistType, checklistTypeAr: items[0] ? (items[0].checklistTypeAr || '') : '',
           inspectorId: insp.inspectorId, inspectorName: insp.inspectorName,
           participantId: pt.id, participantName: pt.name,
           done: items.length, total: items.length, lastRecordedAt: lastRecordedAt
