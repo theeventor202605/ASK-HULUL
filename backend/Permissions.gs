@@ -392,6 +392,18 @@ var PERMISSION_REGISTRY_ = {
   'annex.manageCatalog': {
     module: 'Readiness', label: 'Add, edit, or delete an Annex category in the catalogue (Inspection Setup)', page: 'annexCategories', crud: ['create', 'update', 'delete'],
     defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
+  },
+  // REQ: "We have a team of translators ... having an interface for this specific task would be
+  // helpful. We also need to know the percentage of translation, they also get to know what has not
+  // been translated yet." Translations.gs's worklist covers every optional Arabic field in the app
+  // (Categories/Checklist Types/Log Assistance Guide/Risk Logs/Places) -- crud is 'read'+'update' only
+  // (no create/delete; a translator fills in the Arabic counterpart of an already-existing English
+  // value, never originates a new catalogue row), so a SystemAdmin can create a 'Translator' custom
+  // role (Settings > Roles) scoped to just this permission/page, without also granting
+  // discipline.manage/finding.edit/place.manage/etc. that record-level editing would otherwise require.
+  'translation.manage': {
+    module: 'Translations', label: 'View and edit Arabic translations across the app', page: 'translations', crud: ['read', 'update'],
+    defaultRoles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager']
   }
 };
 

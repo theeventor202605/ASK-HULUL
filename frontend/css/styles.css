@@ -391,6 +391,22 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .card-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); gap:10px; flex-wrap:wrap; }
 .card-title{ font-size:15px; font-weight:700; }
 
+/* Translation Hub (translations.js) -- overall + per-category %-translated progress bars, and the
+   clickable category filter cards above the worklist table. */
+.translation-progress-track{ background:var(--surface); border:1px solid var(--border); border-radius:999px; height:8px; overflow:hidden; }
+.translation-progress-fill{ background:var(--accent); height:100%; border-radius:999px; transition:width .2s; }
+.translation-overall{ display:flex; align-items:center; gap:16px; padding:18px 20px; }
+.translation-overall-pct{ font-size:28px; font-weight:800; min-width:64px; }
+.translation-overall-label{ font-size:13px; font-weight:700; margin-bottom:6px; }
+.translation-cat-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin:14px 0; }
+.translation-cat-card{ text-align:start; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; cursor:pointer; font-family:inherit; }
+.translation-cat-card:hover{ border-color:var(--accent); }
+.translation-cat-card.active{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.translation-cat-label{ font-size:12.5px; font-weight:700; color:var(--text-600); margin-bottom:4px; }
+.translation-cat-pct{ font-size:20px; font-weight:800; margin-bottom:6px; }
+.translation-cat-count{ font-size:11px; color:var(--text-600); margin-top:6px; }
+.translation-input{ min-width:220px; resize:vertical; }
+
 /* Projects list/detail (projects.js) -- a horizontal date line per project: a square dot at each
    end (overall start/end) plus one round dot per event start/end -- all the same size -- positioned
    proportionally by calendar date (time-of-day ignored), with a rotated date label under each

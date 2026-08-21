@@ -119,6 +119,7 @@ window.Router = {
     this.add('/support', renderSupport);
     this.add('/support/:id', renderSupportDetail);
     this.add('/audit-log', renderAuditLog);
+    this.add('/translations', renderTranslations);
     this.add('/settings', renderSettings);
     this.add('/roadmap-plans', renderRoadmapPlans);
     this.add('/roadmap-plans/:id', renderRoadmapPlanDetail);

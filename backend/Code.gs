@@ -98,6 +98,11 @@ var ROUTES = {
   resetPermission: function (u, p) { return resetPermission(u, p); },
   getMyPermissions: function (u, p) { return getMyPermissions(u, p); },
   getMyPageAccess: function (u, p) { return getMyPageAccess(u, p); },
+  // Translation Hub (Translations.gs) -- REQ: dedicated worklist for a translator team, with
+  // percentage-translated tracking and an "untranslated only" view (both derived client-side from this
+  // one flat list, translations.js).
+  listTranslationItems: function (u, p) { return listTranslationItems(u); },
+  updateTranslation: function (u, p) { return updateTranslation(u, p); },
   // Admin-defined custom roles (Roles.gs) -- "create a new role" without a code deploy.
   listCustomRoles: function (u, p) { return listCustomRoles(u); },
   createRole: function (u, p) { return createRole(u, p); },

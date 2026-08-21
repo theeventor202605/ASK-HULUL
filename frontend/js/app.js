@@ -73,6 +73,12 @@ var NAV_ITEMS = [
   // were the missing piece -- same default-roles set as 'auditLog.view' (backend/Permissions.gs).
   { path: '/audit-log', icon: LUCIDE_ICONS['clipboard-list'], label: 'nav_audit_log', section: 'section_admin',
     roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
+  // REQ: "We have a team of translators ... having an interface for this specific task would be
+  // helpful." roles here matches translation.manage's own defaultRoles (Permissions.gs) -- a
+  // SystemAdmin-created 'Translator' custom role (Settings > Roles) sees this nav item too, via the
+  // pageAccess OR-branch in navItemVisible_ below, with no code change needed.
+  { path: '/translations', icon: LUCIDE_ICONS['globe'], label: 'nav_translations', section: 'section_admin',
+    roles: ['SystemAdmin', 'InspectionAdmin', 'ProjectManager'] },
   { path: '/settings', icon: LUCIDE_ICONS['settings'], label: 'nav_settings', section: 'section_admin' }
 ];
 
@@ -99,6 +105,7 @@ var NAV_GROUPS_ = [
   // Items, Inspector Qualifications, Template Library.
   { section: 'section_admin', key: 'inspectionSetupGroup', labelKey: 'nav_group_inspection_setup', paths: ['/disciplines', '/checklist-items', '/finding-guide', '/annex-categories', '/inspector-qualifications', '/template-library'] },
   { section: 'section_admin', paths: ['/audit-log'] },
+  { section: 'section_admin', paths: ['/translations'] },
   { section: 'section_admin', paths: ['/settings'] }
 ];
 

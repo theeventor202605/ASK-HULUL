@@ -954,7 +954,10 @@ function permissionPages_() {
     // out items, whose real UI home is the Event > Roadmap tab, same eventTab-not-navPath convention
     // as 'findings'/'templates'/etc above.
     { id: 'roadmapPlans', label: t('nav_roadmap_plans'), navPath: '/roadmap-plans' },
-    { id: 'roadmap', label: t('tab_roadmap'), eventTab: 'roadmap' }
+    { id: 'roadmap', label: t('tab_roadmap'), eventTab: 'roadmap' },
+    // Translation Hub (Translations.gs / translations.js) -- lets a SystemAdmin grant a custom
+    // 'Translator' role (Settings > Roles) just this one page via the Permissions matrix below.
+    { id: 'translations', label: t('nav_translations'), navPath: '/translations' }
   ];
 }
 
