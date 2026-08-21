@@ -247,8 +247,6 @@ function navItemVisible_(item) {
 var NAV_GROUP_COLLAPSE_KEY_PREFIX_ = 'hulul_nav_group_collapsed_';
 
 function renderSidebar() {
-  var search = document.getElementById('globalSearch');
-  if (search) search.placeholder = t('search_placeholder', { events: Term('event_plural').toLowerCase(), findings: Term('finding_plural').toLowerCase() });
   var nav = document.getElementById('sidebarNav');
   var itemsByPath = {};
   NAV_ITEMS.forEach(function (item) { itemsByPath[item.path] = item; });

@@ -317,9 +317,6 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .app-main{ flex:1; min-width:0; display:flex; flex-direction:column; }
 .topbar{ position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px; padding:12px 24px;
   background:rgba(246,247,251,.85); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
-.topbar-search{ flex:1; max-width:420px; }
-.topbar-search input{ width:100%; border:1px solid var(--border); background:#fff; border-radius:999px; padding:9px 16px; font-size:13.5px; outline:none; }
-.topbar-search input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .topbar-actions{ display:flex; align-items:center; gap:14px; margin-inline-start:auto; }
 .org-logo{ height:34px; width:auto; max-width:130px; object-fit:contain; border-radius:6px; }
 /* REQ: "icons are very small, we need to go one size up" -- these 4 topbar buttons (mobileNavBtn,
@@ -951,13 +948,11 @@ html[dir="rtl"] .evidence-thumb-count{ right:auto; left:3px; }
   /* Reclaim horizontal room for actual content on a phone-width screen -- 24px of padding on each
      side is fine on desktop but eats a real chunk of a 320-375px viewport. */
   .view-root{ padding:14px; }
-  /* Topbar: mobileNavBtn + search + org logo + support/escalation/notif icons + full user-chip
-     (avatar + name + role text) never fit a phone-width screen at once -- the search input was the
-     one that lost, shrinking toward unusable. Drop the two purely-decorative/duplicated-elsewhere
-     pieces (org logo is also in the sidebar brand; name/role are also shown in the user menu the
-     avatar opens) so search gets real room again. */
+  /* Topbar: mobileNavBtn + org logo + support/escalation/notif icons + full user-chip (avatar +
+     name + role text) never fit a phone-width screen at once. Drop the two purely-decorative/
+     duplicated-elsewhere pieces (org logo is also in the sidebar brand; name/role are also shown
+     in the user menu the avatar opens) so the remaining icons get real room. */
   .topbar{ padding:10px 14px; gap:8px; }
-  .topbar-search{ max-width:none; }
   .org-logo{ display:none; }
   .user-chip-text{ display:none; }
 }

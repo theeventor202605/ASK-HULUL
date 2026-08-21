@@ -1510,10 +1510,14 @@ function templateScoringRowHtml_(item, result) {
         '<div class="doc-quality-group" data-item="' + item.id + '" data-value="' + esc(quality) + '" style="display:flex;gap:3px;">' + qualityBtns + '</div>' +
       '</div>' +
     '</div>' +
-    '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
-      '<div style="flex:1 1 240px;">' + UI.field(t('field_remarks'), '<textarea class="field-input doc-remarks" data-item="' + item.id + '" rows="2">' + esc(result ? result.remarks : '') + '</textarea>') + '</div>' +
-      '<div style="flex:1 1 240px;">' + UI.field(t('field_detail'), '<textarea class="field-input doc-detail" data-item="' + item.id + '" rows="2">' + esc(result ? result.detail : '') + '</textarea>') + '</div>' +
+    '<div style="margin-top:6px;">' +
+      UI.field(t('field_remarks'), '<textarea class="field-input doc-remarks" data-item="' + item.id + '" rows="2">' + esc(result ? result.remarks : '') + '</textarea>') +
     '</div>' +
+    // REQ: "Remove the detail box." No longer a visible field -- kept as a hidden input (instead of
+    // deleted outright) purely so collectTemplateScoringResults_/CSV import below, which still read
+    // .doc-detail by convention, keep preserving whatever detail text older rows already have on
+    // record rather than silently blanking it out on the next Save.
+    '<input type="hidden" class="doc-detail" data-item="' + item.id + '" value="' + esc(result ? result.detail : '') + '" />' +
   '</div>';
 }
 
