@@ -72,6 +72,44 @@ function fixScheduledDateTimeDrift() {
   return { fixed: fixed };
 }
 
+// Second, DIFFERENT root cause behind the same "I ran against a different saved date time than the
+// one I selected" report: the Reassign Venue conflict page's own reschedule box
+// (wireRescheduleButtons_, reassignment.js) used to run the picked <input type="datetime-local">
+// value through `new Date(...).toISOString()` before saving -- silently reinterpreting the picked
+// LOCAL clock time as if it were UTC and shifting it by the browser's timezone offset, then storing
+// that shifted absolute instant (e.g. "2026-08-25T11:00:00.000Z") into Inspections.scheduledAt, a
+// column every other part of the app treats as literal naive wall-clock text with no timezone
+// attached (see DATE_TEXT_COLUMNS_, Utils.gs). Because that stored text still happens to start with a
+// valid "YYYY-MM-DDTHH:mm" prefix, ensureDateColumnsAreText_/fixScheduledDateTimeDrift above never
+// caught it (it only repairs cells Sheets converted to a real Date value, not already-plain-text that
+// is just semantically wrong) -- and normalizeDateTimeLocal's own regex fast path (events.js) used to
+// read those raw (shifted) digits back into the Edit/Reschedule form as if they were correct, which is
+// the exact "saved time doesn't match what I picked" symptom. The code bug is fixed (reassignment.js
+// now sends the picked value untouched; normalizeDateTimeLocal now detects a 'Z'/offset suffix and
+// converts it properly instead of trusting the raw digits) -- this repairs any Inspections row that
+// already got corrupted by the old behavior, converting its stored absolute instant back into plain
+// local wall-clock text using the spreadsheet's own timezone (same canonical-timezone assumption
+// ensureDateColumnsAreText_ already makes). Only ever touches a value that actually looks like an
+// absolute instant (trailing Z or +/-HH:MM offset) -- a normal already-naive value is left untouched.
+// Run once from the Apps Script editor's function dropdown after redeploying; check the Execution log
+// for the count. Safe to re-run -- matches nothing once every value is naive text again.
+function repairShiftedInspectionScheduleTimes() {
+  var tz = ss_().getSpreadsheetTimeZone();
+  var ABSOLUTE_INSTANT_RE = /Z$|[+-]\d{2}:?\d{2}$/;
+  var fixed = 0;
+  getAll('Inspections').forEach(function (insp) {
+    var v = insp.scheduledAt;
+    if (!v || !ABSOLUTE_INSTANT_RE.test(String(v).trim())) return;
+    var d = new Date(v);
+    if (isNaN(d)) return;
+    var repaired = Utilities.formatDate(d, tz, "yyyy-MM-dd'T'HH:mm");
+    updateRow('Inspections', insp.id, { scheduledAt: repaired });
+    fixed++;
+  });
+  Logger.log('repairShiftedInspectionScheduleTimes: repaired ' + fixed + ' Inspections row(s) shifted by the old reassignment.js reschedule bug.');
+  return { fixed: fixed };
+}
+
 // One-time fix for REQ bug report "I checked Food & Beverage in Apply disciplines, but Construction
 // Handover got saved instead": the Disciplines sheet had rows with duplicate ids (DIS-0002 shared by
 // Health & Safety and Emergency & Response, DIS-0003 by Fire Safety and Universal Accessibility,

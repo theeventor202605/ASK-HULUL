@@ -428,7 +428,15 @@ function parseCsv_(text) {
 function normalizeDateTimeLocal(raw) {
   if (!raw) return '';
   var s = String(raw).trim().replace(' ', 'T');
-  var m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  // Only take the literal-digits fast path for a genuinely naive "no timezone attached" string --
+  // the convention every wall-clock scheduling field in this app is supposed to use (see
+  // DATE_TEXT_COLUMNS_, Utils.gs). A trailing 'Z' or +/-HH:MM offset means this is actually an
+  // absolute instant (e.g. a row that slipped through the reassignment.js reschedule bug that used
+  // to convert picked local time to UTC before saving, or any other stray ISO-instant value) -- those
+  // must go through the Date object below instead, which correctly converts the instant into THIS
+  // browser's own local wall-clock digits, rather than displaying its raw UTC digits as if they were
+  // already local (the "saved time doesn't match what I picked" bug).
+  var m = /Z$|[+-]\d{2}:?\d{2}$/.test(s) ? null : s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
   if (m) return m[1] + 'T' + m[2];
   var d = new Date(s);
   if (!isNaN(d)) {

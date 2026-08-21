@@ -150,7 +150,16 @@ function wireRescheduleButtons_(scope) {
             try {
               for (var i = 0; i < inputs.length; i++) {
                 if (!inputs[i].value) continue;
-                await Api.call('updateInspection', { eventId: conflictEventId, inspectionId: inputs[i].getAttribute('data-inspection'), scheduledAt: new Date(inputs[i].value).toISOString() });
+                // Inspections.scheduledAt is a literal wall-clock string (no timezone attached, same
+                // convention as every other scheduling field -- see DATE_TEXT_COLUMNS_, Utils.gs), sent
+                // straight from the <input type="datetime-local"> exactly like every other reschedule/
+                // schedule flow in the app. This USED to run inputs[i].value through
+                // `new Date(...).toISOString()` first, which silently reinterpreted the picked local
+                // clock time as a UTC instant and shifted it by the browser's timezone offset before
+                // saving -- the fix for "I ran against a different saved date time than the one I
+                // selected": the picked value must be saved byte-for-byte, never round-tripped through
+                // a Date object.
+                await Api.call('updateInspection', { eventId: conflictEventId, inspectionId: inputs[i].getAttribute('data-inspection'), scheduledAt: inputs[i].value });
               }
               UI.closeModal(); UI.toast(t('toast_rescheduled'), 'success'); Router.resolve();
             } catch (err) { UI.error(err); }
