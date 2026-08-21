@@ -89,7 +89,12 @@ function listEventAnnex(user, p) {
   };
 }
 
-var ANNEX_SECTIONS_VALID_ = ['RiskAssessments', 'SignOffs', 'Certifications'];
+// Section was originally a closed 3-value enum (RiskAssessments/SignOffs/Certifications), validated
+// against a fixed whitelist on every create/update. REQ follow-up: "In Annex Category allow to create
+// a new Section." -- section is now free-form, validated the same way a category's own name is (non-
+// empty, trimmed) in create/updateAnnexCategory below, not against a fixed list. The 3 original keys
+// still keep their existing translated labels on the frontend (ANNEX_BUILTIN_SECTIONS_/
+// annexSectionLabel_, eventDetail.js) purely for display -- nothing here enforces them anymore.
 
 // Admin listing for the Inspection Setup > Annex Categories page (annexCategories.js) -- REQ follow-
 // up: "I would rather have this part of the inspection setup so the responsible person can make
@@ -111,15 +116,16 @@ function annexCategoryDupKey_(section, name) {
 
 function createAnnexCategory(user, p) {
   requirePermission(user, 'annex.manageCatalog');
-  if (!p || !p.section || !p.name) throw new HululError('BAD_REQUEST', 'section and name are required');
-  if (ANNEX_SECTIONS_VALID_.indexOf(p.section) === -1) throw new HululError('BAD_REQUEST', 'Invalid section');
-  var key = annexCategoryDupKey_(p.section, p.name);
+  var section = p && p.section ? String(p.section).trim() : '';
+  var name = p && p.name ? String(p.name).trim() : '';
+  if (!section || !name) throw new HululError('BAD_REQUEST', 'section and name are required');
+  var key = annexCategoryDupKey_(section, name);
   var dup = findWhere('AnnexCategories', function (c) { return c.status !== 'Deleted' && annexCategoryDupKey_(c.section, c.name) === key; })[0];
   if (dup) throw new HululError('BAD_REQUEST', 'A category with this name already exists in this section.');
-  var sectionRows = findWhere('AnnexCategories', function (c) { return c.section === p.section; });
+  var sectionRows = findWhere('AnnexCategories', function (c) { return c.section === section; });
   var maxOrder = sectionRows.reduce(function (max, c) { return Math.max(max, Number(c.orderIndex) || 0); }, 0);
   var row = {
-    id: newId('AnnexCategories'), section: p.section, name: String(p.name).trim(),
+    id: newId('AnnexCategories'), section: section, name: name,
     orderIndex: maxOrder + 1, status: 'Active', defaultRequired: !!p.defaultRequired
   };
   insertRow('AnnexCategories', row);
@@ -132,10 +138,9 @@ function updateAnnexCategory(user, p) {
   if (!p || !p.categoryId) throw new HululError('BAD_REQUEST', 'categoryId is required');
   var existing = getById('AnnexCategories', p.categoryId);
   if (!existing) throw new HululError('NOT_FOUND', 'Category not found');
-  var section = p.section !== undefined ? p.section : existing.section;
+  var section = p.section !== undefined ? String(p.section).trim() : existing.section;
   var name = p.name !== undefined ? String(p.name).trim() : existing.name;
   if (!section || !name) throw new HululError('BAD_REQUEST', 'section and name are required');
-  if (ANNEX_SECTIONS_VALID_.indexOf(section) === -1) throw new HululError('BAD_REQUEST', 'Invalid section');
   var key = annexCategoryDupKey_(section, name);
   var dup = findWhere('AnnexCategories', function (c) { return c.id !== p.categoryId && c.status !== 'Deleted' && annexCategoryDupKey_(c.section, c.name) === key; })[0];
   if (dup) throw new HululError('BAD_REQUEST', 'A category with this name already exists in this section.');

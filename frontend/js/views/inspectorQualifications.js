@@ -19,7 +19,16 @@ async function renderInspectorQualifications(params) {
         UI.field(Term('inspector'), '<select id="fQualInspector" class="field-input">' +
           inspectors.map(i => '<option value="' + i.id + '"' + (i.id === selectedId ? ' selected' : '') + '>' + esc(i.name) + ' (' + esc(i.email) + ')</option>').join('') +
           '</select>') +
-        '<div style="margin-top:12px;">' + disciplines.map(d =>
+        // REQ: "In Inspectors Qualifications add 'Select all'." One toggle checkbox above the
+        // discipline matrix -- checks/unchecks every .qual-check at once; its own state stays in
+        // sync with the matrix afterward (indeterminate when only some are checked), same
+        // select-all/indeterminate pattern already used for a photo group's checkbox in
+        // logPhotos.js's renderLogPhotoGroups_ (syncGroupCheckboxStates_).
+        (disciplines.length
+          ? '<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:13px;font-weight:600;">' +
+            '<input type="checkbox" id="qualSelectAll" /> ' + esc(t('select_all_btn')) + '</label>'
+          : '') +
+        '<div style="margin-top:4px;">' + disciplines.map(d =>
           '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:13px;">' +
           '<input type="checkbox" class="qual-check" value="' + d.id + '"' + (currentIds.indexOf(d.id) !== -1 ? ' checked' : '') + ' /> ' + esc(d.name) + '</label>').join('') + '</div>' +
         '<div><button class="btn btn-primary btn-sm" id="saveQualBtn" style="margin-top:12px;">' + t('save') + '</button></div>' +
@@ -35,6 +44,22 @@ async function renderInspectorQualifications(params) {
   document.getElementById('fQualInspector').onchange = function () {
     window.location.hash = '#/inspector-qualifications?inspectorId=' + this.value; Router.resolve();
   };
+  var qualChecks = Array.from(document.querySelectorAll('.qual-check'));
+  var selectAllBox = document.getElementById('qualSelectAll');
+  function syncSelectAll_() {
+    if (!selectAllBox) return;
+    var checkedCount = qualChecks.filter(function (c) { return c.checked; }).length;
+    selectAllBox.checked = qualChecks.length > 0 && checkedCount === qualChecks.length;
+    selectAllBox.indeterminate = checkedCount > 0 && checkedCount < qualChecks.length;
+  }
+  if (selectAllBox) {
+    syncSelectAll_();
+    selectAllBox.onchange = function () {
+      qualChecks.forEach(function (c) { c.checked = selectAllBox.checked; });
+      selectAllBox.indeterminate = false;
+    };
+    qualChecks.forEach(function (c) { c.addEventListener('change', syncSelectAll_); });
+  }
   document.getElementById('saveQualBtn').onclick = async function () {
     var ids = Array.from(document.querySelectorAll('.qual-check:checked')).map(c => c.value);
     try {

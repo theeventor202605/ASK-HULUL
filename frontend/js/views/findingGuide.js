@@ -8,11 +8,31 @@
  *
  * Layout mirrors checklistItems.js: a Category list down the left narrows the table on the right,
  * since a real guide can span many categories x many sub-categories x many descriptions.
+ *
+ * Category is a closed dropdown sourced only from the live Disciplines catalog (/disciplines) --
+ * same enforced link as Checklists' own Category field (openChecklistItemForm_, checklistItems.js),
+ * both in the add/edit form (openFindingGuideForm_) and CSV import (importFindingGuideCsv). Backend
+ * (FindingGuide.gs) also rejects a category that doesn't match a Disciplines name on
+ * create/update/bulk-import, so this can't be bypassed by calling the API directly either.
+ *
+ * Sub-Category (FindingGuide.subCategory, labelled Term('checklistType') = "Sub-Category" everywhere
+ * else) is deliberately NOT a closed catalog -- Checklists' own Sub-Category field isn't one either
+ * (openChecklistItemForm_'s type select is itself suggest-or-add-new, not locked to a fixed list), and
+ * findings.js's Checklist Type dropdown unions ChecklistItems.checklistType with FindingGuide.subCategory
+ * per Category specifically so guide coverage can exist ahead of a matching checklist item. What WAS a
+ * gap: openFindingGuideForm_'s Sub-Category suggestions only echoed other FindingGuide rows, never the
+ * Sub-Category names already in use over in Checklists -- so an admin here had no visibility into an
+ * existing "Restaurants" checklist type and could easily type "Restaurant" instead, splitting one real
+ * Sub-Category into two near-duplicates. Fixed by unioning in ChecklistItems.checklistType (scoped to
+ * the selected Category) the same way findings.js's own findingGuideTypesFor_ already unions the
+ * opposite direction -- see subCategoriesFor_ below.
  */
 async function renderFindingGuide() {
   var root = document.getElementById('viewRoot');
   var canManage = hasPermission('findingGuide.manage');
-  var [entries, disciplines] = await Promise.all([Api.call('listFindingGuide', {}), Api.call('listDisciplines', {})]);
+  var [entries, disciplines, checklistItems] = await Promise.all([
+    Api.call('listFindingGuide', {}), Api.call('listDisciplines', {}), Api.call('listChecklistItems', {})
+  ]);
   var view = { category: '' };
 
   root.innerHTML =
@@ -29,7 +49,7 @@ async function renderFindingGuide() {
       document.getElementById('fgImportCsvBtn').onclick = function () { fgImportInput.click(); };
       fgImportInput.onchange = function (e) {
         var file = e.target.files[0];
-        if (file) importFindingGuideCsv(file);
+        if (file) importFindingGuideCsv(file, disciplines);
         e.target.value = '';
       };
     }
@@ -43,7 +63,7 @@ async function renderFindingGuide() {
   }
 
   if (canManage) document.getElementById('newGuideEntryBtn').onclick = function () {
-    openFindingGuideForm_(entries, disciplines, {
+    openFindingGuideForm_(entries, disciplines, checklistItems, {
       title: t('new_x_title', { term: t('finding_guide_entry') }),
       submitLabel: t('create'),
       initial: {},
@@ -122,7 +142,7 @@ async function renderFindingGuide() {
       btn.onclick = function () {
         var entry = entries.filter(function (g) { return g.id === btn.getAttribute('data-edit-fg'); })[0];
         if (!entry) return;
-        openFindingGuideForm_(entries, disciplines, {
+        openFindingGuideForm_(entries, disciplines, checklistItems, {
           title: t('edit_x', { term: t('finding_guide_entry') }),
           submitLabel: t('save'),
           initial: entry,
@@ -150,38 +170,46 @@ async function renderFindingGuide() {
   renderTable();
 }
 
-// Shared by "+ New" and each row's Edit button. Category is a dropdown sourced from the union of the
-// live Disciplines catalog and any category already used in the guide (plus "Add new", same
-// suggestable-select pattern as openChecklistItemForm_'s Checklist Type field) -- REQ context: the
-// guide is meant to line up with the Disciplines catalog so findings.js's picker can match rows by
-// exact Discipline name. Sub-Category is a free-text input with a <datalist> of sub-categories
-// already used under the selected category, to encourage reusing existing names rather than
-// introducing near-duplicates by typo.
-function openFindingGuideForm_(entries, disciplines, opts) {
+// Shared by "+ New" and each row's Edit button.
+//
+// REQ follow-up (verification): "Verify that Inspector Qualifications, Checklists Category, and Log
+// Assistance Guide Category all are linked to Categories" surfaced that this Category field used to
+// be a suggestable select -- Disciplines catalog names plus an "Add new category" free-text escape
+// hatch -- unlike Checklists' Category (openChecklistItemForm_, checklistItems.js), which only ever
+// offers the live Disciplines list with no way to type something else. Tightened to match that same
+// closed-dropdown behavior: categoryOptions is the Disciplines catalog ONLY (same "create a Category
+// first" disabled-select fallback as checklistItems.js's fCiCategory when the catalog is still empty).
+//
+// REQ follow-up (verification): "Verify that Log Assistance Guide Sub-Category are linked to
+// Checklists Sub-Category." Sub-Category stays free-text -- there's no separate Sub-Category catalog
+// to lock it to, and Checklists' own Sub-Category field isn't a closed catalog either (see the file
+// header comment). But its <datalist> suggestions used to only echo other FindingGuide rows, missing
+// the Sub-Category names already in use over in Checklists for the same Category -- now unioned in via
+// checklistItems (scoped to cat), same direction findings.js's findingGuideTypesFor_ already unions
+// the opposite way (FindingGuide subCategories into the Finding form's Checklist Type dropdown).
+function openFindingGuideForm_(entries, disciplines, checklistItems, opts) {
   var initial = opts.initial || {};
-  var categoryNames = Array.from(new Set(
-    disciplines.map(function (d) { return d.name; }).concat(entries.map(function (g) { return g.category; }))
-  )).filter(Boolean).sort();
   var subCategoriesByCategory = {};
   entries.forEach(function (g) {
     if (!g.category) return;
     (subCategoriesByCategory[g.category] = subCategoriesByCategory[g.category] || {})[g.subCategory] = true;
   });
+  checklistItems.forEach(function (c) {
+    if (!c.category || !c.checklistType) return;
+    (subCategoriesByCategory[c.category] = subCategoriesByCategory[c.category] || {})[c.checklistType] = true;
+  });
   var subCategoriesFor_ = function (cat) {
-    return subCategoriesByCategory[cat] ? Object.keys(subCategoriesByCategory[cat]).sort() : [];
+    return subCategoriesByCategory[cat] ? Object.keys(subCategoriesByCategory[cat]).filter(Boolean).sort() : [];
   };
-  var catSelectHtml_ = function (selected) {
-    var matched = selected && categoryNames.indexOf(selected) !== -1;
-    return categoryNames.map(function (c) { return '<option value="' + esc(c) + '"' + (c === selected ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') +
-      '<option value="__new__"' + (!matched && selected ? ' selected' : (!categoryNames.length ? ' selected' : '')) + '>' + esc(t('add_new_category_option')) + '</option>';
-  };
-  var initialCategory = initial.category || (categoryNames.length ? categoryNames[0] : '');
+  var categoryOptionsHtml = disciplines.map(function (d) {
+    return '<option value="' + esc(d.name) + '"' + (d.name === initial.category ? ' selected' : '') + '>' + esc(d.name) + '</option>';
+  }).join('');
+  var initialCategory = initial.category || (disciplines.length ? disciplines[0].name : '');
 
   var body =
-    UI.field(t('col_category'),
-      '<select id="fFgCategorySelect" class="field-input">' + catSelectHtml_(initial.category) + '</select>' +
-      '<input id="fFgCategoryNew" class="field-input" placeholder="' + esc(t('col_category')) + '" style="margin-top:6px;' + (initial.category && categoryNames.indexOf(initial.category) !== -1 ? 'display:none;' : '') + '" value="' + esc(!initial.category || categoryNames.indexOf(initial.category) !== -1 ? '' : initial.category) + '" />'
-    ) +
+    UI.field(t('col_category'), disciplines.length
+      ? '<select id="fFgCategorySelect" class="field-input">' + categoryOptionsHtml + '</select>'
+      : '<select id="fFgCategorySelect" class="field-input" disabled><option value="">' + esc(t('create_x_first_page_hint', { term: Term('discipline').toLowerCase(), termPlural: Term('discipline_plural') })) + '</option></select>') +
     UI.field(t('col_sub_category'),
       '<input id="fFgSubCategory" class="field-input" list="fgSubCategoryList" value="' + esc(initial.subCategory || '') + '" />' +
       '<datalist id="fgSubCategoryList">' + subCategoriesFor_(initialCategory).map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist>'
@@ -192,8 +220,8 @@ function openFindingGuideForm_(entries, disciplines, opts) {
   UI.openModal(opts.title, body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: opts.submitLabel, className: 'btn-primary', onClick: async function () {
-        var catSelect = document.getElementById('fFgCategorySelect');
-        var category = catSelect.value === '__new__' ? document.getElementById('fFgCategoryNew').value.trim() : catSelect.value;
+        if (!disciplines.length) { UI.toast(t('toast_create_x_first', { term: Term('discipline').toLowerCase() }), 'error'); return; }
+        var category = document.getElementById('fFgCategorySelect').value;
         var subCategory = document.getElementById('fFgSubCategory').value.trim();
         var description = document.getElementById('fFgDesc').value.trim();
         if (!category) { UI.toast(t('toast_category_required'), 'error'); return; }
@@ -205,15 +233,9 @@ function openFindingGuideForm_(entries, disciplines, opts) {
   ]);
 
   var catSelectEl = document.getElementById('fFgCategorySelect');
-  var catNewEl = document.getElementById('fFgCategoryNew');
   var subCategoryListEl = document.getElementById('fgSubCategoryList');
-  var syncNewCategoryVisibility_ = function () {
-    catNewEl.style.display = catSelectEl.value === '__new__' ? '' : 'none';
-    if (catSelectEl.value === '__new__') catNewEl.focus();
-  };
   catSelectEl.onchange = function () {
-    syncNewCategoryVisibility_();
-    var subs = catSelectEl.value === '__new__' ? [] : subCategoriesFor_(catSelectEl.value);
+    var subs = subCategoriesFor_(catSelectEl.value);
     subCategoryListEl.innerHTML = subs.map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join('');
   };
 }
@@ -237,7 +259,11 @@ function exportFindingGuideCsv(rows) {
 
 var FINDING_GUIDE_IMPORT_BATCH_SIZE_ = 200;
 
-async function importFindingGuideCsv(file) {
+// disciplines (REQ follow-up: same Category-must-match-the-catalog tightening as the create/edit
+// form above) -- validated client-side here the same way checklistItems.js's importChecklistItemsCsv
+// already validates its own Category column against validNames, so a bad row is caught immediately
+// instead of round-tripping to the backend just to get rejected there.
+async function importFindingGuideCsv(file, disciplines) {
   var text = await file.text();
   var rows = parseCsv_(text);
   if (!rows.length) { UI.toast(t('empty_csv'), 'error'); return; }
@@ -251,6 +277,8 @@ async function importFindingGuideCsv(file) {
     UI.toast(t('finding_guide_csv_columns_required'), 'error');
     return;
   }
+  var validNames = {};
+  (disciplines || []).forEach(function (d) { validNames[d.name] = true; });
 
   var results = { created: [], failed: [] };
   var toSend = [];
@@ -263,6 +291,10 @@ async function importFindingGuideCsv(file) {
     var label = description || subCategory || '(unnamed)';
     if (!category || !subCategory || !description) {
       results.failed.push({ row: r + 1, name: label, reason: t('col_category') + ', ' + t('col_sub_category') + ', and ' + t('field_description') + ' are required' });
+      continue;
+    }
+    if (!validNames[category]) {
+      results.failed.push({ row: r + 1, name: label, reason: Term('discipline') + ' "' + category + '" doesn\'t match an existing ' + Term('discipline').toLowerCase() + ' name exactly (see the ' + Term('discipline_plural') + ' page)' });
       continue;
     }
     toSend.push({

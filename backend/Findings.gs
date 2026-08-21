@@ -223,6 +223,11 @@ function addFindingEvidence(user, p) {
 // action" pattern as every other Findings permission, and not gated to FINDING_EDITABLE_STATUSES_
 // (same reasoning as addFindingEvidence -- correcting a mistake shouldn't depend on how far the
 // workflow has already moved).
+// REQ follow-up: "Deleted log photos go to Log Photos Trash." A detach alone now isn't the end of the
+// story -- a FindingEvidenceTrash row is written alongside it (see schema comment, Utils.gs) so the
+// photo can be restored, same 30-day/restore/empty-now contract the client-side Log Photos tab trash
+// already promises (evidence.js) -- see listFindingEvidenceTrash/restoreFindingEvidence/
+// emptyFindingEvidenceTrash below for the other half of that lifecycle.
 function deleteFindingEvidence(user, p) {
   var finding = getById('Findings', p && p.findingId);
   if (!finding) throw new HululError('NOT_FOUND', 'Finding not found');
@@ -234,10 +239,80 @@ function deleteFindingEvidence(user, p) {
   urls.splice(idx, 1);
   var patch = { evidenceUrls: urls.join(',') };
   var meta = findingEvidenceMeta_(finding.evidenceMeta);
+  var ownMeta = meta.filter(function (m) { return m.url === p.url; })[0] || null;
   if (meta.length) patch.evidenceMeta = JSON.stringify(meta.filter(function (m) { return m.url !== p.url; }));
   var updated = updateRow('Findings', p.findingId, patch);
+  insertRow('FindingEvidenceTrash', {
+    id: newId('FindingEvidenceTrash'), findingId: p.findingId, eventId: finding.eventId, url: p.url,
+    evidenceMetaJson: ownMeta ? JSON.stringify(ownMeta) : '', deletedBy: user.id, deletedAt: new Date().toISOString(),
+    status: 'Trashed', restoredBy: '', restoredAt: ''
+  });
   audit(user.id, 'DELETE_FINDING_EVIDENCE', 'Findings', p.findingId, { url: p.url });
   return updated;
+}
+
+// 30 days, matching the client-only Log Photos tab trash (LOG_PHOTO_TRASH_RETENTION_MS_, evidence.js)
+// -- same retention window for both halves of "Log Photos Trash" even though they're two separate
+// stores (IndexedDB for not-yet-a-Log captures, this sheet for already-attached Finding evidence).
+var FINDING_EVIDENCE_TRASH_RETENTION_DAYS_ = 30;
+
+// Swept on every list call (no background trigger needed for this) -- same "sweep on load" pattern
+// the client-side trash already uses (purgeExpiredLogPhotos, called from tabLogPhotos). Purges only
+// -- never touches the underlying Drive file (same "detach, don't destroy" rule as everywhere else in
+// this app that "deletes" an already-uploaded file).
+function purgeExpiredFindingEvidenceTrash_() {
+  var cutoff = Date.now() - FINDING_EVIDENCE_TRASH_RETENTION_DAYS_ * 24 * 60 * 60 * 1000;
+  findWhere('FindingEvidenceTrash', function (r) {
+    return r.status === 'Trashed' && r.deletedAt && new Date(r.deletedAt).getTime() <= cutoff;
+  }).forEach(function (r) { deleteRow('FindingEvidenceTrash', r.id); });
+}
+
+// eventId (required): scopes the trash view to one event, same "one event's Log Photos tab" scope the
+// client-side trash already has -- an inspector shouldn't see every other event's deleted photos here.
+function listFindingEvidenceTrash(user, p) {
+  requirePermission(user, 'finding.deleteEvidence');
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  purgeExpiredFindingEvidenceTrash_();
+  return findWhere('FindingEvidenceTrash', function (r) { return r.eventId === p.eventId && r.status === 'Trashed'; })
+    .sort(function (a, b) { return new Date(b.deletedAt) - new Date(a.deletedAt); });
+}
+
+// REQ: "Photos deleted go to trash and can be restored." Re-appends the URL onto the parent Finding's
+// evidenceUrls (a no-op if it's somehow already there again) and restores its evidenceMeta entry, then
+// marks the trash row Restored (kept, not deleted -- same "history stays visible" reasoning
+// AnnexDocuments rows already follow) so it drops out of listFindingEvidenceTrash's 'Trashed' filter.
+function restoreFindingEvidence(user, p) {
+  requirePermission(user, 'finding.deleteEvidence');
+  var trashRow = getById('FindingEvidenceTrash', p && p.trashId);
+  if (!trashRow || trashRow.status !== 'Trashed') throw new HululError('NOT_FOUND', 'Trashed photo not found');
+  var finding = getById('Findings', trashRow.findingId);
+  if (!finding) throw new HululError('NOT_FOUND', 'The log this photo belonged to no longer exists');
+  var urls = finding.evidenceUrls ? String(finding.evidenceUrls).split(',').filter(Boolean) : [];
+  if (urls.indexOf(trashRow.url) === -1) urls.push(trashRow.url);
+  var patch = { evidenceUrls: urls.join(',') };
+  if (trashRow.evidenceMetaJson) {
+    var restoredMeta = JSON.parse(trashRow.evidenceMetaJson);
+    var meta = findingEvidenceMeta_(finding.evidenceMeta);
+    if (!meta.some(function (m) { return m.url === trashRow.url; })) {
+      meta.push(restoredMeta);
+      patch.evidenceMeta = JSON.stringify(meta);
+    }
+  }
+  updateRow('Findings', trashRow.findingId, patch);
+  updateRow('FindingEvidenceTrash', trashRow.id, { status: 'Restored', restoredBy: user.id, restoredAt: new Date().toISOString() });
+  audit(user.id, 'RESTORE_FINDING_EVIDENCE', 'Findings', trashRow.findingId, { url: trashRow.url });
+  return { restored: true };
+}
+
+// REQ: "Trash has an empty now button." Permanently removes every currently-Trashed row for one
+// event -- same scope as listFindingEvidenceTrash, same "detach, don't destroy the Drive file" rule.
+function emptyFindingEvidenceTrash(user, p) {
+  requirePermission(user, 'finding.deleteEvidence');
+  if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
+  var rows = findWhere('FindingEvidenceTrash', function (r) { return r.eventId === p.eventId && r.status === 'Trashed'; });
+  rows.forEach(function (r) { deleteRow('FindingEvidenceTrash', r.id); });
+  audit(user.id, 'EMPTY_FINDING_EVIDENCE_TRASH', 'Findings', p.eventId, { count: rows.length });
+  return { emptied: rows.length };
 }
 
 // Fetches one finding for its detail page, auto-advancing status on view exactly at the two points

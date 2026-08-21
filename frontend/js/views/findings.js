@@ -49,23 +49,58 @@ function driveEvidenceThumbUrl_(url, size) {
 // participant in meters." Only the Finding's own main evidence grid (evidenceMeta comes from
 // Finding.evidenceMeta, Findings.gs) passes this; Resolution-history evidence call sites simply omit
 // it and get no badge, same "missing metadata -> no badge" rule as everywhere else this shows up.
-function evidenceThumbsHtml_(urls, size, evidenceMeta) {
+// opts (optional): { findingId, deletable } -- REQ: "In Logs allow inspectors to delete log photos."
+// deletable adds a small remove button over each thumbnail (only when the caller also passes
+// findingId, since deleting needs to know which Finding row to detach the URL from); wireEvidenceThumbDeletes_
+// (below) is what the caller runs after this HTML lands in the DOM to actually hook the buttons up --
+// kept as a separate step (same split as e.g. renderLogPhotoGroups_'s render-then-wire two-step in
+// logPhotos.js) rather than inline onclick= strings, since the delete handler needs a real closure
+// (confirm dialog + Api.call + re-render), not just a location.hash-style one-liner. Only the finding's
+// own primary evidence gallery (viewFinding) passes deletable -- resolution-history/photo-timeline uses
+// of this same helper show past submissions as read-only records, not something to prune retroactively.
+function evidenceThumbsHtml_(urls, size, evidenceMeta, opts) {
   size = size || 120;
+  opts = opts || {};
   if (!urls || !urls.length) return '<div class="muted" style="font-size:12px;">' + esc(t('no_evidence_attached')) + '</div>';
+  var deletable = opts.deletable && opts.findingId && hasPermission('finding.deleteEvidence');
   return '<div style="display:flex;flex-wrap:wrap;gap:12px;">' + urls.map(function (u, i) {
     var thumb = driveEvidenceThumbUrl_(u);
     var full = driveEvidenceThumbUrl_(u, 1600) || u;
     var meta = evidenceMetaFor_(evidenceMeta, u);
     return '<div style="display:flex;flex-direction:column;align-items:center;">' +
-      '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
-        'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
-        (thumb
-          ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" class="evidence-thumb-img" />'
-          : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
-      '</a>' +
+      '<div style="position:relative;">' +
+        '<a href="' + esc(u) + '" target="_blank" rel="noopener" title="' + esc(t('click_to_expand')) + '" ' +
+          'class="evidence-thumb" data-lightbox-url="' + esc(full) + '" style="width:' + size + 'px;height:' + size + 'px;">' +
+          (thumb
+            ? '<img src="' + esc(thumb) + '" alt="Evidence ' + (i + 1) + '" class="evidence-thumb-img" />'
+            : '<span style="font-size:28px;">' + ICON('capture_photo') + '</span>') +
+        '</a>' +
+        (deletable
+          ? '<button type="button" class="btn btn-secondary btn-sm btn-icon evidence-thumb-delete" data-finding-id="' + esc(opts.findingId) + '" data-url="' + esc(u) + '" title="' + esc(t('move_to_trash_title')) + '" style="position:absolute;top:4px;right:4px;padding:2px 5px;">' + ICON('delete') + '</button>'
+          : '') +
+      '</div>' +
       evidenceOutsideBadgeHtml_(meta) +
     '</div>';
   }).join('') + '</div>';
+}
+// Wires up every .evidence-thumb-delete button rendered by evidenceThumbsHtml_'s deletable mode.
+// Called once after the HTML containing them is in the DOM (viewFinding). onDone re-renders the
+// caller's own gallery/page so the removed thumbnail (and updated count) disappear immediately.
+function wireEvidenceThumbDeletes_(container, onDone) {
+  container.querySelectorAll('.evidence-thumb-delete').forEach(function (btn) {
+    btn.onclick = function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var findingId = btn.getAttribute('data-finding-id');
+      var url = btn.getAttribute('data-url');
+      UI.confirmModal(t('delete_evidence_confirm'), async function () {
+        try {
+          await Api.call('deleteFindingEvidence', { findingId: findingId, url: url });
+          UI.toast(t('toast_photo_moved_to_trash'), 'success');
+          if (onDone) onDone(); else Router.resolve();
+        } catch (err) { UI.error(err); }
+      }, { confirmLabel: t('delete'), confirmClass: 'btn-danger' });
+    };
+  });
 }
 // evidenceThumbsHtml_'s <img> used to carry an inline onerror="..." attribute whose fallback markup
 // embedded ICON('capture_photo') -- raw SVG containing its own double-quoted attributes (viewBox="...",
@@ -565,7 +600,13 @@ async function renderNewFinding(params) {
         // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
         // section further down this file -- opens the device camera directly, no gallery/file picker.
         '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-        '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button> ' +
+        // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
+        // device, unless permission is set for that specific role." evidence.uploadFromDevice bypass.
+        (hasPermission('evidence.uploadFromDevice')
+          ? '<input type="file" id="fFindingFileAlt" accept="image/*,video/*" style="display:none;" multiple />' +
+            '<button type="button" class="btn btn-secondary btn-icon" id="fFindingUploadBtn" title="' + esc(t('upload_from_device_btn')) + '" aria-label="' + esc(t('upload_from_device_btn')) + '">' + ICON('upload') + '</button>'
+          : '') +
         '<div class="evidence-list" data-evlist="newFinding" style="margin-top:6px;"></div>' +
         '<button class="btn btn-primary" id="createFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('finding_log_title', { term: Term('finding') })) + '</button>' +
       '</div></div>' +
@@ -729,6 +770,15 @@ async function renderNewFinding(params) {
     Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles, false, participantPos); });
     e.target.value = '';
   };
+  var fFindingUploadBtn = document.getElementById('fFindingUploadBtn');
+  if (fFindingUploadBtn) {
+    fFindingUploadBtn.onclick = function () { document.getElementById('fFindingFileAlt').click(); };
+    document.getElementById('fFindingFileAlt').onchange = function (e) {
+      var participantPos = selectedParticipant ? { lat: selectedParticipant.lat, lng: selectedParticipant.lng } : null;
+      Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles, false, participantPos); });
+      e.target.value = '';
+    };
+  }
 
   /* ---- Log Photos handoff ----
    * REQ (Log Photos tab): "'Create Log' will open the Log Finding page and add selected photos and
@@ -1284,7 +1334,7 @@ async function renderFindingDetail(params) {
           ? '<div style="margin-bottom:16px;">' + detailField_(t('suggested_action'), esc(finding.suggestedAction)) + '</div>'
           : '') +
         '<div class="field-label" style="margin-bottom:8px;">' + esc(t('risk_logging_evidence')) + '</div>' +
-        evidenceThumbsHtml_(finding.evidenceUrls, 168, finding.evidenceMeta) +
+        evidenceThumbsHtml_(finding.evidenceUrls, 168, finding.evidenceMeta, { findingId: findingId, deletable: true }) +
       '</div>' +
     '</div>' +
 
@@ -1306,6 +1356,7 @@ async function renderFindingDetail(params) {
       : '');
 
   document.getElementById('backFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=findings'; };
+  wireEvidenceThumbDeletes_(root, function () { Router.resolve(); });
   wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending);
   if (canAssign) {
     document.getElementById('saveAssignOperatorBtn').onclick = async function () {
@@ -1362,7 +1413,13 @@ function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPen
         // the native file input is hidden, a plain camera-icon button triggers it, capture="environment"
         // opens the device camera directly instead of a general file/gallery picker.
         '<input type="file" id="fResolveFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
-        '<button type="button" class="btn btn-secondary btn-icon" id="fResolveCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-icon" id="fResolveCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button> ' +
+        // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
+        // device, unless permission is set for that specific role." evidence.uploadFromDevice bypass.
+        (hasPermission('evidence.uploadFromDevice')
+          ? '<input type="file" id="fResolveFileAlt" accept="image/*,video/*" style="display:none;" multiple />' +
+            '<button type="button" class="btn btn-secondary btn-icon" id="fResolveUploadBtn" title="' + esc(t('upload_from_device_btn')) + '" aria-label="' + esc(t('upload_from_device_btn')) + '">' + ICON('upload') + '</button>'
+          : '') +
         '<div class="evidence-list" data-evlist="resolve" style="margin-top:6px;"></div>' +
         '<button class="btn btn-primary btn-sm" id="submitResolveBtn" style="margin-top:12px;">' + esc(t('submit_resolution')) + '</button>' +
       '</div></div>';
@@ -1393,6 +1450,14 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
       Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'resolve', file, pendingFiles); });
       e.target.value = '';
     };
+    var fResolveUploadBtn = document.getElementById('fResolveUploadBtn');
+    if (fResolveUploadBtn) {
+      fResolveUploadBtn.onclick = function () { document.getElementById('fResolveFileAlt').click(); };
+      document.getElementById('fResolveFileAlt').onchange = function (e) {
+        Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'resolve', file, pendingFiles); });
+        e.target.value = '';
+      };
+    }
     document.getElementById('submitResolveBtn').onclick = async function () {
       var remarks = document.getElementById('fResolveRemarks').value;
       if (!remarks) { UI.toast(t('toast_remarks_required'), 'error'); return; }

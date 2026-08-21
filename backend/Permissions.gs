@@ -68,6 +68,27 @@ var PERMISSION_REGISTRY_ = {
     module: 'Risk Logging', label: 'Attach evidence photos to a finding', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
+  // REQ: "In Logs allow inspectors to delete log photos." Also gates viewing/restoring/emptying the
+  // resulting Log Photos Trash (listFindingEvidenceTrash/restoreFindingEvidence/
+  // emptyFindingEvidenceTrash, Findings.gs) -- same "one action, one permission" pattern, but whoever
+  // can delete a log photo is also who should be able to see and undo that deletion.
+  'finding.deleteEvidence': {
+    module: 'Risk Logging', label: 'Delete a log photo (moves it to Log Photos Trash)', page: 'findings', crud: ['delete'],
+    defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
+  },
+  // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from device,
+  // unless permission is set for that specific role." Every camera-icon capture flow in the app
+  // (Record Results, Log Photos tab, New Log, Resolve Log -- see EVIDENCE.md-style header comment on
+  // evidence.js) is already camera-only by default (capture="environment", no plain file picker --
+  // that's the existing, unconditional behavior, not something this permission turns on). This
+  // permission instead reveals a SECOND, explicit "upload from device" button next to the camera
+  // button, only for whichever role(s) an admin grants it to -- defaultRoles deliberately starts
+  // empty so no one gets the bypass until an admin opts a role in via the Permissions matrix (same
+  // admin-override mechanism every other permission here already uses).
+  'evidence.uploadFromDevice': {
+    module: 'Risk Logging', label: 'Upload an evidence/log photo from device storage (bypasses camera-only capture)', page: 'findings', crud: ['create'],
+    defaultRoles: []
+  },
   'finding.resolve': {
     module: 'Risk Logging', label: 'Submit a resolution to a finding', page: 'findings', crud: ['update'],
     defaultRoles: ['Vendor', 'Operator', 'Exhibitor']

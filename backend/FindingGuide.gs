@@ -24,11 +24,24 @@ function findingGuideDupKey_(g) {
   return String(g.category || '').trim().toLowerCase() + '|' + String(g.subCategory || '').trim().toLowerCase() + '|' + String(g.description || '').trim().toLowerCase();
 }
 
+// REQ follow-up (verification): "Verify that ... Log Assistance Guide Category all are linked to
+// Categories." Category is meant to be the Discipline's name, not a free-form string (findings.js's
+// suggestion picker matches on this exact value, and updateDiscipline already cascades a Discipline
+// rename into every FindingGuide row carrying the old name -- see that function's own header comment
+// on why "the Category here should all be coming from the Categories page"). The frontend form
+// (openFindingGuideForm_, findingGuide.js) already only offers a closed dropdown of live Disciplines
+// names, but that's a UI convenience, not a security boundary -- this is the actual enforcement, so a
+// direct API call or a CSV import can't sneak in a category that doesn't exist on /disciplines either.
+function findingGuideValidCategory_(category) {
+  return findWhere('Disciplines', function (d) { return d.name === category; }).length > 0;
+}
+
 function createFindingGuideEntry(user, p) {
   requirePermission(user, 'findingGuide.manage'); // RBAC pilot -- dedicated permission key, own page in the Permissions matrix
   ['category', 'subCategory', 'description'].forEach(function (f) {
     if (!p[f]) throw new HululError('BAD_REQUEST', f + ' is required');
   });
+  if (!findingGuideValidCategory_(p.category)) throw new HululError('BAD_REQUEST', 'Category must match an existing Discipline (see the Categories page).');
   var row = { id: newId('FindingGuide'), category: p.category, subCategory: p.subCategory, description: p.description, suggestion: p.suggestion || '' };
   var key = findingGuideDupKey_(row);
   var dup = findWhere('FindingGuide', function (g) { return findingGuideDupKey_(g) === key; })[0];
@@ -48,6 +61,11 @@ function bulkCreateFindingGuideEntries(user, p) {
 
   var existingKeys = {};
   getAll('FindingGuide').forEach(function (g) { existingKeys[findingGuideDupKey_(g)] = true; });
+  // Same enforcement as create/updateFindingGuideEntry above -- checked once here (not per-row via
+  // findingGuideValidCategory_) since a bulk import can be several hundred rows and Disciplines is
+  // small/stable, so one getAll() + a lookup map is cheaper than one findWhere() scan per row.
+  var validCategoryNames = {};
+  getAll('Disciplines').forEach(function (d) { validCategoryNames[d.name] = true; });
 
   var failed = [];
   var toInsert = [];
@@ -57,6 +75,10 @@ function bulkCreateFindingGuideEntries(user, p) {
     var missing = ['category', 'subCategory', 'description'].filter(function (f) { return !raw[f]; });
     if (missing.length) {
       failed.push({ row: raw.row, name: label, reason: missing.join(', ') + ' required' });
+      return;
+    }
+    if (!validCategoryNames[raw.category]) {
+      failed.push({ row: raw.row, name: label, reason: 'Category "' + raw.category + '" doesn\'t match an existing Discipline name exactly (see the Categories page).' });
       return;
     }
     var row = { category: raw.category, subCategory: raw.subCategory, description: raw.description, suggestion: raw.suggestion || '' };
@@ -92,6 +114,9 @@ function updateFindingGuideEntry(user, p) {
   ['category', 'subCategory', 'description'].forEach(function (f) {
     if (patch[f] !== undefined && !String(patch[f]).trim()) throw new HululError('BAD_REQUEST', f + ' is required');
   });
+  if (patch.category !== undefined && !findingGuideValidCategory_(patch.category)) {
+    throw new HululError('BAD_REQUEST', 'Category must match an existing Discipline (see the Categories page).');
+  }
   var merged = Object.assign({}, entry, patch);
   var key = findingGuideDupKey_(merged);
   var dup = findWhere('FindingGuide', function (g) { return g.id !== p.entryId && findingGuideDupKey_(g) === key; })[0];

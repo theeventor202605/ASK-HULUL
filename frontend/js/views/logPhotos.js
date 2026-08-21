@@ -17,9 +17,11 @@
  * normal evidence pipeline (uploadEvidenceFile_ with skipPrepare=true, so it isn't watermarked twice).
  *
  * Depends on globals: EvidenceCapture (evidence.js), haversineKm_ (venues.js), UI/ICON/esc/Api/
- * HululState (loaded before this file, see index.html) -- all only referenced inside function bodies,
- * so load order relative to venues.js/findings.js doesn't matter (same reasoning already documented
- * on this app's other cross-file references).
+ * HululState (loaded before this file, see index.html), driveEvidenceThumbUrl_/hasPermission
+ * (findings.js/permissions.js -- used by renderLogPhotoTrash_'s "deleted from a Log" subsection, see
+ * that function's own header comment) -- all only referenced inside function bodies, so load order
+ * relative to venues.js/findings.js doesn't matter (same reasoning already documented on this app's
+ * other cross-file references).
  */
 
 // "Same spot, same visit" thresholds for the greedy grouping below. Not specified by the request --
@@ -99,7 +101,16 @@ async function tabLogPhotos(content, eventId, detail) {
       '<div class="muted" style="font-size:13px;max-width:520px;">' + esc(t('log_photos_intro')) + '</div>' +
       '<div>' +
         '<input type="file" id="logPhotoFile" accept="image/*" capture="environment" style="display:none;" multiple />' +
-        '<button type="button" class="btn btn-primary btn-icon" id="logPhotoCameraBtn" title="' + esc(t('take_photo_btn')) + '">' + ICON('capture_photo') + ' ' + esc(t('take_photo_btn')) + '</button>' +
+        '<button type="button" class="btn btn-primary btn-icon" id="logPhotoCameraBtn" title="' + esc(t('take_photo_btn')) + '">' + ICON('capture_photo') + ' ' + esc(t('take_photo_btn')) + '</button> ' +
+        // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
+        // device, unless permission is set for that specific role." Same evidence.uploadFromDevice
+        // bypass as every other capture flow -- see eventDetail.js's Record Results row for the
+        // header comment on why this is a second explicit button rather than just dropping
+        // capture="environment" from the one input.
+        (hasPermission('evidence.uploadFromDevice')
+          ? '<input type="file" id="logPhotoUploadFile" accept="image/*" style="display:none;" multiple />' +
+            '<button type="button" class="btn btn-secondary btn-icon" id="logPhotoUploadBtn" title="' + esc(t('upload_from_device_btn')) + '">' + ICON('upload') + '</button>'
+          : '') +
       '</div>' +
     '</div></div>' +
     '<div id="logPhotoGroups"></div>' +
@@ -120,6 +131,16 @@ async function tabLogPhotos(content, eventId, detail) {
     for (var i = 0; i < files.length; i++) { await captureLogPhoto_(eventId, files[i]); }
     await renderLogPhotoGroups_(eventId, participants, selected);
   };
+  var uploadBtn = document.getElementById('logPhotoUploadBtn');
+  if (uploadBtn) {
+    uploadBtn.onclick = function () { document.getElementById('logPhotoUploadFile').click(); };
+    document.getElementById('logPhotoUploadFile').onchange = async function (e) {
+      var files = Array.from(e.target.files);
+      e.target.value = '';
+      for (var i = 0; i < files.length; i++) { await captureLogPhoto_(eventId, files[i]); }
+      await renderLogPhotoGroups_(eventId, participants, selected);
+    };
+  }
 
   document.getElementById('createLogBtn').onclick = async function () {
     var all = await EvidenceCapture.listLogPhotos(eventId, HululState.user.id);
@@ -242,43 +263,82 @@ async function renderLogPhotoGroups_(eventId, participants, selected) {
 // gets permanently deleted. Trash has an empty now button." Rendered as its own compact card below
 // the groups, only when there's actually something trashed -- keeps the common case (empty trash)
 // out of the way entirely rather than showing a permanently-visible empty section.
+//
+// REQ follow-up: "In Logs allow inspectors to delete log photos. Deleted log photos go to Log Photos
+// Trash." A second, separate source now feeds this same card: photos deleted off an already-submitted
+// Log's own evidence gallery (deleteFindingEvidence, Findings.gs) rather than a not-yet-logged capture
+// from this tab. That's server-side (FindingEvidenceTrash sheet, restorable from any device) instead
+// of the client-only IndexedDB store the "not yet logged" section above already used, so the two are
+// fetched and rendered as two clearly-labeled subsections of one card rather than merged into a single
+// list -- same "Log Photos Trash" name and 30-day/restore/empty-now contract either way, just two
+// underlying stores. The finding-evidence subsection only fetches/renders at all for a user who holds
+// finding.deleteEvidence (same permission that let them delete a Log's photo in the first place).
 async function renderLogPhotoTrash_(eventId, participants, selected) {
   var holder = document.getElementById('logPhotoTrash');
   if (!holder) return; // tab was navigated away from mid-await
   var trashed = await EvidenceCapture.listTrashedLogPhotos(eventId, HululState.user.id);
-  if (!trashed.length) { holder.innerHTML = ''; return; }
+  var canSeeEvidenceTrash = hasPermission('finding.deleteEvidence');
+  var evidenceTrash = [];
+  if (canSeeEvidenceTrash) {
+    try { evidenceTrash = await Api.call('listFindingEvidenceTrash', { eventId: eventId }); }
+    catch (e) { /* non-critical -- the not-yet-logged section below still works without it */ }
+  }
+  if (!trashed.length && !evidenceTrash.length) { holder.innerHTML = ''; return; }
 
   var dayMs = 24 * 60 * 60 * 1000;
+  var totalCount = trashed.length + evidenceTrash.length;
   holder.innerHTML =
     '<div class="card" style="margin-top:4px;">' +
       '<div class="card-header" style="display:flex;align-items:center;gap:10px;">' +
-        '<div class="card-title" style="flex:1;">' + esc(t('trash_label')) + ' · ' + trashed.length + ' ' + esc(trashed.length > 1 ? t('word_photo_plural') : t('word_photo')) + '</div>' +
+        '<div class="card-title" style="flex:1;">' + esc(t('trash_label')) + ' · ' + totalCount + ' ' + esc(totalCount > 1 ? t('word_photo_plural') : t('word_photo')) + '</div>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="emptyLogPhotoTrashBtn">' + esc(t('empty_now_btn')) + '</button>' +
       '</div>' +
       '<div class="card-body">' +
         '<div class="muted" style="font-size:11.5px;margin-bottom:10px;">' + esc(t('trash_retention_hint')) + '</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:14px;">' +
-          trashed.map(function (p) {
-            var url = URL.createObjectURL(p.blob);
-            logPhotoObjectUrls_.push(url);
-            var daysLeft = Math.max(0, Math.ceil((LOG_PHOTO_TRASH_RETENTION_MS_ - (Date.now() - p.deletedAt)) / dayMs));
-            return '<div style="width:100px;">' +
-              '<div style="position:relative;width:100px;height:100px;">' +
-                '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;opacity:.6;" />' +
-              '</div>' +
-              '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + esc(t(daysLeft === 1 ? 'word_day_left' : 'word_days_left', { n: daysLeft })) + '</div>' +
-              '<button type="button" class="btn btn-secondary btn-sm log-photo-restore" data-local-id="' + esc(p.localId) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">' + esc(t('restore_btn')) + '</button>' +
-            '</div>';
-          }).join('') +
-        '</div>' +
+        (trashed.length
+          ? (evidenceTrash.length ? '<div class="field-label" style="margin-bottom:6px;">' + esc(t('trash_section_not_yet_logged')) + '</div>' : '') +
+            '<div style="display:flex;flex-wrap:wrap;gap:14px;' + (evidenceTrash.length ? 'margin-bottom:16px;' : '') + '">' +
+              trashed.map(function (p) {
+                var url = URL.createObjectURL(p.blob);
+                logPhotoObjectUrls_.push(url);
+                var daysLeft = Math.max(0, Math.ceil((LOG_PHOTO_TRASH_RETENTION_MS_ - (Date.now() - p.deletedAt)) / dayMs));
+                return '<div style="width:100px;">' +
+                  '<div style="position:relative;width:100px;height:100px;">' +
+                    '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;opacity:.6;" />' +
+                  '</div>' +
+                  '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + esc(t(daysLeft === 1 ? 'word_day_left' : 'word_days_left', { n: daysLeft })) + '</div>' +
+                  '<button type="button" class="btn btn-secondary btn-sm log-photo-restore" data-local-id="' + esc(p.localId) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">' + esc(t('restore_btn')) + '</button>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '') +
+        (evidenceTrash.length
+          ? (trashed.length ? '<div class="field-label" style="margin-bottom:6px;">' + esc(t('trash_section_deleted_from_logs')) + '</div>' : '') +
+            '<div style="display:flex;flex-wrap:wrap;gap:14px;">' +
+              evidenceTrash.map(function (r) {
+                var thumb = driveEvidenceThumbUrl_(r.url) || r.url;
+                var daysLeft = Math.max(0, Math.ceil((FINDING_EVIDENCE_TRASH_RETENTION_MS_ - (Date.now() - new Date(r.deletedAt).getTime())) / dayMs));
+                return '<div style="width:100px;">' +
+                  '<div style="position:relative;width:100px;height:100px;">' +
+                    '<img src="' + esc(thumb) + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);display:block;opacity:.6;" />' +
+                  '</div>' +
+                  '<div class="muted" style="font-size:10.5px;text-align:center;margin-top:4px;">' + esc(t(daysLeft === 1 ? 'word_day_left' : 'word_days_left', { n: daysLeft })) + '</div>' +
+                  '<button type="button" class="btn btn-secondary btn-sm evidence-trash-restore" data-trash-id="' + esc(r.id) + '" style="width:100%;margin-top:4px;font-size:11px;padding:4px 0;">' + esc(t('restore_btn')) + '</button>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '') +
       '</div>' +
     '</div>';
 
   document.getElementById('emptyLogPhotoTrashBtn').onclick = function () {
     UI.confirmModal(
-      t('confirm_empty_trash', { count: trashed.length, unit: trashed.length > 1 ? t('word_photo_plural') : t('word_photo') }),
+      t('confirm_empty_trash', { count: totalCount, unit: totalCount > 1 ? t('word_photo_plural') : t('word_photo') }),
       async function () {
         await EvidenceCapture.emptyLogPhotoTrash(eventId, HululState.user.id);
+        if (canSeeEvidenceTrash && evidenceTrash.length) {
+          try { await Api.call('emptyFindingEvidenceTrash', { eventId: eventId }); } catch (e) { UI.error(e); }
+        }
         UI.toast(t('toast_trash_emptied'), 'success');
         await renderLogPhotoTrash_(eventId, participants, selected);
       },
@@ -294,7 +354,21 @@ async function renderLogPhotoTrash_(eventId, participants, selected) {
       await renderLogPhotoTrash_(eventId, participants, selected);
     });
   });
+  holder.querySelectorAll('.evidence-trash-restore').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      try {
+        await Api.call('restoreFindingEvidence', { trashId: btn.getAttribute('data-trash-id') });
+        UI.toast(t('toast_photo_restored'), 'success');
+        await renderLogPhotoTrash_(eventId, participants, selected);
+      } catch (err) { UI.error(err); }
+    });
+  });
 }
+// Mirrors FINDING_EVIDENCE_TRASH_RETENTION_DAYS_ (Findings.gs) for the "days left" countdown above --
+// kept as its own frontend constant (not fetched from the backend) since it's purely a display value,
+// same "duplicate the constant, don't add a round-trip just to read one number" call the client-side
+// LOG_PHOTO_TRASH_RETENTION_MS_ already makes for its own 30-day figure.
+var FINDING_EVIDENCE_TRASH_RETENTION_MS_ = 30 * 24 * 60 * 60 * 1000;
 
 function syncGroupCheckboxStates_(groups, selected) {
   groups.forEach(function (g, gi) {

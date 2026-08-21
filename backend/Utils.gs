@@ -424,7 +424,21 @@ var SCHEMA = {
   // full history stays visible), status: 'Pending' (just uploaded) / 'Accepted' / 'Rejected' -- REQ
   // "accept uploaded documents, then mark as provided" -- Accepted is what flips the parent
   // AnnexEventCategories row to 'Provided' (reviewAnnexDocument, Annex.gs).
-  AnnexDocuments:         ['id','eventId','categoryId','fileUrl','fileName','mimeType','uploadedBy','uploadedAt','status','reviewedBy','reviewedAt','reviewComments']
+  AnnexDocuments:         ['id','eventId','categoryId','fileUrl','fileName','mimeType','uploadedBy','uploadedAt','status','reviewedBy','reviewedAt','reviewComments'],
+  // REQ: "In Logs allow inspectors to delete log photos. Deleted log photos go to Log Photos Trash."
+  // A server-side counterpart to the client-only "Log Photos Trash" the Log Photos tab already has
+  // (EvidenceCapture's IndexedDB-backed trashLogPhoto/restoreLogPhoto/emptyLogPhotoTrash, evidence.js
+  // -- for photos captured but not yet turned into a Log) -- this one instead covers a photo already
+  // attached to an existing Finding row's evidenceUrls (deleteFindingEvidence, Findings.gs), which is
+  // shared/uploaded data other people may already be viewing, so "detach, don't destroy" alone (the
+  // pre-existing behavior) isn't enough on its own -- it needs to land somewhere recoverable, same
+  // 30-day-then-gone / restore / empty-now UX as the client-side trash, not silently vanish. One row
+  // per trashed photo; evidenceMetaJson preserves that photo's own evidenceMeta entry (outsideBoundary/
+  // distanceMeters, see findingEvidenceMeta_) so restoring it doesn't lose that badge. status:
+  // 'Trashed' (default) / 'Restored' -- a permanent purge (past LOG_PHOTO_TRASH_RETENTION_DAYS_) or an
+  // explicit "empty now" just deleteRow()s it outright (no PurgedPermanently status kept around --
+  // nothing left worth showing once it's gone).
+  FindingEvidenceTrash:   ['id','findingId','eventId','url','evidenceMetaJson','deletedBy','deletedAt','status','restoredBy','restoredAt']
 };
 
 var ROLES = {
@@ -704,7 +718,8 @@ var ID_PREFIX = {
   TemplateScoringItems: 'TSI', TemplateScoringResults: 'TSR',
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
   FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
-  AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND'
+  AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND',
+  FindingEvidenceTrash: 'FET'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

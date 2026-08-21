@@ -715,15 +715,49 @@ async function tabTemplates(content, eventId, detail) {
 // category ... Inspection Company PM or analyst can mark document as required ... Provide table to
 // know how many documents have been uploaded and how many missing from mandatory ... accept
 // uploaded documents, then mark as provided ... ask for more information per category." One card per
-// fixed section (Risk Assessments / Sign-Offs / Certifications), each a table of that section's
-// categories -- required toggle, upload/accepted counts, status, and a Documents action that opens
-// the per-category document list. listEventAnnex (Annex.gs) does all the merge/rollup math; this
-// just renders what it returns.
-var ANNEX_SECTIONS_ = [
+// section (originally a fixed 3: Risk Assessments / Sign-Offs / Certifications), each a table of that
+// section's categories -- required toggle, upload/accepted counts, status, and a Documents action
+// that opens the per-category document list. listEventAnnex (Annex.gs) does all the merge/rollup
+// math; this just renders what it returns.
+//
+// REQ follow-up: "In Annex Category allow to create a new Section." Sections are no longer a closed
+// enum -- Annex.gs's create/updateAnnexCategory now accept any non-empty section name, same as a
+// category's own name. The original 3 keep their translated labels and fixed lead position (existing
+// data/translations shouldn't visibly reshuffle); any custom section an admin adds shows up after
+// them, labeled with the literal text they typed (no i18n key -- same "plain admin-entered name" as
+// every other catalogue in this app, e.g. Disciplines). ANNEX_BUILTIN_SECTIONS_ + annexSectionsToRender_
+// are the shared source of truth both the per-event Annex tab (this function's tabAnnex) and the
+// Inspection Setup > Annex Categories admin page (annexCategories.js) render from, so the two can
+// never drift on section order/labeling.
+var ANNEX_BUILTIN_SECTIONS_ = [
   ['RiskAssessments', 'annex_section_risk_assessments'],
   ['SignOffs', 'annex_section_sign_offs'],
   ['Certifications', 'annex_section_certifications']
 ];
+// Builds the full ordered [key, i18nLabelKeyOrNull] list to render cards for: the 3 built-ins first
+// (shown even with zero categories, same as always), then every distinct custom section actually
+// present in `categories` (only shown if it has at least one row -- nothing seeds a custom section
+// ahead of time), alphabetically among themselves. label === null means "not a translation key --
+// render the section string itself" (esc(), not t()).
+function annexSectionsToRender_(categories) {
+  var builtInKeys = {};
+  ANNEX_BUILTIN_SECTIONS_.forEach(function (s) { builtInKeys[s[0]] = true; });
+  var seenCustom = {};
+  var customSections = [];
+  (categories || []).forEach(function (c) {
+    if (!c.section || builtInKeys[c.section] || seenCustom[c.section]) return;
+    seenCustom[c.section] = true;
+    customSections.push([c.section, null]);
+  });
+  customSections.sort(function (a, b) { return a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0); });
+  return ANNEX_BUILTIN_SECTIONS_.concat(customSections);
+}
+// Display label for one section key -- built-in keys translate via their i18n key, a custom section
+// is just its own literal name (admin-entered free text, no translation).
+function annexSectionLabel_(sectionKey) {
+  var builtIn = ANNEX_BUILTIN_SECTIONS_.filter(function (s) { return s[0] === sectionKey; })[0];
+  return builtIn ? t(builtIn[1]) : sectionKey;
+}
 
 async function tabAnnex(content, eventId, detail) {
   var data = await Api.call('listEventAnnex', { eventId: eventId });
@@ -751,9 +785,9 @@ async function tabAnnex(content, eventId, detail) {
           '<a href="#/annex-categories" class="btn btn-primary btn-sm">' + esc(t('annex_go_to_setup_btn')) + '</a>' +
         '</div></div>'
       : '') +
-    ANNEX_SECTIONS_.map(function (sec) {
+    annexSectionsToRender_(data.categories).map(function (sec) {
       var rows = data.categories.filter(function (c) { return c.section === sec[0]; });
-      return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t(sec[1])) + '</div></div>' +
+      return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(annexSectionLabel_(sec[0])) + '</div></div>' +
         '<div class="card-body">' + UI.table([
           { key: 'name', label: t('col_category') },
           { key: 'required', label: t('col_required'), render: r => canManage
@@ -3274,6 +3308,14 @@ function recordResultRowHtml_(it, existing) {
       // .click(), so the only affordance the user sees is "take a photo", not "pick a file".
       '<input type="file" class="result-evidence hidden" data-item="' + it.id + '" accept="image/*,video/*" capture="environment" style="display:none;" />' +
       '<button type="button" class="btn btn-secondary btn-icon result-evidence-trigger" data-item="' + it.id + '" title="' + esc(t('title_take_photo')) + '" aria-label="' + esc(t('aria_take_photo')) + '">' + ICON('capture_photo') + '</button>' +
+      // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from device,
+      // unless permission is set for that specific role." A second, non-capture file input + button --
+      // shown only for a role an admin has explicitly granted evidence.uploadFromDevice -- next to the
+      // always-present camera button above. See wireRecordResultRows_ below for the wiring.
+      (hasPermission('evidence.uploadFromDevice')
+        ? '<input type="file" class="result-evidence-alt hidden" data-item="' + it.id + '" accept="image/*,video/*" style="display:none;" />' +
+          '<button type="button" class="btn btn-secondary btn-icon result-evidence-trigger-alt" data-item="' + it.id + '" title="' + esc(t('upload_from_device_btn')) + '" aria-label="' + esc(t('upload_from_device_btn')) + '">' + ICON('upload') + '</button>'
+        : '') +
       '<div class="evidence-list" data-evlist="' + it.id + '" style="margin-top:6px;"></div>' +
     '</div>' +
   '</div>';
@@ -3305,6 +3347,22 @@ function wireRecordResultRows_(eventId, filteredItems, pendingFiles) {
     btn.onclick = function () {
       var itemId = btn.getAttribute('data-item');
       var input = document.querySelector('.result-evidence[data-item="' + itemId + '"]');
+      if (input) input.click();
+    };
+  });
+  // evidence.uploadFromDevice bypass -- same wiring shape as the camera pair above, just pointed at
+  // the alt (non-capture) input/button pair.
+  document.querySelectorAll('.result-evidence-alt').forEach(function (input) {
+    input.onchange = function () {
+      var itemId = input.getAttribute('data-item');
+      Array.from(input.files).forEach(function (file) { uploadEvidenceFile_(eventId, itemId, file, pendingFiles); });
+      input.value = '';
+    };
+  });
+  document.querySelectorAll('.result-evidence-trigger-alt').forEach(function (btn) {
+    btn.onclick = function () {
+      var itemId = btn.getAttribute('data-item');
+      var input = document.querySelector('.result-evidence-alt[data-item="' + itemId + '"]');
       if (input) input.click();
     };
   });

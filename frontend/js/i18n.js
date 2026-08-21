@@ -483,7 +483,8 @@ window.HULUL_I18N = {
     // should give them a list of descriptions once they select the category and sub-category."
     finding_guide_title: 'Log Assistance Guide', finding_guide_subtitle: 'Suggested descriptions and corrective actions, by category and sub-category -- helps junior inspectors log findings faster.',
     finding_guide_entry: 'Guide Entry', col_category: 'Category', col_sub_category: 'Sub-Category', col_suggestion: 'Suggestion',
-    all_categories: 'All categories', add_new_category_option: '+ Add new category…',
+    all_categories: 'All categories',
+    add_new_section_option: '+ Add new section…', toast_section_required: 'Section is required',
     toast_category_required: 'Category is required', toast_sub_category_required: 'Sub-Category is required', toast_description_required: 'Description is required',
     finding_guide_csv_columns_required: 'CSV needs at least: Category, Sub-Category, Description columns',
     importing_finding_guide: 'Importing guide entries…',
@@ -498,6 +499,15 @@ window.HULUL_I18N = {
     confirm_empty_trash: 'Permanently delete {{count}} {{unit}} from trash? This can\'t be undone.',
     empty_trash_title: 'Empty trash', toast_trash_emptied: 'Trash emptied', toast_photo_restored: 'Photo restored',
     create_log_with_count: 'Create Log ({{count}} selected)',
+    // REQ follow-up: "In Logs allow inspectors to delete log photos. Deleted log photos go to Log
+    // Photos Trash." Deleting a photo already attached to a Log (findings.js) + the two-subsection
+    // trash card that follows (logPhotos.js's renderLogPhotoTrash_).
+    delete_evidence_confirm: 'Move this photo to Log Photos Trash? It stays there for 30 days and can be restored.',
+    trash_section_not_yet_logged: 'Not yet logged', trash_section_deleted_from_logs: 'Deleted from Logs',
+    // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from device,
+    // unless permission is set for that specific role." Label for the second, permission-gated button
+    // shown next to every camera-capture button (evidence.uploadFromDevice).
+    upload_from_device_btn: 'Upload from device',
 
     // ---- Event workspace tabs (eventDetail.js) ----
     and_join: '{{a}} & {{b}}', readiness_x_label: 'Readiness {{term}}', tab_log_photos: 'Log Photos',
@@ -1181,7 +1191,8 @@ window.HULUL_I18N = {
     importing_checklist_items: 'جارٍ استيراد عناصر قائمة التحقق…',
     finding_guide_title: 'دليل مساعدة السجلات', finding_guide_subtitle: 'أوصاف وإجراءات تصحيحية مقترحة، حسب الفئة والفئة الفرعية — تساعد المفتشين المبتدئين على تسجيل الملاحظات بسرعة أكبر.',
     finding_guide_entry: 'عنصر الدليل', col_category: 'الفئة', col_sub_category: 'الفئة الفرعية', col_suggestion: 'الاقتراح',
-    all_categories: 'كل الفئات', add_new_category_option: '+ إضافة فئة جديدة…',
+    all_categories: 'كل الفئات',
+    add_new_section_option: '+ إضافة قسم جديد…', toast_section_required: 'القسم مطلوب',
     toast_category_required: 'الفئة مطلوبة', toast_sub_category_required: 'الفئة الفرعية مطلوبة', toast_description_required: 'الوصف مطلوب',
     finding_guide_csv_columns_required: 'يجب أن يحتوي ملف CSV على الأعمدة التالية على الأقل: الفئة، الفئة الفرعية، الوصف',
     importing_finding_guide: 'جارٍ استيراد عناصر الدليل…',
@@ -1196,6 +1207,9 @@ window.HULUL_I18N = {
     confirm_empty_trash: 'هل تريد حذف {{count}} {{unit}} نهائيًا من سلة المحذوفات؟ لا يمكن التراجع عن هذا.',
     empty_trash_title: 'إفراغ سلة المحذوفات', toast_trash_emptied: 'تم إفراغ سلة المحذوفات', toast_photo_restored: 'تمت استعادة الصورة',
     create_log_with_count: 'إنشاء سجل ({{count}} محددة)',
+    delete_evidence_confirm: 'نقل هذه الصورة إلى سلة محذوفات صور السجلات؟ ستبقى هناك لمدة 30 يومًا ويمكن استعادتها.',
+    trash_section_not_yet_logged: 'لم تُسجَّل بعد', trash_section_deleted_from_logs: 'محذوفة من السجلات',
+    upload_from_device_btn: 'رفع من الجهاز',
 
     // ---- Event workspace tabs (eventDetail.js) ----
     and_join: '{{a}} و{{b}}', readiness_x_label: '{{term}} الجاهزية', tab_log_photos: 'صور السجل',

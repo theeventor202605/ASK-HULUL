@@ -12,9 +12,17 @@
  * predates the Annex feature and never got the initial seed, instead of needing the Apps Script
  * editor -- see this page's own empty-state below.
  *
- * ANNEX_SECTIONS_ (the 3 fixed section keys + i18n labels) is defined once in eventDetail.js (shared
- * global, same convention as every other cross-file helper in this app) and reused here so the
- * section list can never drift between the per-event Annex tab and this catalog page.
+ * ANNEX_BUILTIN_SECTIONS_/annexSectionsToRender_/annexSectionLabel_ (the original 3 fixed sections +
+ * i18n labels, plus the logic for folding in admin-added custom sections) are defined once in
+ * eventDetail.js (shared global, same convention as every other cross-file helper in this app) and
+ * reused here so the section list can never drift between the per-event Annex tab and this page.
+ *
+ * REQ follow-up: "In Annex Category allow to create a new Section." Section is no longer a closed
+ * 3-value enum -- openAnnexCategoryForm_'s Section field is a select of every section already in use
+ * (built-in + custom) plus an "Add new section" option that reveals a free-text input, same
+ * suggestable-select pattern openFindingGuideForm_ (findingGuide.js) already uses for its Category
+ * field. Annex.gs's create/updateAnnexCategory validate it exactly like a category name now (non-
+ * empty, trimmed) instead of against a fixed whitelist.
  */
 async function renderAnnexCategories() {
   var root = document.getElementById('viewRoot');
@@ -30,7 +38,7 @@ async function renderAnnexCategories() {
 
   if (canManage) {
     document.getElementById('newAnnexCategoryBtn').onclick = function () {
-      openAnnexCategoryForm_({
+      openAnnexCategoryForm_(categories, {
         title: t('new_x_title', { term: t('annex_category') }),
         submitLabel: t('create'),
         initial: {},
@@ -62,9 +70,9 @@ async function renderAnnexCategories() {
     return;
   }
 
-  document.getElementById('acBody').innerHTML = ANNEX_SECTIONS_.map(function (sec) {
+  document.getElementById('acBody').innerHTML = annexSectionsToRender_(categories).map(function (sec) {
     var rows = categories.filter(function (c) { return c.section === sec[0]; });
-    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t(sec[1])) + '</div></div>' +
+    return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(annexSectionLabel_(sec[0])) + '</div></div>' +
       '<div class="card-body">' + UI.table([
         { key: 'name', label: t('col_category') },
         { key: 'defaultRequired', label: t('col_default_required'), render: r => canManage
@@ -93,7 +101,7 @@ async function renderAnnexCategories() {
     btn.onclick = function () {
       var cat = categories.filter(function (c) { return c.id === btn.getAttribute('data-edit-ac'); })[0];
       if (!cat) return;
-      openAnnexCategoryForm_({
+      openAnnexCategoryForm_(categories, {
         title: t('edit_x', { term: t('annex_category') }),
         submitLabel: t('save'),
         initial: cat,
@@ -117,14 +125,26 @@ async function renderAnnexCategories() {
   });
 }
 
-// Shared by "+ New" and each row's Edit button.
-function openAnnexCategoryForm_(opts) {
+// Shared by "+ New" and each row's Edit button. Section is a suggestable select -- every section
+// already in use (built-in, translated, plus any custom ones already added, shown by their literal
+// name) -- plus an "Add new section" option that reveals a free-text input, same pattern
+// openFindingGuideForm_'s Category field (findingGuide.js) already uses for the same "closed catalogue
+// that should still let an admin introduce a new value inline" need.
+function openAnnexCategoryForm_(categories, opts) {
   var initial = opts.initial || {};
+  var sectionOptions = annexSectionsToRender_(categories); // [[key, i18nLabelOrNull], ...]
+  var matched = initial.section && sectionOptions.some(function (s) { return s[0] === initial.section; });
+  var sectionSelectHtml =
+    sectionOptions.map(function (sec) {
+      return '<option value="' + esc(sec[0]) + '"' + (sec[0] === initial.section ? ' selected' : '') + '>' + esc(annexSectionLabel_(sec[0])) + '</option>';
+    }).join('') +
+    '<option value="__new__"' + (!matched && initial.section ? ' selected' : '') + '>' + esc(t('add_new_section_option')) + '</option>';
+
   var body =
-    UI.field(t('col_section'), '<select id="fAcSection" class="field-input">' +
-      ANNEX_SECTIONS_.map(function (sec) {
-        return '<option value="' + esc(sec[0]) + '"' + (initial.section === sec[0] ? ' selected' : '') + '>' + esc(t(sec[1])) + '</option>';
-      }).join('') + '</select>') +
+    UI.field(t('col_section'),
+      '<select id="fAcSection" class="field-input">' + sectionSelectHtml + '</select>' +
+      '<input id="fAcSectionNew" class="field-input" placeholder="' + esc(t('col_section')) + '" style="margin-top:6px;' + (matched || !initial.section ? 'display:none;' : '') + '" value="' + esc(!matched ? (initial.section || '') : '') + '" />'
+    ) +
     UI.field(t('col_category'), '<input id="fAcName" class="field-input" value="' + esc(initial.name || '') + '" />') +
     UI.field('', '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;">' +
       '<input type="checkbox" id="fAcDefaultRequired" ' + (initial.defaultRequired ? 'checked' : '') + ' /> ' + esc(t('annex_default_required_label')) + '</label>');
@@ -132,14 +152,20 @@ function openAnnexCategoryForm_(opts) {
   UI.openModal(opts.title, body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: opts.submitLabel, className: 'btn-primary', onClick: async function () {
+        var sectionSelect = document.getElementById('fAcSection');
+        var section = sectionSelect.value === '__new__' ? document.getElementById('fAcSectionNew').value.trim() : sectionSelect.value;
         var name = document.getElementById('fAcName').value.trim();
+        if (!section) { UI.toast(t('toast_section_required'), 'error'); return; }
         if (!name) { UI.toast(t('toast_category_required'), 'error'); return; }
-        var payload = {
-          section: document.getElementById('fAcSection').value,
-          name: name,
-          defaultRequired: document.getElementById('fAcDefaultRequired').checked
-        };
+        var payload = { section: section, name: name, defaultRequired: document.getElementById('fAcDefaultRequired').checked };
         try { await opts.onSubmit(payload); } catch (err) { UI.error(err); }
       } }
   ]);
+
+  var sectionSelectEl = document.getElementById('fAcSection');
+  var sectionNewEl = document.getElementById('fAcSectionNew');
+  sectionSelectEl.onchange = function () {
+    sectionNewEl.style.display = sectionSelectEl.value === '__new__' ? '' : 'none';
+    if (sectionSelectEl.value === '__new__') sectionNewEl.focus();
+  };
 }
