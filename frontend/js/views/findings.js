@@ -841,13 +841,11 @@ async function renderNewFinding(params) {
   // anything still preparing/uploading is watched (attachFindingEvidenceInBackground_ below) and
   // appended (addFindingEvidence, Findings.gs) the moment each one finishes.
   document.getElementById('createFindingBtn').onclick = async function () {
-    var btn = document.getElementById('createFindingBtn');
     // BUG FIX: "Logs are becoming doubles ... user pressing the submission button twice." A second
-    // click before the first Api.call('createFinding', ...) round-trip finishes created a second,
-    // near-identical Finding -- guard with the button's own disabled state (re-entrant onclick calls
-    // are otherwise perfectly free to overlap) rather than a separate flag, so there's exactly one
-    // source of truth and no way for it to drift out of sync with what the user actually sees.
-    if (btn.disabled) return;
+    // click before the first Api.call('createFinding', ...) round-trip finishes used to create a
+    // second, near-identical Finding -- now guarded generically for every button app-wide by the
+    // click-guard in ui.js (disables this button for the duration of this exact handler call,
+    // however long it takes, then re-enables it), so there's nothing left to do here by hand.
     if (!selectedParticipant) { UI.toast(t('toast_participant_required', { term: Term('participant') }), 'error'); return; }
     var disciplineId = document.getElementById('fDiscipline').value;
     if (!disciplineId) { UI.toast(t('toast_discipline_required', { term: Term('discipline') }), 'error'); return; }
@@ -867,7 +865,6 @@ async function renderNewFinding(params) {
       };
     }).filter(function (m) { return m.outsideBoundary; }); // no badge to show -- no point carrying the row
     var stillUploading = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
-    btn.disabled = true;
     try {
       var f = await Api.call('createFinding', Object.assign({
         eventId: eventId, participantId: selectedParticipant.id, disciplineId: disciplineId,
@@ -892,7 +889,7 @@ async function renderNewFinding(params) {
       }
       destroyFindingLocationMap_();
       window.location.hash = '#/events/' + eventId + '/findings/' + f.id;
-    } catch (err) { UI.error(err); btn.disabled = false; }
+    } catch (err) { UI.error(err); }
   };
 }
 

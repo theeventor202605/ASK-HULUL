@@ -21,6 +21,18 @@ window.UI = {
     // is usually gone anyway. Every catch block across the app funnels here via UI.error(err), so
     // this one check covers all of them instead of needing every call site to special-case it.
     if (err && err.name === 'AbortError') return;
+    // BUG REPORT: "Cannot set properties of null (setting 'onclick')" (and the same for .value,
+    // .textContent, etc.) turning up as a scary popup "from time to time". Same underlying shape as
+    // AbortError just above -- some async callback (a modal that got closed, an in-page action
+    // superseded by a newer one, anything that isn't a full page navigation, which AbortError
+    // already covers) finishes its own await *after* the element(s) it was about to update have
+    // already been removed from the DOM by whatever the user did next. The very next line it runs --
+    // document.getElementById(id).onclick = fn, .value = x, and so on -- gets null back and throws a
+    // TypeError whose message always starts with "Cannot set properties of null" / "Cannot read
+    // properties of null". There is nothing left on screen for this to have been about by the time
+    // it fires, so -- exactly like AbortError -- there's nothing useful to tell the user; a popup
+    // here only confuses ("Error" for something they didn't do and can't see).
+    if (err instanceof TypeError && /^Cannot (set|read) propert(y|ies) of null/.test(err.message || '')) { console.warn(err); return; }
     console.error(err);
     if (err && err.code === 'FORBIDDEN') { this.permissionModal(err); return; }
     this.errorModal(err);
@@ -902,33 +914,54 @@ window.UI = {
 };
 
 
-// App-wide click guard: the instant ANY .btn is clicked, disable it and mark it visibly clicked
-// (see .btn-clicked / :disabled in styles.css) for 10s. Delegated once here on document, in the
-// capture phase, so it runs before the button's own onclick fires for that same click -- the click
-// still does its job normally, this only blocks a second click on the same button while the first
-// request is in flight (or the user is double-tapping), which is what was producing "not found" /
-// duplicate-create style errors from firing the same action twice. Every current and future button
-// gets this for free; no call site needs to wire it up itself.
+// App-wide click guard: prevents a button's own click handler from being re-entered by a second
+// click while the first invocation is still running. Used to be a blind "disable for 10 seconds"
+// timer -- simple, but a fixed duration is wrong in both directions: a fast action stayed locked
+// for a full 10s after it had already finished (annoying -- REQ: "remove that restriction"), while
+// a slow one (a flaky connection, a big CSV import) was only protected for the first 10s and could
+// still be double-fired after that if the request was still genuinely in flight.
 //
-// The disabling itself is deferred one tick (setTimeout 0) -- this is NOT cosmetic. The login
-// button is a real <button type="submit"> inside a <form>, and setting .disabled = true
-// synchronously, before the browser has finished running that same click's native activation
-// behavior, can cancel the form's submit event outright in some browsers -- login would then
-// silently do nothing (no error, no request, nothing). Deferring by a tick lets that native
-// submit fire first; the button is still disabled a moment later, well before a human could
-// double-click it.
+// This replaces the timer with a guard tied to the handler's own actual lifetime instead of a
+// guessed duration: the moment a button.btn with a plain .onclick handler is clicked, that handler
+// is swapped for a wrapper (for just this one click) that disables the button, calls the real
+// handler, and re-enables the button the instant the real handler's own work is done -- its
+// returned promise settling if it's async, or immediately if it wasn't -- so the button is locked
+// for exactly as long as this click's own handler call takes, never more, never less.
+//
+// Delegated once here on document, in the capture phase, so the swap happens before the browser
+// invokes the button's onclick for that same click (onclick fires during the bubble phase). Every
+// current and future button with a plain .onclick assignment gets this for free; no call site
+// needs its own disabled-flag bookkeeping (see findings.js/app.js git history for what that used to
+// look like duplicated per call site, before this existed).
+//
+// Buttons with no .onclick at all -- a <button type="submit"> relying entirely on its <form>'s own
+// 'submit' listener, e.g. the login button -- aren't touched here; there's no handler to wrap, and
+// disabling a submit button from outside its own submit handler is what used to risk cancelling the
+// browser's native form-submit activation for that same click. A submit-driven button that wants
+// this same protection guards itself the same way every .onclick handler used to (disable at the
+// top of its own 'submit' listener, re-enable on failure) -- see loginForm's listener in app.js.
 document.addEventListener('click', function (e) {
   var btn = e.target.closest ? e.target.closest('button.btn') : null;
-  if (!btn || btn.disabled) return;
-  btn.classList.add('btn-clicked');
-  setTimeout(function () {
-    if (!btn.isConnected) { btn.classList.remove('btn-clicked'); return; } // already re-rendered away
+  if (!btn || btn.disabled || btn.__hululGuarding) return;
+  var realHandler = btn.onclick;
+  if (typeof realHandler !== 'function') return; // nothing to guard re-entry into
+  var wrapper = function (ev) {
     btn.disabled = true;
-    setTimeout(function () {
-      btn.disabled = false;
-      btn.classList.remove('btn-clicked');
-    }, 10000);
-  }, 0);
+    btn.classList.add('btn-clicked');
+    var finish = function () {
+      if (btn.onclick === wrapper) btn.onclick = realHandler; // restore, unless something else already took over
+      btn.__hululGuarding = false;
+      if (btn.isConnected) { btn.disabled = false; btn.classList.remove('btn-clicked'); }
+    };
+    var result;
+    try { result = realHandler.call(btn, ev); }
+    catch (err) { finish(); throw err; }
+    if (result && typeof result.then === 'function') result.then(finish, finish);
+    else finish();
+    return result;
+  };
+  btn.__hululGuarding = true;
+  btn.onclick = wrapper;
 }, true);
 
 // UI.table's own filter/sort/export/pagination wiring, delegated once here (same pattern as the

@@ -428,8 +428,9 @@ function showEscalationLock_(item) {
     '</div>';
   overlay.classList.remove('hidden');
   document.getElementById('escalationLockNotedBtn').onclick = async function () {
-    var btn = this;
-    btn.disabled = true;
+    // Double-submit guard: handled generically by ui.js's app-wide click-guard (disables this
+    // button for exactly as long as this handler call takes, then re-enables it) -- nothing to do
+    // here by hand.
     try {
       await Api.call('acknowledgeEscalation', { escalationId: item.id });
       HululState.escalationLockShownId = null;
@@ -438,7 +439,7 @@ function showEscalationLock_(item) {
       // same ?tab=<x>&focus=<id> pattern already used by the chat log's own "jump to this item" link.
       window.location.hash = '#/events/' + item.eventId + '?tab=escalations&focus=' + item.id;
       refreshEscalationAlert(true);
-    } catch (err) { btn.disabled = false; UI.error(err); }
+    } catch (err) { UI.error(err); }
   };
 }
 
@@ -450,6 +451,15 @@ function hideEscalationLock_() {
 function wireChrome() {
   document.getElementById('loginForm').addEventListener('submit', async function (e) {
     e.preventDefault();
+    // Double-submit guard: this button is a plain <button type="submit"> with no .onclick of its
+    // own (see index.html) -- it's wired through this form's own 'submit' listener instead, which
+    // ui.js's app-wide click-guard doesn't reach (that one only wraps .onclick handlers). Guarded
+    // by hand here the same way every .onclick handler used to be before that guard existed: check
+    // the button's own disabled state going in, disable it before the request, re-enable only on
+    // failure (success navigates away, so there's nothing left to re-enable).
+    var btn = e.target.querySelector('button[type="submit"]');
+    if (btn.disabled) return;
+    btn.disabled = true;
     var email = document.getElementById('loginEmail').value.trim();
     var password = document.getElementById('loginPassword').value;
     var errBox = document.getElementById('loginError');
@@ -462,6 +472,7 @@ function wireChrome() {
     } catch (err) {
       errBox.textContent = err.message || t('toast_login_failed');
       errBox.classList.remove('hidden');
+      btn.disabled = false;
     }
   });
 
