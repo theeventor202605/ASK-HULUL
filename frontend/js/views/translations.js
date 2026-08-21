@@ -4,15 +4,27 @@
  * think having an interface for this specific task would be helpful. We also need to know the
  * percentage of translation. they also get to know what has not been translated yet."
  *
- * listTranslationItems (Translations.gs) returns one flat array covering every optional Arabic field
- * in the app -- Categories/Disciplines.nameAr, Checklist Types/ChecklistItems.checklistTypeAr (deduped
- * to one row per unique English value), Log Assistance Guide/FindingGuide.descriptionAr+suggestionAr,
- * Risk Logs/Findings.descriptionAr+suggestedActionAr, Places.nameAr. This page turns that flat list
- * into: an overall + per-category %-translated progress bar (computed client-side -- cheap enough over
- * a list this size that a separate summary endpoint would just be a second round trip for no benefit),
- * a category filter, a "show untranslated only" toggle, and one editable Arabic textarea per row that
+ * REQ follow-up: "Translators need to also translate free text input by inspectors. So if a user had
+ * Arabic interface on and writes for example the log in Arabic language they need to translate to
+ * English and vice versa." Most rows translate English -> Arabic, but Findings/FindingGuide/Places rows
+ * can go either way -- listTranslationItems (Translations.gs) detects, per row, whether the "source"
+ * text it captured is actually written in Arabic (an Arabic-interface user typed into the main field
+ * instead of the optional secondary one) and flips `item.direction` to 'toEnglish' when so. This page
+ * renders each row according to its own direction (which side is source vs. which textarea the
+ * translator types into, and which way each is dir='rtl'/'ltr') rather than assuming English is always
+ * the source.
+ *
+ * listTranslationItems returns one flat array covering every optional Arabic field in the app --
+ * Categories/Disciplines.nameAr, Checklist Types/ChecklistItems.checklistTypeAr (deduped to one row per
+ * unique English value, one-directional only), Log Assistance Guide/FindingGuide.descriptionAr+
+ * suggestionAr, Risk Logs/Findings.descriptionAr+suggestedActionAr, Places.nameAr. This page turns that
+ * flat list into: an overall + per-category %-translated progress bar (computed client-side -- cheap
+ * enough over a list this size that a separate summary endpoint would just be a second round trip for no
+ * benefit), a category filter, a "show untranslated only" toggle, and one editable textarea per row that
  * saves independently via updateTranslation (Translations.gs) -- no bulk save, so one row's edit can
- * never accidentally clobber another's.
+ * never accidentally clobber another's. A save re-fetches the list (not a local patch) since a relocate
+ * (Translations.gs) can change which field an item's OWN source/target sides refer to -- re-deriving that
+ * server-side keeps this file from having to duplicate the direction-detection logic in JS too.
  */
 
 // labelFn (not a plain string) so each label re-derives Term()/t() at render time -- same reasoning as
@@ -92,12 +104,19 @@ function renderTranslationsBody_() {
   var indexOfItem_ = new Map();
   filtered.forEach(function (it, idx) { indexOfItem_.set(it, idx); });
 
+  // direction: 'toEnglish' means the source text (captured, real content) is Arabic and the translator
+  // is producing English; 'toArabic' (the common case) is the reverse. Source/translation dir attrs and
+  // the direction badge below all key off this single field rather than assuming a fixed language per
+  // column, since a mixed worklist can have rows going both ways.
   var tableHtml = filtered.length ? UI.table([
     { key: 'category', label: t('col_category'), render: r => esc(translationCategoryLabel_(r.category)) },
     { key: 'context', label: t('col_context'), render: r => esc(r.context || '—') },
-    { key: 'source', label: t('col_english'), render: r => '<div style="max-width:340px;white-space:pre-wrap;">' + esc(r.source) + '</div>' },
-    { key: 'target', label: t('col_arabic'), render: r =>
-        '<textarea class="field-input translation-input" dir="rtl" rows="2" placeholder="' + esc(t('translation_placeholder')) + '">' + esc(r.target) + '</textarea>' },
+    { key: 'direction', label: t('col_direction'), sortable: false,
+      render: r => '<span class="badge badge-neutral">' + esc(r.direction === 'toEnglish' ? t('translation_dir_to_en') : t('translation_dir_to_ar')) + '</span>' },
+    { key: 'source', label: t('col_source_text'), render: r =>
+        '<div dir="' + (r.direction === 'toEnglish' ? 'rtl' : 'ltr') + '" style="max-width:320px;white-space:pre-wrap;">' + esc(r.source) + '</div>' },
+    { key: 'target', label: t('col_translation'), render: r =>
+        '<textarea class="field-input translation-input" dir="' + (r.direction === 'toEnglish' ? 'ltr' : 'rtl') + '" rows="2" placeholder="' + esc(t('translation_placeholder')) + '">' + esc(r.target) + '</textarea>' },
     { key: 'status', label: t('col_status'), exportValue: r => (r.target && r.target.trim()) ? t('translation_status_translated') : t('translation_status_missing'),
       render: r => (r.target && r.target.trim())
         ? '<span class="badge badge-low">' + esc(t('translation_status_translated')) + '</span>'
@@ -151,16 +170,25 @@ function wireTranslationsBody_(filtered) {
       var row = btn.closest('tr');
       var textarea = row ? row.querySelector('.translation-input') : null;
       var value = textarea ? textarea.value : '';
-      var payload = { recordType: item.recordType, value: value };
+      var payload = { recordType: item.recordType, value: value, direction: item.direction };
       if (item.recordType === 'checklistType') payload.checklistType = item.checklistType;
       else payload.recordId = item.recordId;
       btn.disabled = true;
       try {
         await Api.call('updateTranslation', payload);
-        item.target = value; // keep the in-memory list in sync so the re-render below recomputes % correctly
         UI.toast(t('translation_saved'), 'success');
-        renderTranslationsBody_(); // refresh progress bars/status badge without a network round trip
+        await refetchTranslationItems_(); // re-derive source/target/direction server-side (a relocate
+        // save can flip which field this same item's own source vs. target sides now point at)
       } catch (err) { UI.error(err); btn.disabled = false; }
     };
   });
+}
+
+// Re-fetches the flat item list and re-renders WITHOUT resetting the category filter/untranslated-only
+// toggle -- unlike renderTranslations() (the page's first load), which deliberately does reset both.
+async function refetchTranslationItems_() {
+  try {
+    HululTranslationState_.items = await Api.call('listTranslationItems', {});
+    renderTranslationsBody_();
+  } catch (err) { UI.error(err); }
 }

@@ -4,17 +4,26 @@
  * think having an interface for this specific task would be helpful. We also need to know the
  * percentage of translation. they also get to know what has not been translated yet."
  *
- * Every optional Arabic field the app has grown over time (Categories/Disciplines.nameAr, Checklist
- * Types/ChecklistItems.checklistTypeAr, Log Assistance Guide/FindingGuide.descriptionAr+suggestionAr,
- * Risk Logs/Findings.descriptionAr+suggestedActionAr, Places.nameAr) was designed to be filled in by
- * whoever happens to be creating that record (see each field's own commit history) -- there was never
- * a dedicated place for a translator, who didn't create the English text, to go find everything still
- * missing its Arabic counterpart. listTranslationItems flattens all of the above into one worklist (one
- * row per translatable English string); updateTranslation writes a single row's Arabic value back to
- * its real home table. Percentage-translated and "show only untranslated" are both derived client-side
- * from this same flat list (translations.js) rather than a separate summary endpoint -- the list is
- * cheap enough (a handful of getAll() scans, same cost as any other admin catalogue page) that a second
- * round trip just to recompute a count would be pure overhead.
+ * REQ follow-up: "Translators need to also translate free text input by inspectors. So if a user had
+ * Arabic interface on and writes for example the log in Arabic language they need to translate to
+ * English and vice versa." Free-text fields (Findings.description/suggestedAction,
+ * FindingGuide.description/suggestion, Places.name) are typed directly by whoever is using the app --
+ * their content is NOT reliably English just because it lives in the field nominally called
+ * "description" rather than "descriptionAr". An Arabic-interface user typing into the main field
+ * produces Arabic text sitting in the "English" column with the Arabic column left blank -- the
+ * opposite of what listTranslationItems originally assumed. looksArabic_/translationPairItem_ below
+ * detect that case per row and flip the translation direction (source = the Arabic text already
+ * captured, target = the missing English translation); updateTranslation's bidirectional save path
+ * re-derives the same thing from live data at save time and relocates the original text into its
+ * proper-language field rather than losing it.
+ *
+ * Categories (Disciplines.name) and Checklist Types (ChecklistItems.checklistType) are deliberately
+ * NOT given this bidirectional treatment -- both are used elsewhere as plain-string foreign keys
+ * (FindingGuide.category/Findings.category match Disciplines.name exactly; InspectorAssignments/
+ * Findings.subCategory match checklistType exactly), and renaming either safely requires the
+ * cascade-the-rename logic updateDiscipline (Disciplines.gs) already has, which is out of scope for a
+ * translation-only permission. Those two keep the original one-directional (fill in the Arabic column
+ * only) behavior.
  *
  * Gated by its own 'translation.manage' permission (Permissions.gs) rather than piggy-backing on each
  * record's own manage permission (discipline.manage/finding.edit/place.manage/...) -- the whole point
@@ -22,6 +31,52 @@
  * translations ONLY, with none of the broader create/delete/workflow access those other permissions
  * would also carry.
  */
+
+// Arabic script detection (Arabic + Arabic Supplement + Arabic Presentation Forms blocks) -- used to
+// tell whether a field's CURRENT content is actually written in Arabic, regardless of which field it's
+// sitting in. Deliberately simple (a single regex test, not a full language-detection library): this
+// only ever needs to distinguish Arabic script from everything else, and every language this app
+// supports today is either Arabic or Latin-script English.
+var ARABIC_SCRIPT_RE_ = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+function looksArabic_(str) { return !!(str && ARABIC_SCRIPT_RE_.test(str)); }
+
+// Every bidirectional (translate-either-way) field pair, keyed by the same recordType string used in
+// both listTranslationItems and updateTranslation -- centralized here so the relocate-on-save logic
+// (saveBidirectionalTranslation_, below) is written once and shared by every category that uses it,
+// instead of forked per case the way the pre-this-REQ version of this file had it.
+var TRANSLATION_BIDIRECTIONAL_DEFS_ = {
+  findingGuideDescription: { sheet: 'FindingGuide', enField: 'description', arField: 'descriptionAr' },
+  findingGuideSuggestion: { sheet: 'FindingGuide', enField: 'suggestion', arField: 'suggestionAr' },
+  findingDescription: { sheet: 'Findings', enField: 'description', arField: 'descriptionAr' },
+  findingSuggestedAction: { sheet: 'Findings', enField: 'suggestedAction', arField: 'suggestedActionAr' },
+  place: { sheet: 'Places', enField: 'name', arField: 'nameAr' }
+};
+
+// Builds one worklist item for a bidirectional EN/AR field pair, or null if there's nothing to
+// translate against yet (both sides blank). `base` carries the caller's key/recordType/recordId/
+// category/context; this only fills in source/target/direction.
+//   - EN field holds real text that reads as Arabic, AR field blank: an Arabic-interface user typed
+//     into the main field -- direction flips to 'toEnglish', source is that Arabic text, target (the
+//     missing English translation) starts blank.
+//   - EN field blank, AR field holds text: same 'toEnglish' direction, but the Arabic text is already
+//     sitting in its own proper field (no relocation will be needed on save).
+//   - Otherwise (the ordinary case): direction is 'toArabic', source is the EN field, target is
+//     whatever the AR field currently holds (blank = still missing, filled = already translated but
+//     still editable).
+function translationPairItem_(base, enText, arText) {
+  enText = String(enText || ''); arText = String(arText || '');
+  if (!enText.trim() && !arText.trim()) return null;
+
+  var item = Object.assign({}, base);
+  if (looksArabic_(enText) && !arText.trim()) {
+    item.source = enText; item.target = ''; item.direction = 'toEnglish';
+  } else if (!enText.trim() && arText.trim()) {
+    item.source = arText; item.target = ''; item.direction = 'toEnglish';
+  } else {
+    item.source = enText; item.target = arText; item.direction = 'toArabic';
+  }
+  return item;
+}
 
 // checklistType is stored per-ChecklistItems-row (not its own catalogue), so many rows can share the
 // exact same English value -- same "first non-blank wins" convention checklistItems.js's own form uses
@@ -43,12 +98,14 @@ function listTranslationItems(user) {
   requirePermission(user, 'translation.manage'); // RBAC pilot -- dedicated permission key, own page in the Permissions matrix
   var items = [];
 
-  // Categories (Disciplines) -- one row per category, name -> nameAr.
+  // Categories (Disciplines) -- one row per category, name -> nameAr. One-directional only (see file
+  // header comment on why Categories/Checklist Types don't get the bidirectional treatment).
   getAll('Disciplines').forEach(function (d) {
+    if (!d.name) return;
     items.push({
       key: 'discipline:' + d.id, recordType: 'discipline', recordId: d.id,
       category: 'categories', context: d.code || '',
-      source: d.name || '', target: d.nameAr || ''
+      source: d.name, target: d.nameAr || '', direction: 'toArabic'
     });
   });
 
@@ -59,7 +116,7 @@ function listTranslationItems(user) {
     items.push({
       key: 'checklistType:' + type, recordType: 'checklistType', checklistType: type,
       category: 'checklistTypes', context: String(typeInfo[type].count),
-      source: type, target: typeInfo[type].target
+      source: type, target: typeInfo[type].target, direction: 'toArabic'
     });
   });
 
@@ -67,40 +124,34 @@ function listTranslationItems(user) {
   // translatable strings per row, so each becomes its own worklist item.
   getAll('FindingGuide').forEach(function (g) {
     var ctx = (g.category || '') + (g.subCategory ? ' / ' + g.subCategory : '');
-    if (g.description) {
-      items.push({
-        key: 'findingGuideDescription:' + g.id, recordType: 'findingGuideDescription', recordId: g.id,
-        category: 'findingGuide', context: ctx, field: 'description',
-        source: g.description, target: g.descriptionAr || ''
-      });
-    }
-    if (g.suggestion) {
-      items.push({
-        key: 'findingGuideSuggestion:' + g.id, recordType: 'findingGuideSuggestion', recordId: g.id,
-        category: 'findingGuide', context: ctx, field: 'suggestedAction',
-        source: g.suggestion, target: g.suggestionAr || ''
-      });
-    }
+    // Suffixed so the two rows a single guide entry can produce (Description, Suggested Action) are
+    // distinguishable at a glance -- both used to share the exact same context string, which was
+    // ambiguous even before this REQ and only gets more confusing now that a row's direction can flip.
+    var descItem = translationPairItem_(
+      { key: 'findingGuideDescription:' + g.id, recordType: 'findingGuideDescription', recordId: g.id, category: 'findingGuide', context: ctx + ' (Description)' },
+      g.description, g.descriptionAr);
+    if (descItem) items.push(descItem);
+    var suggItem = translationPairItem_(
+      { key: 'findingGuideSuggestion:' + g.id, recordType: 'findingGuideSuggestion', recordId: g.id, category: 'findingGuide', context: ctx + ' (Suggested Action)' },
+      g.suggestion, g.suggestionAr);
+    if (suggItem) items.push(suggItem);
   });
 
   // Risk Logs (Findings) -- every Finding regardless of workflow status, so translators can also catch
-  // up on older/already-resolved logs, not just ones still open.
+  // up on older/already-resolved logs, not just ones still open. This is the primary case REQ follow-up
+  // "translators need to also translate free text input by inspectors" is about: an inspector working in
+  // Arabic typically fills only the main Description/Suggested Action fields (translationPairItem_
+  // detects that and flips direction to 'toEnglish' automatically).
   getAll('Findings').forEach(function (f) {
-    var ctx = (f.category || '') + (f.subCategory ? ' / ' + f.subCategory : '');
-    if (f.description) {
-      items.push({
-        key: 'findingDescription:' + f.id, recordType: 'findingDescription', recordId: f.id,
-        category: 'findings', context: f.id + (ctx ? ' — ' + ctx : ''), field: 'description',
-        source: f.description, target: f.descriptionAr || ''
-      });
-    }
-    if (f.suggestedAction) {
-      items.push({
-        key: 'findingSuggestedAction:' + f.id, recordType: 'findingSuggestedAction', recordId: f.id,
-        category: 'findings', context: f.id + (ctx ? ' — ' + ctx : ''), field: 'suggestedAction',
-        source: f.suggestedAction, target: f.suggestedActionAr || ''
-      });
-    }
+    var ctx = f.id + ((f.category || f.subCategory) ? ' — ' + (f.category || '') + (f.subCategory ? ' / ' + f.subCategory : '') : '');
+    var descItem = translationPairItem_(
+      { key: 'findingDescription:' + f.id, recordType: 'findingDescription', recordId: f.id, category: 'findings', context: ctx + ' (Description)' },
+      f.description, f.descriptionAr);
+    if (descItem) items.push(descItem);
+    var actionItem = translationPairItem_(
+      { key: 'findingSuggestedAction:' + f.id, recordType: 'findingSuggestedAction', recordId: f.id, category: 'findings', context: ctx + ' (Suggested Action)' },
+      f.suggestedAction, f.suggestedActionAr);
+    if (actionItem) items.push(actionItem);
   });
 
   // Places -- name -> nameAr; context shows the owning Venue so a translator can tell two
@@ -108,25 +159,70 @@ function listTranslationItems(user) {
   var venueNameById_ = {};
   getAll('Venues').forEach(function (v) { venueNameById_[v.id] = v.name; });
   getAll('Places').forEach(function (pl) {
-    if (!pl.name) return;
-    items.push({
-      key: 'place:' + pl.id, recordType: 'place', recordId: pl.id,
-      category: 'places', context: venueNameById_[pl.venueId] || '',
-      source: pl.name, target: pl.nameAr || ''
-    });
+    var item = translationPairItem_(
+      { key: 'place:' + pl.id, recordType: 'place', recordId: pl.id, category: 'places', context: venueNameById_[pl.venueId] || '' },
+      pl.name, pl.nameAr);
+    if (item) items.push(item);
   });
 
   return items;
 }
 
-// Single per-item save -- translations.js calls this once per row's Save click (or on blur), not a
-// bulk endpoint, so one typo in a 500-row import can't wipe out unrelated rows; each field is its own
-// independent, retriable write.
+// Generic bidirectional save -- shared by every recordType in TRANSLATION_BIDIRECTIONAL_DEFS_.
+// Re-derives whether the field's current EN-slot content needs relocating from LIVE row data at save
+// time (never trusted from the client), so a save can never silently discard text a field already had,
+// and two translators editing concurrently can't race each other into losing data.
+function saveBidirectionalTranslation_(user, def, p) {
+  var row = getById(def.sheet, p.recordId);
+  if (!row) throw new HululError('NOT_FOUND', 'Record not found');
+  var direction = p.direction === 'toEnglish' ? 'toEnglish' : 'toArabic';
+  var value = p.value !== undefined ? String(p.value).trim() : '';
+  var patch = {};
+
+  if (direction === 'toArabic') {
+    patch[def.arField] = value;
+  } else {
+    var currentEn = row[def.enField] || '';
+    // The EN-named field currently holds Arabic text and the AR field is still empty -- this is the
+    // "Arabic-interface user typed into the main field" case; preserve that original text in the AR
+    // field before overwriting the EN field with the translator's new English text. If the AR field
+    // already has something (however that happened), never clobber it.
+    if (looksArabic_(currentEn) && !String(row[def.arField] || '').trim()) {
+      patch[def.arField] = currentEn;
+    }
+    patch[def.enField] = value;
+  }
+
+  updateRow(def.sheet, p.recordId, patch);
+
+  // Places.name/nameAr are mirrored onto every Participant this Place provisioned (same sharedPatch
+  // idea as updatePlace, Places.gs) -- propagate whichever of the two fields this save actually
+  // touched, so a translator's edit (either direction) stays in sync everywhere the name is mirrored
+  // without needing full place.manage access to call updatePlace itself.
+  if (def.sheet === 'Places') {
+    var accountIds = row.accountIds ? String(row.accountIds).split(',').filter(Boolean) : [];
+    if (accountIds.length) {
+      getAll('Participants').forEach(function (pt) {
+        if (accountIds.indexOf(pt.userId) !== -1) updateRow('Participants', pt.id, patch);
+      });
+    }
+  }
+
+  audit(user.id, 'UPDATE_TRANSLATION', def.sheet, p.recordId, patch);
+  return { ok: true, patch: patch };
+}
+
+// Single per-item save -- translations.js calls this once per row's Save click, not a bulk endpoint, so
+// one typo in a 500-row import can't wipe out unrelated rows; each field is its own independent,
+// retriable write.
 function updateTranslation(user, p) {
   requirePermission(user, 'translation.manage'); // RBAC pilot -- dedicated permission key, own page in the Permissions matrix
   if (!p || !p.recordType) throw new HululError('BAD_REQUEST', 'recordType is required');
-  var value = p.value !== undefined ? String(p.value).trim() : '';
 
+  var bidirectionalDef = TRANSLATION_BIDIRECTIONAL_DEFS_[p.recordType];
+  if (bidirectionalDef) return saveBidirectionalTranslation_(user, bidirectionalDef, p);
+
+  var value = p.value !== undefined ? String(p.value).trim() : '';
   switch (p.recordType) {
     case 'discipline': {
       var d = getById('Disciplines', p.recordId);
@@ -142,50 +238,6 @@ function updateTranslation(user, p) {
       rows.forEach(function (c) { updateRow('ChecklistItems', c.id, { checklistTypeAr: value }); });
       audit(user.id, 'UPDATE_TRANSLATION', 'ChecklistItems', p.checklistType, { checklistTypeAr: value, rowCount: rows.length });
       return { ok: true, target: value, rowCount: rows.length };
-    }
-    case 'findingGuideDescription': {
-      var g1 = getById('FindingGuide', p.recordId);
-      if (!g1) throw new HululError('NOT_FOUND', 'Guide entry not found');
-      updateRow('FindingGuide', p.recordId, { descriptionAr: value });
-      audit(user.id, 'UPDATE_TRANSLATION', 'FindingGuide', p.recordId, { descriptionAr: value });
-      return { ok: true, target: value };
-    }
-    case 'findingGuideSuggestion': {
-      var g2 = getById('FindingGuide', p.recordId);
-      if (!g2) throw new HululError('NOT_FOUND', 'Guide entry not found');
-      updateRow('FindingGuide', p.recordId, { suggestionAr: value });
-      audit(user.id, 'UPDATE_TRANSLATION', 'FindingGuide', p.recordId, { suggestionAr: value });
-      return { ok: true, target: value };
-    }
-    case 'findingDescription': {
-      var f1 = getById('Findings', p.recordId);
-      if (!f1) throw new HululError('NOT_FOUND', 'Finding not found');
-      updateRow('Findings', p.recordId, { descriptionAr: value });
-      audit(user.id, 'UPDATE_TRANSLATION', 'Findings', p.recordId, { descriptionAr: value });
-      return { ok: true, target: value };
-    }
-    case 'findingSuggestedAction': {
-      var f2 = getById('Findings', p.recordId);
-      if (!f2) throw new HululError('NOT_FOUND', 'Finding not found');
-      updateRow('Findings', p.recordId, { suggestedActionAr: value });
-      audit(user.id, 'UPDATE_TRANSLATION', 'Findings', p.recordId, { suggestedActionAr: value });
-      return { ok: true, target: value };
-    }
-    case 'place': {
-      var pl = getById('Places', p.recordId);
-      if (!pl) throw new HululError('NOT_FOUND', 'Place not found');
-      updateRow('Places', p.recordId, { nameAr: value });
-      // Propagate to every Participant this Place provisioned -- same sharedPatch idea as updatePlace
-      // (Places.gs), just for nameAr alone, so a translator's edit stays in sync everywhere the name is
-      // mirrored without needing full place.manage access to call updatePlace itself.
-      var accountIds = pl.accountIds ? String(pl.accountIds).split(',').filter(Boolean) : [];
-      if (accountIds.length) {
-        getAll('Participants').forEach(function (pt) {
-          if (accountIds.indexOf(pt.userId) !== -1) updateRow('Participants', pt.id, { nameAr: value });
-        });
-      }
-      audit(user.id, 'UPDATE_TRANSLATION', 'Places', p.recordId, { nameAr: value });
-      return { ok: true, target: value };
     }
     default:
       throw new HululError('BAD_REQUEST', 'Unknown translation record type: ' + p.recordType);
