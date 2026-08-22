@@ -505,6 +505,11 @@ function wireChrome() {
     }
   });
 
+  // REQ: "Add Login through MS Entra or google login." login.js -- fetches getSsoConfig and
+  // renders whichever provider button(s) a SystemAdmin has configured. Fire-and-forget: wireChrome
+  // itself doesn't need to wait on it, and initSsoLogin_ never throws (see its own try/catches).
+  initSsoLogin_();
+
   document.getElementById('langToggleLogin').onclick = toggleLanguage;
   document.getElementById('langToggleApp').onclick = toggleLanguage;
   initSidebarCollapse_();

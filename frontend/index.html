@@ -9,6 +9,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<!-- REQ: "Add Login through MS Entra or google login." Both loaded plainly (no async/defer) so the
+     `google`/`msal` globals login.js needs are guaranteed to exist by the time it runs -- same
+     "load blocking in <head>" treatment every other vendor script on this page already gets.
+     Google's Sign In With Google button REQUIRES loading directly from accounts.google.com (no CDN
+     mirror is supported for it); MSAL is pulled from jsdelivr, the same CDN already used above for
+     Chart.js/Leaflet, rather than introducing a brand-new vendor domain. -->
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 <!-- Pinned to 1.8.0, NOT the latest 1.9.x -- leaflet-draw (below) hasn't been updated since 2018 and
      is broadly broken on Leaflet 1.9+ (a well-known, widely-reported incompatibility: see
      https://github.com/Leaflet/Leaflet/issues/8521, "Leaflet 1.9.1 breaks leaflet-draw"). It first
@@ -100,14 +108,28 @@
           <div class="brand-sub" data-i18n="tagline">Event Readiness &amp; Compliance Platform</div>
         </div>
       </div>
-      <form id="loginForm" class="auth-form">
-        <label class="field-label" data-i18n="email">Email</label>
-        <input required type="email" id="loginEmail" class="field-input" placeholder="you@organisation.com" autocomplete="username" />
-        <label class="field-label" data-i18n="password">Password</label>
-        <input required type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password" />
-        <div id="loginError" class="auth-error hidden"></div>
-        <button type="submit" class="btn btn-primary w-full mt-2" data-i18n="signIn">Sign in</button>
-      </form>
+      <!-- REQ: "Add Login through MS Entra or google login." Filled in by login.js's initSsoLogin_()
+           once getSsoConfig (public, Sso.gs) resolves -- empty/hidden until then so nothing flashes
+           before we know which provider(s), if any, a SystemAdmin has actually configured. -->
+      <div id="ssoButtonsWrap" class="auth-sso-wrap hidden"></div>
+      <div id="ssoDivider" class="auth-divider hidden"><span data-i18n="sso_divider_or">or</span></div>
+      <!-- Hidden instead of removed whenever ssoPasswordLoginDisabled is on (Settings > Single
+           Sign-On) -- see initSsoLogin_, login.js. -->
+      <div id="passwordLoginBlock">
+        <form id="loginForm" class="auth-form">
+          <label class="field-label" data-i18n="email">Email</label>
+          <input required type="email" id="loginEmail" class="field-input" placeholder="you@organisation.com" autocomplete="username" />
+          <label class="field-label" data-i18n="password">Password</label>
+          <input required type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password" />
+          <div id="loginError" class="auth-error hidden"></div>
+          <button type="submit" class="btn btn-primary w-full mt-2" data-i18n="signIn">Sign in</button>
+        </form>
+      </div>
+      <!-- Shown only in the (admin-misconfiguration) edge case where password login has been
+           disabled but somehow neither SSO provider is enabled either -- setSsoConfig (Sso.gs)
+           refuses to ever save that combination, but this is a harmless last-resort message instead
+           of a silently blank screen if the Config sheet were ever edited by hand. -->
+      <div id="ssoNoAccessNotice" class="auth-error hidden" data-i18n="sso_not_configured">Sign-in is not configured. Contact your SystemAdmin.</div>
       <button id="langToggleLogin" class="lang-toggle-btn">EN / AR</button>
     </div>
   </div>

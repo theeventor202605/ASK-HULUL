@@ -39,7 +39,10 @@ var PHOTO_PROPS_MANAGE_ROLES = ['SystemAdmin'];
 // their cards would sit nested inside the shared outer card, doubling the border/padding for no
 // reason. Every other tab (Profile, Terminology, Icons, Roles, Permissions, ...) still gets the
 // shared card, unchanged.
-var SETTINGS_PLAIN_CONTENT_TABS_ = { escalations: true };
+// REQ: "Add Login through MS Entra or google login." Own card-stack tab (like Escalations above),
+// same SystemAdmin-only gate as the rest of CONFIG_MANAGE_ROLES -- setSsoConfig (Sso.gs) already
+// requireRole(SystemAdmin)s server-side regardless of what this tab shows.
+var SETTINGS_PLAIN_CONTENT_TABS_ = { escalations: true, singleSignOn: true };
 
 // REQ: "Split Settings tabs into sub-tabs." -- 10 possible tabs (SystemAdmin's full view) crowded the
 // bar, same problem EVENT_TAB_GROUPS_ (eventDetail.js) already solved for the Event workspace's own
@@ -50,7 +53,7 @@ var SETTINGS_PLAIN_CONTENT_TABS_ = { escalations: true };
 // role gate above all stay exactly as they were.
 var SETTINGS_TAB_GROUPS_ = [
   { key: 'accountGroup', labelKey: 'settings_tab_group_account', tabs: ['profile', 'appearance', 'security'] },
-  { key: 'organizationGroup', labelKey: 'settings_tab_group_organization', tabs: ['terminology', 'icons', 'photoProperties', 'escalations'] },
+  { key: 'organizationGroup', labelKey: 'settings_tab_group_organization', tabs: ['terminology', 'icons', 'photoProperties', 'escalations', 'singleSignOn'] },
   { key: 'accessControlGroup', labelKey: 'settings_tab_group_access_control', tabs: ['roles', 'mandatoryOperators', 'permissions'] }
 ];
 
@@ -86,6 +89,8 @@ async function renderSettings(params) {
   if (canManageIcons) tabs.push({ key: 'icons', label: t('settings_tab_icons') });
   if (canManagePhotoProps) tabs.push({ key: 'photoProperties', label: t('settings_tab_photo_properties') });
   if (canManageConfig) tabs.push({ key: 'escalations', label: t('tab_escalations') });
+  // REQ: "Add Login through MS Entra or google login." Same SystemAdmin-only gate as Escalations.
+  if (canManageConfig) tabs.push({ key: 'singleSignOn', label: t('settings_tab_sso') });
   if (canManagePermissions) tabs.push({ key: 'roles', label: t('settings_tab_roles') });
   // REQ: "In settings add a tab for mandatory operators. For example a security operator must be
   // available in every event, a H&S Operator must be available on every event. EMC just needs to
@@ -168,6 +173,7 @@ async function renderSettings(params) {
   else if (activeTab === 'icons' && canManageIcons) await renderIconsTab_(content);
   else if (activeTab === 'photoProperties' && canManagePhotoProps) await renderPhotoPropertiesTab_(content);
   else if (activeTab === 'escalations' && canManageConfig) await renderEscalationsTab_(content);
+  else if (activeTab === 'singleSignOn' && canManageConfig) await renderSsoTab_(content);
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'mandatoryOperators' && canManagePermissions) await renderMandatoryOperatorsTab_(content);
   else if (activeTab === 'permissions' && canViewPermissionsTab) await renderPermissionsTab_(content);
@@ -921,6 +927,79 @@ function escalationReadDelayMinutesByRisk_(prefix, riskLevels) {
     out[level] = Math.max(1, hours * 60 + minutes);
   });
   return out;
+}
+
+/* ---------------- Single Sign-On (REQ: "Add Login through MS Entra or google login.") ------------
+ * SystemAdmin-only, same CONFIG_MANAGE_ROLES gate as Escalations. setSsoConfig (backend/Sso.gs)
+ * re-validates everything server-side regardless of what this form allows -- in particular it
+ * refuses to save passwordLoginDisabled:true unless at least one provider is enabled+configured in
+ * that very same save, so a SystemAdmin can never lock every account (including their own) out of
+ * the app. The "Require SSO" checkbox here is disabled client-side under the same condition purely
+ * as an immediate, friendlier version of that same guardrail -- not the actual enforcement.
+ */
+async function renderSsoTab_(content) {
+  var cfg = await Api.call('getSsoConfig', {});
+  content.innerHTML =
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('sso_google_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('sso_google_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;margin-bottom:12px;">' +
+        '<input type="checkbox" id="cfgSsoGoogleEnabled"' + (cfg.googleEnabled ? ' checked' : '') + ' /> ' + esc(t('sso_enable_google')) +
+      '</label>' +
+      UI.field(t('sso_google_client_id_field'), '<input type="text" id="cfgSsoGoogleClientId" class="field-input" placeholder="xxxxxxxx.apps.googleusercontent.com" value="' + esc(cfg.googleClientId || '') + '" />') +
+    '</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('sso_microsoft_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('sso_microsoft_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;margin-bottom:12px;">' +
+        '<input type="checkbox" id="cfgSsoMicrosoftEnabled"' + (cfg.microsoftEnabled ? ' checked' : '') + ' /> ' + esc(t('sso_enable_microsoft')) +
+      '</label>' +
+      '<div class="form-row">' +
+        UI.field(t('sso_microsoft_client_id_field'), '<input type="text" id="cfgSsoMicrosoftClientId" class="field-input" value="' + esc(cfg.microsoftClientId || '') + '" />') +
+        UI.field(t('sso_microsoft_tenant_id_field'), '<input type="text" id="cfgSsoMicrosoftTenantId" class="field-input" value="' + esc(cfg.microsoftTenantId || '') + '" />') +
+      '</div>' +
+    '</div></div>' +
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('sso_require_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('sso_require_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;" id="cfgSsoPasswordDisabledLabel">' +
+        '<input type="checkbox" id="cfgSsoPasswordLoginDisabled"' + (cfg.passwordLoginDisabled ? ' checked' : '') + ' /> ' + esc(t('sso_disable_password_login')) +
+      '</label>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('sso_disable_password_login_hint')) + '</div>' +
+    '</div></div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;">' +
+      '<button class="btn btn-primary" id="saveSsoCfgBtn">' + esc(t('save')) + '</button>' +
+    '</div>';
+
+  // Purely client-side convenience mirror of the server guardrail in setSsoConfig (Sso.gs): grey
+  // out (and force-uncheck) "Require SSO" the instant neither provider checkbox is checked, so the
+  // admin sees why the save would fail before they even click Save.
+  var googleChk = document.getElementById('cfgSsoGoogleEnabled');
+  var msChk = document.getElementById('cfgSsoMicrosoftEnabled');
+  var passwordDisabledChk = document.getElementById('cfgSsoPasswordLoginDisabled');
+  function syncRequireSsoAvailability_() {
+    var anyProvider = googleChk.checked || msChk.checked;
+    passwordDisabledChk.disabled = !anyProvider;
+    if (!anyProvider) passwordDisabledChk.checked = false;
+  }
+  googleChk.addEventListener('change', syncRequireSsoAvailability_);
+  msChk.addEventListener('change', syncRequireSsoAvailability_);
+  syncRequireSsoAvailability_();
+
+  document.getElementById('saveSsoCfgBtn').onclick = async function () {
+    try {
+      await Api.call('setSsoConfig', {
+        googleEnabled: googleChk.checked,
+        googleClientId: document.getElementById('cfgSsoGoogleClientId').value.trim(),
+        microsoftEnabled: msChk.checked,
+        microsoftClientId: document.getElementById('cfgSsoMicrosoftClientId').value.trim(),
+        microsoftTenantId: document.getElementById('cfgSsoMicrosoftTenantId').value.trim(),
+        passwordLoginDisabled: passwordDisabledChk.checked
+      });
+      UI.toast(t('toast_sso_settings_saved'), 'success');
+      renderSettings({ tab: 'singleSignOn' });
+    } catch (err) { UI.error(err); }
+  };
 }
 
 /* ---------------- Roles (RBAC, "create a new role") ----------------

@@ -92,6 +92,29 @@ textarea.field-input{ resize:vertical; min-height:64px; }
   outline:none; line-height:1.6; }
 .rte-body ul{ margin:4px 0; padding-inline-start:22px; } .rte-body ol{ margin:4px 0; padding-inline-start:22px; }
 .auth-error{ background:var(--danger-soft); color:var(--danger); font-size:13px; padding:8px 10px; border-radius:var(--radius-sm); }
+
+/* REQ: "Add Login through MS Entra or google login." #ssoButtonsWrap/#ssoDivider (index.html),
+   filled in by initSsoLogin_ (login.js). Google's own renderButton() draws its own fully-styled
+   button into a slot here, so this wrap only needs to stack whatever it's given (1 or 2 buttons)
+   and center them -- no button styling of its own beyond .btn-ms-signin below. */
+.auth-sso-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:8px; }
+.auth-sso-wrap > div{ width:100%; display:flex; justify-content:center; } /* Google's injected <div> slot */
+.auth-divider{ display:flex; align-items:center; gap:10px; margin:16px 0; font-size:12px; color:var(--text-600); }
+.auth-divider::before, .auth-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+/* Microsoft doesn't ship a stylable button widget the way Google's GIS does (see login.js's
+   msalLoginPopup_) -- styled here to sit visually level with Google's own button, matching
+   Microsoft's own published brand guidance for a dark "Sign in with Microsoft" button. */
+.btn-ms-signin{ width:100%; max-width:320px; display:flex; align-items:center; justify-content:center; gap:10px;
+  background:#2f2f2f; color:#fff; border:1px solid #2f2f2f; border-radius:var(--radius-sm);
+  padding:10px 14px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+.btn-ms-signin:hover{ background:#1f1f1f; }
+.btn-ms-signin:disabled{ opacity:.6; cursor:default; }
+.btn-ms-signin::before{ content:''; flex:none; width:16px; height:16px;
+  background-image:
+    linear-gradient(#f25022,#f25022), linear-gradient(#7fba00,#7fba00),
+    linear-gradient(#00a4ef,#00a4ef), linear-gradient(#ffb900,#ffb900);
+  background-size:7px 7px; background-repeat:no-repeat;
+  background-position:0 0, 9px 0, 0 9px, 9px 9px; } /* 4-square Microsoft mark, drawn without an image asset */
 .lang-toggle-btn{ margin-top:18px; font-size:12px; font-weight:600; color:var(--text-600); background:none; border:1px solid var(--border);
   border-radius:999px; padding:6px 14px; cursor:pointer; }
 .lang-toggle-btn:hover{ background:var(--accent-soft); color:var(--accent-600); }

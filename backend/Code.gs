@@ -49,7 +49,9 @@ function jsonOut_(obj) {
 }
 
 // Actions that do not require a logged-in user.
-var PUBLIC_ACTIONS = { login: 1, ping: 1, redeemQuickLogin: 1 };
+// REQ: "Add Login through MS Entra or google login." getSsoConfig/loginWithGoogle/loginWithMicrosoft
+// (Sso.gs) all have to be reachable before anyone is signed in, same reasoning as login/redeemQuickLogin.
+var PUBLIC_ACTIONS = { login: 1, ping: 1, redeemQuickLogin: 1, getSsoConfig: 1, loginWithGoogle: 1, loginWithMicrosoft: 1 };
 
 function dispatch_(action, payload, token) {
   if (!action) throw new HululError('BAD_REQUEST', 'Missing action');
@@ -69,6 +71,12 @@ var ROUTES = {
   logout: function (_u, p) { return logout(p.token); },
   me: function (u) { return u; },
   changePassword: function (u, p) { return changePassword(u.id, p.oldPassword, p.newPassword); },
+
+  // Single Sign-On (Sso.gs) -- REQ: "Add Login through MS Entra or google login."
+  getSsoConfig: function () { return getSsoConfig(); },
+  setSsoConfig: function (u, p) { return setSsoConfig(u, p); },
+  loginWithGoogle: function (_u, p) { return loginWithGoogle(p); },
+  loginWithMicrosoft: function (_u, p) { return loginWithMicrosoft(p); },
 
   // Accounts (ACC)
   listUsers: function (u, p) { return listUsers(u, p); },
