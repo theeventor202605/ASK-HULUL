@@ -499,6 +499,16 @@ function setResolutionEvidenceRequired(user, p) {
 // from Viewed (first attempt) or ReOpen (retry after a first rejection) -- Open (not viewed yet),
 // Submitted/InReview/Resubmitted (already has a pending resolution), and Resolved (terminal) can't be
 // resolved from here.
+//
+// REQ follow-up: "we said photos get uploaded in background and users can continue to submit ...
+// without being held back. But users are still receiving [Evidence is still uploading] error." --
+// this used to mean submitFinding waited for p.evidenceUrls to already be non-empty even when a photo
+// HAD been captured and was simply still mid-upload (findings.js used to block the Submit button
+// itself in that case). Same "submit now, attach the rest once it finishes" pattern createFinding
+// already uses (see addFindingEvidence/attachFindingEvidenceInBackground_) -- p.evidencePending, set
+// by the frontend whenever a captured file hasn't finished its Drive upload yet, satisfies the
+// evidence-required gate exactly like an already-uploaded URL would; the frontend then calls
+// addResolutionEvidence (below) for each file as it finishes.
 function resolveFinding(user, p) {
   requirePermission(user, 'finding.resolve');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
@@ -509,7 +519,7 @@ function resolveFinding(user, p) {
     throw new HululError('BAD_REQUEST', 'This finding cannot be resolved from its current status (' + finding.status + ')');
   }
   if (!p.remarks) throw new HululError('BAD_REQUEST', 'Remarks are required');
-  if (resolutionEvidenceRequired_() && (!p.evidenceUrls || !p.evidenceUrls.length)) {
+  if (resolutionEvidenceRequired_() && !p.evidencePending && (!p.evidenceUrls || !p.evidenceUrls.length)) {
     throw new HululError('BAD_REQUEST', 'A photo or video of the resolution is required');
   }
 

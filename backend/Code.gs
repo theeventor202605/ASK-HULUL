@@ -319,6 +319,7 @@ var ROUTES = {
   emptyFindingEvidenceTrash: function (u, p) { return emptyFindingEvidenceTrash(u, p); },
   viewFinding: function (u, p) { return viewFinding(u, p); },
   resolveFinding: function (u, p) { return resolveFinding(u, p); },
+  addResolutionEvidence: function (u, p) { return addResolutionEvidence(u, p); },
   reviewFindingResolution: function (u, p) { return reviewFindingResolution(u, p); },
   assignFindingParticipant: function (u, p) { return assignFindingParticipant(u, p); },
   // REQ follow-up: "Make this optional in the settings so admin may want to enforce taking a photo"

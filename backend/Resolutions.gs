@@ -18,6 +18,29 @@ function listResolutions(user, p) {
   return all.sort(function (a, b) { return new Date(b.submittedAt) - new Date(a.submittedAt); });
 }
 
+// REQ follow-up: "photos get uploaded in background and users can continue to submit ... without
+// being held back. But users are still receiving [Evidence is still uploading] error." resolveFinding
+// (Findings.gs) no longer waits for every evidence file to finish uploading before the Participant's
+// Submit resolution click goes through -- it's called immediately with whatever's already done (plus
+// evidencePending if anything was still mid-upload), and each remaining file calls this once its own
+// upload finishes (see attachResolutionEvidenceInBackground_, findings.js) to append itself onto the
+// now-already-created Resolution. Same append-only/de-duped shape as addFindingEvidence (Findings.gs),
+// just against the Resolution row's own evidenceUrls instead of the Finding's. Gated on decision still
+// being Pending -- once a reviewer has acted on it there's nothing left to attach evidence to.
+function addResolutionEvidence(user, p) {
+  requirePermission(user, 'finding.resolve');
+  if (!p || !p.resolutionId) throw new HululError('BAD_REQUEST', 'resolutionId is required');
+  var resolution = getById('Resolutions', p.resolutionId);
+  if (!resolution) throw new HululError('NOT_FOUND', 'Resolution not found');
+  if (resolution.decision !== 'Pending') throw new HululError('BAD_REQUEST', 'This resolution has already been reviewed');
+  if (!p.evidenceUrl) throw new HululError('BAD_REQUEST', 'evidenceUrl is required');
+  var urls = resolution.evidenceUrls ? String(resolution.evidenceUrls).split(',').filter(Boolean) : [];
+  if (urls.indexOf(p.evidenceUrl) === -1) urls.push(p.evidenceUrl);
+  var updated = updateRow('Resolutions', p.resolutionId, { evidenceUrls: urls.join(',') });
+  audit(user.id, 'ADD_RESOLUTION_EVIDENCE', 'Resolutions', p.resolutionId, {});
+  return updated;
+}
+
 // REQ: "the below can be switched off from settings" + "modify escalation timer in hours and
 // minutes" + "modify the To user role and the Cc: user roles" + risk-level-scoped Tier 2/3 delays.
 // One structured config object (stored as a single JSON blob under Config key

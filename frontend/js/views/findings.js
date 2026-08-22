@@ -1121,6 +1121,27 @@ function attachFindingEvidenceInBackground_(findingId, entries, alreadyAttachedU
   }, 1500);
 }
 
+// REQ follow-up: "photos get uploaded in background ... users are still receiving [Evidence is still
+// uploading] error." Same shape as attachFindingEvidenceInBackground_ above, just targeting one
+// Resolution row (addResolutionEvidence, Resolutions.gs) instead of a Finding -- used by Submit
+// resolution (wireFindingActionSection_) whenever resolveFinding was called with evidencePending true.
+// No evidenceMeta here -- Resolutions doesn't carry the outside-boundary badge metadata Findings does.
+function attachResolutionEvidenceInBackground_(resolutionId, entries, alreadyAttachedUrls) {
+  var attached = {};
+  (alreadyAttachedUrls || []).forEach(function (u) { attached[u] = true; });
+  var timer = setInterval(function () {
+    var stillPending = false;
+    entries.forEach(function (entry) {
+      if (entry.status === 'uploading' || entry.status === 'preparing') { stillPending = true; return; }
+      if (entry.status === 'done' && entry.url && !attached[entry.url]) {
+        attached[entry.url] = true;
+        Api.call('addResolutionEvidence', { resolutionId: resolutionId, evidenceUrl: entry.url }).catch(function () {});
+      }
+    });
+    if (!stillPending) clearInterval(timer);
+  }, 1500);
+}
+
 /* ---------------- Log Finding's own live-location map (this device's GPS, not other inspectors') ----
  * Mirrors eventDetail.js's liveInspectionMap "my position" pattern (updateLiveInspectionMyPosition_):
  * a single self marker that's moved (not recreated) on every watchPosition tick, with the map
@@ -1534,10 +1555,22 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
         e.target.value = '';
       };
     }
-    var doSubmitResolve_ = async function (remarks, urls) {
+    // REQ follow-up: "we said photos get uploaded in background and users can continue to submit ...
+    // without being held back. But users are still receiving [Evidence is still uploading] error." --
+    // Submit resolution used to be the one place that still blocked on an in-flight upload (New Log's
+    // createFinding was already fixed for this). Mirrors that same fix: submit now with whatever's
+    // already done, plus evidencePending when something is still preparing/uploading -- resolveFinding
+    // (Findings.gs) accepts that as satisfying the evidence-required gate, and each remaining file
+    // attaches itself once it finishes (attachResolutionEvidenceInBackground_ below).
+    var doSubmitResolve_ = async function (remarks, urls, evidencePending, files) {
       try {
-        await Api.call('resolveFinding', { findingId: finding.id, remarks: remarks, evidenceUrls: urls });
-        UI.toast(t('toast_resolution_submitted'), 'success');
+        var result = await Api.call('resolveFinding', { findingId: finding.id, remarks: remarks, evidenceUrls: urls, evidencePending: evidencePending });
+        if (evidencePending) {
+          UI.toast(t('toast_resolution_submitted_uploading'), 'success');
+          attachResolutionEvidenceInBackground_(result.resolution.id, files, urls);
+        } else {
+          UI.toast(t('toast_resolution_submitted'), 'success');
+        }
         Router.resolve();
       } catch (err) { UI.error(err); }
     };
@@ -1545,24 +1578,23 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
       var remarks = document.getElementById('fResolveRemarks').value;
       if (!remarks) { UI.toast(t('toast_remarks_required'), 'error'); return; }
       var files = pendingFiles.resolve || [];
-      if (files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; })) {
-        UI.toast(t('toast_evidence_uploading_wait'), 'error'); return;
-      }
       var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
-      if (!urls.length) {
-        // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken. Do you want to proceed
-        // with submission?' Make this optional in the settings so admin may want to enforce taking a
-        // photo." evidenceRequired (viewFinding, Findings.gs) mirrors the SystemAdmin-configurable
-        // Config key resolveFinding itself enforces server-side -- true still hard-blocks exactly as
-        // before; false instead offers a one-tap confirm, and resolveFinding accepts the empty array.
+      var evidencePending = files.some(function (f) { return f.status === 'uploading' || f.status === 'preparing'; });
+      if (!urls.length && !evidencePending) {
+        // Nothing captured at all (not even one still uploading) -- REQ follow-up: "Instead of
+        // enforcing photo, say 'No Photo was taken. Do you want to proceed with submission?' Make this
+        // optional in the settings so admin may want to enforce taking a photo." evidenceRequired
+        // (viewFinding, Findings.gs) mirrors the SystemAdmin-configurable Config key resolveFinding
+        // itself enforces server-side -- true still hard-blocks exactly as before; false instead offers
+        // a one-tap confirm, and resolveFinding accepts the empty array.
         if (evidenceRequired === false) {
-          UI.confirmModal(t('no_photo_proceed_confirm'), function () { doSubmitResolve_(remarks, urls); }, { confirmClass: 'btn-primary' });
+          UI.confirmModal(t('no_photo_proceed_confirm'), function () { doSubmitResolve_(remarks, urls, false, files); }, { confirmClass: 'btn-primary' });
         } else {
           UI.toast(t('toast_evidence_required'), 'error');
         }
         return;
       }
-      doSubmitResolve_(remarks, urls);
+      doSubmitResolve_(remarks, urls, evidencePending, files);
     };
     return;
   }
