@@ -383,6 +383,12 @@ window.ICON_DEFAULTS = {
   // the existing satellite/standard map_toggle/satellite_toggle pair just above.
   map_interact_lock: LUCIDE_ICONS['lock'],
   map_interact_unlock: LUCIDE_ICONS['unlock'],
+  // REQ: "When expanding project timeline graph expand to Gantt chart. When collapsing collapse to
+  // timeline." Toggle button on the Projects list/detail timeline (projectTimelineWrapHtml_,
+  // projects.js) -- same maximize/minimize glyph pair as map_fullscreen_enter/exit above, just under
+  // its own name since this toggles between two chart TYPES, not a fullscreen state.
+  timeline_expand: LUCIDE_ICONS['maximize'],
+  timeline_collapse: LUCIDE_ICONS['minimize'],
 };
 // Picker metadata: groups + friendly labels for every ICON_DEFAULTS key, shown in Settings > Icons
 // alongside the sidebar nav items. Every key in ICON_DEFAULTS must appear exactly once below.
@@ -408,7 +414,8 @@ window.ICON_KEY_GROUPS = [
     { key: 'page_prev', label: 'Previous page (table pagination)' }, { key: 'page_next', label: 'Next page (table pagination)' },
     { key: 'table_filter', label: 'Filter table column' }, { key: 'table_columns', label: 'Manage table columns' },
     { key: 'map_interact_lock', label: 'Lock map interaction' }, { key: 'map_interact_unlock', label: 'Unlock map interaction' },
-    { key: 'meeting_template', label: 'Manage meeting templates' }
+    { key: 'meeting_template', label: 'Manage meeting templates' },
+    { key: 'timeline_expand', label: 'Expand timeline to Gantt chart' }, { key: 'timeline_collapse', label: 'Collapse Gantt chart to timeline' }
   ] },
   { group: 'Status & Badges', keys: [
     { key: 'mark_read', label: 'Mark notification read' }, { key: 'coverage_complete', label: 'Coverage complete banner' },

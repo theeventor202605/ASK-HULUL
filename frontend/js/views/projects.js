@@ -45,18 +45,19 @@ function tlDuration_(startMs, endMs) {
 // single dot; hovering it lists every one of them stacked on its own line -- end-dot lines also
 // include that event's own duration (e.g. "3m 11d") since several events ending the same day can
 // have started very differently. A rotated date label sits under every plotted dot.
-function projectTimelineHtml_(evs, showEndDots, subEventCount) {
-  var statsHtml = projectStatsHtml_(evs, subEventCount);
-  if (!evs.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_yet_nothing_to_plot', { term: Term('event_plural').toLowerCase() })) + '</div>' + statsHtml;
-
+// Shared time-axis computation for both the compact date-line timeline (projectTimelineHtml_) and its
+// REQ: "When expanding project timeline graph expand to Gantt chart. When collapsing collapse to
+// timeline" expansion (projectGanttHtml_). Both views plot the exact same set of Events against the
+// exact same axis (earliest start, minus a 3-week lead-in, through latest end) so toggling between
+// them never re-scales or re-positions anything a user has already gotten used to reading -- an event
+// that sits at 40% across the compact timeline sits at 40% across its Gantt bar too. Returns null if
+// there isn't at least one Event with BOTH a parseable start and end date -- callers fall back to the
+// same "not enough data to plot" message either view already showed before this was extracted.
+function projectTimelineAxis_(evs) {
   function dateOnlyMs(ms) { var d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
-  function dayKey(ms) { var d = new Date(ms); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
-  function dateLabel(ms) { return new Date(ms).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }); }
-
   var rawStarts = evs.map(function (e) { return new Date(e.startDateTime).getTime(); }).filter(function (n) { return !isNaN(n); });
   var rawEnds = evs.map(function (e) { return new Date(e.endDateTime).getTime(); }).filter(function (n) { return !isNaN(n); });
-  if (!rawStarts.length || !rawEnds.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_have_dates', { term: Term('event_plural') })) + '</div>' + statsHtml;
-
+  if (!rawStarts.length || !rawEnds.length) return null;
   var lo = Math.min.apply(null, rawStarts.map(dateOnlyMs)), hi = Math.max.apply(null, rawEnds.map(dateOnlyMs));
   // The plotted line itself starts three weeks before the earliest Event, giving a lead-in stretch
   // of blank track before the first (green) dot -- e.g. so the "now" marker still has somewhere to
@@ -64,7 +65,22 @@ function projectTimelineHtml_(evs, showEndDots, subEventCount) {
   // lo/hi dates, they just aren't at the very left edge anymore.
   var axisLo = lo - 21 * 24 * 60 * 60 * 1000;
   var span = Math.max(hi - axisLo, 1);
-  function pct(ms) { return Math.min(100, Math.max(0, ((dateOnlyMs(ms) - axisLo) / span) * 100)); }
+  return {
+    lo: lo, hi: hi, axisLo: axisLo, dateOnlyMs: dateOnlyMs,
+    pct: function (ms) { return Math.min(100, Math.max(0, ((dateOnlyMs(ms) - axisLo) / span) * 100)); }
+  };
+}
+
+function projectTimelineHtml_(evs, showEndDots, subEventCount) {
+  var statsHtml = projectStatsHtml_(evs, subEventCount);
+  if (!evs.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_yet_nothing_to_plot', { term: Term('event_plural').toLowerCase() })) + '</div>' + statsHtml;
+
+  function dayKey(ms) { var d = new Date(ms); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+  function dateLabel(ms) { return new Date(ms).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }); }
+
+  var axis = projectTimelineAxis_(evs);
+  if (!axis) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_have_dates', { term: Term('event_plural') })) + '</div>' + statsHtml;
+  var dateOnlyMs = axis.dateOnlyMs, pct = axis.pct, lo = axis.lo, hi = axis.hi, axisLo = axis.axisLo;
 
   var startGroups = {}, endGroups = {};
   evs.forEach(function (e) {
@@ -157,6 +173,90 @@ function projectTimelineHtml_(evs, showEndDots, subEventCount) {
     '</div>';
 }
 
+// REQ: "When expanding project timeline graph expand to Gantt chart. When collapsing collapse to
+// timeline." One row per Event (sorted by start date), each with a bar spanning its own start->end
+// plotted against the exact same axis projectTimelineHtml_ uses (projectTimelineAxis_) -- an event
+// that lands at 40% on the compact timeline lands its bar starting at that same 40% here. Bar color
+// is the same Scheduled/Ongoing/Ended breakdown projectStatsChipsHtml_'s own KPI chips already show,
+// so the Gantt view and that legend agree on what each color means without inventing a second one.
+// Events missing a parseable start or end date are silently skipped from the rows (same as the dots
+// on the compact timeline, which simply never plot for a date it can't parse); the same top-level
+// "not enough data" fallbacks as projectTimelineHtml_ still apply when there's nothing at all to plot.
+function projectGanttHtml_(evs, subEventCount) {
+  var statsHtml = projectStatsHtml_(evs, subEventCount);
+  if (!evs.length) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_yet_nothing_to_plot', { term: Term('event_plural').toLowerCase() })) + '</div>' + statsHtml;
+  var axis = projectTimelineAxis_(evs);
+  if (!axis) return '<div class="muted" style="font-size:12px;margin-top:10px;">' + esc(t('no_events_have_dates', { term: Term('event_plural') })) + '</div>' + statsHtml;
+
+  var now = Date.now();
+  var nowInRange = axis.dateOnlyMs(now) >= axis.axisLo && axis.dateOnlyMs(now) <= axis.hi;
+  var nowPct = axis.pct(now);
+
+  var rows = evs
+    .filter(function (e) { return !isNaN(new Date(e.startDateTime).getTime()) && !isNaN(new Date(e.endDateTime).getTime()); })
+    .sort(function (a, b) { return new Date(a.startDateTime) - new Date(b.startDateTime); });
+
+  var rowsHtml = rows.map(function (e) {
+    var s = new Date(e.startDateTime).getTime(), en = new Date(e.endDateTime).getTime();
+    var leftPct = axis.pct(s), rightPct = axis.pct(en);
+    // A same-day (or otherwise sub-axis-resolution) event would otherwise round to a 0-width, invisible
+    // bar -- floor it to a sliver instead so every row always shows something to hover/click.
+    var widthPct = Math.max(rightPct - leftPct, 0.6);
+    var status = en < now ? 'ended' : (s > now ? 'scheduled' : 'ongoing');
+    var color = status === 'ended' ? 'var(--text-400)' : status === 'ongoing' ? 'var(--success)' : 'var(--info)';
+    var title = e.name + '\n' + UI.fmtDate(s) + ' → ' + UI.fmtDate(en) + ' (' + tlDuration_(s, en) + ')';
+    return '<div class="project-gantt-row">' +
+      '<a href="#/events/' + esc(e.id) + '" class="project-gantt-label" title="' + esc(e.name) + '">' + esc(e.name) + '</a>' +
+      '<div class="project-gantt-track">' +
+        '<div class="project-gantt-bar" style="inset-inline-start:' + leftPct.toFixed(2) + '%;width:' + widthPct.toFixed(2) + '%;background:' + color + ';" title="' + esc(title) + '"></div>' +
+        (nowInRange ? '<div class="project-gantt-now" style="inset-inline-start:' + nowPct.toFixed(2) + '%;" title="' + esc(t('now_prefix') + UI.fmtDate(now)) + '"></div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="project-gantt">' + (rowsHtml || ('<div class="muted" style="font-size:12px;">' + esc(t('no_events_have_dates', { term: Term('event_plural') })) + '</div>')) + '</div>' +
+    '<div style="display:flex;gap:14px;font-size:10.5px;color:var(--text-600);margin-top:14px;flex-wrap:wrap;align-items:center;">' +
+      '<span><span class="tl-legend-dot" style="background:var(--info);"></span>' + esc(t('chip_scheduled')) + '</span>' +
+      '<span><span class="tl-legend-dot" style="background:var(--success);"></span>' + esc(t('chip_ongoing')) + '</span>' +
+      '<span><span class="tl-legend-dot" style="background:var(--text-400);"></span>' + esc(t('chip_ended')) + '</span>' +
+      (nowInRange ? '<span><span class="tl-legend-dot tl-dot-now"></span>' + esc(t('legend_now')) + '</span>' : '') +
+      '<span class="tl-legend-sep"></span>' +
+      projectStatsChipsHtml_(evs, subEventCount) +
+    '</div>';
+}
+
+// REQ: "When expanding project timeline graph expand to Gantt chart. When collapsing collapse to
+// timeline." Which projects currently show the Gantt expansion instead of the compact timeline -- a
+// plain in-memory map (not persisted like PROJECTS_END_DOTS_KEY_ above), since this is an interactive
+// per-card expand/collapse rather than a saved display preference; it resets on reload, same as e.g.
+// a collapsed <details> element would. Keyed by projectId so the Projects LIST page (many cards, one
+// timeline each) can expand just the one a user clicked without affecting any other card.
+var PROJECTS_GANTT_EXPANDED_ = {};
+function projectTimelineWrapHtml_(projectId, evs, showEndDots, subEventCount) {
+  var expanded = !!PROJECTS_GANTT_EXPANDED_[projectId];
+  return '<div class="project-timeline-wrap" data-project-timeline-wrap="' + esc(projectId) + '">' +
+    '<button class="btn btn-secondary btn-sm btn-icon project-timeline-toggle" data-toggle-project-gantt="' + esc(projectId) + '" ' +
+      'title="' + esc(expanded ? t('collapse_to_timeline') : t('expand_to_gantt')) + '">' +
+      ICON(expanded ? 'timeline_collapse' : 'timeline_expand') +
+    '</button>' +
+    (expanded ? projectGanttHtml_(evs, subEventCount) : projectTimelineHtml_(evs, showEndDots, subEventCount)) +
+  '</div>';
+}
+// Toggling doesn't need a full Router.resolve() re-render (which would also re-fetch every API call
+// the page made) -- just flip this project's own flag and swap that one wrap's outerHTML back in via
+// the exact same markup renderProjects/renderProjectDetail already used to build it the first time.
+function wireProjectTimelineToggle_(root, projectId, evs, showEndDots, subEventCount) {
+  var btn = root.querySelector('[data-toggle-project-gantt="' + projectId + '"]');
+  if (!btn) return;
+  btn.onclick = function () {
+    PROJECTS_GANTT_EXPANDED_[projectId] = !PROJECTS_GANTT_EXPANDED_[projectId];
+    var wrap = root.querySelector('[data-project-timeline-wrap="' + projectId + '"]');
+    if (!wrap) return;
+    wrap.outerHTML = projectTimelineWrapHtml_(projectId, evs, showEndDots, subEventCount);
+    wireProjectTimelineToggle_(root, projectId, evs, showEndDots, subEventCount);
+  };
+}
+
 // Totals shown alongside the timeline legend: how many Events/Sub-events/Venues make up this
 // Project, plus a time-based breakdown of its Events -- Scheduled (start still in the future),
 // Ongoing (started, not yet ended) and Ended (end already passed) -- computed from each Event's
@@ -221,13 +321,21 @@ async function renderProjects() {
               '</div>' +
               (canDelete ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete')) + '" data-del-project="' + pr.id + '">' + ICON('delete') + '</button>' : '') +
             '</div>' +
-            projectTimelineHtml_(evs, showEndDots, subCount) +
+            projectTimelineWrapHtml_(pr.id, evs, showEndDots, subCount) +
           '</div>';
         }).join('') + '</div>'
       : '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('empty_no_projects_yet', { term: Term('project_plural').toLowerCase() })) +
           (canManage ? esc(t('create_one_then_add_hint', { term: Term('event_plural').toLowerCase() })) : '') + '</div></div></div>');
 
   wireEndDotsToggle_();
+  // Each card's expand/collapse toggle is wired individually (same evs/subCount it was rendered
+  // with) -- see wireProjectTimelineToggle_'s own comment for why this swaps the one card's markup
+  // back in instead of a full Router.resolve() re-render.
+  projects.forEach(function (pr) {
+    var evs = events.filter(function (e) { return e.projectId === pr.id; });
+    var subCount = evs.reduce(function (sum, e) { return sum + (subEventCountByEvent[e.id] || 0); }, 0);
+    wireProjectTimelineToggle_(root, pr.id, evs, showEndDots, subCount);
+  });
 
   if (canManage) {
     document.getElementById('newProjectBtn').onclick = function () {
@@ -311,7 +419,7 @@ async function renderProjectDetail(params) {
         : '') +
     '</div>' +
     '</div>' +
-    '<div class="card" style="padding:16px 20px;margin-bottom:16px;">' + projectTimelineHtml_(linked, showEndDots, linkedSubCount) + '</div>' +
+    '<div class="card" style="padding:16px 20px;margin-bottom:16px;">' + projectTimelineWrapHtml_(projectId, linked, showEndDots, linkedSubCount) + '</div>' +
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: Term('event'), render: r => '<a href="#/events/' + r.id + '" style="color:var(--accent);font-weight:600;text-decoration:none;">' + esc(r.name) + '</a>' },
       { key: 'venueId', label: Term('venue'), render: r => esc(venueById[r.venueId] ? venueById[r.venueId].name : r.venueId) },
@@ -333,6 +441,7 @@ async function renderProjectDetail(params) {
   renderFindingPhotoTimeline_(document.getElementById('projectPhotoTimelineWrap'), projectFindings, { usersById: usersById });
 
   wireEndDotsToggle_();
+  wireProjectTimelineToggle_(root, projectId, linked, showEndDots, linkedSubCount);
   if (!canManage) return;
 
   document.getElementById('editProjectBtn').onclick = function () { openEditProjectModal_(project); };
