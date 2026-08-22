@@ -52,6 +52,9 @@ async function tabParticipants(content, eventId, detail) {
   // RBAC pilot (backend/Permissions.gs): matches dedupeParticipants' own requirePermission.
   var canDedupe = hasPermission('participant.dedupe');
   var hasBoundary = !!(venue && parseBoundaryClient_(venue.boundary));
+  // REQ: "Add Operator as an organization ... Sometimes the EMC is the one doing all these
+  // operations and currently the system accounts only for this." event.assignOperator (Operators.gs).
+  var canAssignOperator = hasPermission('event.assignOperator');
 
   if (!venue) {
     content.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state">' + esc(t('venue_required_first', { venueTerm: Term('venue').toLowerCase(), eventTerm: Term('event').toLowerCase(), participantTerm: Term('participant_plural').toLowerCase() })) + '</div></div></div>';
@@ -73,8 +76,28 @@ async function tabParticipants(content, eventId, detail) {
   var places = results[0], participants = results[1], zonesAll = results[2];
   var zonesById = {}; zonesAll.forEach(function (z) { zonesById[z.id] = z; });
 
+  // REQ: "Add Operator as an organization ... security operators or housekeeping operators or crowd
+  // management operators ... Sometimes the EMC is the one doing all these operations and currently
+  // the system accounts only for this." Only fetched/shown for whoever can actually assign one
+  // (event.assignOperator, Operators.gs) -- everyone else's Participants tab is unchanged.
+  var operatorOrgs = [], operatorAssignments = [], operatorFamilyTypes = [];
+  if (canAssignOperator) {
+    var opResults = await Promise.all([
+      Api.call('listOperatorOrganizations', {}),
+      Api.call('listEventOperatorAssignments', { eventId: eventId }),
+      Api.call('listCustomRoles', {})
+    ]);
+    operatorOrgs = opResults[0];
+    operatorAssignments = opResults[1];
+    // The built-in 'Operator' type always counts, plus any custom Place/Participant type an admin
+    // flagged as an Operator sub-type (Settings > Roles > "Operator sub-type", isOperatorType).
+    operatorFamilyTypes = [{ code: 'Operator', label: t('role_operator_builtin') }]
+      .concat(opResults[2].filter(function (r) { return r.isOperatorType; }).map(function (r) { return { code: r.code, label: r.label }; }));
+  }
+
   content.innerHTML =
     '<div class="muted" style="font-size:11.5px;margin-bottom:14px;">' + esc(t('participants_registered_note', { participantTerm: Term('participant_plural'), eventTerm: Term('event').toLowerCase(), venueTerm: Term('venue').toLowerCase() })) + '</div>' +
+    (canAssignOperator ? operatorCompaniesCardHtml_(operatorFamilyTypes, operatorOrgs, operatorAssignments) : '') +
     (canAddParticipant ? renderAddEventPlaceCard_(zones, hasBoundary) : '') +
 
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(Term('participant_plural')) + '</div>' +
@@ -114,6 +137,9 @@ async function tabParticipants(content, eventId, detail) {
             ) }] : []),
       places, { emptyText: t('empty_participants', { participantTerm: Term('participant_plural').toLowerCase(), eventTerm: Term('event').toLowerCase() }) }) + '</div></div></div>';
 
+  if (canAssignOperator) {
+    wireOperatorCompaniesCard_(eventId, operatorFamilyTypes, operatorOrgs);
+  }
   if (canAddParticipant) {
     wireEventPlaceForm_(eventId, venue, zones, places);
   }
@@ -166,6 +192,52 @@ async function tabParticipants(content, eventId, detail) {
       { title: t('remove_duplicates_btn'), confirmLabel: t('remove_duplicates_btn') }
     );
   };
+}
+
+// REQ: "Add Operator as an organization. So security operators or housekeeping operators or crowd
+// management operators and other types of operators can track logs directed to them from different
+// events. Sometimes the EMC is the one doing all these operations and currently the system accounts
+// only for this." One row per operator-family Place/Participant type (built-in Operator plus any
+// custom role flagged isOperatorType, Settings > Roles) -- a dropdown picks which real Operator
+// Organization is responsible for that specialty at THIS event; blank/"Managed by EMC" (the default)
+// means the EMC still handles it themselves, exactly as before this feature existed. Saving is
+// per-row (assignEventOperator, Operators.gs), not a single form-wide Save, since each row is its
+// own independent assignment.
+function operatorCompaniesCardHtml_(operatorFamilyTypes, operatorOrgs, operatorAssignments) {
+  var assignedByRole = {};
+  operatorAssignments.forEach(function (a) { assignedByRole[a.operatorRoleCode] = a.operatorOrgId; });
+  var rowsHtml = operatorFamilyTypes.map(function (rt) {
+    var selected = assignedByRole[rt.code] || '';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f1f6;flex-wrap:wrap;">' +
+      '<div style="min-width:160px;font-size:13px;font-weight:600;flex:none;">' + esc(rt.label) + '</div>' +
+      '<select class="field-input operator-org-select" data-role-code="' + esc(rt.code) + '" style="max-width:280px;flex:1;">' +
+        '<option value="">' + esc(t('operator_managed_by_emc_option')) + '</option>' +
+        operatorOrgs.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === selected ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<button type="button" class="btn btn-secondary btn-sm operator-org-save" data-role-code="' + esc(rt.code) + '">' + esc(t('save')) + '</button>' +
+    '</div>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('operator_companies_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('operator_companies_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      (operatorFamilyTypes.length
+        ? rowsHtml
+        : '<div class="empty-state">' + esc(t('operator_companies_no_types')) + '</div>') +
+      (operatorOrgs.length ? '' : '<div class="muted" style="font-size:11px;margin-top:10px;">' + esc(t('operator_companies_no_orgs_hint')) + '</div>') +
+    '</div></div>';
+}
+
+function wireOperatorCompaniesCard_(eventId, operatorFamilyTypes, operatorOrgs) {
+  document.querySelectorAll('.operator-org-save').forEach(function (btn) {
+    btn.onclick = async function () {
+      var roleCode = btn.getAttribute('data-role-code');
+      var select = document.querySelector('.operator-org-select[data-role-code="' + roleCode + '"]');
+      try {
+        await Api.call('assignEventOperator', { eventId: eventId, operatorRoleCode: roleCode, operatorOrgId: select.value });
+        UI.toast(t('toast_operator_company_saved'), 'success');
+      } catch (err) { UI.error(err); }
+    };
+  });
 }
 
 // REQ: "Move Disciplines list to a new tab name it Participant's Discipline. Arrange columns in the

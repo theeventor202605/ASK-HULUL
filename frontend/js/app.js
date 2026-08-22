@@ -57,8 +57,10 @@ var NAV_ITEMS = [
   // #supportBtn capture flow (wireChrome below) -- so this stays visible to every role, no
   // `roles` restriction, unlike the admin-only items further down.
   { path: '/support', icon: LUCIDE_ICONS['life-buoy'], label: 'nav_support', section: 'section_main' },
+  // REQ: "Add Operator as an organization." OperatorAdmin added so it can reach Users & Roles to
+  // create its own OperatorAnalyst staff, same as the other three org-admin tiers.
   { path: '/users', icon: LUCIDE_ICONS['users'], label: 'nav_users', section: 'section_admin',
-    roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin'] },
+    roles: ['SystemAdmin', 'GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'OperatorAdmin'] },
   { path: '/organizations', icon: LUCIDE_ICONS['building-2'], label: 'nav_orgs', section: 'section_admin', roles: ['SystemAdmin'] },
   { path: '/disciplines', icon: LUCIDE_ICONS['shield-check'], label: 'nav_disciplines', entityLabel: 'discipline_plural', section: 'section_admin',
     roles: ['SystemAdmin', 'InspectionAdmin'] },

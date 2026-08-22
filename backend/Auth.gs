@@ -98,10 +98,13 @@ function adminResetPassword(actingUser, targetUserId, newPassword) {
 // ---- RBAC -----------------------------------------------------------------
 // Section 5.1 account hierarchy: who may create which accounts.
 var ACCOUNT_CREATION_MATRIX = {
-  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin', 'SupportAgent'],
+  // REQ: "Add Operator as an organization." OperatorAdmin added alongside the other two org-admin
+  // tiers -- creates its own OperatorAnalyst staff below, same shape as InspectionAdmin.
+  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'OperatorAdmin', 'SystemAdmin', 'SupportAgent'],
   GAAdmin: ['GAUser'],
   EMCAdmin: ['EventManager', 'EMCManager', 'EMCAnalyst', 'Operator', 'Vendor'],
   InspectionAdmin: ['ProjectManager', 'InspectionAnalyst', 'Inspector'],
+  OperatorAdmin: ['OperatorAnalyst'],
   EventManager: ['Vendor', 'Operator', 'Exhibitor'],
   Inspector: ['Vendor', 'Operator', 'Exhibitor']
 };

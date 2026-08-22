@@ -25,7 +25,10 @@ function getCustomRoles_() {
     return {
       code: r.code, label: r.label, orgType: r.orgType || '', creatableBy: creatableBy, basedOnRole: r.basedOnRole || '',
       isParticipantType: r.isParticipantType === true || r.isParticipantType === 'true',
-      isMandatoryOperator: r.isMandatoryOperator === true || r.isMandatoryOperator === 'true'
+      isMandatoryOperator: r.isMandatoryOperator === true || r.isMandatoryOperator === 'true',
+      // REQ: "Add Operator as an organization ... security operators or housekeeping operators or
+      // crowd management operators." See isOperatorRoleCode_ below for how this gets used.
+      isOperatorType: r.isOperatorType === true || r.isOperatorType === 'true'
     };
   });
 }
@@ -102,7 +105,7 @@ function generateRoleCode_(label) {
   return base + n;
 }
 
-function validOrgType_(v) { return ['', 'GA', 'EMC', 'INSPECTION'].indexOf(v) !== -1; }
+function validOrgType_(v) { return ['', 'GA', 'EMC', 'INSPECTION', 'OPERATOR'].indexOf(v) !== -1; }
 
 // SystemAdmin-only: define a new role. p: { label, orgType, creatableBy: [roleCode...], basedOnRole,
 // isParticipantType }. basedOnRole (optional) clones that role's CURRENT effective permissions
@@ -130,13 +133,19 @@ function createRole(user, p) {
   // isParticipantType -- getMandatoryOperatorCompliance (Events.gs) only ever looks at roles where
   // both are true.
   var isMandatoryOperator = !!(p && p.isMandatoryOperator);
+  // REQ: "Add Operator as an organization ... security operators or housekeeping operators or crowd
+  // management operators." Marks this participant type as belonging to the "Operator family" --
+  // assignable to a real Operator Organization per event (EventOperatorAssignments, Operators.gs).
+  // Same "accepted here too, normally toggled later" posture as isMandatoryOperator just above.
+  // Meaningless without isParticipantType, same as isMandatoryOperator.
+  var isOperatorType = !!(p && p.isOperatorType);
 
   var code = generateRoleCode_(label);
   var row = insertRow('Roles', {
     id: newId('Roles'), code: code, label: label, orgType: orgType,
     creatableBy: JSON.stringify(creatableBy), basedOnRole: basedOnRole,
     status: 'Active', createdBy: user.id, createdAt: nowIso_(), isParticipantType: isParticipantType,
-    isMandatoryOperator: isMandatoryOperator
+    isMandatoryOperator: isMandatoryOperator, isOperatorType: isOperatorType
   });
 
   var clonedCount = 0;
@@ -151,8 +160,8 @@ function createRole(user, p) {
     if (clonedCount) savePermissionOverrides_(user, overrides);
   }
 
-  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator });
-  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator };
+  audit(user.id, 'CREATE_ROLE', 'Roles', row.id, { code: code, label: label, orgType: orgType, basedOnRole: basedOnRole, clonedPermissions: clonedCount, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator, isOperatorType: isOperatorType });
+  return { code: code, label: label, orgType: orgType, creatableBy: creatableBy, basedOnRole: basedOnRole, isParticipantType: isParticipantType, isMandatoryOperator: isMandatoryOperator, isOperatorType: isOperatorType };
 }
 
 // SystemAdmin-only: edit an existing CUSTOM role's label/orgType/creatableBy. Built-in roles (not in
@@ -183,12 +192,16 @@ function updateRole(user, p) {
   // isParticipantType just above. Meaningless without isParticipantType also being true; the
   // frontend's Mandatory Operators tab only offers the toggle for roles that already are one.
   if (p.isMandatoryOperator !== undefined) patch.isMandatoryOperator = !!p.isMandatoryOperator;
+  // REQ: "Add Operator as an organization." Same "accept it here too" posture as isMandatoryOperator
+  // just above -- the Roles tab's own checkbox (settings.js) writes through this general editor.
+  if (p.isOperatorType !== undefined) patch.isOperatorType = !!p.isOperatorType;
   var updated = updateRow('Roles', row.id, patch);
   audit(user.id, 'UPDATE_ROLE', 'Roles', row.id, patch);
   return {
     code: updated.code, label: updated.label, orgType: updated.orgType || '', creatableBy: JSON.parse(updated.creatableBy || '[]'),
     isParticipantType: updated.isParticipantType === true || updated.isParticipantType === 'true',
-    isMandatoryOperator: updated.isMandatoryOperator === true || updated.isMandatoryOperator === 'true'
+    isMandatoryOperator: updated.isMandatoryOperator === true || updated.isMandatoryOperator === 'true',
+    isOperatorType: updated.isOperatorType === true || updated.isOperatorType === 'true'
   };
 }
 
@@ -209,6 +222,20 @@ function isParticipantRoleCode_(code) {
   if (code === ROLES.VENDOR || code === ROLES.OPERATOR || code === ROLES.EXHIBITOR) return true;
   var row = findWhere('Roles', function (r) { return r.code === code && r.status === 'Active'; })[0];
   return !!(row && (row.isParticipantType === true || row.isParticipantType === 'true'));
+}
+
+// True for a Place/Participant type that belongs to the "Operator family" -- the built-in 'Operator'
+// role, plus any active custom role an admin flagged isOperatorType (e.g. "Security Operator",
+// "Housekeeping Operator", "Crowd Management Operator" -- REQ: "Add Operator as an organization ...
+// security operators or housekeeping operators or crowd management operators and other types of
+// operators"). Used by assignEventOperator (Operators.gs) to validate which role codes can be
+// assigned to a real Operator Organization per event, and by provisionPlaceAccount_ (Places.gs) is
+// NOT needed here -- that just looks the assignment up directly by role code, whatever it is; this
+// helper is only for validating a NEW assignment at creation time.
+function isOperatorRoleCode_(code) {
+  if (code === ROLES.OPERATOR) return true;
+  var row = findWhere('Roles', function (r) { return r.code === code && r.status === 'Active'; })[0];
+  return !!(row && (row.isOperatorType === true || row.isOperatorType === 'true'));
 }
 
 // Every selectable Place/Participant type: the 4 built-ins (Vendor/Operator/Exhibitor each map to a

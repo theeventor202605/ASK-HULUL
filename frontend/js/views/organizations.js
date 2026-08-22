@@ -14,7 +14,7 @@ async function renderOrganizations() {
       // REQ follow-up: this showed the raw org.type code (GA/EMC/INSPECTION) untranslated -- same
       // org_type_ga/org_type_emc/org_type_inspection keys the New Organization form's own Type
       // dropdown already uses (openNewOrgModal below), just not previously reused here for display.
-      { key: 'type', label: t('col_type'), render: r => esc(r.type === 'GA' ? t('org_type_ga') : r.type === 'EMC' ? t('org_type_emc') : r.type === 'INSPECTION' ? t('org_type_inspection') : (r.type || '—')) },
+      { key: 'type', label: t('col_type'), render: r => esc(r.type === 'GA' ? t('org_type_ga') : r.type === 'EMC' ? t('org_type_emc') : r.type === 'INSPECTION' ? t('org_type_inspection') : r.type === 'OPERATOR' ? t('org_type_operator') : (r.type || '—')) },
       // Used to build auto-generated Place-account login emails, e.g. 'vendor001@yawad.sa' -- see
       // placeAccountDomain_ in Places.gs. Falls back to a slugified org name when left blank.
       { key: 'domain', label: t('col_domain'), render: r => r.domain ? esc(r.domain) : '<span class="muted">—</span>' },
@@ -29,7 +29,7 @@ async function renderOrganizations() {
 
   document.getElementById('newOrgBtn').onclick = function () {
     var body = UI.field(t('field_name'), '<input id="fOrgName" class="field-input" />') +
-      UI.field(t('field_type'), '<select id="fOrgType" class="field-input"><option value="GA">' + esc(t('org_type_ga')) + '</option><option value="EMC">' + esc(t('org_type_emc')) + '</option><option value="INSPECTION">' + esc(t('org_type_inspection')) + '</option></select>') +
+      UI.field(t('field_type'), '<select id="fOrgType" class="field-input"><option value="GA">' + esc(t('org_type_ga')) + '</option><option value="EMC">' + esc(t('org_type_emc')) + '</option><option value="INSPECTION">' + esc(t('org_type_inspection')) + '</option><option value="OPERATOR">' + esc(t('org_type_operator')) + '</option></select>') +
       UI.field(t('field_domain_optional'), '<input id="fOrgDomain" class="field-input" placeholder="e.g. yawad.sa" />');
     UI.openModal(t('new_org_title'), body, [
       { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },

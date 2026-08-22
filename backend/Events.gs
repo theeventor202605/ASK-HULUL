@@ -347,6 +347,15 @@ function listEvents(user, p) {
     all = all.filter(function (e) { return e.emcId === user.orgId; });
   } else if (user.orgType === 'INSPECTION') {
     all = all.filter(function (e) { return e.inspectionCoId === user.orgId; });
+  } else if (user.orgType === 'OPERATOR') {
+    // REQ: "Add Operator as an organization." Defense in depth, mirroring EMC/INSPECTION just above
+    // -- listAllFindings (Findings.gs) doesn't actually route through this for OperatorAdmin/
+    // OperatorAnalyst (it queries Findings by assignment directly, a narrower slice than "every event
+    // this org is scoped to"), but every OTHER listEvents caller (Dashboard, Sub-Events, Projects,
+    // ...) still needs this org type to never fall through to "no scoping at all" -- an Operator
+    // Organization only ever sees events it has an actual EventOperatorAssignments row for.
+    var operatorEventIds = findWhere('EventOperatorAssignments', function (a) { return a.operatorOrgId === user.orgId; }).map(function (a) { return a.eventId; });
+    all = all.filter(function (e) { return operatorEventIds.indexOf(e.id) !== -1; });
   }
   if (p && p.status) all = all.filter(function (e) { return e.status === p.status; });
   if (p && p.projectId) all = all.filter(function (e) { return e.projectId === p.projectId; });

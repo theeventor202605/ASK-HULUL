@@ -389,9 +389,20 @@ function deactivateEndedEventPlaceAccounts() {
 // renting EMC when there is one (event.emcId -- the org relationship that's actually authoritative
 // for an Event, see Events.gs) -- a permanent Venue Place has no event and so no EMC context at all
 // (a Venue is a shared catalog entry, not owned by any one EMC), and falls back to a generic domain.
+// REQ follow-up: unless this event has assigned a real Operator Organization to this specific role
+// (EventOperatorAssignments, Operators.gs) -- see below, that takes priority over the EMC.
 function provisionPlaceAccount_(actingUser, place, event) {
   var role = mapParticipantRole_(place.type);
-  var orgId = event ? event.emcId : '';
+  // REQ: "Add Operator as an organization ... Sometimes the EMC is the one doing all these
+  // operations and currently the system accounts only for this." If this event has assigned a real
+  // Operator Organization to this role (Settings > Event workspace > Operator Companies card,
+  // assignEventOperator/EventOperatorAssignments, Operators.gs), tag the new account with THAT org
+  // instead of always defaulting to the renting EMC -- this is what lets listAllFindings' own
+  // orgType==='OPERATOR' branch (Findings.gs) later find "logs directed to them" across every event.
+  // No assignment row (the pre-existing, still-default case) falls back to event.emcId exactly as
+  // before this feature existed -- fully backward compatible.
+  var operatorAssignment = event ? findWhere('EventOperatorAssignments', function (a) { return a.eventId === event.id && a.operatorRoleCode === role; })[0] : null;
+  var orgId = operatorAssignment ? operatorAssignment.operatorOrgId : (event ? event.emcId : '');
   var org = orgId ? getById('Organizations', orgId) : null;
   var domain = placeAccountDomain_(org);
   var seq = nextPlaceAccountSeq_(orgId, role);

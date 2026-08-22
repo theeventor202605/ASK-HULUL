@@ -12,7 +12,9 @@ var PERMISSIONS_MANAGE_ROLES = ['SystemAdmin'];
 // too -- but NOT the Roles/Mandatory Operators tabs (still PERMISSIONS_MANAGE_ROLES/SystemAdmin-only
 // above, unchanged), since those are platform-wide catalogs, not something the backend scopes per org
 // the way listPermissions/updatePermission/resetPermission now do (Permissions.gs).
-var PERMISSIONS_ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin'];
+// REQ: "Add Operator as an organization." OperatorAdmin added alongside the other three org-admin
+// tiers -- same self-service-within-ceiling Permissions access.
+var PERMISSIONS_ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'OperatorAdmin'];
 // REQ follow-up: "check the tabs within Config, move what's still needed into Settings." The old
 // standalone Config page (frontend/js/views/config.js, now deleted) had 3 tabs: General (a raw
 // Config-sheet key/value editor), Process (readiness-template uploader/reviewer roles), and
@@ -1099,7 +1101,7 @@ function renderMandatoryOperatorsTabBody_(content, customRoles) {
 }
 
 function roleOrgTypeLabel_(orgType) {
-  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : orgType === 'INSPECTION' ? t('org_type_inspection') : t('org_type_none');
+  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : orgType === 'INSPECTION' ? t('org_type_inspection') : orgType === 'OPERATOR' ? t('org_type_operator') : t('org_type_none');
 }
 
 function roleRowHtml_(role, allRoles) {
@@ -1109,6 +1111,7 @@ function roleRowHtml_(role, allRoles) {
       '<div>' +
         '<div style="font-weight:700;font-size:13.5px;">' + esc(role.label) +
           (role.isParticipantType ? ' <span class="badge badge-neutral" style="font-size:10px;">' + esc(t('participant_type_badge')) + '</span>' : '') +
+          (role.isOperatorType ? ' <span class="badge badge-neutral" style="font-size:10px;">' + esc(t('operator_type_badge')) + '</span>' : '') +
         '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:2px;">' + esc(role.code) + ' · ' + esc(roleOrgTypeLabel_(role.orgType)) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('creatable_by_label')) + ': ' +
@@ -1124,7 +1127,7 @@ function roleRowHtml_(role, allRoles) {
 
 function roleOrgTypeSelectHtml_(id, selected) {
   return '<select id="' + id + '" class="field-input">' +
-    ['', 'GA', 'EMC', 'INSPECTION'].map(function (v) {
+    ['', 'GA', 'EMC', 'INSPECTION', 'OPERATOR'].map(function (v) {
       return '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + esc(roleOrgTypeLabel_(v)) + '</option>';
     }).join('') +
   '</select>';
@@ -1167,6 +1170,14 @@ function openNewRoleModal_(allRoles) {
       '<input type="checkbox" id="fRoleIsParticipantType" /> ' + esc(t('field_is_participant_type')) +
     '</label>' +
     '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_participant_type_hint')) + '</div>' +
+    // REQ: "Add Operator as an organization ... security operators or housekeeping operators or
+    // crowd management operators and other types of operators." Marks this participant type as
+    // assignable to a real Operator Organization per event (Event workspace > Operator Companies
+    // card, assignEventOperator/Operators.gs) -- only meaningful alongside isParticipantType above.
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:2px 0 14px;">' +
+      '<input type="checkbox" id="fRoleIsOperatorType" /> ' + esc(t('field_is_operator_type')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_operator_type_hint')) + '</div>' +
     '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
     roleCreatableByChipsHtml_('new-role-creatable', allRoles, []);
 
@@ -1180,7 +1191,8 @@ function openNewRoleModal_(allRoles) {
             label: label, orgType: document.getElementById('fRoleOrgType').value,
             basedOnRole: document.getElementById('fRoleBasedOn').value,
             creatableBy: readCheckedRoles_('new-role-creatable'),
-            isParticipantType: document.getElementById('fRoleIsParticipantType').checked
+            isParticipantType: document.getElementById('fRoleIsParticipantType').checked,
+            isOperatorType: document.getElementById('fRoleIsOperatorType').checked
           });
           UI.closeModal();
           UI.toast(t('toast_role_created'), 'success');
@@ -1200,6 +1212,10 @@ function openEditRoleModal_(role, allRoles) {
       '<input type="checkbox" id="fERoleIsParticipantType"' + (role.isParticipantType ? ' checked' : '') + ' /> ' + esc(t('field_is_participant_type')) +
     '</label>' +
     '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_participant_type_hint')) + '</div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:2px 0 14px;">' +
+      '<input type="checkbox" id="fERoleIsOperatorType"' + (role.isOperatorType ? ' checked' : '') + ' /> ' + esc(t('field_is_operator_type')) +
+    '</label>' +
+    '<div class="muted" style="font-size:11px;margin:-10px 0 12px;">' + esc(t('is_operator_type_hint')) + '</div>' +
     '<div class="field-label">' + esc(t('creatable_by_label')) + '</div>' +
     roleCreatableByChipsHtml_('edit-role-creatable', allRoles, role.creatableBy);
 
@@ -1212,7 +1228,8 @@ function openEditRoleModal_(role, allRoles) {
           await Api.call('updateRole', {
             code: role.code, label: label, orgType: document.getElementById('fERoleOrgType').value,
             creatableBy: readCheckedRoles_('edit-role-creatable'),
-            isParticipantType: document.getElementById('fERoleIsParticipantType').checked
+            isParticipantType: document.getElementById('fERoleIsParticipantType').checked,
+            isOperatorType: document.getElementById('fERoleIsOperatorType').checked
           });
           UI.closeModal();
           UI.toast(t('toast_role_updated'), 'success');
@@ -1442,10 +1459,12 @@ function renderPermissionsTabBody_(content, data, activeRole) {
 // renderPermissionsTabBody_ on every role-filter click and every matrix chip Save/Reset, and losing the
 // admin's type selection on every one of those would be annoying.
 var HululCeilingOrgType_ = null;
-var CEILING_ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION'];
+// REQ: "Add Operator as an organization." OPERATOR added alongside the original three -- same
+// ceiling mechanism.
+var CEILING_ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION', 'OPERATOR'];
 
 function ceilingOrgTypeLabel_(orgType) {
-  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : t('org_type_inspection');
+  return orgType === 'GA' ? t('org_type_ga') : orgType === 'EMC' ? t('org_type_emc') : orgType === 'INSPECTION' ? t('org_type_inspection') : t('org_type_operator');
 }
 
 async function renderOrgCeilingSection_(wrap) {

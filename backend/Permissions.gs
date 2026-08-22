@@ -78,10 +78,16 @@ var PERMISSION_REGISTRY_ = {
   // literally every org's logs. defaultRoles deliberately spans every non-participant role across all
   // three org types (not just Inspection) per the REQ's own "for all organization types" follow-up --
   // an admin can still narrow or widen this per role from the Permissions matrix like any other key.
+  // REQ follow-up: "Add Operator as an organization ... can track logs directed to them from
+  // different events." OperatorAdmin/OperatorAnalyst added -- unlike every other role above (which
+  // sees every log across whatever events listEvents already scopes them to), listAllFindings
+  // (Findings.gs) gives these two a narrower slice: only logs actually assigned (Findings.participantId)
+  // to one of their own org's operator accounts, across every event, not full per-event visibility.
+  // See listAllFindings's own orgType==='OPERATOR' branch for exactly how that's scoped.
   'finding.viewAll': {
     module: 'Risk Logging', label: 'View all logs across every event (not just one at a time)', page: 'findings', crud: ['read'],
     defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EMCAdmin', 'EventManager', 'EMCManager', 'EMCAnalyst',
-      'InspectionAdmin', 'ProjectManager', 'InspectionAnalyst', 'Inspector']
+      'InspectionAdmin', 'ProjectManager', 'InspectionAnalyst', 'Inspector', 'OperatorAdmin', 'OperatorAnalyst']
   },
   'finding.edit': {
     module: 'Risk Logging', label: 'Edit a finding (before it\'s submitted)', page: 'findings', crud: ['update'],
@@ -195,6 +201,16 @@ var PERMISSION_REGISTRY_ = {
     // not that tab, so it repoints there instead.
     module: 'Events', label: 'Assign an Event Manager to an event', page: 'reassignment', crud: ['update'],
     defaultRoles: ['SystemAdmin', 'EMCManager', 'EMCAdmin']
+  },
+  // REQ: "Add Operator as an organization ... Sometimes the EMC is the one doing all these
+  // operations and currently the system accounts only for this." Same roles as place.manage
+  // ("manage an event's participants") -- assigning an Operator Organization to a specialty
+  // (Security/Housekeeping/Crowd Management/...) is a natural extension of that same responsibility.
+  // Also gates viewing the current assignments (listEventOperatorAssignments, Operators.gs), not just
+  // changing them -- there's no separate read-only tier for this yet.
+  'event.assignOperator': {
+    module: 'Events', label: 'Assign an Operator Organization to an event (per specialty)', page: 'participants', crud: ['update'],
+    defaultRoles: ['SystemAdmin', 'EMCAdmin', 'EMCManager', 'EventManager']
   },
   'templateLibrary.manage': {
     module: 'Templates', label: 'Add or replace a library template (Inspection Company master documents)',
@@ -499,8 +515,10 @@ function hasPermissionRole_(user, key) {
   return effectivePermissionRoles_(key, getPermissionOverrides_(), user.orgId).indexOf(user.role) !== -1;
 }
 
-// Every GA/EMC/Inspection Company "org admin" role -- the tier REQ means by "an organization's admin".
-var ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin']; // plain strings, not ROLES.X -- see
+// Every GA/EMC/Inspection Company/Operator Company "org admin" role -- the tier REQ means by "an
+// organization's admin". OperatorAdmin added alongside the other three -- REQ: "Add Operator as an
+// organization."
+var ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'OperatorAdmin']; // plain strings, not ROLES.X -- see
 // the load-order note above PERMISSION_REGISTRY_: Permissions.gs (P) loads before Utils.gs (U).
 
 // REQ follow-up: "I meant as in Organization Type" -- the ceiling is unlocked per Organization TYPE
@@ -509,7 +527,10 @@ var ORG_ADMIN_ROLES_ = ['GAAdmin', 'EMCAdmin', 'InspectionAdmin']; // plain stri
 // One ceiling covers every org of that type, including ones created after it's set, with nothing to
 // re-configure per new org. Stored as one Config row (getConfigJson_/setConfigJson_, Utils.gs) rather
 // than a field on Organizations -- there's no per-org state left to keep here at all.
-var ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION'];
+// REQ: "Add Operator as an organization." OPERATOR added alongside the original three -- same
+// ceiling mechanism, same Users.orgType/Organizations.type values (users.js' ROLE_ORG_TYPE,
+// organizations.js' New Organization Type dropdown).
+var ORG_TYPES_ = ['GA', 'EMC', 'INSPECTION', 'OPERATOR'];
 var ORG_TYPE_CEILING_CONFIG_KEY_ = 'orgTypePermissionCeilings';
 
 // Which permission keys `orgType`'s own admins have been unlocked to reconfigure themselves -- set by

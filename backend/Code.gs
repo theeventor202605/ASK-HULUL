@@ -318,6 +318,12 @@ var ROUTES = {
   // Findings (NCF) -- full Risk Logging workflow (Open -> Viewed -> Submitted -> InReview -> ...)
   listFindings: function (u, p) { return listFindings(u, p); },
   listAllFindings: function (u, p) { return listAllFindings(u, p); },
+  // Operator Organizations (Operators.gs) -- REQ: "Add Operator as an organization ... security
+  // operators or housekeeping operators or crowd management operators ... can track logs directed
+  // to them from different events."
+  listOperatorOrganizations: function (u) { return listOperatorOrganizations(u); },
+  listEventOperatorAssignments: function (u, p) { return listEventOperatorAssignments(u, p); },
+  assignEventOperator: function (u, p) { return assignEventOperator(u, p); },
   createFinding: function (u, p) { return createFinding(u, p); },
   updateFinding: function (u, p) { return updateFinding(u, p); },
   deleteFinding: function (u, p) { return deleteFinding(u, p); },

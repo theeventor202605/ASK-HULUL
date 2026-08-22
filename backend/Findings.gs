@@ -153,6 +153,46 @@ function listFindings(user, p) {
 // eventName so the standalone Logs page (logs.js) can show/link back to the event it belongs to.
 function listAllFindings(user, p) {
   requirePermission(user, 'finding.viewAll');
+  // REQ follow-up: "Add Operator as an organization ... security operators ... can track logs
+  // directed to them from different events." An Operator Organization doesn't get the same "every
+  // log across every event I can already reach" rollup every other org type above gets -- that would
+  // mean every log in every event they've ever touched, most of which aren't actually theirs to
+  // handle. Narrower and more precise: every log actually ASSIGNED (Findings.participantId) to one
+  // of their own org's operator accounts, found by walking participantId -> Participants.userId ->
+  // Users.orgId, across ALL events directly -- not routed through listEvents' scoping at all, since
+  // an Operator org's own EventOperatorAssignments rows (Operators.gs) already determine which
+  // events/roles are theirs; a Finding assigned to one of their accounts is definitionally theirs
+  // regardless of which events listEvents would otherwise show them.
+  if (user.orgType === 'OPERATOR') {
+    var participantsById = {};
+    getAll('Participants').forEach(function (pt) { participantsById[pt.id] = pt; });
+    var disciplinesById = {};
+    getAll('Disciplines').forEach(function (d) { disciplinesById[d.id] = d; });
+    var checklistItemsById = {};
+    getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
+    var usersById = {};
+    getAll('Users').forEach(function (u) { usersById[u.id] = u; });
+    var eventsById = {};
+    getAll('Events').forEach(function (e) { eventsById[e.id] = e; });
+    var approvedResolutionByFinding = {};
+    getAll('Resolutions').filter(function (r) { return r.decision === 'Approved'; }).forEach(function (r) {
+      var existing = approvedResolutionByFinding[r.findingId];
+      if (!existing || new Date(r.reviewedAt) > new Date(existing.reviewedAt)) approvedResolutionByFinding[r.findingId] = r;
+    });
+    var mine = getAll('Findings').filter(function (f) {
+      if (!f.participantId) return false;
+      var pt = participantsById[f.participantId];
+      var acct = pt && pt.userId ? usersById[pt.userId] : null;
+      return !!(acct && acct.orgId === user.orgId);
+    });
+    if (p && p.status) mine = mine.filter(function (f) { return f.status === p.status; });
+    if (p && p.disciplineId) mine = mine.filter(function (f) { return f.disciplineId === p.disciplineId; });
+    return mine.map(function (f) {
+      var enriched = enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById, approvedResolutionByFinding[f.id]);
+      var ev = eventsById[f.eventId];
+      return Object.assign({}, enriched, { eventName: ev ? ev.name : '' });
+    }).sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+  }
   var events = listEvents(user, p || {});
   var out = [];
   events.forEach(function (e) {

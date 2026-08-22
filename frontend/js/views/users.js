@@ -1,17 +1,20 @@
 /**
  * HULUL - Users & Roles admin view (REQ-ACC).
  */
+// REQ: "Add Operator as an organization." OperatorAdmin added alongside GA/EMC/InspectionAdmin --
+// creates its own OperatorAnalyst staff below, same shape as InspectionAdmin.
 var CREATABLE_ROLES_BY_ACTOR = {
-  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'SystemAdmin', 'SupportAgent'],
+  SystemAdmin: ['GAAdmin', 'EMCAdmin', 'InspectionAdmin', 'OperatorAdmin', 'SystemAdmin', 'SupportAgent'],
   GAAdmin: ['GAUser'], EMCAdmin: ['EventManager', 'EMCManager', 'EMCAnalyst', 'Operator', 'Vendor'],
-  InspectionAdmin: ['ProjectManager', 'InspectionAnalyst', 'Inspector']
+  InspectionAdmin: ['ProjectManager', 'InspectionAnalyst', 'Inspector'],
+  OperatorAdmin: ['OperatorAnalyst']
 };
 // Which Organization "type" each SystemAdmin-creatable role belongs to (SystemAdmin itself
 // isn't tied to any org). Used to filter the Organization picker and set orgType correctly —
 // this used to never get sent at all, which left every SystemAdmin-created account's orgType
 // blank and broke org-scoped filtering (Events/Venues/Users lists) for that whole branch of
 // the account hierarchy.
-var ROLE_ORG_TYPE = { GAAdmin: 'GA', EMCAdmin: 'EMC', InspectionAdmin: 'INSPECTION' };
+var ROLE_ORG_TYPE = { GAAdmin: 'GA', EMCAdmin: 'EMC', InspectionAdmin: 'INSPECTION', OperatorAdmin: 'OPERATOR' };
 
 // Custom roles (Roles.gs) each carry their own admin-configured creatableBy list instead of a
 // hardcoded ACCOUNT_CREATION_MATRIX/CREATABLE_ROLES_BY_ACTOR entry -- merged in here at render time

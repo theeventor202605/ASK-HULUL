@@ -355,7 +355,28 @@ var SCHEMA = {
   // as one every event's venue is expected to have at least one Participant account for -- managed
   // from the new Settings > Mandatory Operators tab, checked by getMandatoryOperatorCompliance
   // (Events.gs). Meaningless on a role that isn't also isParticipantType.
-  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt','isParticipantType','isMandatoryOperator'],
+  // isOperatorType appended at the end -- REQ: "add Operator as an organization ... security
+  // operators or housekeeping operators or crowd management operators ... can track logs directed
+  // to them from different events." Flags an isParticipantType role as belonging to the "Operator
+  // family" (the built-in 'Operator' role always counts too, see isOperatorRoleCode_, Roles.gs) --
+  // eligible to be assigned, per event, to a real Operator Organization (orgType 'OPERATOR', new)
+  // via EventOperatorAssignments below, instead of always defaulting to the renting EMC. Meaningless
+  // on a role that isn't also isParticipantType, same "meaningless without X" pattern as
+  // isMandatoryOperator just below.
+  Roles:                  ['id','code','label','orgType','creatableBy','basedOnRole','status','createdBy','createdAt','isParticipantType','isMandatoryOperator','isOperatorType'],
+  // REQ: "Add Operator as an organization. So security operators or housekeeping operators or crowd
+  // management operators and other types of operators can track logs directed to them from
+  // different events. Sometimes the EMC is the one doing all these operations and currently the
+  // system accounts only for this." One row per (eventId, operatorRoleCode) -- which real Operator
+  // Organization (if any) is responsible for that operator specialty at this event (Operators.gs).
+  // operatorRoleCode is the built-in 'Operator' code or a custom isOperatorType role code (e.g. a
+  // "Security Operator" role an admin defined). No row for a given (event, role) pair means "the
+  // EMC handles it themselves" -- the pre-existing behavior, still the default (provisionPlaceAccount_,
+  // Places.gs, falls back to event.emcId exactly as before when no assignment is found). An event can
+  // have several different Operator Organizations at once, one per specialty (a Security company and
+  // a separate Housekeeping company, say) -- that's why this is its own table keyed by role, not a
+  // single operatorOrgId column on Events the way emcId/inspectionCoId are.
+  EventOperatorAssignments: ['id','eventId','operatorRoleCode','operatorOrgId','assignedBy','assignedAt'],
   // An Inspection Company's master readiness documents (ZSMP, ZERP, TTP, CSM, SEC, and any others
   // they add) -- uploaded once, with a newer version simply replacing the current file. Not
   // per-event; see Templates above for what gets sent to a specific event.
@@ -613,6 +634,15 @@ var ROLES = {
   EMC_ADMIN: 'EMCAdmin', EVENT_MANAGER: 'EventManager', EMC_MANAGER: 'EMCManager', EMC_ANALYST: 'EMCAnalyst',
   INSPECTION_ADMIN: 'InspectionAdmin', PROJECT_MANAGER: 'ProjectManager', INSPECTION_ANALYST: 'InspectionAnalyst', INSPECTOR: 'Inspector',
   VENDOR: 'Vendor', OPERATOR: 'Operator', EXHIBITOR: 'Exhibitor',
+  // REQ: "Add Operator as an organization ... security operators or housekeeping operators or crowd
+  // management operators ... can track logs directed to them from different events." NOT the same
+  // thing as OPERATOR ('Operator') just above -- that's the shared-device, QR-quick-login Place/
+  // Participant role posted physically at one venue for one event (Places.gs). OperatorAdmin/
+  // OperatorAnalyst are real, individually-named office staff of an Operator Organization (orgType
+  // 'OPERATOR', Organizations.gs) who sign in normally (password or SSO) and can see logs assigned
+  // to their org's operators across every event that org works, regardless of which EMC runs it --
+  // mirrors InspectionAdmin/InspectionAnalyst's own tier exactly (see ACCOUNT_CREATION_MATRIX, Auth.gs).
+  OPERATOR_ADMIN: 'OperatorAdmin', OPERATOR_ANALYST: 'OperatorAnalyst',
   // Platform-level, not tied to any GA/EMC/Inspection org -- works the shared Support ticket queue
   // (see Support.gs) alongside SystemAdmin. Created by SystemAdmin (ACCOUNT_CREATION_MATRIX, Auth.gs).
   SUPPORT_AGENT: 'SupportAgent'
@@ -624,6 +654,7 @@ var ROLE_LABELS = {
   EventManager: 'Event Manager', EMCManager: 'EMC Manager', EMCAnalyst: 'EMC Analyst',
   InspectionAdmin: 'Inspection Admin', ProjectManager: 'Project Manager', InspectionAnalyst: 'Inspection Analyst',
   Inspector: 'Inspector', Vendor: 'Vendor', Operator: 'Operator', Exhibitor: 'Exhibitor',
+  OperatorAdmin: 'Operator Admin', OperatorAnalyst: 'Operator Analyst',
   SupportAgent: 'Support Agent'
 };
 // Falls back to a custom role's own label (Roles sheet, see Roles.gs) when `role` isn't one of the
@@ -885,7 +916,8 @@ var ID_PREFIX = {
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
   FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
   AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND',
-  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT', MeetingAttendance: 'MAT', UserCertificates: 'UCT'
+  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT', MeetingAttendance: 'MAT', UserCertificates: 'UCT',
+  EventOperatorAssignments: 'EOA'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in
