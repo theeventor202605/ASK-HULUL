@@ -32,10 +32,18 @@ var NAV_ITEMS = [
   // REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
   // company." A cross-event entry point -- unlike the Risk Logging tab (scoped to whichever one
   // Event workspace you're already inside), this lets an Inspector jump straight to logging a Risk
-  // Log against ANY event their own Inspection Company runs, gated by proximity (renderAddLogPicker_,
+  // Log against ANY event their own Inspection Company runs, gated by proximity (renderAddLogTab_,
   // findings.js) rather than by which event tab they happened to have open.
-  { path: '/add-log', icon: LUCIDE_ICONS['plus'], label: 'nav_add_log', section: 'section_main',
-    roles: ['Inspector', 'SystemAdmin'] },
+  // REQ follow-up: "For Inspection company Analysts, they need to be able to view all logs regardless
+  // of which event they are in. Move the sidebar '+ Add Log' to become a tab inside 'Logs', and add a
+  // new tab to contain all logs under the [organization]. The same should be available for all
+  // organization types." Was roles-restricted to just Inspector/SystemAdmin (the only ones who could
+  // ever use the old Add Log picker); now open to every signed-in user, same as /todo or
+  // /notifications, because the new All Logs tab is relevant to a much wider set of roles across
+  // every org type (Analysts, Managers, Admins, ...) -- logs.js's own logsVisibleTabs_ decides which
+  // of the two tabs (if any) a given role actually sees via finding.create/finding.viewAll, so no nav-
+  // level role list could stay accurate here anyway.
+  { path: '/logs', icon: LUCIDE_ICONS['file-text'], label: 'nav_logs', section: 'section_main' },
   { path: '/notifications', icon: LUCIDE_ICONS['bell'], label: 'nav_notifications', section: 'section_main' },
   // REQ: "Add Sidebar Re-assignment... assignments related to the user will appear and can be
   // assigned to temporary another user." Same manager-ish roles as the reassignment.manage
@@ -101,7 +109,7 @@ var NAV_GROUPS_ = [
   { section: 'section_main', paths: ['/venues'] },
   // REQ follow-up: "Move Roadmap one level up in sidebar" -- promoted out of Administration.
   { section: 'section_main', paths: ['/roadmap-plans'] },
-  { section: 'section_main', paths: ['/add-log'] },
+  { section: 'section_main', paths: ['/logs'] },
   { section: 'section_main', paths: ['/notifications'] },
   { section: 'section_main', paths: ['/reassignment'] },
   { section: 'section_main', paths: ['/support'] },

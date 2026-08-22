@@ -124,10 +124,12 @@ window.Router = {
     this.add('/settings', renderSettings);
     this.add('/roadmap-plans', renderRoadmapPlans);
     this.add('/roadmap-plans/:id', renderRoadmapPlanDetail);
-    // REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
-    // company." Cross-event proximity-gated event picker (renderAddLogPicker_, findings.js) --
-    // routes into the existing #/events/:id/findings/new page once an eligible event is chosen.
-    this.add('/add-log', renderAddLogPicker_);
+    // REQ follow-up: "Move the sidebar '+ Add Log' to become a tab inside 'Logs', and add a new tab
+    // to contain all logs under the [organization]." New tabbed page (logs.js) replaces the old
+    // standalone #/add-log sidebar entry; that old path now just redirects into the new Add Log tab
+    // so any existing bookmark/deep-link still lands somewhere useful.
+    this.add('/logs', renderLogsPage);
+    this.add('/add-log', renderAddLogRedirect_);
     window.addEventListener('hashchange', () => this.resolve());
   }
 };

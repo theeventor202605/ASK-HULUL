@@ -143,6 +143,26 @@ function listFindings(user, p) {
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 
+// REQ: "For Inspection company Analysts, they need to be able to view all logs regardless of which
+// event they are in ... The same should be available for all organization types." The per-event
+// listFindings above, rolled up across every event the caller can see -- same
+// listAllCompletedChecklists pattern (Inspections.gs): listEvents(user, p) already scopes events by
+// role/org (EMC -> its own emcId events, INSPECTION -> its own inspectionCoId events, GA/SystemAdmin
+// -> everything), so looping it and re-using listFindings per event gives "every log my organization
+// can see across every event," with zero new scoping logic to get wrong. Each row carries its own
+// eventName so the standalone Logs page (logs.js) can show/link back to the event it belongs to.
+function listAllFindings(user, p) {
+  requirePermission(user, 'finding.viewAll');
+  var events = listEvents(user, p || {});
+  var out = [];
+  events.forEach(function (e) {
+    listFindings(user, { eventId: e.id, status: p && p.status, disciplineId: p && p.disciplineId }).forEach(function (f) {
+      out.push(Object.assign({}, f, { eventName: e.name }));
+    });
+  });
+  return out.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+}
+
 // REQ: "A log can be created on any event from the time it is initiated even if it event did not
 // start yet. Logs can not be created only if event ended or Venue Rejected." A brand-new/not-yet-
 // started event is deliberately fine (no lower bound at all) -- only the two explicit end states are

@@ -431,7 +431,7 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
   });
 }
 
-/* ---------------- Add Log picker (route: #/add-log) ---------------- */
+/* ---------------- Add Log picker (embedded as the "Add Log" tab of the Logs page, #/logs) ---------------- */
 // REQ: "Add Log sidebar, which allows inspector to add logs to any event under his inspection
 // company. it only works if he is inside a venue boundary or no more than 50 meters from an
 // event." Unlike the Risk Logging tab inside an Event workspace (scoped to whichever one event
@@ -452,6 +452,13 @@ function renderFindingGuideSuggestions_(findingGuide, disciplineName, checklistT
 // never even reached the proximity check. Dropped entirely so this matches the REQ's own wording
 // ("any event under his inspection company"), same as how the Risk Logging tab inside an Event
 // workspace doesn't filter by status either.
+//
+// REQ follow-up: "Move the sidebar '+ Add Log' to become a tab inside 'Logs'." Was its own standalone
+// #/add-log sidebar page/route; now embedded as one tab of the new #/logs page (logs.js) alongside
+// "All Logs". Refactored to render into a passed-in `content` container instead of always grabbing
+// #viewRoot directly, same "tab renderer takes a container" convention dashboard.js's
+// dashboardTabOverview_/etc. already use -- #/add-log itself still exists as a thin redirect
+// (renderAddLogRedirect_, logs.js) so old bookmarks/links keep working.
 var ADD_LOG_PROXIMITY_M_ = 50;
 var addLogWatchId_ = null;
 
@@ -460,13 +467,12 @@ function destroyAddLogWatch_() {
   addLogWatchId_ = null;
 }
 
-async function renderAddLogPicker_() {
-  var root = document.getElementById('viewRoot');
+async function renderAddLogTab_(content) {
   destroyAddLogWatch_();
-  root.innerHTML =
-    '<div class="page-header"><div><div class="page-title">' + esc(t('add_log_picker_title')) + '</div>' +
-    '<div class="page-subtitle">' + esc(t('add_log_picker_hint')) + '</div></div></div>' +
-    '<div class="card"><div class="card-body">' +
+  content.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('add_log_picker_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('add_log_picker_hint')) + '</div></div>' +
+    '<div class="card-body">' +
     '<div id="addLogStatus" class="muted" style="font-size:12px;margin-bottom:10px;">' + esc(t('add_log_locating')) + '</div>' +
     '<div id="addLogListWrap"></div>' +
     '</div></div>';

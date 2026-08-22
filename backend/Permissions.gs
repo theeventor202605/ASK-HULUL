@@ -69,6 +69,20 @@ var PERMISSION_REGISTRY_ = {
     module: 'Risk Logging', label: 'Log a new finding', page: 'findings', crud: ['create'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']
   },
+  // REQ: "For Inspection company Analysts, they need to be able to view all logs regardless of which
+  // event they are in ... The same should be available for all organization types." Backs the new
+  // "All Logs" tab on the standalone Logs page (logs.js, route #/logs) -- listAllFindings (Findings.gs)
+  // rolls up every Finding across every event the caller can already reach via listEvents' own
+  // role/org scoping (EMC -> its own emcId events, INSPECTION -> its own inspectionCoId events, GA/
+  // SystemAdmin -> everything), so "all logs" always means "all logs my organization can see," never
+  // literally every org's logs. defaultRoles deliberately spans every non-participant role across all
+  // three org types (not just Inspection) per the REQ's own "for all organization types" follow-up --
+  // an admin can still narrow or widen this per role from the Permissions matrix like any other key.
+  'finding.viewAll': {
+    module: 'Risk Logging', label: 'View all logs across every event (not just one at a time)', page: 'findings', crud: ['read'],
+    defaultRoles: ['SystemAdmin', 'GAAdmin', 'GAUser', 'EMCAdmin', 'EventManager', 'EMCManager', 'EMCAnalyst',
+      'InspectionAdmin', 'ProjectManager', 'InspectionAnalyst', 'Inspector']
+  },
   'finding.edit': {
     module: 'Risk Logging', label: 'Edit a finding (before it\'s submitted)', page: 'findings', crud: ['update'],
     defaultRoles: ['Inspector', 'ProjectManager', 'SystemAdmin']

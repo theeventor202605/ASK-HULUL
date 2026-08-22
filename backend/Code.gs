@@ -309,6 +309,7 @@ var ROUTES = {
 
   // Findings (NCF) -- full Risk Logging workflow (Open -> Viewed -> Submitted -> InReview -> ...)
   listFindings: function (u, p) { return listFindings(u, p); },
+  listAllFindings: function (u, p) { return listAllFindings(u, p); },
   createFinding: function (u, p) { return createFinding(u, p); },
   updateFinding: function (u, p) { return updateFinding(u, p); },
   deleteFinding: function (u, p) { return deleteFinding(u, p); },
