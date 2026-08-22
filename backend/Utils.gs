@@ -31,7 +31,23 @@ var SCHEMA = {
   // ANY logged-in user regardless of role, so a future custom role (e.g. "Cluster") is tracked the
   // same way with no code change, see pingUserLocation (LiveLocation.gs). Blank until a device has
   // ever sent one.
-  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince','lastLat','lastLng','lastSeenAt'],
+  // photoUrl/mobile/jobTitle/bio appended at the end -- REQ: "Make user profile rich. Add personal
+  // information like photo, mobile, email, certificates, and other related profile information."
+  // email already existed; certificates are their own sheet (UserCertificates below, many-per-user).
+  // Self-service only (getMyProfile/updateMyProfile/uploadMyProfilePhoto, Accounts.gs) -- every one of
+  // these is the CALLING user's own row, never another user's, so no new admin permission was needed.
+  // Blank on any pre-existing row. photoUrl follows the exact same Drive-thumbnail-URL convention as
+  // Organizations.logoUrl (see uploadOrgLogo's own comment) -- safeUser/stripSecrets_ (Auth.gs/
+  // Accounts.gs) already pass every Users field through as-is (just strips password fields), so these
+  // reach the frontend for free with no changes needed there.
+  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince','lastLat','lastLng','lastSeenAt','photoUrl','mobile','jobTitle','bio'],
+  // REQ: "Make user profile rich ... certificates." One row per uploaded certificate/qualification
+  // document -- a user can have any number, unlike the single-row-per-field pattern the Users columns
+  // above use for the simpler text fields. issuedAt/expiresAt are both optional free-text-ish date
+  // strings (not validated against a strict format) since a scanned certificate's own printed dates
+  // vary in precision (some are year-only). File storage mirrors uploadOrgLogo's Drive pattern exactly
+  // -- see addMyCertificate (Accounts.gs).
+  UserCertificates:       ['id','userId','name','issuer','fileUrl','fileName','mimeType','issuedAt','expiresAt','uploadedAt'],
   Sessions:               ['token','userId','createdAt','expiresAt'],
   // lat/lng/status appended at the end (not inserted mid-schema) so existing Venues rows in the
   // live sheet -- whose data sits in fixed physical columns -- don't get silently reread under the
@@ -784,7 +800,7 @@ var ID_PREFIX = {
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
   FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
   AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND',
-  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT', MeetingAttendance: 'MAT'
+  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT', MeetingAttendance: 'MAT', UserCertificates: 'UCT'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

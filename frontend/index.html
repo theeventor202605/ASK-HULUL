@@ -127,9 +127,6 @@
         <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" aria-label="Collapse menu" title="Collapse menu">☰</button>
       </div>
       <nav id="sidebarNav" class="sidebar-nav"></nav>
-      <div class="sidebar-footer">
-        <button id="langToggleApp" class="lang-toggle-btn">EN / AR</button>
-      </div>
     </aside>
 
     <div class="app-main">
@@ -149,6 +146,10 @@
           <button id="notifBtn" class="icon-btn" aria-label="Notifications">
             🔔<span id="notifBadge" class="notif-badge hidden">0</span>
           </button>
+          <!-- REQ: "Also move AR/EN button to top bar." Was in the sidebar footer; same #langToggleApp
+               id and toggleLanguage wiring (app.js), just relocated -- see .lang-toggle-btn's topbar-
+               specific override in styles.css for why it needed its own rule once out of the sidebar. -->
+          <button id="langToggleApp" class="lang-toggle-btn">EN / AR</button>
           <div id="userMenuBtn" class="user-chip">
             <div class="avatar" id="userAvatar">?</div>
             <div class="user-chip-text">

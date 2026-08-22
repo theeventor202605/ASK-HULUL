@@ -229,6 +229,86 @@ function uploadOrgLogo(user, p) {
   return updated;
 }
 
+// ---- My Profile (self-service, REQ: "Make user profile rich. Add personal information like photo,
+// mobile, email, certificates, and other related profile information.") ------------------------
+// Every function below acts ONLY on the CALLING user's own row/certificates -- there is deliberately
+// no userId parameter anywhere in this section, unlike updateUserAccount above (an admin acting on
+// someone else's account). That's what makes these safe to expose with no extra permission gate: being
+// logged in as yourself already is the only authorization these need.
+
+// Read-only: the caller's own profile plus their certificates, in one round trip (same "server hands
+// back everything the page needs" convention as getEscalationConfig/listPermissions elsewhere).
+function getMyProfile(user) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  var fresh = getById('Users', user.id); // not just `user` -- that's the token-cached copy from
+  // getUserByToken (Auth.gs), which can be one request stale right after a save.
+  var certificates = findWhere('UserCertificates', function (c) { return c.userId === user.id; })
+    .sort(function (a, b) { return new Date(b.uploadedAt) - new Date(a.uploadedAt); });
+  return { user: stripSecrets_(fresh), certificates: certificates };
+}
+
+// Patches only the self-editable subset -- email/role/orgId/status stay admin-managed (Users & Roles
+// page, updateUserAccount/deactivateUser/activateUser above); changing those has consequences (login
+// identity, permissions, org scoping) that shouldn't be a casual self-service edit.
+function updateMyProfile(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  if (!p || !String(p.name || '').trim()) throw new HululError('BAD_REQUEST', 'Name is required');
+  var patch = { name: String(p.name).trim() };
+  ['mobile', 'jobTitle', 'bio'].forEach(function (f) { if (p[f] !== undefined) patch[f] = String(p[f] || '').trim(); });
+  var updated = updateRow('Users', user.id, patch);
+  audit(user.id, 'UPDATE_MY_PROFILE', 'Users', user.id, {});
+  return stripSecrets_(updated);
+}
+
+// Same Drive-thumbnail-URL pattern as uploadOrgLogo above, just scoped to the caller's own Users row
+// instead of an Organization.
+function uploadMyProfilePhoto(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  if (!p || !p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
+  var folder = getOrCreateFolder_('HULUL Profile Photos');
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), p.mimeType || 'image/png', p.fileName || (user.name + ' photo'));
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var photoUrl = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
+  var updated = updateRow('Users', user.id, { photoUrl: photoUrl });
+  audit(user.id, 'UPLOAD_MY_PROFILE_PHOTO', 'Users', user.id, {});
+  return stripSecrets_(updated);
+}
+
+// Adds one certificate/qualification document to the caller's own profile. Same Drive-upload steps as
+// uploadOrgLogo/uploadMyProfilePhoto, just inserting a new UserCertificates row instead of patching a
+// single-row field -- a user can have any number of these.
+function addMyCertificate(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  if (!p || !String(p.name || '').trim()) throw new HululError('BAD_REQUEST', 'Certificate name is required');
+  var fileUrl = '', fileName = '', mimeType = '';
+  if (p.fileBase64) {
+    var folder = getOrCreateFolder_('HULUL Certificates');
+    var blob = Utilities.newBlob(Utilities.base64Decode(p.fileBase64), p.mimeType || 'application/octet-stream', p.fileName || p.name);
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    fileUrl = file.getUrl(); fileName = p.fileName || ''; mimeType = p.mimeType || '';
+  }
+  var row = {
+    id: newId('UserCertificates'), userId: user.id, name: String(p.name).trim(), issuer: String(p.issuer || '').trim(),
+    fileUrl: fileUrl, fileName: fileName, mimeType: mimeType,
+    issuedAt: p.issuedAt || '', expiresAt: p.expiresAt || '', uploadedAt: nowIso_()
+  };
+  insertRow('UserCertificates', row);
+  audit(user.id, 'ADD_MY_CERTIFICATE', 'UserCertificates', row.id, { name: row.name });
+  return row;
+}
+
+function deleteMyCertificate(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  if (!p || !p.certificateId) throw new HululError('BAD_REQUEST', 'certificateId is required');
+  var cert = getById('UserCertificates', p.certificateId);
+  if (!cert || cert.userId !== user.id) throw new HululError('NOT_FOUND', 'Certificate not found');
+  deleteRow('UserCertificates', p.certificateId);
+  audit(user.id, 'DELETE_MY_CERTIFICATE', 'UserCertificates', p.certificateId, {});
+  return { deleted: true };
+}
+
 // ---- Custom terminology (per-org) -----------------------------------------
 // Lets each org rename the platform's core object names for their own users — e.g. a GA that
 // calls Events "Projects" internally. Purely a display-label override: nothing about the

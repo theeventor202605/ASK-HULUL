@@ -161,7 +161,7 @@ async function renderSettings(params) {
 
   var content = document.getElementById('settingsTabContent');
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
-  if (activeTab === 'profile') renderProfileTab_(content, u);
+  if (activeTab === 'profile') await renderProfileTab_(content, u);
   else if (activeTab === 'appearance') renderAppearanceTab_(content);
   else if (activeTab === 'security') renderSecurityTab_(content);
   else if (activeTab === 'terminology' && canManageLabels) await renderTerminologyTab_(content);
@@ -171,20 +171,163 @@ async function renderSettings(params) {
   else if (activeTab === 'roles' && canManagePermissions) await renderRolesTab_(content);
   else if (activeTab === 'mandatoryOperators' && canManagePermissions) await renderMandatoryOperatorsTab_(content);
   else if (activeTab === 'permissions' && canViewPermissionsTab) await renderPermissionsTab_(content);
-  else renderProfileTab_(content, u);
+  else await renderProfileTab_(content, u);
 }
 
-/* ---------------- Profile ---------------- */
-function renderProfileTab_(content, u) {
+/* ---------------- Profile (REQ: "Make user profile rich" -- photo, mobile, email, certificates,
+ * and other personal info, editable self-service, reflected live in the topbar user chip) --------
+ * Loads the caller's own row fresh from the backend (getMyProfile) rather than trusting the
+ * possibly-stale HululState.user/localStorage copy passed in as `u` -- `u` is only used here as an
+ * instant-paint placeholder (name/role) while the real fetch is in flight. */
+async function renderProfileTab_(content, u) {
   content.innerHTML =
     '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">' +
       '<div class="avatar" style="width:52px;height:52px;font-size:18px;flex:none;">' + esc((u.name || '?').slice(0, 1).toUpperCase()) + '</div>' +
       '<div><div style="font-size:16px;font-weight:800;">' + esc(u.name) + '</div>' +
       '<div class="muted" style="font-size:12.5px;">' + esc(u.role) + '</div></div>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px;max-width:560px;">' +
-      infoRow(t('email'), u.email) + infoRow(t('field_organization'), u.orgId) +
+    '<div class="empty-state">' + t('loading') + '</div>';
+  var data;
+  try { data = await Api.call('getMyProfile', {}); } catch (err) { UI.error(err); return; }
+  var profile = data.user, certificates = data.certificates || [];
+
+  content.innerHTML =
+    '<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">' +
+      '<div class="avatar" id="myProfileAvatar" style="width:64px;height:64px;font-size:22px;flex:none;">' +
+        (profile.photoUrl
+          ? '<img src="' + esc(profile.photoUrl) + '" alt="" onerror="this.remove();document.getElementById(\'myProfileAvatar\').textContent=' + JSON.stringify((profile.name || '?').slice(0, 1).toUpperCase()) + ';" />'
+          : esc((profile.name || '?').slice(0, 1).toUpperCase())) +
+      '</div>' +
+      '<div style="flex:1;">' +
+        '<div style="font-size:16px;font-weight:800;">' + esc(profile.name) + '</div>' +
+        '<div class="muted" style="font-size:12.5px;margin-bottom:8px;">' + esc(profile.role) + '</div>' +
+        '<button class="btn btn-secondary btn-sm" id="changeMyPhotoBtn">' + ICON('upload') + ' ' + esc(t('profile_change_photo')) + '</button>' +
+        '<input type="file" id="fMyPhoto" accept="image/*" class="hidden" />' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-row" style="max-width:640px;">' +
+      UI.field(t('profile_field_name'), '<input type="text" id="fMyName" class="field-input" value="' + esc(profile.name || '') + '" />') +
+      UI.field(t('email'), '<input type="text" class="field-input" value="' + esc(profile.email || '') + '" disabled />') +
+      UI.field(t('profile_field_mobile'), '<input type="text" id="fMyMobile" class="field-input" value="' + esc(profile.mobile || '') + '" />') +
+      UI.field(t('profile_field_job_title'), '<input type="text" id="fMyJobTitle" class="field-input" value="' + esc(profile.jobTitle || '') + '" />') +
+    '</div>' +
+    '<div style="max-width:640px;margin-top:12px;">' +
+      UI.field(t('profile_field_bio'), '<textarea id="fMyBio" class="field-input" rows="3">' + esc(profile.bio || '') + '</textarea>') +
+    '</div>' +
+    '<div style="margin-top:6px;"><button class="btn btn-primary btn-sm" id="saveMyProfileBtn">' + esc(t('save')) + '</button></div>' +
+    '<hr style="margin:26px 0;border:none;border-top:1px solid #eceef4;" />' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;max-width:640px;margin-bottom:12px;">' +
+      '<div style="font-size:14px;font-weight:800;">' + esc(t('profile_certificates_title')) + '</div>' +
+      '<button class="btn btn-secondary btn-sm" id="addMyCertBtn">' + ICON('add') + ' ' + esc(t('profile_add_certificate')) + '</button>' +
+    '</div>' +
+    '<div id="myCertList" style="max-width:640px;">' + certificatesListHtml_(certificates) + '</div>';
+
+  wireProfileTab_(content, profile, certificates);
+}
+
+// Renders each UserCertificates row as a compact card; empty-state matches the app's other
+// list-with-add-button sections (see e.g. eventDetail.js Annex tab empty state).
+function certificatesListHtml_(certificates) {
+  if (!certificates.length) return '<div class="empty-state">' + esc(t('profile_no_certificates')) + '</div>';
+  return certificates.map(function (c) {
+    var meta = [];
+    if (c.issuer) meta.push(esc(c.issuer));
+    if (c.issuedAt) meta.push(esc(t('profile_cert_issued')) + ' ' + esc(UI.fmtDate(c.issuedAt)));
+    if (c.expiresAt) meta.push(esc(t('profile_cert_expires')) + ' ' + esc(UI.fmtDate(c.expiresAt)));
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #f0f1f6;">' +
+      '<div style="min-width:0;">' +
+        '<div style="font-weight:700;font-size:13.5px;">' + esc(c.name) + '</div>' +
+        (meta.length ? '<div class="muted" style="font-size:12px;">' + meta.join(' · ') + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex:none;">' +
+        (c.fileUrl ? '<a href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">' + esc(t('profile_view_file')) + '</a>' : '') +
+        '<button class="btn btn-ghost btn-sm" data-del-cert="' + esc(c.id) + '">' + ICON('delete') + '</button>' +
+      '</div>' +
     '</div>';
+  }).join('');
+}
+
+function wireProfileTab_(content, profile, certificates) {
+  document.getElementById('changeMyPhotoBtn').onclick = function () { document.getElementById('fMyPhoto').click(); };
+  document.getElementById('fMyPhoto').onchange = async function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    try {
+      var updated = await Api.call('uploadMyProfilePhoto', {
+        fileBase64: await fileToBase64(file), fileName: file.name, mimeType: file.type
+      });
+      HululState.setSession(HululState.token, updated);
+      renderUserChip();
+      UI.toast(t('profile_photo_updated'), 'success');
+      await renderProfileTab_(content, updated);
+    } catch (err) { UI.error(err); }
+  };
+
+  document.getElementById('saveMyProfileBtn').onclick = async function () {
+    var name = document.getElementById('fMyName').value.trim();
+    if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
+    try {
+      var updated = await Api.call('updateMyProfile', {
+        name: name,
+        mobile: document.getElementById('fMyMobile').value.trim(),
+        jobTitle: document.getElementById('fMyJobTitle').value.trim(),
+        bio: document.getElementById('fMyBio').value.trim()
+      });
+      HululState.setSession(HululState.token, updated);
+      renderUserChip();
+      UI.toast(t('profile_saved'), 'success');
+      await renderProfileTab_(content, updated);
+    } catch (err) { UI.error(err); }
+  };
+
+  document.getElementById('addMyCertBtn').onclick = function () { openAddCertificateModal_(content); };
+
+  content.querySelectorAll('[data-del-cert]').forEach(function (btn) {
+    btn.onclick = async function () {
+      if (!confirm(t('profile_confirm_delete_cert'))) return;
+      try {
+        await Api.call('deleteMyCertificate', { certificateId: btn.getAttribute('data-del-cert') });
+        await renderProfileTab_(content, HululState.user);
+      } catch (err) { UI.error(err); }
+    };
+  });
+}
+
+// Mirrors openUploadLogoModal_ (organizations.js) -- same UI.openModal/UI.field/fileToBase64
+// pattern, just posting to addMyCertificate instead of uploadOrgLogo.
+function openAddCertificateModal_(content) {
+  var body =
+    UI.field(t('profile_field_cert_name'), '<input type="text" id="fCertName" class="field-input" />') +
+    UI.field(t('profile_field_cert_issuer'), '<input type="text" id="fCertIssuer" class="field-input" />') +
+    '<div class="form-row">' +
+      UI.field(t('profile_cert_issued'), '<input type="date" id="fCertIssuedAt" class="field-input" />') +
+      UI.field(t('profile_cert_expires'), '<input type="date" id="fCertExpiresAt" class="field-input" />') +
+    '</div>' +
+    UI.field(t('profile_field_cert_file'), '<input type="file" id="fCertFile" class="field-input" />');
+  UI.openModal(t('profile_add_certificate'), body, [
+    { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
+    { label: t('save'), className: 'btn-primary', onClick: async function () {
+        var name = document.getElementById('fCertName').value.trim();
+        if (!name) { UI.toast(t('toast_name_required'), 'error'); return; }
+        try {
+          var fileInput = document.getElementById('fCertFile');
+          var payload = {
+            name: name,
+            issuer: document.getElementById('fCertIssuer').value.trim(),
+            issuedAt: document.getElementById('fCertIssuedAt').value,
+            expiresAt: document.getElementById('fCertExpiresAt').value
+          };
+          if (fileInput.files[0]) {
+            payload.fileBase64 = await fileToBase64(fileInput.files[0]);
+            payload.fileName = fileInput.files[0].name;
+            payload.mimeType = fileInput.files[0].type;
+          }
+          await Api.call('addMyCertificate', payload);
+          UI.closeModal();
+          await renderProfileTab_(content, HululState.user);
+        } catch (err) { UI.error(err); }
+      } }
+  ]);
 }
 
 /* ---------------- Appearance (Language + Theme) ---------------- */

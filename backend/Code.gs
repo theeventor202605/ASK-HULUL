@@ -83,6 +83,12 @@ var ROUTES = {
   getMyOrg: function (u) { return getMyOrg(u); },
   getEventBrandingLogos: function (u, p) { return getEventBrandingLogos(u, p); },
   uploadOrgLogo: function (u, p) { return uploadOrgLogo(u, p); },
+  // My Profile (Accounts.gs) -- self-service only, see that section's own header comment.
+  getMyProfile: function (u, p) { return getMyProfile(u); },
+  updateMyProfile: function (u, p) { return updateMyProfile(u, p); },
+  uploadMyProfilePhoto: function (u, p) { return uploadMyProfilePhoto(u, p); },
+  addMyCertificate: function (u, p) { return addMyCertificate(u, p); },
+  deleteMyCertificate: function (u, p) { return deleteMyCertificate(u, p); },
   setOrgPhotoProperties: function (u, p) { return setOrgPhotoProperties(u, p); },
   getOrgLabels: function (u, p) { return getOrgLabels(u, p); },
   setOrgLabels: function (u, p) { return setOrgLabels(u, p); },

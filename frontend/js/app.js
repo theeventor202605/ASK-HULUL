@@ -346,12 +346,23 @@ function initSidebarCollapse_() {
   applySidebarCollapsed_(collapsed);
 }
 
+// REQ: "This should live in settings and top left user info" -- the rich profile (photo, mobile,
+// email, certificates: see renderProfileTab_, settings.js) also surfaces here as a photo avatar,
+// and the whole chip becomes a click-through into Settings > Profile (the .user-chip{cursor:pointer}
+// CSS already implied this was intended, but nothing wired it until now).
 function renderUserChip() {
   var u = HululState.user;
   if (!u) return;
-  document.getElementById('userAvatar').textContent = (u.name || '?').slice(0, 1).toUpperCase();
+  var avatar = document.getElementById('userAvatar');
+  var fallbackLetter = (u.name || '?').slice(0, 1).toUpperCase();
+  if (u.photoUrl) {
+    avatar.innerHTML = '<img src="' + esc(u.photoUrl) + '" alt="" onerror="this.remove();this.parentNode.textContent=' + JSON.stringify(fallbackLetter) + ';" />';
+  } else {
+    avatar.textContent = fallbackLetter;
+  }
   document.getElementById('userChipName').textContent = u.name;
   document.getElementById('userChipRole').textContent = u.role;
+  document.getElementById('userMenuBtn').onclick = function () { window.location.hash = '#/settings?tab=profile'; };
 }
 
 async function doLogout() {

@@ -304,9 +304,6 @@ textarea.field-input{ resize:vertical; min-height:64px; }
 .nav-group-items{ display:flex; flex-direction:column; gap:2px; }
 .nav-group-items.collapsed{ display:none; }
 .nav-item.nav-subitem{ padding-inline-start:22px; }
-.sidebar-footer{ padding-top:10px; border-top:1px solid var(--sidebar-border); margin-top:8px; }
-.sidebar-footer .lang-toggle-btn{ color:var(--sidebar-text); border-color:var(--sidebar-border); width:100%; }
-
 /* Mobile-only tap-to-close scrim behind the open sidebar drawer -- shown/hidden via app.js's
    applySidebarCollapsed_ (adds/removes .hidden), never shown on desktop since collapsing there
    shrinks the sidebar's own width instead of overlaying it. z-index 45: above ordinary page
@@ -325,11 +322,20 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    from this font-size instead. Bumped in step with that same ~20% factor. */
 .icon-btn{ position:relative; background:transparent; border:1px solid var(--border); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:18px; }
 .icon-btn:hover{ background:var(--surface); }
+/* REQ: "move AR/EN button to top bar." #langToggleApp (index.html) reuses the shared .lang-toggle-btn
+   class (also used by the pre-auth #langToggleLogin button and Settings > Appearance's #settingsLangBtn),
+   whose base rule has margin-top:18px meant for sitting alone below the login form -- that would knock
+   it out of vertical alignment with the .icon-btn circles it now sits beside, so cancel it here. */
+.topbar-actions .lang-toggle-btn{ margin-top:0; }
 .notif-badge{ position:absolute; top:-4px; inset-inline-end:-4px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
   border-radius:999px; min-width:16px; height:16px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
 .user-chip{ display:flex; align-items:center; gap:10px; cursor:pointer; }
 .avatar{ width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#7c3aed); color:#fff;
-  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; overflow:hidden; }
+/* REQ (rich user profile): topbar chip + Settings > Profile avatar both render a real photo
+   (u.photoUrl) inside the same circular .avatar frame when one is set -- see renderUserChip()
+   (app.js) and renderProfileTab_ (settings.js). */
+.avatar img{ width:100%; height:100%; border-radius:50%; object-fit:cover; }
 .user-chip-name{ font-size:13px; font-weight:700; line-height:1.2; }
 .user-chip-role{ font-size:11px; color:var(--text-600); }
 
@@ -975,6 +981,7 @@ html[dir="rtl"] .evidence-thumb-count{ right:auto; left:3px; }
   .topbar{ padding:10px 14px; gap:8px; }
   .org-logo{ display:none; }
   .user-chip-text{ display:none; }
+  .topbar-actions .lang-toggle-btn{ padding:6px 10px; font-size:11px; }
 }
 
 /* ---------- Support: raise-a-ticket capture overlay (js/views/support.js) ----------

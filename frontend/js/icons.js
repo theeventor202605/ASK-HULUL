@@ -297,6 +297,9 @@ window.ICON_DEFAULTS = {
   deactivate: LUCIDE_ICONS['ban'],
   activate: LUCIDE_ICONS['circle-check'],
   add_account: LUCIDE_ICONS['user-plus'],
+  // REQ (Settings > Profile): "Add Certificate" button on the rich user-profile tab (renderProfileTab_,
+  // settings.js) -- a plain generic "add" glyph, distinct from add_account's person-specific icon.
+  add: LUCIDE_ICONS['plus'],
   remove_from_project: LUCIDE_ICONS['folder-minus'],
   location_pin: LUCIDE_ICONS['map-pin'],
   satellite_toggle: LUCIDE_ICONS['satellite'],
