@@ -181,8 +181,8 @@ function listMyTodoItems(user) {
   var myAttendance = {};
   findWhere('MeetingAttendance', function (a) { return a.userId === user.id; }).forEach(function (a) { myAttendance[a.meetingId] = a; });
   getAll('Meetings').filter(function (m) { return m.status !== 'Deleted'; }).forEach(function (m) {
-    var to = JSON.parse(m.toJson || '[]') || [];
-    var cc = JSON.parse(m.ccJson || '[]') || [];
+    var to = meetingRecipientIdsFromJson_(m.toJson);
+    var cc = meetingRecipientIdsFromJson_(m.ccJson);
     if (to.indexOf(user.id) === -1 && cc.indexOf(user.id) === -1) return;
     var ev = eventById[m.eventId] || getById('Events', m.eventId);
     var evName = ev ? ev.name : m.eventId;

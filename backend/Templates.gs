@@ -1122,6 +1122,26 @@ function meetingRecipientIds_(rawIds) {
   return out;
 }
 
+// BUG FIX (reported: opening the To-Do Inbox threw "Unexpected token 'U', \"USR-0007\" is not
+// valid JSON"). Every WRITE path stores toJson/ccJson via JSON.stringify(array) (scheduleMeeting/
+// updateMeeting above), so a plain `JSON.parse(m.toJson || '[]')` should always be safe -- but a
+// handful of Meetings rows apparently ended up with the bare invitee id sitting unquoted in the
+// cell (e.g. USR-0007 instead of ["USR-0007"]), which every reader of toJson/ccJson (this file,
+// Todo.gs) crashed on identically. Same "malformed/blank JSON safely falls back" pattern as
+// findingEvidenceMeta_ (Findings.gs), except recovering the bare id as a single-element list
+// instead of discarding it, since here it's the only record of who the meeting was actually for.
+function meetingRecipientIdsFromJson_(raw) {
+  if (!raw) return [];
+  try {
+    var parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return parsed ? [String(parsed)] : [];
+  } catch (e) {
+    var id = String(raw).trim();
+    return id ? [id] : [];
+  }
+}
+
 // To and Cc are functionally identical inside HULUL's own in-app/email notification system (no
 // header-level distinction once it's just a notify_() call) -- the split on the Meeting record
 // itself is purely for the organizer's own record of who's a primary vs. cc'd invitee.
@@ -1172,8 +1192,8 @@ function updateMeeting(user, p) {
   }
   var subject = p.type !== undefined ? String(p.type || '').trim() : existing.type;
   if (!subject) throw new HululError('BAD_REQUEST', 'type/subject is required');
-  var to = p.to !== undefined ? meetingRecipientIds_(p.to) : (JSON.parse(existing.toJson || '[]') || []);
-  var cc = p.cc !== undefined ? meetingRecipientIds_(p.cc) : (JSON.parse(existing.ccJson || '[]') || []);
+  var to = p.to !== undefined ? meetingRecipientIds_(p.to) : meetingRecipientIdsFromJson_(existing.toJson);
+  var cc = p.cc !== undefined ? meetingRecipientIds_(p.cc) : meetingRecipientIdsFromJson_(existing.ccJson);
   var patch = {
     eventId: eventId, subEventId: subEventId || '', type: subject,
     scheduledAt: p.scheduledAt !== undefined ? p.scheduledAt : existing.scheduledAt,
@@ -1227,8 +1247,8 @@ function markMeetingAttended(user, p) {
   if (!p || !p.meetingId) throw new HululError('BAD_REQUEST', 'meetingId is required');
   var meeting = getById('Meetings', p.meetingId);
   if (!meeting || meeting.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
-  var to = JSON.parse(meeting.toJson || '[]') || [];
-  var cc = JSON.parse(meeting.ccJson || '[]') || [];
+  var to = meetingRecipientIdsFromJson_(meeting.toJson);
+  var cc = meetingRecipientIdsFromJson_(meeting.ccJson);
   if (to.indexOf(user.id) === -1 && cc.indexOf(user.id) === -1) {
     throw new HululError('FORBIDDEN', 'You are not invited to this meeting');
   }
