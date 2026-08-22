@@ -54,6 +54,17 @@ function listCustomRoles(user) {
   return getCustomRoles_();
 }
 
+// Any authenticated user -- same "role codes/labels aren't sensitive" reasoning as listCustomRoles
+// above, just the full built-in+custom picklist rather than custom-only. Added for the Roadmap Plans
+// item editor's To/Cc role checkboxes (RoadmapPlans.gs's scheduleMeeting/reminder action config) --
+// that page is gated to roadmapPlan.manage (SystemAdmin/GAAdmin by default), which doesn't overlap
+// ORG_ADMIN_ROLES_, so listPermissions (SystemAdmin/org-admin-only) isn't usable there even though it
+// already computes this same allRolePicklist_() internally.
+function listAllRolesPicklist(user) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  return allRolePicklist_();
+}
+
 var ROLE_CODE_RESERVED_ = { '': 1 }; // guards against an empty generated code
 
 function generateRoleCode_(label) {

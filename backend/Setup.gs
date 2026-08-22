@@ -1178,6 +1178,10 @@ function scheduledEscalationCheck() {
   runEscalationCheck(null);
   deactivateEndedEventPlaceAccounts();
   checkTemplateDeadlines();
+  // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" --
+  // fires any due-and-not-yet-fired Roadmap item automation (schedule a meeting, auto-send Readiness
+  // templates, send a reminder). See runRoadmapItemActions_, RoadmapPlans.gs.
+  runRoadmapItemActions_();
 }
 
 // One-time cleanup for REQ ("Logs can not have rejected state. Either resolved or goes back to

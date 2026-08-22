@@ -438,7 +438,21 @@ var SCHEMA = {
   // emoji/character) chosen via the same openIconPickerModal_ used by Settings > Icons, or blank to
   // keep the plain colored dot -- displayed on the Event Roadmap tab's timeline instead of a dot when
   // set (eventRoadmapHtml_, eventDetail.js).
-  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status','requiresAttachment','icon'],
+  // actionType/actionConfig appended at the end -- REQ follow-up: "connect roadmap plans items to
+  // actionable items... creates and connects to a meeting template... Automatically sends (Selected)
+  // Readiness templates... Sends notification reminder to submit the document before deadline."
+  // actionType is '' (no automation, the original behavior) | 'scheduleMeeting' | 'sendTemplates' |
+  // 'reminder'. actionConfig is a JSON-stringified, type-specific object (see
+  // validRoadmapActionInput_, RoadmapPlans.gs) -- kept as one opaque blob rather than one column per
+  // possible field (same reasoning as Meetings.toJson/ccJson) since each action type needs a
+  // different shape and nothing here is ever queried/filtered on, only read back and executed.
+  // Because RoadmapPlans/RoadmapPlanItems are a single GA-wide catalog (no orgId -- see RoadmapPlans
+  // schema comment above), an action can't reference a specific org's own data (a specific
+  // TemplateLibrary row, a specific User) -- it references portable concepts instead: role CODES
+  // (resolved against the rolled-out Event's own EMC/Inspection Company at fire time -- see
+  // roleCodesToEventUserIds_) for who a meeting/reminder goes to, and docType CODES (resolved against
+  // the Event's own Inspection Company library at fire time) for which Readiness templates to send.
+  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status','requiresAttachment','icon','actionType','actionConfig'],
   // One rolled-out, per-Event instance of a plan item -- REQ: "configure how it will rollout." Created
   // in bulk by rolloutEventRoadmap_ the moment an Event is created with a planTypeId set (or later via
   // the Roadmap tab's manual "Regenerate" action). dueAt is the fully resolved absolute instant (same
@@ -456,7 +470,20 @@ var SCHEMA = {
   // link to an external doc or another page inside HULUL itself) -- rolloutEventRoadmap_ never
   // touches these on an upsert, so re-generating the Roadmap can't silently wipe an attachment a PM
   // already attached.
-  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon'],
+  // actionType/actionConfig appended at the end -- copied down (re-synced, same convention as
+  // requiresAttachment/icon) from the source RoadmapPlanItems row at rollout; blank for an ad hoc item
+  // (the feature is scoped to plan-template items only, same reasoning as icon). actionExecutedAt is
+  // blank until runRoadmapItemActions_ (RoadmapPlans.gs, run off the same periodic trigger as the
+  // escalation engine -- see scheduledEscalationCheck, Setup.gs) actually fires the action once dueAt
+  // has passed; it's deliberately a SEPARATE concept from status/completedAt (the PM's own Done
+  // checkbox) -- an automated action firing doesn't itself mark the item Done, so a
+  // requiresAttachment item with an action still needs a PM's attachment before it's considered
+  // finished, and a PM can always tell "did the automation actually run" apart from "did I check this
+  // off". actionResult is a short human-readable outcome ("Meeting scheduled: ...", "3 template(s)
+  // sent", "Reminder sent to 2 recipient(s)") OR, while actionExecutedAt is still blank, the reason
+  // it hasn't fired yet ("Waiting for a documents deadline to be set") -- surfaced on the Roadmap tab
+  // so a PM isn't left guessing why nothing happened.
+  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon','actionType','actionConfig','actionExecutedAt','actionResult'],
   // REQ (Dashboard): "add another tab to show venue attendance -- first time inspector or user ...
   // attended venue must be inside boundary or no more than 5 meters outside venue boundaries. also
   // the same for last date time user left venue boundaries." One row per (userId, venueId) pair,

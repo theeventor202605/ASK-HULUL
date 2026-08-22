@@ -4538,7 +4538,13 @@ function roadmapChecklistHtml_(items, event, canManage) {
         // attachment or link to report in the system is provided." -- surfaces the current state
         // (has one / still required / not applicable) so a PM can see what's blocking a checkbox
         // before they even click it, see roadmapItemAttachmentCellHtml_ below.
-        { key: 'attachmentUrl', label: t('roadmap_attachment_col'), sortable: false, exportable: false, render: r => roadmapItemAttachmentCellHtml_(r) }
+        { key: 'attachmentUrl', label: t('roadmap_attachment_col'), sortable: false, exportable: false, render: r => roadmapItemAttachmentCellHtml_(r) },
+        // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" --
+        // whichever automation (if any) is configured on this item, and whether it's already fired
+        // (green, with the outcome) or is still waiting its turn / blocked on something (amber, with
+        // the reason -- see runRoadmapItemActions_, RoadmapPlans.gs, for what actionResult holds
+        // while actionExecutedAt is still blank).
+        { key: 'actionType', label: t('roadmap_action_col'), sortable: false, exportable: false, render: r => roadmapItemActionCellHtml_(r) }
       ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r =>
           UI.actionsCell(
             '<button type="button" class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-item="' + esc(r.id) + '">' + ICON('edit') + '</button>' +
@@ -4585,6 +4591,28 @@ function roadmapItemPlannedDateCellHtml_(item) {
 function roadmapItemActualDateCellHtml_(item) {
   if (item.status !== 'Done' || !item.completedAt) return '<span class="muted">—</span>';
   return '<span class="roadmap-item-date actual">' + esc(UI.fmtDate(item.completedAt)) + '</span>';
+}
+
+// Duplicated (not imported) from roadmapPlans.js's own ROADMAP_ACTION_TYPE_LABELS_ -- same "no
+// shared-module system between frontend files, so a tiny label map is just duplicated" convention
+// MEETING_TYPES already uses between Templates.gs and meetings.js; this file loads BEFORE
+// roadmapPlans.js (see index.html) so it can't reference that one directly anyway.
+var ROADMAP_TAB_ACTION_LABELS_ = {
+  scheduleMeeting: 'roadmap_action_schedule_meeting', sendTemplates: 'roadmap_action_send_templates', reminder: 'roadmap_action_reminder'
+};
+
+// REQ follow-up: "connect roadmap plans items to actionable items or items with date time" -- shows
+// which automation (if any) is configured, and its current outcome: already fired (green badge, the
+// actionResult text -- "Meeting scheduled: ...", "3 template(s) sent", "Reminder sent to 2
+// recipient(s)"), still waiting/blocked (amber badge, whatever reason runRoadmapItemActions_ last
+// recorded -- e.g. "Waiting for a documents deadline to be set"), or nothing configured at all (—).
+function roadmapItemActionCellHtml_(item) {
+  if (!item.actionType) return '<span class="muted">—</span>';
+  var label = esc(t(ROADMAP_TAB_ACTION_LABELS_[item.actionType] || item.actionType));
+  if (item.actionExecutedAt) {
+    return '<span class="badge badge-low" title="' + esc(item.actionResult || '') + '">' + ICON('check') + ' ' + label + '</span>';
+  }
+  return '<span class="badge badge-medium" title="' + esc(item.actionResult || t('roadmap_action_waiting_hint')) + '">' + label + '</span>';
 }
 
 // REQ: "allow to choose whether an attachment is required, if attachment is requirement check will

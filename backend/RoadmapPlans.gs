@@ -32,9 +32,19 @@ function getRoadmapPlanItems_(planId) {
         offsetSign: it.offsetSign, offsetWeeks: Number(it.offsetWeeks) || 0,
         offsetDays: Number(it.offsetDays) || 0, offsetHours: Number(it.offsetHours) || 0,
         requiresAttachment: it.requiresAttachment === true || it.requiresAttachment === 'true',
-        icon: it.icon || ''
+        icon: it.icon || '',
+        actionType: it.actionType || '', actionConfig: parseRoadmapActionConfig_(it.actionConfig)
       };
     });
+}
+
+// Safe parse -- actionConfig is only ever written by validRoadmapActionInput_ below, but guarded the
+// same way every other JSON-in-a-cell field in this app is (see meetingRecipientIdsFromJson_,
+// Templates.gs) so a hand-edited/blank cell can never crash a read.
+function parseRoadmapActionConfig_(raw) {
+  if (!raw) return {};
+  try { var parsed = JSON.parse(raw); return (parsed && typeof parsed === 'object') ? parsed : {}; }
+  catch (e) { return {}; }
 }
 
 // Every active plan template (id/name only -- used by the Create Event "Plan Type" dropdown and the
@@ -92,6 +102,58 @@ function deleteRoadmapPlan(user, p) {
 var ROADMAP_ANCHOR_TYPES_ = ['eventStart', 'eventEnd', 'item'];
 var ROADMAP_OFFSET_SIGNS_ = ['before', 'after'];
 
+// REQ follow-up: "connect roadmap plans items to actionable items or items with date time" -- '' is
+// the original, purely-informational behavior (nothing fires when the item's due date arrives, a PM
+// just sees it on the checklist). See the RoadmapPlanItems schema comment (Utils.gs) for why these
+// reference role CODES and docType CODES rather than specific Users/TemplateLibrary rows.
+var ROADMAP_ACTION_TYPES_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder'];
+
+// Cleans a raw role-code array down to real, de-duplicated, currently-valid role codes (built-in or
+// active custom) -- same "silently drop anything bad instead of hard-failing" posture as
+// meetingRecipientIds_ (Templates.gs), since a role retired after a plan item was configured to use
+// it shouldn't block every future save of that item.
+function validRoadmapRoleList_(raw) {
+  if (!Array.isArray(raw)) return [];
+  var valid = {}; allRoleCodes_().forEach(function (r) { valid[r] = true; });
+  var seen = {}, out = [];
+  raw.forEach(function (r) {
+    r = String(r || '').trim();
+    if (!r || seen[r] || !valid[r]) return;
+    seen[r] = true; out.push(r);
+  });
+  return out;
+}
+
+// Validates actionType + builds the type-specific actionConfig object, returned pre-serialized
+// (actionConfig: a JSON string, '' when actionType is '') ready to spread straight into the
+// RoadmapPlanItems insert/update row -- mirrors how validRoadmapItemInput_ already hands back
+// ready-to-store fields for everything else on the item.
+function validRoadmapActionInput_(p) {
+  var actionType = (p && p.actionType) || '';
+  if (ROADMAP_ACTION_TYPES_.indexOf(actionType) === -1) throw new HululError('BAD_REQUEST', 'Invalid actionType');
+  if (!actionType) return { actionType: '', actionConfig: '' };
+  var raw = (p && p.actionConfig) || {};
+  var config;
+  if (actionType === 'scheduleMeeting') {
+    // subject falls back to the item's own name at fire time if left blank here (see
+    // autoScheduleRoadmapMeeting_) -- not defaulted here so an edit that only changes the item's name
+    // later still flows through to a not-yet-fired meeting's subject.
+    config = {
+      subject: String(raw.subject || '').trim().slice(0, 120),
+      toRoles: validRoadmapRoleList_(raw.toRoles), ccRoles: validRoadmapRoleList_(raw.ccRoles)
+    };
+  } else if (actionType === 'sendTemplates') {
+    // Empty docTypes means "every Readiness template currently in the event's Inspection Company
+    // library" -- see autoSendRoadmapTemplates_. isValidDocTypeCode_ (Templates.gs) is the same
+    // format check createLibraryTemplate/updateLibraryTemplate already apply to a library entry's own
+    // docType, so anything selectable here is guaranteed to be able to actually match one.
+    config = { docTypes: (Array.isArray(raw.docTypes) ? raw.docTypes : []).filter(function (d) { return isValidDocTypeCode_(d); }) };
+  } else { // reminder
+    config = { toRoles: validRoadmapRoleList_(raw.toRoles), message: String(raw.message || '').trim().slice(0, 500) };
+  }
+  return { actionType: actionType, actionConfig: JSON.stringify(config) };
+}
+
 function validRoadmapItemInput_(p, planId) {
   var name = String((p && p.name) || '').trim();
   if (!name) throw new HululError('BAD_REQUEST', 'An item name is required');
@@ -110,7 +172,7 @@ function validRoadmapItemInput_(p, planId) {
   var offsetSign = (p && p.offsetSign) || 'before';
   if (ROADMAP_OFFSET_SIGNS_.indexOf(offsetSign) === -1) throw new HululError('BAD_REQUEST', 'Invalid offsetSign');
   function nonNegInt_(v) { var n = Number(v || 0); return (isNaN(n) || n < 0) ? 0 : Math.floor(n); }
-  return {
+  return Object.assign({
     name: name, anchorType: anchorType, anchorItemId: anchorItemId, offsetSign: offsetSign,
     offsetWeeks: nonNegInt_(p && p.offsetWeeks), offsetDays: nonNegInt_(p && p.offsetDays), offsetHours: nonNegInt_(p && p.offsetHours),
     // requiresAttachment (REQ: "allow to choose whether an attachment is required") -- enforced later,
@@ -121,7 +183,7 @@ function validRoadmapItemInput_(p, planId) {
     // icon's length purely as a sanity bound, not a meaningful validation.
     requiresAttachment: !!(p && p.requiresAttachment),
     icon: String((p && p.icon) || '').slice(0, 2000)
-  };
+  }, validRoadmapActionInput_(p));
 }
 
 // Always appended at the end of the plan (see comment in validRoadmapItemInput_ for why this matters
@@ -272,22 +334,28 @@ function rolloutEventRoadmap_(user, event, planId) {
     stillPresentSourceIds[entry.item.id] = true;
     var existing = existingBySourceId[entry.item.id];
     var dueAt = new Date(entry.dueMs).toISOString();
-    // requiresAttachment/icon are re-synced from the template every rollout (an admin editing the
-    // plan should apply to Events that already rolled it out too) -- but attachmentUrl/attachmentName
-    // are deliberately NOT touched here: they live only on the per-Event row, and a PM's already-
-    // provided attachment must survive a Regenerate (see EventRoadmapItems schema comment, Utils.gs).
+    // requiresAttachment/icon/actionType/actionConfig are re-synced from the template every rollout
+    // (an admin editing the plan should apply to Events that already rolled it out too) -- but
+    // attachmentUrl/attachmentName are deliberately NOT touched here: they live only on the per-Event
+    // row, and a PM's already-provided attachment must survive a Regenerate (see EventRoadmapItems
+    // schema comment, Utils.gs). actionExecutedAt/actionResult are ALSO left untouched on an existing
+    // row -- an admin tweaking, say, the meeting's To roles after it already fired shouldn't erase the
+    // record that it fired, and if the actionType itself changed, the new one just won't have a
+    // record yet (actionExecutedAt blank) so runRoadmapItemActions_ picks it up on its next sweep.
+    var actionFields = { actionType: entry.item.actionType || '', actionConfig: entry.item.actionType ? JSON.stringify(entry.item.actionConfig) : '' };
     if (existing) {
-      updateRow('EventRoadmapItems', existing.id, {
+      updateRow('EventRoadmapItems', existing.id, Object.assign({
         name: entry.item.name, dueAt: dueAt, sortOrder: entry.item.sortOrder,
         requiresAttachment: entry.item.requiresAttachment, icon: entry.item.icon
-      });
+      }, actionFields));
     } else {
-      insertRow('EventRoadmapItems', {
+      insertRow('EventRoadmapItems', Object.assign({
         id: newId('EventRoadmapItems'), eventId: event.id, planId: planId, name: entry.item.name,
         sourceItemId: entry.item.id, dueAt: dueAt, status: 'Pending', completedBy: '', completedAt: '',
         sortOrder: entry.item.sortOrder, createdBy: user.id, createdAt: nowIso_(),
-        requiresAttachment: entry.item.requiresAttachment, attachmentUrl: '', attachmentName: '', icon: entry.item.icon
-      });
+        requiresAttachment: entry.item.requiresAttachment, attachmentUrl: '', attachmentName: '', icon: entry.item.icon,
+        actionExecutedAt: '', actionResult: ''
+      }, actionFields));
     }
   });
   // A plan item removed from the template since the last rollout -- drop its stale per-Event row too.
@@ -333,7 +401,9 @@ function listEventRoadmapItems(user, p) {
         dueAt: r.dueAt, status: r.status, overdue: overdue, completedBy: r.completedBy || '', completedAt: r.completedAt || '',
         sortOrder: Number(r.sortOrder) || 0,
         requiresAttachment: r.requiresAttachment === true || r.requiresAttachment === 'true',
-        attachmentUrl: r.attachmentUrl || '', attachmentName: r.attachmentName || '', icon: r.icon || ''
+        attachmentUrl: r.attachmentUrl || '', attachmentName: r.attachmentName || '', icon: r.icon || '',
+        actionType: r.actionType || '', actionConfig: parseRoadmapActionConfig_(r.actionConfig),
+        actionExecutedAt: r.actionExecutedAt || '', actionResult: r.actionResult || ''
       };
     })
     .sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
@@ -445,4 +515,144 @@ function uploadRoadmapItemAttachment(user, p) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   audit(user.id, 'UPLOAD_ROADMAP_ITEM_ATTACHMENT', 'Events', event.id, { fileName: p.fileName || file.getName() });
   return { url: file.getUrl(), fileName: p.fileName || file.getName() };
+}
+
+// ---- Roadmap item automation (REQ follow-up: "connect roadmap plans items to actionable items or
+// items with date time" -- a plan item can, instead of just sitting on the checklist, actually DO
+// something the moment its resolved due date arrives: schedule a meeting, auto-send Readiness
+// templates, or send a reminder notification. Fired by runRoadmapItemActions_ below, run off the same
+// periodic trigger as the escalation engine (scheduledEscalationCheck, Setup.gs). --------------------
+
+// Resolves a role CODE to the individual Users it means for THIS Event. EventManager is the Event's
+// own single named field (Events.eventManagerId), not a role lookup. Everything else is looked up by
+// (role, orgId) against BOTH the Event's EMC and its Inspection Company -- a role can plausibly exist
+// at either side (e.g. a custom role), and most built-in roles only ever match one side anyway, so
+// checking both is harmless. A role that matches neither org (GAAdmin/GAUser/SystemAdmin/SupportAgent,
+// or any custom role not tied to an org type) falls back to a plain global lookup by role code alone
+// -- same "GA-wide" reasoning eventStakeholderIds_ (Notifications.gs) already applies to GA roles.
+function roleCodesToEventUserIds_(roleCodes, event) {
+  if (!roleCodes || !roleCodes.length) return [];
+  var ids = [];
+  roleCodes.forEach(function (role) {
+    if (role === ROLES.EVENT_MANAGER) { if (event.eventManagerId) ids.push(event.eventManagerId); return; }
+    var emcMatches = event.emcId ? findWhere('Users', function (u) { return u.orgId === event.emcId && u.role === role; }) : [];
+    var inspMatches = event.inspectionCoId ? findWhere('Users', function (u) { return u.orgId === event.inspectionCoId && u.role === role; }) : [];
+    var globalMatches = (!emcMatches.length && !inspMatches.length) ? findWhere('Users', function (u) { return u.role === role; }) : [];
+    emcMatches.concat(inspMatches).concat(globalMatches).forEach(function (u) { ids.push(u.id); });
+  });
+  return Array.from(new Set(ids));
+}
+
+// actionType 'scheduleMeeting' -- REQ example: "Event Kick Off Meeting: creates and connects to a
+// meeting template... with predefined To roles and Cc roles and body template." The item's own
+// resolved dueAt (already the point of this whole rollout engine -- "3 weeks before event start
+// date") IS the meeting's scheduledAt; the body auto-fills from MeetingTemplates by subject exactly
+// like the manual New Meeting form does (getMeetingTemplatesBySubject ignores its `user` argument
+// entirely, so it's safe to call with none here). createdBy: 'system', same sentinel
+// maybeAutoCreateVersion2_ (Templates.gs) already uses for a backend-initiated row nobody clicked to
+// create.
+function autoScheduleRoadmapMeeting_(event, item) {
+  var config = item.actionConfig || {};
+  var subject = String(config.subject || '').trim() || item.name;
+  var to = roleCodesToEventUserIds_(config.toRoles, event);
+  var cc = roleCodesToEventUserIds_(config.ccRoles, event);
+  var bodyBySubject = getMeetingTemplatesBySubject(null, { eventId: event.id });
+  var meeting = {
+    id: newId('Meetings'), eventId: event.id, subEventId: '', type: subject, scheduledAt: item.dueAt,
+    toJson: JSON.stringify(to), ccJson: JSON.stringify(cc), meetingLink: '',
+    notes: bodyBySubject[subject.toLowerCase()] || '', status: 'Scheduled',
+    createdBy: 'system', createdAt: nowIso_(), updatedBy: '', updatedAt: ''
+  };
+  insertRow('Meetings', meeting);
+  audit('system', 'AUTO_SCHEDULE_ROADMAP_MEETING', 'Meetings', meeting.id, { eventId: event.id, roadmapItemId: item.id, subject: subject });
+  notifyMeetingRecipients_(meeting, to, cc, 'scheduled');
+  var inviteeCount = Array.from(new Set(to.concat(cc))).length;
+  return { ok: true, message: 'Meeting scheduled: ' + subject + (inviteeCount ? ' (' + inviteeCount + ' invitee(s))' : ' (no matching recipients found)') };
+}
+
+// actionType 'sendTemplates' -- REQ example: "EMC Download Ops Docs: Automatically sends (Selected)
+// Readiness templates." docTypes (empty = every template currently in the library) is matched against
+// the Event's OWN Inspection Company library at fire time -- see the RoadmapPlanItems schema comment
+// (Utils.gs) for why this can't reference specific TemplateLibrary rows the way a manual Send does.
+// Mirrors sendTemplates (Templates.gs) exactly (independent Drive copy via copyTemplateDriveFile_,
+// same locked-in docType/versionNumber snapshot) minus the requirePermission/audit-as-a-user framing,
+// since there's no acting user here. Deliberately non-throwing: every "can't send yet" case returns
+// {ok:false, message} so runRoadmapItemActions_ just leaves actionExecutedAt blank and retries on the
+// next sweep once the blocking condition clears (e.g. a PM finally sets the documents deadline).
+function autoSendRoadmapTemplates_(event, item) {
+  if (!event.inspectionCoId) return { ok: false, message: 'Waiting for an Inspection Company to be assigned to this event' };
+  if (!event.templatesDeadlineAt) return { ok: false, message: 'Waiting for a documents deadline to be set before templates can be sent' };
+  if (isTemplatesLocked_(event.id)) return { ok: false, message: 'Documents are locked -- waiting for a new version to open' };
+  var config = item.actionConfig || {};
+  var docTypes = Array.isArray(config.docTypes) ? config.docTypes : [];
+  var library = findWhere('TemplateLibrary', function (l) { return l.orgId === event.inspectionCoId; });
+  if (docTypes.length) library = library.filter(function (l) { return docTypes.indexOf(l.docType) !== -1; });
+  if (!library.length) return { ok: false, message: 'No matching Readiness template(s) found yet in the library' };
+  var alreadySentIds = {};
+  findWhere('Templates', function (t) { return t.eventId === event.id; }).forEach(function (t) { if (t.libraryTemplateId) alreadySentIds[t.libraryTemplateId] = true; });
+  var toSend = library.filter(function (l) { return !alreadySentIds[l.id]; });
+  if (!toSend.length) return { ok: true, message: 'Already sent -- nothing new to send' };
+  var sentCount = 0;
+  toSend.forEach(function (lib) {
+    var fileCopy = copyTemplateDriveFile_(lib.fileUrl, event.inspectionCoId, lib.fileName);
+    insertRow('Templates', {
+      id: newId('Templates'), eventId: event.id, libraryTemplateId: lib.id, name: lib.name, status: 'Sent',
+      fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName, mimeType: lib.mimeType, sentBy: 'system', sentAt: nowIso_(),
+      uploadedBy: '', updatedAt: nowIso_(), reviewedBy: '', reviewedAt: '', reviewReason: '', createdAt: nowIso_(),
+      docType: lib.docType || '', versionNumber: currentTemplateVersionNumber_(event.id)
+    });
+    sentCount++;
+  });
+  audit('system', 'AUTO_SEND_ROADMAP_TEMPLATES', 'Events', event.id, { roadmapItemId: item.id, count: sentCount });
+  if (event.eventManagerId) {
+    notify_(event.eventManagerId, 'TEMPLATES_SENT', sentCount + ' readiness template(s) sent for ' + event.name, 'Events', event.id, event.id);
+  }
+  return { ok: true, message: sentCount + ' template(s) sent' };
+}
+
+// actionType 'reminder' -- REQ example: "Doc. Sub. Reminder: Sends notification reminder to submit
+// the document before deadline." Defaults to the Event Manager (the role that actually uploads/
+// submits documents -- see templateUploaderRoles_, Templates.gs) if no toRoles were configured, so a
+// reminder item still does SOMETHING useful out of the box rather than silently going nowhere.
+function autoSendRoadmapReminder_(event, item) {
+  var config = item.actionConfig || {};
+  var toRoles = (Array.isArray(config.toRoles) && config.toRoles.length) ? config.toRoles : [ROLES.EVENT_MANAGER];
+  var ids = roleCodesToEventUserIds_(toRoles, event);
+  if (!ids.length) return { ok: false, message: 'No recipients found yet for the configured role(s)' };
+  var deadlineNote = event.templatesDeadlineAt
+    ? ' Deadline: ' + Utilities.formatDate(new Date(event.templatesDeadlineAt), Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm') + '.'
+    : '';
+  var message = String(config.message || '').trim() || ('Reminder: ' + item.name + ' -- ' + event.name + '.' + deadlineNote);
+  notify_(ids, 'ROADMAP_REMINDER', message, 'EventRoadmapItems', item.id, event.id);
+  audit('system', 'AUTO_SEND_ROADMAP_REMINDER', 'EventRoadmapItems', item.id, { eventId: event.id, recipientCount: ids.length });
+  return { ok: true, message: 'Reminder sent to ' + ids.length + ' recipient(s)' };
+}
+
+// The sweep itself -- called from scheduledEscalationCheck (Setup.gs), same as checkTemplateDeadlines/
+// deactivateEndedEventPlaceAccounts. Only ever looks at rows with actionType set AND actionExecutedAt
+// still blank AND a dueAt that's already passed -- so an item fires exactly once, whenever the sweep
+// next runs after its due date (default every 5 min, see escalationCheckIntervalMinutes_). A failed/
+// not-yet-possible attempt leaves actionExecutedAt blank (so it's retried next sweep) but still writes
+// actionResult, so a PM looking at the Roadmap tab isn't left guessing why nothing happened yet.
+function runRoadmapItemActions_() {
+  var now = Date.now();
+  var pending = findWhere('EventRoadmapItems', function (r) {
+    return r.actionType && !r.actionExecutedAt && r.dueAt && new Date(r.dueAt).getTime() <= now;
+  });
+  pending.forEach(function (row) {
+    var event = getById('Events', row.eventId);
+    if (!event) return;
+    var item = Object.assign({}, row, { actionConfig: parseRoadmapActionConfig_(row.actionConfig) });
+    var result;
+    try {
+      if (item.actionType === 'scheduleMeeting') result = autoScheduleRoadmapMeeting_(event, item);
+      else if (item.actionType === 'sendTemplates') result = autoSendRoadmapTemplates_(event, item);
+      else if (item.actionType === 'reminder') result = autoSendRoadmapReminder_(event, item);
+      else return;
+    } catch (e) {
+      result = { ok: false, message: 'Failed: ' + (e && e.message ? e.message : String(e)) };
+    }
+    if (result.ok) updateRow('EventRoadmapItems', row.id, { actionExecutedAt: nowIso_(), actionResult: result.message });
+    else updateRow('EventRoadmapItems', row.id, { actionResult: result.message });
+  });
 }

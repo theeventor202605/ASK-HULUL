@@ -116,6 +116,7 @@ var ROUTES = {
   updateTranslation: function (u, p) { return updateTranslation(u, p); },
   // Admin-defined custom roles (Roles.gs) -- "create a new role" without a code deploy.
   listCustomRoles: function (u, p) { return listCustomRoles(u); },
+  listAllRolesPicklist: function (u, p) { return listAllRolesPicklist(u); },
   createRole: function (u, p) { return createRole(u, p); },
   updateRole: function (u, p) { return updateRole(u, p); },
   deleteRole: function (u, p) { return deleteRole(u, p); },
