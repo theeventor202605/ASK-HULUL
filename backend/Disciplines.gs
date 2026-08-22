@@ -4,6 +4,12 @@
  */
 
 function listDisciplines() {
+  // Lazy self-heal, same "fix on next read" pattern as processTemplateDeadlineTransition_ (Templates.gs):
+  // Disciplines rows added by copying a Sheet row instead of using "+ New discipline" keep the copy's
+  // id, which corrupts every id-keyed lookup (including the New Log form's Category -> Sub-Category
+  // cascade) until fixed. Rather than rely on someone remembering to re-run fixDuplicateDisciplineIds()
+  // from the Apps Script editor, check for and correct duplicates on every read.
+  dedupeDisciplineIds_();
   return getAll('Disciplines');
 }
 

@@ -110,26 +110,26 @@ function repairShiftedInspectionScheduleTimes() {
   return { fixed: fixed };
 }
 
-// One-time fix for REQ bug report "I checked Food & Beverage in Apply disciplines, but Construction
-// Handover got saved instead": the Disciplines sheet had rows with duplicate ids (DIS-0002 shared by
-// Health & Safety and Emergency & Response, DIS-0003 by Fire Safety and Universal Accessibility,
-// DIS-0004 by Food & Beverage and Construction Handover) -- almost certainly from copying a row
-// directly in the Google Sheet instead of using the "+ New discipline" button, which left the copy's
-// id column unchanged. Every id-based lookup (disciplinesById in the frontend, getById on the
-// backend) just returns whichever row was read last for that id, so the duplicate's name silently
-// won even though the *stored* id on any participant/finding was, correctly, whichever discipline
-// was actually meant. This keeps the FIRST row at each duplicated id untouched (so nothing already
-// pointing at DIS-0002/0003/0004 changes what it resolves to) and reassigns every later row sharing
-// that id a fresh, unique id via newId() -- those disciplines simply start with zero assignments
-// going forward, since there was never a reliable way to tell whether a historical record meant the
-// first discipline or the duplicate (they were, at the data level, indistinguishable). Run once from
-// the Apps Script editor's function dropdown after redeploying -- safe to re-run, matches nothing
-// once every id is unique. Going forward, always add disciplines via "+ New discipline", never by
+// REQ bug report (recurred a second time with a different pair of ids -- DIS-0006 shared by
+// Transport & Traffic and Universal Accessibility, DIS-0007 by Security Operations and Construction
+// Handover -- same root cause as the first report below): the Disciplines sheet ends up with rows
+// sharing one id, almost certainly from copying a row directly in the Google Sheet instead of using
+// the "+ New discipline" button, which leaves the copy's id column unchanged. Every id-based lookup
+// (disciplinesById in the frontend, getById on the backend, the New Log form's Category ->
+// Sub-Category cascade) just returns whichever row matches that id, so picking one discipline can
+// silently resolve to a completely unrelated one that happens to share its id (e.g. "Transport &
+// Traffic" showing Universal Accessibility's own sub-categories). This keeps the FIRST row at each
+// duplicated id untouched (so nothing already pointing at that id changes what it resolves to) and
+// reassigns every later row sharing that id a fresh, unique id via newId() -- those disciplines
+// simply start with zero assignments going forward, since there was never a reliable way to tell
+// whether a historical record meant the first discipline or the duplicate (they were, at the data
+// level, indistinguishable). Going forward, always add disciplines via "+ New discipline", never by
 // copying a row in the Sheet -- that's what guarantees a unique id.
-function fixDuplicateDisciplineIds() {
-  // Deliberately NOT using getById/updateRow here -- those look a row up BY id, which is exactly
-  // what's ambiguous when two rows share one. Working on sheet row numbers directly instead, so each
-  // duplicate is addressed individually regardless of what its id column currently says.
+//
+// Deliberately NOT using getById/updateRow here -- those look a row up BY id, which is exactly what's
+// ambiguous when two rows share one. Working on sheet row numbers directly instead, so each duplicate
+// is addressed individually regardless of what its id column currently says.
+function dedupeDisciplineIds_() {
   var sh = sheet_('Disciplines');
   var headers = headerMap_('Disciplines');
   var idCol = headers.indexOf('id'), nameCol = headers.indexOf('name'), codeCol = headers.indexOf('code');
@@ -151,10 +151,20 @@ function fixDuplicateDisciplineIds() {
   }
   if (fixed.length) invalidateCache_('Disciplines'); // direct sheet write above bypasses updateRow's own invalidation
   fixed.forEach(function (f) {
-    Logger.log('fixDuplicateDisciplineIds: "' + f.name + '" (' + f.code + ') ' + f.oldId + ' -> ' + f.newId);
+    Logger.log('dedupeDisciplineIds_: "' + f.name + '" (' + f.code + ') ' + f.oldId + ' -> ' + f.newId);
   });
-  if (!fixed.length) Logger.log('fixDuplicateDisciplineIds: no duplicate ids found.');
   return { fixed: fixed };
+}
+
+// Manual re-run from the Apps Script editor's function dropdown, kept for parity with the first
+// report's fix -- safe to re-run, matches nothing once every id is unique. listDisciplines
+// (Disciplines.gs) now also runs this lazily on every read, same "self-heals on next page load"
+// pattern processTemplateDeadlineTransition_ (Templates.gs) already uses, so this manual entry point
+// is a fallback rather than the only way to fix it going forward.
+function fixDuplicateDisciplineIds() {
+  var result = dedupeDisciplineIds_();
+  if (!result.fixed.length) Logger.log('fixDuplicateDisciplineIds: no duplicate ids found.');
+  return result;
 }
 
 // One-time reconciliation (REQ follow-up bug report: "Transport & Traffic is showing as Traffic &
