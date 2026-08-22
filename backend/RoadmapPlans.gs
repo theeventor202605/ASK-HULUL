@@ -538,13 +538,22 @@ function roleCodesToEventUserIds_(roleCodes, event) {
 function autoScheduleRoadmapMeeting_(event, item) {
   var config = item.actionConfig || {};
   var subject = String(config.subject || '').trim() || item.name;
-  var to = roleCodesToEventUserIds_(config.toRoles, event);
-  var cc = roleCodesToEventUserIds_(config.ccRoles, event);
-  var bodyBySubject = getMeetingTemplatesBySubject(null, { eventId: event.id });
+  // getMeetingTemplatesBySubject (Templates.gs) returns { body, toRoles, ccRoles } per subject (see
+  // REQ follow-up "assign default attendees roles in the To and Cc" -- MeetingTemplates schema
+  // comment, Utils.gs). REQ: "creates and connects to a meeting template ... with predefined To roles
+  // and Cc roles and body template" -- the matched template supplies the body always, and supplies
+  // its own default roles as a fallback whenever this roadmap item didn't pin down its own toRoles/
+  // ccRoles (an admin who explicitly checked roles on the roadmap item itself still wins).
+  var tplBySubject = getMeetingTemplatesBySubject(null, { eventId: event.id });
+  var matchedTpl = tplBySubject[subject.toLowerCase()] || {};
+  var toRoles = (config.toRoles && config.toRoles.length) ? config.toRoles : matchedTpl.toRoles;
+  var ccRoles = (config.ccRoles && config.ccRoles.length) ? config.ccRoles : matchedTpl.ccRoles;
+  var to = roleCodesToEventUserIds_(toRoles, event);
+  var cc = roleCodesToEventUserIds_(ccRoles, event);
   var meeting = {
     id: newId('Meetings'), eventId: event.id, subEventId: '', type: subject, scheduledAt: item.dueAt,
     toJson: JSON.stringify(to), ccJson: JSON.stringify(cc), meetingLink: '',
-    notes: bodyBySubject[subject.toLowerCase()] || '', status: 'Scheduled',
+    notes: matchedTpl.body || '', status: 'Scheduled',
     createdBy: 'system', createdAt: nowIso_(), updatedBy: '', updatedAt: ''
   };
   insertRow('Meetings', meeting);

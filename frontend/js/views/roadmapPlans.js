@@ -217,6 +217,34 @@ var ROADMAP_DOCTYPE_SUGGESTIONS_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC'];
 // roleChecksHtml_/readRoleChecks_ (shared To/Cc role checkbox grid) now live in ui.js -- also used by
 // meetingTemplates.js's default To/Cc roles editor.
 
+// REQ follow-up: "'Event Kick Off Meeting' with actionType Schedule a meeting dropdown should allow
+// to select meeting template." Meeting Templates are org-scoped (one catalog per Inspection Company),
+// but a Roadmap Plan has no org of its own -- it's a single GA-wide catalog rolled out to every event
+// regardless of which Inspection Company ends up assigned -- so this can't fetch and list one
+// particular org's saved MeetingTemplates rows here. What IS portable across every org is the
+// built-in MEETING_TYPES subject list itself (global var from meetings.js, loaded earlier in
+// index.html): every org's Meeting Templates page always has exactly one row per built-in subject
+// (real content if an admin filled it in, otherwise a blank placeholder -- see meetingTemplates.js),
+// so picking a subject here really is picking "which template" -- same dropdown-plus-"Other" pattern
+// meetings.js's own subjectFieldHtml_ uses for the manual New Meeting form, just with its own ids so
+// the two never collide. Leaving the picklist on its blank first option preserves the original
+// free-text behavior where an empty subject falls back to the item's own name at fire time (see
+// autoScheduleRoadmapMeeting_, RoadmapPlans.gs). At fire time the chosen subject is matched (case-
+// insensitively) against whichever Inspection Company the actual Event uses, via
+// getMeetingTemplatesBySubject, to pull that org's real body + default To/Cc roles.
+function roadmapActionSubjectFieldHtml_(currentSubject) {
+  var matched = currentSubject && MEETING_TYPES.indexOf(currentSubject) !== -1;
+  var typeOptions = MEETING_TYPES.map(function (mt) { return '<option value="' + esc(mt) + '"' + (mt === currentSubject ? ' selected' : '') + '>' + esc(mt) + '</option>'; }).join('');
+  return UI.field(t('roadmap_action_meeting_subject_label'),
+    '<select id="fPiActionSubjectSelect" class="field-input">' +
+      '<option value="">' + esc(t('roadmap_action_meeting_subject_placeholder')) + '</option>' +
+      typeOptions +
+      '<option value="__other__"' + (currentSubject && !matched ? ' selected' : '') + '>' + esc(t('other_free_text_option')) + '</option>' +
+    '</select>' +
+    '<input id="fPiActionSubjectOther" class="field-input" maxlength="120" placeholder="' + esc(t('roadmap_action_meeting_subject_placeholder')) + '" style="margin-top:6px;' + (matched || !currentSubject ? 'display:none;' : '') + '" value="' + esc(!matched && currentSubject ? currentSubject : '') + '" />'
+  );
+}
+
 // draftOverride: UI.openModal fully replaces #modalRoot's contents, so opening the icon picker (its
 // own modal) from inside THIS modal would destroy whatever the admin already typed here. The "Browse
 // icons" button below works around that by reading every current field into a plain object, closing
@@ -282,7 +310,7 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
       }).join('') +
     '</select>' +
     '<div id="fPiActionPanelScheduleMeeting" style="display:' + (draft.actionType === 'scheduleMeeting' ? 'block' : 'none') + ';">' +
-      UI.field(t('roadmap_action_meeting_subject_label'), '<input id="fPiActionSubject" class="field-input" maxlength="120" placeholder="' + esc(t('roadmap_action_meeting_subject_placeholder')) + '" value="' + esc(draft.actionConfig.subject || '') + '" />') +
+      roadmapActionSubjectFieldHtml_(draft.actionConfig.subject || '') +
       '<div class="field-label" style="margin-top:8px;">' + esc(t('roadmap_action_to_roles_label')) + '</div>' +
       roleChecksHtml_('fPiActionToRoles', allRoles, draft.actionConfig.toRoles) +
       '<div class="field-label" style="margin-top:8px;">' + esc(t('roadmap_action_cc_roles_label')) + '</div>' +
@@ -305,7 +333,9 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
 
   function readActionConfigFromForm_(actionType) {
     if (actionType === 'scheduleMeeting') {
-      return { subject: document.getElementById('fPiActionSubject').value, toRoles: readRoleChecks_('fPiActionToRoles'), ccRoles: readRoleChecks_('fPiActionCcRoles') };
+      var subjSel = document.getElementById('fPiActionSubjectSelect').value;
+      var subject = subjSel === '__other__' ? document.getElementById('fPiActionSubjectOther').value.trim() : subjSel;
+      return { subject: subject, toRoles: readRoleChecks_('fPiActionToRoles'), ccRoles: readRoleChecks_('fPiActionCcRoles') };
     }
     if (actionType === 'sendTemplates') {
       var checked = Array.from(document.querySelectorAll('.roadmap-doctype-cb:checked')).map(function (cb) { return cb.value; });
@@ -358,6 +388,14 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     document.getElementById('fPiActionPanelScheduleMeeting').style.display = val === 'scheduleMeeting' ? 'block' : 'none';
     document.getElementById('fPiActionPanelSendTemplates').style.display = val === 'sendTemplates' ? 'block' : 'none';
     document.getElementById('fPiActionPanelReminder').style.display = val === 'reminder' ? 'block' : 'none';
+  };
+
+  // Subject dropdown's own show/hide-Other toggle (panel is always in the DOM regardless of which
+  // action type is currently selected, so this can be wired unconditionally).
+  document.getElementById('fPiActionSubjectSelect').onchange = function () {
+    var other = document.getElementById('fPiActionSubjectOther');
+    other.style.display = this.value === '__other__' ? '' : 'none';
+    if (this.value === '__other__') other.focus();
   };
 
   document.getElementById('fPiBrowseIconBtn').onclick = async function () {
