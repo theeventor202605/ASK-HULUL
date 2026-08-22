@@ -47,8 +47,10 @@ async function renderDisciplinesAdmin() {
     ], disciplines, {}) + '</div></div>';
 
   document.getElementById('newDiscBtn').onclick = function () {
-    var body = UI.field(t('col_name'), '<input id="fDiscName" class="field-input" placeholder="Crowd Safety" />') +
-      UI.field(t('col_name_ar'), '<input id="fDiscNameAr" class="field-input" dir="rtl" placeholder="السلامة العامة" />') +
+    // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+    // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+    var body = UI.bilingualField(t('col_name'), '<input id="fDiscName" class="field-input" placeholder="Crowd Safety" />',
+        t('col_name_ar'), '<input id="fDiscNameAr" class="field-input" dir="rtl" placeholder="السلامة العامة" />') +
       UI.field(t('col_code'), '<input id="fDiscCode" class="field-input" placeholder="CSM" maxlength="3" />') +
       UI.field(t('col_cat_ref'), '<input id="fDiscCatRef" type="number" min="1" step="1" class="field-input" placeholder="1" />' +
         '<div class="muted" style="font-size:11px;margin-top:4px;">' + esc(t('cat_ref_hint')) + '</div>');
@@ -72,8 +74,8 @@ async function renderDisciplinesAdmin() {
     btn.onclick = function () {
       var disc = disciplines.filter(function (d) { return d.id === btn.getAttribute('data-edit-disc'); })[0];
       if (!disc) return;
-      var body = UI.field(t('col_name'), '<input id="fDiscName" class="field-input" value="' + esc(disc.name) + '" />') +
-        UI.field(t('col_name_ar'), '<input id="fDiscNameAr" class="field-input" dir="rtl" value="' + esc(disc.nameAr || '') + '" placeholder="السلامة العامة" />') +
+      var body = UI.bilingualField(t('col_name'), '<input id="fDiscName" class="field-input" value="' + esc(disc.name) + '" />',
+          t('col_name_ar'), '<input id="fDiscNameAr" class="field-input" dir="rtl" value="' + esc(disc.nameAr || '') + '" placeholder="السلامة العامة" />') +
         UI.field(t('col_code'), '<input id="fDiscCode" class="field-input" value="' + esc(disc.code) + '" maxlength="3" />') +
         UI.field(t('col_cat_ref'), '<input id="fDiscCatRef" type="number" min="1" step="1" class="field-input" value="' + esc(disc.catRef) + '" />' +
           '<div class="muted" style="font-size:11px;margin-top:4px;">' + esc(t('cat_ref_hint')) + '</div>');

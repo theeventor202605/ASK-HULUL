@@ -1488,8 +1488,10 @@ function renderAddPlaceCard_(zones, hasBoundary) {
       '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
-        UI.field(t('col_name'), '<input id="fPlName" class="field-input" />') +
-        UI.field(t('col_name_ar'), '<input id="fPlNameAr" class="field-input" dir="rtl" />') +
+        // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+        // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+        UI.bilingualField(t('col_name'), '<input id="fPlName" class="field-input" />',
+          t('col_name_ar'), '<input id="fPlNameAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('col_type'), '<select id="fPlType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fPl') + '</div>' +
@@ -1544,8 +1546,10 @@ function wirePlaceForm_(venue, zones, places) {
 function openEditPlaceModal_(place, zones) {
   var prefix = 'ePl';
   var body =
-    UI.field(t('col_name'), '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />') +
-    UI.field(t('col_name_ar'), '<input id="' + prefix + 'NameAr" class="field-input" dir="rtl" value="' + esc(place.nameAr || '') + '" />') +
+    // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+    // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+    UI.bilingualField(t('col_name'), '<input id="' + prefix + 'Name" class="field-input" value="' + esc(place.name) + '" />',
+      t('col_name_ar'), '<input id="' + prefix + 'NameAr" class="field-input" dir="rtl" value="' + esc(place.nameAr || '') + '" />') +
     '<div class="form-row">' +
       UI.field(t('col_type'), '<select id="' + prefix + 'Type" class="field-input">' + placeTypeOptionsHtml_(place.type) + '</select>') +
       '<div>' + zoneFieldHtml_(zones, prefix) + '</div>' +

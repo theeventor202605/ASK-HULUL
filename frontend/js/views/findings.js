@@ -634,15 +634,17 @@ async function renderNewFinding(params) {
           '<input id="fSuggestSearch" class="field-input" placeholder="' + esc(t('suggested_description_search_placeholder')) + '" autocomplete="off" />' +
           '<div id="fSuggestBox" class="chat-suggest-box" style="display:none;"></div>' +
         '</div>' +
-        UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>') +
         // REQ follow-up: "Add an optional Arabic field to Findings" -- filled in by whoever logs the
         // finding (not auto-translated); blank falls back to the English Description via bi_()
-        // wherever this Finding is displayed later.
-        UI.field(t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3"></textarea>') +
+        // wherever this Finding is displayed later. REQ follow-up 2: "when in English interface do
+        // not show the Arabic textboxes, and vice versa" -- UI.bilingualField (ui.js) shows only
+        // whichever of the two matches the current language toggle; both stay in the DOM either way.
+        UI.bilingualField(t('description'), '<textarea id="fDesc" class="field-input" rows="3"></textarea>',
+          t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3"></textarea>') +
         // REQ follow-up: "Add Log Location (editable field below Description)."
         UI.field(t('field_log_location'), '<input id="fLogLocation" class="field-input" />') +
-        UI.field(t('suggested_action'), '<input id="fAction" class="field-input" />') +
-        UI.field(t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" />') +
+        UI.bilingualField(t('suggested_action'), '<input id="fAction" class="field-input" />',
+          t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('risk_level'), '<select id="fRisk" class="field-input"><option>Info</option><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>') +
           UI.field(t('resolution_window_hours'), '<input id="fWindow" type="number" class="field-input" value="24" />') +
@@ -988,11 +990,11 @@ async function renderEditFinding(params) {
       UI.field(Term('discipline'), '<select id="fDiscipline" class="field-input"><option value="">—</option>' +
         disciplines.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(bi_(d.name, d.nameAr)) + '</option>'; }).join('') + '</select>') +
       UI.field(Term('checklistType'), '<select id="fChecklistType" class="field-input"><option value="">' + esc(t('checklist_type_default_hint')) + '</option></select>') +
-      UI.field(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>') +
-      UI.field(t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3">' + esc(finding.descriptionAr || '') + '</textarea>') +
+      UI.bilingualField(t('description'), '<textarea id="fDesc" class="field-input" rows="3">' + esc(finding.description || '') + '</textarea>',
+        t('field_arabic_x', { term: t('description') }), '<textarea id="fDescAr" class="field-input" dir="rtl" rows="3">' + esc(finding.descriptionAr || '') + '</textarea>') +
       '<div id="fgSuggestions" class="finding-guide-suggestions hidden"></div>' +
-      UI.field(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />') +
-      UI.field(t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" value="' + esc(finding.suggestedActionAr || '') + '" />') +
+      UI.bilingualField(t('suggested_action'), '<input id="fAction" class="field-input" value="' + esc(finding.suggestedAction || '') + '" />',
+        t('field_arabic_x', { term: t('suggested_action') }), '<input id="fActionAr" class="field-input" dir="rtl" value="' + esc(finding.suggestedActionAr || '') + '" />') +
       UI.field(t('risk_level'), '<select id="fRisk" class="field-input">' +
         ['Info', 'Low', 'Medium', 'High', 'Critical'].map(function (r) { return '<option' + (finding.riskLevel === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>') +
       '<button class="btn btn-primary" id="saveEditFindingBtn" style="margin-top:10px;align-self:flex-start;">' + esc(t('save_changes')) + '</button>' +

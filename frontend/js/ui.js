@@ -455,6 +455,21 @@ window.UI = {
     return '<div class="field-group"><label class="field-label">' + esc(label) + '</label>' + inputHtml + '</div>';
   },
 
+  // REQ: "Throughout the platform; when in English interface do not show the Arabic textboxes, and
+  // vice versa." Renders a paired primary/Arabic content field (e.g. Description + Arabic
+  // Description -- findings.js, disciplines.js, venues.js, eventPlaces.js, findingGuide.js) as two
+  // normal field() groups, but only one is ever visible at a time -- whichever matches the current UI
+  // language toggle (HululState.lang, state.js). Both stay in the DOM (just display:none on the
+  // inactive one) rather than being left out of the markup entirely, so every existing submit handler
+  // that reads the Ar input's .value directly keeps working completely unchanged. Nothing typed into
+  // either field before a language switch is lost either -- toggling the language already re-renders
+  // the whole view (setLanguage -> renderCurrentView, i18n.js), same as every other label on the page.
+  bilingualField(label, primaryHtml, arLabel, arHtml) {
+    var showAr = HululState.lang === 'ar';
+    return '<div style="display:' + (showAr ? 'none' : '') + ';">' + this.field(label, primaryHtml) + '</div>' +
+      '<div style="display:' + (showAr ? '' : 'none') + ';">' + this.field(arLabel, arHtml) + '</div>';
+  },
+
   // Kanban-style status board: one column per status, cards grouped into whichever column
   // matches their status. Click-to-open, not drag-and-drop — cards just call whatever onClick
   // the caller wires up (typically the same status-update modal already used by the table below).

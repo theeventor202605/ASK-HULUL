@@ -222,10 +222,12 @@ function openFindingGuideForm_(entries, disciplines, checklistItems, opts) {
       '<input id="fFgSubCategory" class="field-input" list="fgSubCategoryList" value="' + esc(initial.subCategory || '') + '" />' +
       '<datalist id="fgSubCategoryList">' + subCategoriesFor_(initialCategory).map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist>'
     ) +
-    UI.field(t('field_description'), '<textarea id="fFgDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>') +
-    UI.field(t('field_arabic_x', { term: t('field_description') }), '<textarea id="fFgDescAr" class="field-input" dir="rtl" rows="2">' + esc(initial.descriptionAr || '') + '</textarea>') +
-    UI.field(t('col_suggestion'), '<textarea id="fFgSuggestion" class="field-input" rows="2">' + esc(initial.suggestion || '') + '</textarea>') +
-    UI.field(t('field_arabic_x', { term: t('col_suggestion') }), '<textarea id="fFgSuggestionAr" class="field-input" dir="rtl" rows="2">' + esc(initial.suggestionAr || '') + '</textarea>');
+    // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+    // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+    UI.bilingualField(t('field_description'), '<textarea id="fFgDesc" class="field-input" rows="2">' + esc(initial.description || '') + '</textarea>',
+      t('field_arabic_x', { term: t('field_description') }), '<textarea id="fFgDescAr" class="field-input" dir="rtl" rows="2">' + esc(initial.descriptionAr || '') + '</textarea>') +
+    UI.bilingualField(t('col_suggestion'), '<textarea id="fFgSuggestion" class="field-input" rows="2">' + esc(initial.suggestion || '') + '</textarea>',
+      t('field_arabic_x', { term: t('col_suggestion') }), '<textarea id="fFgSuggestionAr" class="field-input" dir="rtl" rows="2">' + esc(initial.suggestionAr || '') + '</textarea>');
 
   UI.openModal(opts.title, body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },

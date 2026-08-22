@@ -301,11 +301,12 @@ function openChecklistItemForm_(items, disciplines, opts) {
     UI.field(Term('discipline'), disciplines.length
       ? '<select id="fCiCategory" class="field-input">' + disciplineOptions + '</select>'
       : '<select id="fCiCategory" class="field-input" disabled><option value="">' + esc(t('create_x_first_page_hint', { term: Term('discipline').toLowerCase(), termPlural: Term('discipline_plural') })) + '</option></select>') +
-    UI.field(Term('checklistType'),
+    // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+    // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+    UI.bilingualField(Term('checklistType'),
       '<select id="fCiTypeSelect" class="field-input">' + typeSelectHtml_(initialTypes, initial.checklistType) + '</select>' +
-      '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />'
-    ) +
-    UI.field(t('field_arabic_x', { term: Term('checklistType') }), '<input id="fCiTypeAr" class="field-input" dir="rtl" value="' + esc(initial.checklistTypeAr || typeArByType_[initial.checklistType] || '') + '" />') +
+      '<input id="fCiTypeNew" class="field-input" placeholder="e.g. Restaurants" style="margin-top:6px;' + (initialTypes.length ? 'display:none;' : '') + '" />',
+      t('field_arabic_x', { term: Term('checklistType') }), '<input id="fCiTypeAr" class="field-input" dir="rtl" value="' + esc(initial.checklistTypeAr || typeArByType_[initial.checklistType] || '') + '" />') +
     // REQ: "Sub-Category must also have 'Sub Ref.' ... each item ... must have 'Item Ref.'" -- plain
     // whole-number inputs; padRef_ formats them for display everywhere else (table, CSV export text
     // stays the raw number for clean re-import).

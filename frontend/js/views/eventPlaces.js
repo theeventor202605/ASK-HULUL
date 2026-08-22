@@ -412,8 +412,10 @@ function renderAddEventPlaceCard_(zones, hasBoundary) {
       '<div style="flex:1 1 440px;max-width:640px;display:flex;flex-direction:column;gap:4px;">' +
         // REQ: consistent field order across the form -- Name, then Type+Zone side by side,
         // then Latitude+Longitude side by side, then Location last.
-        UI.field(t('col_name'), '<input id="fEPName" class="field-input" />') +
-        UI.field(t('col_name_ar'), '<input id="fEPNameAr" class="field-input" dir="rtl" />') +
+        // REQ: "when in English interface do not show the Arabic textboxes, and vice versa" --
+        // UI.bilingualField (ui.js) shows only whichever of the pair matches the current language toggle.
+        UI.bilingualField(t('col_name'), '<input id="fEPName" class="field-input" />',
+          t('col_name_ar'), '<input id="fEPNameAr" class="field-input" dir="rtl" />') +
         '<div class="form-row">' +
           UI.field(t('col_type'), '<select id="fEPType" class="field-input">' + placeTypeOptionsHtml_('') + '</select>') +
           '<div>' + zoneFieldHtml_(zones, 'fEP') + '</div>' +
