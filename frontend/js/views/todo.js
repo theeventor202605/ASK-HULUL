@@ -34,7 +34,13 @@ function todoCategoryLabel_(id) {
 
 // Module-level (not closed over renderTodoInbox) so the category filter survives a re-render --
 // same reasoning/convention as HululTranslationState_ (translations.js).
-var HululTodoState_ = { items: [], categoryFilter: 'all' };
+// logsOpenedByMeOnly: REQ follow-up -- "provide toggle to display logs opened by current user."
+// Logs are scoped (by design, see Todo.gs's header comment) to created-by-me OR assigned-to-me-
+// to-resolve; this toggle narrows that down to created-by-me only, using the openedByMe flag
+// listMyTodoItems now returns on every 'log' item. Only ever affects category 'log' -- every other
+// category is already scoped to the caller by construction (assignee/invitee/role), so there's
+// nothing for an "opened by me" toggle to narrow there.
+var HululTodoState_ = { items: [], categoryFilter: 'all', logsOpenedByMeOnly: false };
 
 async function renderTodoInbox() {
   var root = document.getElementById('viewRoot');
@@ -44,6 +50,7 @@ async function renderTodoInbox() {
   catch (err) { UI.error(err); return; }
   HululTodoState_.items = items;
   HululTodoState_.categoryFilter = 'all';
+  HululTodoState_.logsOpenedByMeOnly = false;
   renderTodoInboxBody_();
 }
 
@@ -56,7 +63,12 @@ function todoCatCountHtml_(id, label, count, active) {
 
 function renderTodoInboxBody_() {
   var root = document.getElementById('viewRoot');
-  var items = HululTodoState_.items;
+  var hasLogs = HululTodoState_.items.some(function (i) { return i.category === 'log'; });
+  // Applied before category-splitting/counting so the "Logs" chip's own count, and the "All" total,
+  // both reflect what the toggle is actually hiding -- not just the table underneath it.
+  var items = HululTodoState_.logsOpenedByMeOnly
+    ? HululTodoState_.items.filter(function (i) { return i.category !== 'log' || i.openedByMe; })
+    : HululTodoState_.items;
 
   var byCategory = {};
   items.forEach(function (i) { (byCategory[i.category] = byCategory[i.category] || []).push(i); });
@@ -69,6 +81,11 @@ function renderTodoInboxBody_() {
       if (!list.length) return '';
       return todoCatCountHtml_(cat.id, cat.labelFn(), pendingCountFor_(list), HululTodoState_.categoryFilter === cat.id);
     }).join('');
+
+  var logsToggleHtml = hasLogs
+    ? '<label class="todo-logs-toggle"><input type="checkbox" id="todoLogsOpenedByMe"' +
+      (HululTodoState_.logsOpenedByMeOnly ? ' checked' : '') + ' /> ' + esc(t('todo_logs_opened_by_me_only')) + '</label>'
+    : '';
 
   var filtered = HululTodoState_.categoryFilter === 'all' ? items
     : items.filter(function (i) { return i.category === HululTodoState_.categoryFilter; });
@@ -97,7 +114,7 @@ function renderTodoInboxBody_() {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + esc(t('nav_todo')) + '</div>' +
-    '<div class="page-subtitle">' + esc(t('todo_subtitle')) + '</div></div></div>' +
+    '<div class="page-subtitle">' + esc(t('todo_subtitle')) + '</div></div>' + logsToggleHtml + '</div>' +
     '<div class="translation-cat-grid">' + catCardsHtml + '</div>' +
     '<div class="card"><div class="card-body">' + tableHtml + '</div></div>';
 
@@ -110,6 +127,11 @@ function wireTodoInboxBody_(filtered) {
   root.querySelectorAll('[data-tocat]').forEach(function (btn) {
     btn.onclick = function () { HululTodoState_.categoryFilter = btn.getAttribute('data-tocat'); renderTodoInboxBody_(); };
   });
+
+  var logsToggle = document.getElementById('todoLogsOpenedByMe');
+  if (logsToggle) {
+    logsToggle.onchange = function () { HululTodoState_.logsOpenedByMeOnly = logsToggle.checked; renderTodoInboxBody_(); };
+  }
 
   root.querySelectorAll('[data-todo-open]').forEach(function (btn) {
     btn.onclick = function () {

@@ -49,6 +49,10 @@ window.HULUL_I18N = {
     todo_category_inspection: 'Inspections', todo_category_escalation: 'Escalations',
     todo_status_pending: 'Pending', todo_status_done: 'Done', todo_open_action: 'Open',
     todo_mark_attended: 'Mark attended', todo_attended_saved: 'Marked as attended', col_title: 'Title',
+    // REQ follow-up: "provide toggle to display logs opened by current user" (HululTodoState_.
+    // logsOpenedByMeOnly, todo.js) -- narrows the Logs category from its default created-by-me-OR-
+    // assigned-to-me scope down to just what the caller themselves opened.
+    todo_logs_opened_by_me_only: 'Logs opened by me only',
     // REQ: "Make user profile rich. Add personal information like photo, mobile, email, certificates,
     // and other related profile information." (renderProfileTab_, settings.js).
     profile_change_photo: 'Change photo', profile_field_name: 'Name', profile_field_mobile: 'Mobile',
@@ -846,6 +850,7 @@ window.HULUL_I18N = {
     todo_category_inspection: 'التفتيشات', todo_category_escalation: 'التصعيدات',
     todo_status_pending: 'معلّق', todo_status_done: 'مكتمل', todo_open_action: 'فتح',
     todo_mark_attended: 'تسجيل الحضور', todo_attended_saved: 'تم تسجيل الحضور', col_title: 'العنوان',
+    todo_logs_opened_by_me_only: 'السجلات التي فتحتها أنا فقط',
     profile_change_photo: 'تغيير الصورة', profile_field_name: 'الاسم', profile_field_mobile: 'رقم الجوال',
     profile_field_job_title: 'المسمى الوظيفي', profile_field_bio: 'نبذة',
     profile_certificates_title: 'الشهادات', profile_add_certificate: 'إضافة شهادة',
