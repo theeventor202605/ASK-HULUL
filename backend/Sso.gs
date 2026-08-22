@@ -27,11 +27,19 @@
  * every account out of the app before SSO is actually working. Once an admin has confirmed SSO signs
  * them in successfully, they flip this on themselves from Settings > Single Sign-On and the login
  * screen stops offering the password form to anyone.
+ *
+ * Multi-tenant Microsoft, deliberately: HULUL is used by multiple separate organizations (GA, EMC,
+ * Inspection companies), each almost certainly its own Entra ID tenant -- so there is no single
+ * Tenant ID that would work for everyone. The frontend (login.js) authenticates against the
+ * `/organizations` multi-tenant authority instead of a specific tenant, meaning any Entra work/school
+ * account can attempt to sign in. That's safe: findActiveUserByEmail_ below is the actual access
+ * boundary regardless of which tenant authenticated someone -- their verified email still has to
+ * match an existing, Active HULUL account an admin already provisioned, exactly like Google.
  */
 
 var SSO_CONFIG_KEYS_ = {
   googleEnabled: 'ssoGoogleEnabled', googleClientId: 'ssoGoogleClientId',
-  microsoftEnabled: 'ssoMicrosoftEnabled', microsoftClientId: 'ssoMicrosoftClientId', microsoftTenantId: 'ssoMicrosoftTenantId',
+  microsoftEnabled: 'ssoMicrosoftEnabled', microsoftClientId: 'ssoMicrosoftClientId',
   passwordLoginDisabled: 'ssoPasswordLoginDisabled'
 };
 
@@ -49,7 +57,6 @@ function getSsoConfig() {
     googleClientId: getConfig(SSO_CONFIG_KEYS_.googleClientId, ''),
     microsoftEnabled: ssoConfigBool_(SSO_CONFIG_KEYS_.microsoftEnabled),
     microsoftClientId: getConfig(SSO_CONFIG_KEYS_.microsoftClientId, ''),
-    microsoftTenantId: getConfig(SSO_CONFIG_KEYS_.microsoftTenantId, ''),
     passwordLoginDisabled: ssoConfigBool_(SSO_CONFIG_KEYS_.passwordLoginDisabled)
   };
 }
@@ -64,11 +71,10 @@ function setSsoConfig(user, p) {
   var passwordLoginDisabled = !!p.passwordLoginDisabled;
   var googleClientId = String(p.googleClientId || '').trim();
   var microsoftClientId = String(p.microsoftClientId || '').trim();
-  var microsoftTenantId = String(p.microsoftTenantId || '').trim();
 
   if (googleEnabled && !googleClientId) throw new HululError('BAD_REQUEST', 'A Google Client ID is required to enable Google sign-in.');
-  if (microsoftEnabled && (!microsoftClientId || !microsoftTenantId)) {
-    throw new HululError('BAD_REQUEST', 'A Microsoft Application (client) ID and Tenant ID are both required to enable Microsoft sign-in.');
+  if (microsoftEnabled && !microsoftClientId) {
+    throw new HululError('BAD_REQUEST', 'A Microsoft Application (client) ID is required to enable Microsoft sign-in.');
   }
   // The one guardrail that actually matters here: never let password login be disabled unless at
   // least one SSO provider would end up enabled by this same save -- otherwise a SystemAdmin could
@@ -82,7 +88,6 @@ function setSsoConfig(user, p) {
   setConfig(SSO_CONFIG_KEYS_.googleClientId, googleClientId);
   setConfig(SSO_CONFIG_KEYS_.microsoftEnabled, microsoftEnabled);
   setConfig(SSO_CONFIG_KEYS_.microsoftClientId, microsoftClientId);
-  setConfig(SSO_CONFIG_KEYS_.microsoftTenantId, microsoftTenantId);
   setConfig(SSO_CONFIG_KEYS_.passwordLoginDisabled, passwordLoginDisabled);
   audit(user.id, 'SET_SSO_CONFIG', 'Config', 'sso', {
     googleEnabled: googleEnabled, microsoftEnabled: microsoftEnabled, passwordLoginDisabled: passwordLoginDisabled

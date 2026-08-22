@@ -49,10 +49,16 @@ async function initSsoLogin_() {
     } catch (err) { googleSlot.remove(); /* GIS failed to init (e.g. blocked script) -- just don't show the button */ }
   }
 
-  if (cfg.microsoftEnabled && cfg.microsoftClientId && cfg.microsoftTenantId && window.msal) {
+  if (cfg.microsoftEnabled && cfg.microsoftClientId && window.msal) {
     try {
+      // /organizations (not a specific tenant) -- REQ follow-up: "would someone from a different
+      // company's Entra tenant still be able to sign in." HULUL is used by multiple separate
+      // organizations (GA, EMC, Inspection companies), each its own Entra tenant, so there's no
+      // single Tenant ID that would work for everyone. Any Entra work/school account can attempt
+      // to authenticate here -- findActiveUserByEmail_ (Sso.gs) is the real access boundary
+      // regardless of which tenant they came from, same as Google.
       msalInstance_ = new msal.PublicClientApplication({
-        auth: { clientId: cfg.microsoftClientId, authority: 'https://login.microsoftonline.com/' + cfg.microsoftTenantId }
+        auth: { clientId: cfg.microsoftClientId, authority: 'https://login.microsoftonline.com/organizations' }
       });
       var msBtn = document.createElement('button');
       msBtn.type = 'button';

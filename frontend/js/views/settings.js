@@ -936,6 +936,13 @@ function escalationReadDelayMinutesByRisk_(prefix, riskLevels) {
  * that very same save, so a SystemAdmin can never lock every account (including their own) out of
  * the app. The "Require SSO" checkbox here is disabled client-side under the same condition purely
  * as an immediate, friendlier version of that same guardrail -- not the actual enforcement.
+ *
+ * Microsoft is deliberately a single Client ID with no Tenant ID field -- REQ follow-up: "would a
+ * user from a different company's Entra tenant still be able to sign in." HULUL is used by several
+ * separate organizations (GA, EMC, Inspection companies), each its own Entra tenant, so login.js
+ * authenticates against the multi-tenant /organizations authority rather than one specific tenant.
+ * That's safe: HULUL's own email-match-to-an-existing-Active-account check (Sso.gs) is the real
+ * access boundary either way, same as Google.
  */
 async function renderSsoTab_(content) {
   var cfg = await Api.call('getSsoConfig', {});
@@ -954,10 +961,7 @@ async function renderSsoTab_(content) {
       '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;margin-bottom:12px;">' +
         '<input type="checkbox" id="cfgSsoMicrosoftEnabled"' + (cfg.microsoftEnabled ? ' checked' : '') + ' /> ' + esc(t('sso_enable_microsoft')) +
       '</label>' +
-      '<div class="form-row">' +
-        UI.field(t('sso_microsoft_client_id_field'), '<input type="text" id="cfgSsoMicrosoftClientId" class="field-input" value="' + esc(cfg.microsoftClientId || '') + '" />') +
-        UI.field(t('sso_microsoft_tenant_id_field'), '<input type="text" id="cfgSsoMicrosoftTenantId" class="field-input" value="' + esc(cfg.microsoftTenantId || '') + '" />') +
-      '</div>' +
+      UI.field(t('sso_microsoft_client_id_field'), '<input type="text" id="cfgSsoMicrosoftClientId" class="field-input" value="' + esc(cfg.microsoftClientId || '') + '" />') +
     '</div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('sso_require_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('sso_require_subtitle')) + '</div></div>' +
@@ -993,7 +997,6 @@ async function renderSsoTab_(content) {
         googleClientId: document.getElementById('cfgSsoGoogleClientId').value.trim(),
         microsoftEnabled: msChk.checked,
         microsoftClientId: document.getElementById('cfgSsoMicrosoftClientId').value.trim(),
-        microsoftTenantId: document.getElementById('cfgSsoMicrosoftTenantId').value.trim(),
         passwordLoginDisabled: passwordDisabledChk.checked
       });
       UI.toast(t('toast_sso_settings_saved'), 'success');
