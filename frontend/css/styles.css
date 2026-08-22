@@ -521,6 +521,10 @@ textarea.field-input{ resize:vertical; min-height:64px; }
    a glance even before noticing which one is indented under an active parent. */
 #eventTabbarWrap{ margin-bottom:18px; }
 #eventTabbarWrap .tabbar{ margin-bottom:0; }
+/* Settings' own tab bar (SETTINGS_TAB_GROUPS_, settings.js) reuses this exact same two-row treatment --
+   see the comment above #eventTabbarWrap. */
+#settingsTabbarWrap{ margin-bottom:18px; }
+#settingsTabbarWrap .tabbar{ margin-bottom:0; }
 .tabbar-sub .tab-btn{ font-size:12px; padding:7px 12px; }
 /* REQ report (Settings > Permissions "Go to page" link): flashes the target tab for ~10s the moment
    an event is opened -- see PENDING_TAB_HIGHLIGHT_KEY_/renderEventDetail (eventDetail.js), which adds

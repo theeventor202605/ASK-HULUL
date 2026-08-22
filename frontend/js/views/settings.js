@@ -41,6 +41,32 @@ var PHOTO_PROPS_MANAGE_ROLES = ['SystemAdmin'];
 // shared card, unchanged.
 var SETTINGS_PLAIN_CONTENT_TABS_ = { escalations: true };
 
+// REQ: "Split Settings tabs into sub-tabs." -- 10 possible tabs (SystemAdmin's full view) crowded the
+// bar, same problem EVENT_TAB_GROUPS_ (eventDetail.js) already solved for the Event workspace's own
+// tab bar: "The Events' tab menu is long. Divide it into tab and subtab." This mirrors that exact
+// mechanism (group -> collapsed top-level button + a second subtab row for its children) rather than
+// inventing a new one, right down to a single-tab group auto-collapsing to a plain standalone button
+// (settingsTabGroupFor_ below). Purely visual: every tab's key, its #/settings?tab=x URL, and its own
+// role gate above all stay exactly as they were.
+var SETTINGS_TAB_GROUPS_ = [
+  { key: 'accountGroup', labelKey: 'settings_tab_group_account', tabs: ['profile', 'appearance', 'security'] },
+  { key: 'organizationGroup', labelKey: 'settings_tab_group_organization', tabs: ['terminology', 'icons', 'photoProperties', 'escalations'] },
+  { key: 'accessControlGroup', labelKey: 'settings_tab_group_access_control', tabs: ['roles', 'mandatoryOperators', 'permissions'] }
+];
+
+// Same shape/behavior as eventTabGroupFor_ (eventDetail.js): the group a tab key belongs to, filtered
+// to only the tabs actually visible this render (role-gated) -- so a group left with just one visible
+// member behaves like a plain standalone tab instead of a redundant one-item dropdown.
+function settingsTabGroupFor_(tabKey, visibleTabKeys) {
+  for (var i = 0; i < SETTINGS_TAB_GROUPS_.length; i++) {
+    var g = SETTINGS_TAB_GROUPS_[i];
+    if (g.tabs.indexOf(tabKey) === -1) continue;
+    var visibleMembers = g.tabs.filter(function (k) { return visibleTabKeys.indexOf(k) !== -1; });
+    return { key: g.key, labelKey: g.labelKey, tabs: visibleMembers };
+  }
+  return null;
+}
+
 async function renderSettings(params) {
   var root = document.getElementById('viewRoot');
   var u = HululState.user;
@@ -72,18 +98,66 @@ async function renderSettings(params) {
 
   root.innerHTML =
     '<div class="page-header"><div><div class="page-title">' + t('nav_settings') + '</div></div></div>' +
-    '<div class="tabbar" id="settingsTabbar"></div>' +
+    '<div id="settingsTabbarWrap">' +
+      '<div class="tabbar" id="settingsTabbar"></div>' +
+      '<div class="tabbar tabbar-sub" id="settingsSubtabbar" style="display:none;"></div>' +
+    '</div>' +
     (SETTINGS_PLAIN_CONTENT_TABS_[activeTab]
       ? '<div id="settingsTabContent"></div>'
       : '<div class="card"><div class="card-body" id="settingsTabContent"></div></div>');
 
+  var tabsByKey_ = {}; tabs.forEach(function (tb) { tabsByKey_[tb.key] = tb; });
+  var visibleTabKeys = tabs.map(function (tb) { return tb.key; });
+  var activeGroup = settingsTabGroupFor_(activeTab, visibleTabKeys); // null for a standalone (ungrouped) tab
+
   var tabbar = document.getElementById('settingsTabbar');
-  tabbar.innerHTML = tabs.map(function (tb) {
-    return '<div class="tab-btn ' + (tb.key === activeTab ? 'active' : '') + '" data-tab="' + tb.key + '">' + esc(tb.label) + '</div>';
+  var subtabbar = document.getElementById('settingsSubtabbar');
+
+  // Top-level bar: one button per group -- a single-visible-tab group collapses to a plain standalone
+  // button (data-tab, navigates straight there); a multi-tab group renders as a collapsed parent
+  // (data-group, no data-tab) labeled by its own labelKey, marked .active whenever the open tab is any
+  // of its children. Same two-row mechanism as renderEventDetail (eventDetail.js) uses for EVENT_TAB_GROUPS_.
+  var seenGroupKeys = {};
+  tabbar.innerHTML = SETTINGS_TAB_GROUPS_.map(function (g) {
+    var group = settingsTabGroupFor_(g.tabs[0], visibleTabKeys); // re-derive so role-gated-out members are already filtered out
+    if (!group || !group.tabs.length || (group.key && seenGroupKeys[group.key])) return '';
+    if (group.key) seenGroupKeys[group.key] = true;
+    if (group.tabs.length === 1) {
+      var tb = tabsByKey_[group.tabs[0]];
+      if (!tb) return '';
+      return '<div class="tab-btn ' + (tb.key === activeTab ? 'active' : '') + '" data-tab="' + tb.key + '">' + esc(tb.label) + '</div>';
+    }
+    var isActive = group.tabs.indexOf(activeTab) !== -1;
+    return '<div class="tab-btn ' + (isActive ? 'active' : '') + '" data-group="' + group.key + '" data-default-tab="' + group.tabs[0] + '">' +
+      esc(t(group.labelKey)) + ' ' + ICON('chevron_down') + '</div>';
   }).join('');
-  tabbar.querySelectorAll('.tab-btn').forEach(function (btn) {
+  tabbar.querySelectorAll('[data-tab]').forEach(function (btn) {
     btn.onclick = function () { window.location.hash = '#/settings?tab=' + btn.getAttribute('data-tab'); };
   });
+  tabbar.querySelectorAll('[data-group]').forEach(function (btn) {
+    btn.onclick = function () {
+      // Already inside this group -- the subtab row below already shows exactly where you are;
+      // re-navigating to the group's first child would silently discard your actual position.
+      if (btn.classList.contains('active')) return;
+      window.location.hash = '#/settings?tab=' + btn.getAttribute('data-default-tab');
+    };
+  });
+
+  // Subtab row: only exists while a multi-tab group is the active one.
+  if (activeGroup && activeGroup.tabs.length > 1) {
+    subtabbar.style.display = '';
+    subtabbar.innerHTML = activeGroup.tabs.map(function (key) {
+      var tb = tabsByKey_[key];
+      if (!tb) return '';
+      return '<div class="tab-btn ' + (tb.key === activeTab ? 'active' : '') + '" data-tab="' + tb.key + '">' + esc(tb.label) + '</div>';
+    }).join('');
+    subtabbar.querySelectorAll('[data-tab]').forEach(function (btn) {
+      btn.onclick = function () { window.location.hash = '#/settings?tab=' + btn.getAttribute('data-tab'); };
+    });
+  } else {
+    subtabbar.style.display = 'none';
+    subtabbar.innerHTML = '';
+  }
 
   var content = document.getElementById('settingsTabContent');
   content.innerHTML = '<div class="empty-state">' + t('loading') + '</div>';
