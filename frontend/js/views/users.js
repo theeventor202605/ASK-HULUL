@@ -54,13 +54,25 @@ async function renderUsers() {
     '<div class="card"><div class="card-body">' + UI.table([
       { key: 'name', label: t('col_name') }, { key: 'email', label: t('col_email') }, { key: 'role', label: t('col_role') },
       { key: 'orgId', label: t('col_org'), render: r => r.orgId ? esc(orgsById[r.orgId] ? orgsById[r.orgId].name : r.orgId) : '—' },
+      // REQ: "know who has logged in, who never did, and how frequently users log in." lastLoginAt/
+      // loginCount already come through listUsers untouched (stripSecrets_ only strips password
+      // fields) -- see SCHEMA.Users comment (Utils.gs) for why these two together (not just one
+      // timestamp) are needed to answer "how frequently".
+      { key: 'lastLoginAt', label: t('col_last_login'), render: r => r.lastLoginAt ? UI.fmtDate(r.lastLoginAt) : ('<span class="muted">' + esc(t('never_logged_in')) + '</span>') },
+      { key: 'loginCount', label: t('col_logins'), render: r => String(r.loginCount || 0) },
       { key: 'status', label: t('status'), render: r => UI.statusBadge(r.status === 'Active' ? 'Resolved' : 'Rejected') },
       { key: 'actions', label: t('actions'), render: r => UI.actionsCell(
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('edit_title')) + '" data-edit="' + r.id + '">' + ICON('edit') + '</button>' +
           '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('reset_password_title')) + '" data-reset="' + r.id + '">' + ICON('view_credentials') + '</button>' +
           (r.status === 'Active'
             ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('deactivate_title')) + '" data-deact="' + r.id + '">' + ICON('deactivate') + '</button>'
-            : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('activate_title')) + '" data-act="' + r.id + '">' + ICON('activate') + '</button>')) }
+            : '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('activate_title')) + '" data-act="' + r.id + '">' + ICON('activate') + '</button>') +
+          // Hard delete only ever offered for accounts that have never logged in -- matches the
+          // server-side guard in hardDeleteUser (Accounts.gs) exactly, so this button never fires a
+          // request the backend would reject anyway.
+          (!r.lastLoginAt
+            ? '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('delete_title')) + '" data-hard-del="' + r.id + '">' + ICON('delete') + '</button>'
+            : '')) }
     ], users, {}) + '</div></div>';
 
   if (creatable.length) document.getElementById('newUserBtn').onclick = () => openNewUserModal(creatable, orgs, customRoles);
@@ -73,6 +85,16 @@ async function renderUsers() {
   root.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => {
     var target = users.filter(u => u.id === b.getAttribute('data-reset'))[0];
     if (target) openResetPasswordModal(target);
+  });
+  root.querySelectorAll('[data-hard-del]').forEach(b => b.onclick = () => {
+    var target = users.filter(u => u.id === b.getAttribute('data-hard-del'))[0];
+    if (!target) return;
+    UI.confirmModal(t('delete_user_confirm', { name: target.name }), async function () {
+      try {
+        await Api.call('hardDeleteUser', { userId: target.id });
+        UI.toast(t('toast_user_deleted'), 'success'); Router.resolve();
+      } catch (err) { UI.error(err); }
+    }, { title: t('delete_user_title'), confirmLabel: t('delete') });
   });
   async function toggle(userId, action) {
     try { await Api.call(action, { userId: userId }); UI.toast(t('toast_updated'), 'success'); Router.resolve(); } catch (err) { UI.error(err); }

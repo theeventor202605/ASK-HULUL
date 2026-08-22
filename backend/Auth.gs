@@ -40,7 +40,9 @@ function login(email, password) {
   var now = new Date();
   var expires = new Date(now.getTime() + SESSION_TTL_HOURS * 3600 * 1000);
   insertRow('Sessions', { token: token, userId: user.id, createdAt: now.toISOString(), expiresAt: expires.toISOString() });
-  updateRow('Users', user.id, { lastLoginAt: now.toISOString() });
+  // loginCount: running tally alongside lastLoginAt -- REQ: "know ... how frequently users log in."
+  // (Number(...) || 0) treats a blank/never-set value on pre-existing rows the same as 0.
+  updateRow('Users', user.id, { lastLoginAt: now.toISOString(), loginCount: (Number(user.loginCount) || 0) + 1 });
   audit(user.id, 'LOGIN', 'Users', user.id, {});
 
   var safeUser = Object.assign({}, user);

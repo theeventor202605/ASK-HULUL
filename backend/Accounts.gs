@@ -71,6 +71,35 @@ function activateUser(actingUser, targetUserId) {
   return stripSecrets_(updated);
 }
 
+// REQ: "Allow to hard delete accounts that have never logged in to the system." Every OTHER user
+// mutation in this file (updateUserAccount/deactivateUser/activateUser) is soft: status flips to
+// Inactive, the row and its history stay forever. This is deliberately the one exception -- a
+// genuine, permanent deleteRow (same primitive projects/venues/findings/etc. already use for their
+// own hard deletes, see deleteRow, Utils.gs). It's scoped narrowly to accounts nobody has ever
+// signed into: `!target.lastLoginAt` is the same "never logged in" signal the Users & Roles page
+// surfaces (see loginCount/lastLoginAt comment on SCHEMA.Users, Utils.gs) -- once someone HAS
+// logged in, their account carries real history (sessions, audit trail, possibly authored data) and
+// must go through deactivateUser instead, never a hard delete. This keeps the guard server-side,
+// not just a hidden button client-side, since the frontend can't be trusted as the only enforcement.
+function hardDeleteUser(actingUser, p) {
+  var target = getById('Users', p && p.userId);
+  if (!target) throw new HululError('NOT_FOUND', 'User not found');
+  if (target.lastLoginAt) {
+    throw new HululError('BAD_REQUEST', 'This account has already logged in and cannot be hard deleted -- deactivate it instead.');
+  }
+  assertCanManage_(actingUser, target); // same hierarchy as deactivate/activate above
+  // A never-logged-in user can't have authored any session-gated data (findings, sessions, etc.),
+  // but an admin could still have pre-assigned qualifications/certificates on their row before their
+  // first login -- clean those up too so nothing orphaned is left pointing at a deleted userId.
+  findWhere('UserCertificates', function (c) { return c.userId === target.id; })
+    .forEach(function (c) { deleteRow('UserCertificates', c.id); });
+  findWhere('InspectorQualifications', function (q) { return q.userId === target.id; })
+    .forEach(function (q) { deleteRow('InspectorQualifications', q.id); });
+  deleteRow('Users', target.id);
+  audit(actingUser.id, 'HARD_DELETE_USER', 'Users', target.id, { email: target.email, role: target.role });
+  return { deleted: true };
+}
+
 // REQ-ACC-12: suspended/deactivated by the admin level that created it, or any higher-privilege role.
 function assertCanManage_(actingUser, target) {
   if (actingUser.role === ROLES.SYSTEM_ADMIN) return true;

@@ -84,6 +84,7 @@ var ROUTES = {
   updateUser: function (u, p) { return updateUserAccount(u, p); },
   deactivateUser: function (u, p) { return deactivateUser(u, p.userId); },
   activateUser: function (u, p) { return activateUser(u, p.userId); },
+  hardDeleteUser: function (u, p) { return hardDeleteUser(u, p); },
   resetPassword: function (u, p) { return adminResetPassword(u, p.userId, p.newPassword); },
   listOrganizations: function (u) { return listOrganizations(u); },
   createOrganization: function (u, p) { return createOrganization(u, p); },

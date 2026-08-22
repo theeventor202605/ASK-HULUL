@@ -158,7 +158,9 @@ function mintSsoSession_(user, provider) {
   var now = new Date();
   var expires = new Date(now.getTime() + SESSION_TTL_HOURS * 3600 * 1000);
   insertRow('Sessions', { token: token, userId: user.id, createdAt: now.toISOString(), expiresAt: expires.toISOString() });
-  updateRow('Users', user.id, { lastLoginAt: now.toISOString() });
+  // loginCount kept in sync the same way password login() does (Auth.gs) -- SSO and password
+  // sign-ins both count toward the same running tally.
+  updateRow('Users', user.id, { lastLoginAt: now.toISOString(), loginCount: (Number(user.loginCount) || 0) + 1 });
   audit(user.id, 'SSO_LOGIN', 'Users', user.id, { provider: provider });
   return { token: token, user: stripSecrets_(user) };
 }

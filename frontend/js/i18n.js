@@ -363,6 +363,12 @@ window.HULUL_I18N = {
     // ---- Users, Organizations, Reassignment, Config, Notifications modules ----
     users_subtitle: 'Account hierarchy & access control', new_account_btn: '+ New account',
     col_email: 'Email', col_role: 'Role', col_org: 'Org', deactivate_title: 'Deactivate', activate_title: 'Activate',
+    // REQ: "know who has logged in, who never did, and how frequently users log in. Allow to hard
+    // delete accounts that have never logged in."
+    col_last_login: 'Last Login', col_logins: 'Logins', never_logged_in: 'Never logged in',
+    delete_title: 'Delete', delete_user_title: 'Delete account',
+    delete_user_confirm: 'Permanently delete {{name}}\'s account? This account has never logged in, so this cannot be undone and there is no history to lose -- if they ever DO need access, a new account can be created for them.',
+    toast_user_deleted: 'Account deleted',
     toast_updated: 'Updated', new_account_title: 'New account', field_full_name: 'Full name',
     field_temp_password: 'Temporary password', field_role: 'Role',
     no_org_required_option: 'No organization required', no_orgs_of_type_found: 'No {{type}} organizations found — create one first',
@@ -1223,6 +1229,10 @@ window.HULUL_I18N = {
 
     users_subtitle: 'التسلسل الهرمي للحسابات وصلاحيات الوصول', new_account_btn: '+ حساب جديد',
     col_email: 'البريد الإلكتروني', col_role: 'الدور', col_org: 'الجهة', deactivate_title: 'إيقاف التفعيل', activate_title: 'تفعيل',
+    col_last_login: 'آخر تسجيل دخول', col_logins: 'عدد مرات الدخول', never_logged_in: 'لم يسجّل الدخول قط',
+    delete_title: 'حذف', delete_user_title: 'حذف الحساب',
+    delete_user_confirm: 'هل تريد حذف حساب {{name}} نهائيًا؟ لم يسجّل هذا الحساب الدخول قط، لذا لا يمكن التراجع عن هذا الإجراء ولا يوجد سجل نشاط سيُفقد -- إذا احتاج هذا الشخص للوصول لاحقًا، يمكن إنشاء حساب جديد له.',
+    toast_user_deleted: 'تم حذف الحساب',
     toast_updated: 'تم التحديث', new_account_title: 'حساب جديد', field_full_name: 'الاسم الكامل',
     field_temp_password: 'كلمة مرور مؤقتة', field_role: 'الدور',
     no_org_required_option: 'لا حاجة إلى جهة', no_orgs_of_type_found: 'لا توجد جهات من نوع {{type}} — أنشئ واحدة أولاً',

@@ -40,7 +40,15 @@ var SCHEMA = {
   // Organizations.logoUrl (see uploadOrgLogo's own comment) -- safeUser/stripSecrets_ (Auth.gs/
   // Accounts.gs) already pass every Users field through as-is (just strips password fields), so these
   // reach the frontend for free with no changes needed there.
-  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince','lastLat','lastLng','lastSeenAt','photoUrl','mobile','jobTitle','bio'],
+  // loginCount appended at the end -- REQ: "know who has logged in, who never did, and how
+  // frequently users log in." lastLoginAt (already existed) only ever holds the MOST RECENT login,
+  // which can't tell "logged in once, a year ago" apart from "logs in every day" -- loginCount is a
+  // running tally, incremented alongside lastLoginAt on every successful login (password: Auth.gs
+  // login(); SSO: Sso.gs mintSsoSession_()). Blank/0 on every pre-existing row and on any row that
+  // has never logged in -- "never logged in" is simply `!lastLoginAt` (or equivalently loginCount
+  // falsy), no separate flag needed. See hardDeleteUser (Accounts.gs) which uses this exact same
+  // !lastLoginAt check as its safety gate for permanently removing an account.
+  Users:                  ['id','name','email','orgType','orgId','role','status','passwordHash','passwordSalt','createdBy','createdAt','lastLoginAt','unavailable','unavailableReason','unavailableSince','lastLat','lastLng','lastSeenAt','photoUrl','mobile','jobTitle','bio','loginCount'],
   // REQ: "Make user profile rich ... certificates." One row per uploaded certificate/qualification
   // document -- a user can have any number, unlike the single-row-per-field pattern the Users columns
   // above use for the simpler text fields. issuedAt/expiresAt are both optional free-text-ish date
