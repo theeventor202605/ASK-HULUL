@@ -211,9 +211,10 @@ function wirePlanItemRows_(plan, allRoles) {
 // not scoped to one org).
 var ROADMAP_ACTION_TYPE_LABELS_ = {
   '': 'roadmap_action_none', scheduleMeeting: 'roadmap_action_schedule_meeting',
-  sendTemplates: 'roadmap_action_send_templates', reminder: 'roadmap_action_reminder'
+  sendTemplates: 'roadmap_action_send_templates', reminder: 'roadmap_action_reminder',
+  setTemplatesDeadline: 'roadmap_action_set_templates_deadline'
 };
-var ROADMAP_ACTION_TYPES_ORDER_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder'];
+var ROADMAP_ACTION_TYPES_ORDER_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder', 'setTemplatesDeadline'];
 // Same fixed suggestion list templateLibrary.js's own TEMPLATE_DOC_TYPES_ offers on a library entry
 // (minus 'Other', which isn't a real matchable code) -- any other code is still usable via the free-
 // text "additional codes" field below, isValidDocTypeCode_ (Templates.gs) is a format check, not a
@@ -347,6 +348,14 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
       '<div class="field-label">' + esc(t('roadmap_action_to_roles_label')) + '</div>' +
       roleChecksHtml_('fPiActionReminderRoles', allRoles, draft.actionConfig.toRoles) +
       UI.field(t('roadmap_action_reminder_message_label'), '<textarea id="fPiActionMessage" class="field-input" rows="2" maxlength="500" placeholder="' + esc(t('roadmap_action_reminder_message_placeholder')) + '">' + esc(draft.actionConfig.message || '') + '</textarea>') +
+    '</div>' +
+    // REQ follow-up: "The Documents deadline can be set by Roadmap plans." No extra fields -- the
+    // deadline value IS this item's own resolved due date (see autoSetRoadmapTemplatesDeadline_,
+    // RoadmapPlans.gs), so the anchor/offset fields above are all there is to configure; only Version
+    // 1 is ever set this way, and only once (a deadline that already exists, however it got set, is
+    // left alone).
+    '<div id="fPiActionPanelSetTemplatesDeadline" style="display:' + (draft.actionType === 'setTemplatesDeadline' ? 'block' : 'none') + ';">' +
+      '<div class="muted" style="font-size:11px;">' + esc(t('roadmap_action_set_templates_deadline_hint')) + '</div>' +
     '</div>';
 
   function readActionConfigFromForm_(actionType) {
@@ -407,6 +416,7 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     document.getElementById('fPiActionPanelScheduleMeeting').style.display = val === 'scheduleMeeting' ? 'block' : 'none';
     document.getElementById('fPiActionPanelSendTemplates').style.display = val === 'sendTemplates' ? 'block' : 'none';
     document.getElementById('fPiActionPanelReminder').style.display = val === 'reminder' ? 'block' : 'none';
+    document.getElementById('fPiActionPanelSetTemplatesDeadline').style.display = val === 'setTemplatesDeadline' ? 'block' : 'none';
   };
 
   // Subject dropdown's own show/hide-Other toggle (panel is always in the DOM regardless of which

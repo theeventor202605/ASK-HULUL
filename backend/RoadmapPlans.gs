@@ -114,7 +114,16 @@ var ROADMAP_OFFSET_SIGNS_ = ['before', 'after'];
 // the original, purely-informational behavior (nothing fires when the item's due date arrives, a PM
 // just sees it on the checklist). See the RoadmapPlanItems schema comment (Utils.gs) for why these
 // reference role CODES and docType CODES rather than specific Users/TemplateLibrary rows.
-var ROADMAP_ACTION_TYPES_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder'];
+//
+// setTemplatesDeadline -- REQ follow-up: "The Documents deadline can be set by Roadmap plans." Unlike
+// the other three (which fire once their own due date has ARRIVED), this one has to fire the moment
+// its due date is KNOWN -- the whole point is publishing the Version 1 deadline well ahead of time so
+// it shows up on the Templates tab as a real countdown, not announcing it after the fact once it's
+// already too late to matter (see the dueAt <= now vs. just dueAt check in runRoadmapItemActions_
+// below). Only ever sets VERSION 1, same scope setTemplatesDeadline (Templates.gs) itself has --
+// closes the loop with templateVersionClose/Open anchors (ROADMAP_ANCHOR_VERSION_TYPES_ above): one
+// plan item can set the deadline, and any other item can anchor to when it closes/the next round opens.
+var ROADMAP_ACTION_TYPES_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder', 'setTemplatesDeadline'];
 
 // Validates actionType + builds the type-specific actionConfig object, returned pre-serialized
 // (actionConfig: a JSON string, '' when actionType is '') ready to spread straight into the
@@ -140,8 +149,11 @@ function validRoadmapActionInput_(p) {
     // format check createLibraryTemplate/updateLibraryTemplate already apply to a library entry's own
     // docType, so anything selectable here is guaranteed to be able to actually match one.
     config = { docTypes: (Array.isArray(raw.docTypes) ? raw.docTypes : []).filter(function (d) { return isValidDocTypeCode_(d); }) };
-  } else { // reminder
+  } else if (actionType === 'reminder') {
     config = { toRoles: cleanRoleCodeList_(raw.toRoles), message: String(raw.message || '').trim().slice(0, 500) };
+  } else { // setTemplatesDeadline -- no extra config; the deadline value IS this item's own resolved
+    // due date (see autoSetRoadmapTemplatesDeadline_ below).
+    config = {};
   }
   return { actionType: actionType, actionConfig: JSON.stringify(config) };
 }
@@ -679,6 +691,34 @@ function autoSendRoadmapReminder_(event, item) {
   return { ok: true, message: 'Reminder sent to ' + ids.length + ' recipient(s)' };
 }
 
+// actionType 'setTemplatesDeadline' -- REQ follow-up: "The Documents deadline can be set by Roadmap
+// plans." Mirrors setTemplatesDeadline (Templates.gs) itself but with a 'system' actor and no
+// permission check (same reasoning as every other auto action here -- runRoadmapItemActions_ fires
+// off a periodic trigger, not a signed-in user) and non-throwing (this sweep retries on failure, it
+// doesn't surface an HululError to anyone). Only ever sets VERSION 1 -- if a version already exists
+// (whether a PM set/extended it manually, or this same action already fired on an earlier sweep),
+// this is a no-op success rather than overwriting whatever's already there; version 2+ stays the
+// deliberately-manual "PM decides now" action createNextTemplateDeadlineVersion already is.
+function autoSetRoadmapTemplatesDeadline_(event, item) {
+  var versions = templateDeadlineVersionsForEvent_(event.id);
+  if (versions.length) {
+    return { ok: true, message: 'Documents deadline already set (version ' + versions[versions.length - 1].versionNumber + ') -- left as-is' };
+  }
+  var d = new Date(item.dueAt);
+  if (isNaN(d)) return { ok: false, message: 'This item\'s own due date could not be resolved yet' };
+  insertRow('TemplateDeadlineVersions', {
+    id: newId('TemplateDeadlineVersions'), eventId: event.id, versionNumber: 1, deadlineAt: d.toISOString(),
+    autoCreated: true, createdBy: 'system', createdAt: nowIso_()
+  });
+  updateRow('Events', event.id, { templatesDeadlineAt: d.toISOString() });
+  audit('system', 'AUTO_SET_TEMPLATES_DEADLINE', 'Events', event.id, { roadmapItemId: item.id, deadlineAt: d.toISOString(), versionNumber: 1 });
+  // checkTemplateDeadlines notifies once the deadline is blown; setting it in the first place is
+  // silent otherwise -- same reasoning setTemplatesDeadline's own manual path already has.
+  notifyEventStakeholders_(event.id, 'TEMPLATES_DEADLINE_SET',
+    'Documents deadline set for ' + event.name + ': ' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm'), 'Events', event.id);
+  return { ok: true, message: 'Documents deadline set: ' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy HH:mm') };
+}
+
 // REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates Version
 // 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." Called from
 // scheduledEscalationCheck (Setup.gs), right after checkTemplateDeadlines (which is what actually
@@ -708,14 +748,20 @@ function resyncTemplateVersionAnchoredRoadmapItems_() {
 
 // The sweep itself -- called from scheduledEscalationCheck (Setup.gs), same as checkTemplateDeadlines/
 // deactivateEndedEventPlaceAccounts. Only ever looks at rows with actionType set AND actionExecutedAt
-// still blank AND a dueAt that's already passed -- so an item fires exactly once, whenever the sweep
-// next runs after its due date (default every 5 min, see escalationCheckIntervalMinutes_). A failed/
-// not-yet-possible attempt leaves actionExecutedAt blank (so it's retried next sweep) but still writes
-// actionResult, so a PM looking at the Roadmap tab isn't left guessing why nothing happened yet.
+// still blank -- so an item fires exactly once, whenever the sweep next picks it up (default every 5
+// min, see escalationCheckIntervalMinutes_). A failed/not-yet-possible attempt leaves actionExecutedAt
+// blank (so it's retried next sweep) but still writes actionResult, so a PM looking at the Roadmap tab
+// isn't left guessing why nothing happened yet.
+//
+// setTemplatesDeadline is the one exception to "wait for dueAt to pass": it has to fire the moment its
+// due date is KNOWN, not once it's arrived (see autoSetRoadmapTemplatesDeadline_ above) -- the whole
+// point is publishing the deadline well ahead of time.
 function runRoadmapItemActions_() {
   var now = Date.now();
   var pending = findWhere('EventRoadmapItems', function (r) {
-    return r.actionType && !r.actionExecutedAt && r.dueAt && new Date(r.dueAt).getTime() <= now;
+    if (!r.actionType || r.actionExecutedAt || !r.dueAt) return false;
+    if (r.actionType === 'setTemplatesDeadline') return true;
+    return new Date(r.dueAt).getTime() <= now;
   });
   pending.forEach(function (row) {
     var event = getById('Events', row.eventId);
@@ -726,6 +772,7 @@ function runRoadmapItemActions_() {
       if (item.actionType === 'scheduleMeeting') result = autoScheduleRoadmapMeeting_(event, item);
       else if (item.actionType === 'sendTemplates') result = autoSendRoadmapTemplates_(event, item);
       else if (item.actionType === 'reminder') result = autoSendRoadmapReminder_(event, item);
+      else if (item.actionType === 'setTemplatesDeadline') result = autoSetRoadmapTemplatesDeadline_(event, item);
       else return;
     } catch (e) {
       result = { ok: false, message: 'Failed: ' + (e && e.message ? e.message : String(e)) };

@@ -4618,7 +4618,8 @@ function roadmapItemActualDateCellHtml_(item) {
 // MEETING_TYPES already uses between Templates.gs and meetings.js; this file loads BEFORE
 // roadmapPlans.js (see index.html) so it can't reference that one directly anyway.
 var ROADMAP_TAB_ACTION_LABELS_ = {
-  scheduleMeeting: 'roadmap_action_schedule_meeting', sendTemplates: 'roadmap_action_send_templates', reminder: 'roadmap_action_reminder'
+  scheduleMeeting: 'roadmap_action_schedule_meeting', sendTemplates: 'roadmap_action_send_templates', reminder: 'roadmap_action_reminder',
+  setTemplatesDeadline: 'roadmap_action_set_templates_deadline'
 };
 
 // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" -- shows

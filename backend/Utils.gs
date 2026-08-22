@@ -442,7 +442,9 @@ var SCHEMA = {
   // actionable items... creates and connects to a meeting template... Automatically sends (Selected)
   // Readiness templates... Sends notification reminder to submit the document before deadline."
   // actionType is '' (no automation, the original behavior) | 'scheduleMeeting' | 'sendTemplates' |
-  // 'reminder'. actionConfig is a JSON-stringified, type-specific object (see
+  // 'reminder' | 'setTemplatesDeadline' (REQ follow-up: "The Documents deadline can be set by Roadmap
+  // plans." -- fires the moment its due date is known rather than once it's passed, see
+  // runRoadmapItemActions_, RoadmapPlans.gs). actionConfig is a JSON-stringified, type-specific object (see
   // validRoadmapActionInput_, RoadmapPlans.gs) -- kept as one opaque blob rather than one column per
   // possible field (same reasoning as Meetings.toJson/ccJson) since each action type needs a
   // different shape and nothing here is ever queried/filtered on, only read back and executed.
