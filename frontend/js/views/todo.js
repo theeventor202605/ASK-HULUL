@@ -97,6 +97,10 @@ function renderTodoInboxBody_() {
     { key: 'category', label: t('col_category'), render: r => '<span class="badge badge-neutral">' + esc(todoCategoryLabel_(r.category)) + '</span>' },
     { key: 'title', label: t('col_title'), render: r => '<span' + (r.completed ? ' style="text-decoration:line-through;color:var(--text-600);"' : '') + '>' + esc(r.title) + '</span>' },
     { key: 'subtitle', label: t('col_context'), render: r => esc(r.subtitle || '—') },
+    // REQ follow-up: "We don't have a column showing who created that log." Only 'log' items carry
+    // createdByName (see Todo.gs's todoItem_/todoUserName_) -- every other category shows '—' since
+    // there's no per-item creator concept for them (role-scoped, invitee-based, etc.).
+    { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || '—') },
     { key: 'status', label: t('col_status'),
       exportValue: r => r.completed ? t('todo_status_done') : t('todo_status_pending'),
       render: r => r.completed

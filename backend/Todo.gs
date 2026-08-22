@@ -59,18 +59,34 @@ function todoWithinWindow_(iso) {
 // inside the inbox itself, not somewhere else in the app).
 // REQ follow-up: "provide toggle to display logs opened by current user." Logs (category 'log')
 // are scoped to createdBy-me OR assigned-to-me-to-resolve (see the Logs block below and this file's
-// header comment) -- openedByMe distinguishes the two so the frontend can offer an "opened by me
-// only" toggle without needing a second round-trip. Always present on every item (not just 'log')
-// so todoItem_ keeps one common shape, but only 'log' ever sets it true; every other category is
+// header comment) -- openedByMe distinguishes the two so the frontend can offer a "Created by me"
+// toggle without needing a second round-trip. Always present on every item (not just 'log') so
+// todoItem_ keeps one common shape, but only 'log' ever sets it true; every other category is
 // already scoped to the caller by construction (assignee/invitee/role), so "opened by me" doesn't
 // apply to them.
+// createdByName: REQ follow-up -- "We don't have a column showing who created that log." Resolved
+// name (not raw Users.id) so the frontend table can show a Created By column without its own
+// per-row user lookup; only populated for 'log' (same reasoning as openedByMe above).
 function todoItem_(opts) {
   return {
     id: opts.id, category: opts.category, title: opts.title || '', subtitle: opts.subtitle || '',
     eventId: opts.eventId || '', eventTab: opts.eventTab || '', navPath: opts.navPath || '',
-    meetingId: opts.meetingId || '', openedByMe: !!opts.openedByMe,
+    meetingId: opts.meetingId || '', openedByMe: !!opts.openedByMe, createdByName: opts.createdByName || '',
     createdAt: opts.createdAt || '', completed: !!opts.completed, completedAt: opts.completedAt || ''
   };
+}
+
+// Small per-call cache -- listMyTodoItems can hit the same creator across many Findings rows, and
+// this avoids a repeat getById('Users', ...) for each one. Falls back to the raw id if the user
+// row is gone (deleted account) rather than showing a blank cell.
+var TODO_USER_NAME_CACHE_ = {};
+function todoUserName_(userId) {
+  if (!userId) return '';
+  if (!(userId in TODO_USER_NAME_CACHE_)) {
+    var u = getById('Users', userId);
+    TODO_USER_NAME_CACHE_[userId] = u ? u.name : userId;
+  }
+  return TODO_USER_NAME_CACHE_[userId];
 }
 
 function listMyTodoItems(user) {
@@ -92,15 +108,18 @@ function listMyTodoItems(user) {
     var evName = ev ? ev.name : f.eventId;
     var title = (f.description || '').slice(0, 80) || f.id;
     var openedByMe = f.createdBy === user.id;
+    var creatorName = todoUserName_(f.createdBy);
     if (FINDING_OPEN_STATUSES.indexOf(f.status) !== -1) {
       items.push(todoItem_({
         id: 'log:' + f.id, category: 'log', title: title, subtitle: evName,
-        eventId: f.eventId, eventTab: 'findings', createdAt: f.createdAt, openedByMe: openedByMe
+        eventId: f.eventId, eventTab: 'findings', createdAt: f.createdAt, openedByMe: openedByMe,
+        createdByName: creatorName
       }));
     } else if (f.status === 'Resolved' && todoWithinWindow_(f.resolvedAt)) {
       items.push(todoItem_({
         id: 'log:' + f.id, category: 'log', title: title, subtitle: evName,
         eventId: f.eventId, eventTab: 'findings', createdAt: f.createdAt, openedByMe: openedByMe,
+        createdByName: creatorName,
         completed: true, completedAt: f.resolvedAt
       }));
     }
