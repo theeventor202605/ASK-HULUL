@@ -504,6 +504,8 @@ window.HULUL_I18N = {
     roadmap_relinked_notice: '{{count}} item(s) that anchored to this one now anchor to the event start date instead.',
     roadmap_anchor_label: 'Anchored to', roadmap_anchor_event_start: '{{term}} start date', roadmap_anchor_event_end: '{{term}} end date',
     roadmap_anchor_unknown: '(deleted item)', roadmap_offset_direction_label: 'Direction',
+    roadmap_anchor_template_version_close: 'Closing of Readiness Templates Version', roadmap_anchor_template_version_open: 'Initiation of Readiness Templates Version',
+    roadmap_anchor_version_number_label: 'Version number', roadmap_anchor_waiting_hint: 'Waiting for this Readiness Templates version round to open -- the due date will fill in automatically once it does',
     roadmap_offset_before: 'before', roadmap_offset_after: 'after', roadmap_offset_zero: 'On',
     unit_week: 'week', unit_weeks: 'weeks', unit_day: 'day', unit_days: 'days', unit_hour: 'hour', unit_hours: 'hours',
     // Attachment-required + icon-per-item (Roadmap Plans item editor + Event Roadmap tab).
@@ -1292,6 +1294,8 @@ window.HULUL_I18N = {
     roadmap_relinked_notice: '{{count}} عنصر (عناصر) كانت مرتبطة بهذا العنصر أصبحت الآن مرتبطة بتاريخ بداية الفعالية بدلاً منه.',
     roadmap_anchor_label: 'مرتبط بـ', roadmap_anchor_event_start: 'تاريخ بداية {{term}}', roadmap_anchor_event_end: 'تاريخ نهاية {{term}}',
     roadmap_anchor_unknown: '(عنصر محذوف)', roadmap_offset_direction_label: 'الاتجاه',
+    roadmap_anchor_template_version_close: 'إغلاق الإصدار رقم', roadmap_anchor_template_version_open: 'بدء الإصدار رقم',
+    roadmap_anchor_version_number_label: 'رقم الإصدار', roadmap_anchor_waiting_hint: 'بانتظار فتح جولة هذا الإصدار من نماذج الجاهزية -- سيتم تحديد الموعد المستحق تلقائيًا فور حدوث ذلك',
     roadmap_offset_before: 'قبل', roadmap_offset_after: 'بعد', roadmap_offset_zero: 'في',
     unit_week: 'أسبوع', unit_weeks: 'أسابيع', unit_day: 'يوم', unit_days: 'أيام', unit_hour: 'ساعة', unit_hours: 'ساعات',
     roadmap_requires_attachment_label: 'يتطلب مرفقًا', roadmap_requires_attachment_hint: 'لن يتمكن مدير المشروع من وضع علامة "مكتمل" على هذا العنصر دون توفير مرفق أو رابط (خارجي أو لتقرير موجود بالفعل في هُلُل) أولًا.',

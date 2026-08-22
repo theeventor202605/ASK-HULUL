@@ -29,6 +29,7 @@ function getRoadmapPlanItems_(planId) {
       return {
         id: it.id, planId: it.planId, name: it.name, sortOrder: Number(it.sortOrder),
         anchorType: it.anchorType, anchorItemId: it.anchorItemId || '',
+        anchorVersionNumber: Number(it.anchorVersionNumber) || 0,
         offsetSign: it.offsetSign, offsetWeeks: Number(it.offsetWeeks) || 0,
         offsetDays: Number(it.offsetDays) || 0, offsetHours: Number(it.offsetHours) || 0,
         requiresAttachment: it.requiresAttachment === true || it.requiresAttachment === 'true',
@@ -99,7 +100,14 @@ function deleteRoadmapPlan(user, p) {
   return { ok: true };
 }
 
-var ROADMAP_ANCHOR_TYPES_ = ['eventStart', 'eventEnd', 'item'];
+// REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates Version
+// 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." templateVersionClose/
+// templateVersionOpen anchor an item to the Event's own TemplateDeadlineVersions data (Templates.gs)
+// instead of its start/end date or another plan item -- see resolveTemplateVersionAnchorMs_ below for
+// exactly which timestamp each one means and why (unlike every other anchor type here) they can't
+// always be resolved the moment the plan rolls out.
+var ROADMAP_ANCHOR_TYPES_ = ['eventStart', 'eventEnd', 'item', 'templateVersionClose', 'templateVersionOpen'];
+var ROADMAP_ANCHOR_VERSION_TYPES_ = ['templateVersionClose', 'templateVersionOpen'];
 var ROADMAP_OFFSET_SIGNS_ = ['before', 'after'];
 
 // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" -- '' is
@@ -153,11 +161,19 @@ function validRoadmapItemInput_(p, planId) {
     var anchorRow = findWhere('RoadmapPlanItems', function (it) { return it.id === anchorItemId && it.planId === planId && it.status !== 'Deleted'; })[0];
     if (!anchorRow) throw new HululError('BAD_REQUEST', 'anchorItemId must reference an existing item already in this plan');
   }
+  // REQ follow-up: "tied to the closing of Readiness Templates Version 1 ... tied to the initiation
+  // of ... Version 2" -- which round (1, 2, 3, ...) this item tracks. Only meaningful for the two
+  // version anchor types; 0 (not stored/used) otherwise.
+  var anchorVersionNumber = 0;
+  if (ROADMAP_ANCHOR_VERSION_TYPES_.indexOf(anchorType) !== -1) {
+    anchorVersionNumber = Math.floor(Number((p && p.anchorVersionNumber) || 1));
+    if (!isFinite(anchorVersionNumber) || anchorVersionNumber < 1) anchorVersionNumber = 1;
+  }
   var offsetSign = (p && p.offsetSign) || 'before';
   if (ROADMAP_OFFSET_SIGNS_.indexOf(offsetSign) === -1) throw new HululError('BAD_REQUEST', 'Invalid offsetSign');
   function nonNegInt_(v) { var n = Number(v || 0); return (isNaN(n) || n < 0) ? 0 : Math.floor(n); }
   return Object.assign({
-    name: name, anchorType: anchorType, anchorItemId: anchorItemId, offsetSign: offsetSign,
+    name: name, anchorType: anchorType, anchorItemId: anchorItemId, anchorVersionNumber: anchorVersionNumber, offsetSign: offsetSign,
     offsetWeeks: nonNegInt_(p && p.offsetWeeks), offsetDays: nonNegInt_(p && p.offsetDays), offsetHours: nonNegInt_(p && p.offsetHours),
     // requiresAttachment (REQ: "allow to choose whether an attachment is required") -- enforced later,
     // per-Event, when a PM tries to mark the rolled-out copy Done (updateEventRoadmapItem below), not
@@ -266,25 +282,49 @@ function resolveOffsetMs_(item) {
   return item.offsetSign === 'after' ? magnitude : -magnitude;
 }
 
-// Resolves every item in a plan to an absolute ms instant, in sortOrder order -- by construction
-// (validRoadmapItemInput_/moveRoadmapPlanItem both guarantee an 'item' anchor always has a smaller
-// sortOrder than its dependent) a single forward pass is always enough; no item is ever visited
-// before the anchor it depends on. Throws if that invariant was somehow violated anyway (e.g. a
-// pre-existing row from before those guards existed) rather than silently producing a wrong date.
-function resolveRoadmapPlanDates_(items, eventStartMs, eventEndMs) {
+// REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates Version
+// 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." Unlike eventStart/
+// eventEnd (fixed the instant the Event itself is created) or another plan item (always resolvable in
+// the same forward pass), a Version's own deadline is set LATER by a PM (setTemplatesDeadline) and a
+// later version doesn't exist AT ALL until the previous one actually lapses or a PM manually opens the
+// next round (see the TemplateDeadlineVersions comment block, Templates.gs) -- so this can return null
+// ("not resolvable yet"), which the caller must handle rather than assume every anchor always produces
+// a real date the moment a plan rolls out. 'templateVersionClose' means the moment that round's
+// documents actually locked (its deadlineAt passing); 'templateVersionOpen' means the moment that
+// round itself came into existence (its own createdAt) -- for the auto-created Version 2 those two
+// instants are one and the same (see maybeAutoCreateVersion2_), but for a manually-opened Version 3+
+// they can be very different, and only 'Open' is meaningful before that round's own deadline is set.
+function resolveTemplateVersionAnchorMs_(eventId, anchorType, versionNumber) {
+  var row = templateDeadlineVersionsForEvent_(eventId).filter(function (v) { return Number(v.versionNumber) === Number(versionNumber); })[0];
+  if (!row) return null;
+  var ms = new Date(anchorType === 'templateVersionOpen' ? row.createdAt : row.deadlineAt).getTime();
+  return isNaN(ms) ? null : ms;
+}
+
+// Resolves every item in a plan to an absolute ms instant (or null -- "not resolvable yet", only ever
+// possible for a templateVersionClose/Open anchor, see resolveTemplateVersionAnchorMs_ above), in
+// sortOrder order -- by construction (validRoadmapItemInput_/moveRoadmapPlanItem both guarantee an
+// 'item' anchor always has a smaller sortOrder than its dependent) a single forward pass is always
+// enough; no item is ever visited before the anchor it depends on. Throws if that invariant was
+// somehow violated anyway (e.g. a pre-existing row from before those guards existed) rather than
+// silently producing a wrong date. A null anchor propagates forward through any 'item' anchor chained
+// to it (null + offset stays null) instead of producing NaN.
+function resolveRoadmapPlanDates_(items, eventStartMs, eventEndMs, eventId) {
   var resolvedById = {};
   var out = [];
   items.forEach(function (item) {
     var anchorMs;
     if (item.anchorType === 'eventStart') anchorMs = eventStartMs;
     else if (item.anchorType === 'eventEnd') anchorMs = eventEndMs;
-    else {
+    else if (ROADMAP_ANCHOR_VERSION_TYPES_.indexOf(item.anchorType) !== -1) {
+      anchorMs = resolveTemplateVersionAnchorMs_(eventId, item.anchorType, item.anchorVersionNumber);
+    } else {
       if (resolvedById[item.anchorItemId] === undefined) {
         throw new HululError('SERVER_ERROR', 'Roadmap plan item "' + item.name + '" is anchored out of order -- fix it in Roadmap Plans');
       }
       anchorMs = resolvedById[item.anchorItemId];
     }
-    var dueMs = anchorMs + resolveOffsetMs_(item);
+    var dueMs = anchorMs == null ? null : anchorMs + resolveOffsetMs_(item);
     resolvedById[item.id] = dueMs;
     out.push({ item: item, dueMs: dueMs });
   });
@@ -307,7 +347,7 @@ function rolloutEventRoadmap_(user, event, planId) {
   if (isNaN(eventStartMs) || isNaN(eventEndMs)) {
     throw new HululError('BAD_REQUEST', 'Event must have valid start/end dates before a Roadmap plan can be rolled out');
   }
-  var resolved = resolveRoadmapPlanDates_(items, eventStartMs, eventEndMs);
+  var resolved = resolveRoadmapPlanDates_(items, eventStartMs, eventEndMs, event.id);
 
   var existingRows = findWhere('EventRoadmapItems', function (r) { return r.eventId === event.id && r.sourceItemId; });
   var existingBySourceId = {};
@@ -317,21 +357,27 @@ function rolloutEventRoadmap_(user, event, planId) {
   resolved.forEach(function (entry) {
     stillPresentSourceIds[entry.item.id] = true;
     var existing = existingBySourceId[entry.item.id];
-    var dueAt = new Date(entry.dueMs).toISOString();
-    // requiresAttachment/icon/actionType/actionConfig are re-synced from the template every rollout
-    // (an admin editing the plan should apply to Events that already rolled it out too) -- but
-    // attachmentUrl/attachmentName are deliberately NOT touched here: they live only on the per-Event
-    // row, and a PM's already-provided attachment must survive a Regenerate (see EventRoadmapItems
-    // schema comment, Utils.gs). actionExecutedAt/actionResult are ALSO left untouched on an existing
-    // row -- an admin tweaking, say, the meeting's To roles after it already fired shouldn't erase the
-    // record that it fired, and if the actionType itself changed, the new one just won't have a
-    // record yet (actionExecutedAt blank) so runRoadmapItemActions_ picks it up on its next sweep.
+    // dueMs is null when this item is anchored to a Version round that doesn't exist/hasn't closed
+    // yet (templateVersionClose/Open, see resolveRoadmapPlanDates_) -- dueAt stays blank rather than
+    // some placeholder date until resyncTemplateVersionAnchoredRoadmapItems_'s periodic sweep can
+    // actually resolve it, same "blank until real" convention actionExecutedAt already uses below.
+    var dueAt = entry.dueMs == null ? '' : new Date(entry.dueMs).toISOString();
+    // requiresAttachment/icon/actionType/actionConfig/anchorType/anchorVersionNumber are re-synced
+    // from the template every rollout (an admin editing the plan should apply to Events that already
+    // rolled it out too) -- but attachmentUrl/attachmentName are deliberately NOT touched here: they
+    // live only on the per-Event row, and a PM's already-provided attachment must survive a
+    // Regenerate (see EventRoadmapItems schema comment, Utils.gs). actionExecutedAt/actionResult are
+    // ALSO left untouched on an existing row -- an admin tweaking, say, the meeting's To roles after
+    // it already fired shouldn't erase the record that it fired, and if the actionType itself
+    // changed, the new one just won't have a record yet (actionExecutedAt blank) so
+    // runRoadmapItemActions_ picks it up on its next sweep.
     var actionFields = { actionType: entry.item.actionType || '', actionConfig: entry.item.actionType ? JSON.stringify(entry.item.actionConfig) : '' };
+    var anchorFields = { anchorType: entry.item.anchorType || '', anchorVersionNumber: entry.item.anchorVersionNumber || 0 };
     if (existing) {
       updateRow('EventRoadmapItems', existing.id, Object.assign({
         name: entry.item.name, dueAt: dueAt, sortOrder: entry.item.sortOrder,
         requiresAttachment: entry.item.requiresAttachment, icon: entry.item.icon
-      }, actionFields));
+      }, actionFields, anchorFields));
     } else {
       insertRow('EventRoadmapItems', Object.assign({
         id: newId('EventRoadmapItems'), eventId: event.id, planId: planId, name: entry.item.name,
@@ -339,7 +385,7 @@ function rolloutEventRoadmap_(user, event, planId) {
         sortOrder: entry.item.sortOrder, createdBy: user.id, createdAt: nowIso_(),
         requiresAttachment: entry.item.requiresAttachment, attachmentUrl: '', attachmentName: '', icon: entry.item.icon,
         actionExecutedAt: '', actionResult: ''
-      }, actionFields));
+      }, actionFields, anchorFields));
     }
   });
   // A plan item removed from the template since the last rollout -- drop its stale per-Event row too.
@@ -387,10 +433,22 @@ function listEventRoadmapItems(user, p) {
         requiresAttachment: r.requiresAttachment === true || r.requiresAttachment === 'true',
         attachmentUrl: r.attachmentUrl || '', attachmentName: r.attachmentName || '', icon: r.icon || '',
         actionType: r.actionType || '', actionConfig: parseRoadmapActionConfig_(r.actionConfig),
-        actionExecutedAt: r.actionExecutedAt || '', actionResult: r.actionResult || ''
+        actionExecutedAt: r.actionExecutedAt || '', actionResult: r.actionResult || '',
+        // anchorType/anchorVersionNumber -- REQ follow-up: "tied to the closing of Readiness
+        // Templates Version 1 ... tied to the initiation of ... Version 2." dueAt is blank ('') until
+        // that round actually exists (see resolveTemplateVersionAnchorMs_/
+        // resyncTemplateVersionAnchoredRoadmapItems_) -- surfaced so the frontend can show a "waiting
+        // on Version N" hint instead of a bare blank date, same idea as actionResult's own waiting text.
+        anchorType: r.anchorType || '', anchorVersionNumber: Number(r.anchorVersionNumber) || 0
       };
     })
-    .sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
+    // Blank dueAt (still waiting on a Version round to exist) sorts to the end rather than jumbling
+    // in with real dates via NaN.
+    .sort(function (a, b) {
+      var am = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      var bm = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return am - bm;
+    });
 }
 
 // Ad hoc item added directly on one Event (sourceItemId left blank) -- e.g. something specific to
@@ -619,6 +677,33 @@ function autoSendRoadmapReminder_(event, item) {
   notify_(ids, 'ROADMAP_REMINDER', message, 'EventRoadmapItems', item.id, event.id);
   audit('system', 'AUTO_SEND_ROADMAP_REMINDER', 'EventRoadmapItems', item.id, { eventId: event.id, recipientCount: ids.length });
   return { ok: true, message: 'Reminder sent to ' + ids.length + ' recipient(s)' };
+}
+
+// REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates Version
+// 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." Called from
+// scheduledEscalationCheck (Setup.gs), right after checkTemplateDeadlines (which is what actually
+// creates/locks TemplateDeadlineVersions rows in the first place -- so an item waiting on, say,
+// "Version 2 opening" gets resolved in the very same sweep pass that just auto-created Version 2, no
+// separate cycle needed). Keeps every still-Pending version-anchored item's dueAt current WITHOUT
+// requiring a PM to remember to hit "Regenerate" after setting/extending a documents deadline --
+// unlike eventStart/eventEnd (fixed the moment the Event itself is created), a Version's timestamps
+// are only known well after the Roadmap has already rolled out (see the TemplateDeadlineVersions
+// comment block, Templates.gs). Only touches 'Pending' items (a completed item's historical due date
+// is never rewritten out from under it) and re-derives the offset from the still-live source
+// RoadmapPlanItems row each time (rather than caching it a second time on EventRoadmapItems) -- an ad
+// hoc item never has this anchorType at all, so sourceItemId is always present here.
+function resyncTemplateVersionAnchoredRoadmapItems_() {
+  var candidates = findWhere('EventRoadmapItems', function (r) {
+    return r.status === 'Pending' && ROADMAP_ANCHOR_VERSION_TYPES_.indexOf(r.anchorType) !== -1;
+  });
+  candidates.forEach(function (r) {
+    var anchorMs = resolveTemplateVersionAnchorMs_(r.eventId, r.anchorType, r.anchorVersionNumber);
+    if (anchorMs == null) return; // still not resolvable this sweep -- leave dueAt as-is (blank or last-known)
+    var source = r.sourceItemId ? getById('RoadmapPlanItems', r.sourceItemId) : null;
+    var offsetMs = source ? resolveOffsetMs_(source) : 0;
+    var newDueAt = new Date(anchorMs + offsetMs).toISOString();
+    if (newDueAt !== r.dueAt) updateRow('EventRoadmapItems', r.id, { dueAt: newDueAt });
+  });
 }
 
 // The sweep itself -- called from scheduledEscalationCheck (Setup.gs), same as checkTemplateDeadlines/

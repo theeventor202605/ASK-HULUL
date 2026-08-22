@@ -4527,7 +4527,13 @@ async function tabRoadmap(content, eventId, detail) {
 // is a compact per-event checklist, not a primary list page -- no search/sort/export needed, though
 // pagination still kicks in for free past 10 rows, same as everywhere else).
 function roadmapChecklistHtml_(items, event, canManage) {
-  var sorted = (items || []).slice().sort(function (a, b) { return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(); });
+  // Blank dueAt (still waiting on a Readiness Templates version round to exist -- see
+  // roadmapItemPlannedDateCellHtml_ below) sorts to the end rather than jumbling in with real dates.
+  var sorted = (items || []).slice().sort(function (a, b) {
+    var am = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+    var bm = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+    return am - bm;
+  });
   var rowsHtml = sorted.length
     ? UI.table([
         { key: 'status', label: '', sortable: false, exportable: false, render: r => roadmapItemCheckCellHtml_(r) },
@@ -4579,7 +4585,21 @@ function roadmapItemNameCellHtml_(item) {
   return '<span class="roadmap-item-name' + (done ? ' done' : '') + '">' + esc(item.name) + '</span>';
 }
 
+// REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates Version
+// 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." dueAt is blank ('')
+// for a templateVersionClose/Open-anchored item until that round actually exists (see
+// resolveTemplateVersionAnchorMs_/resyncTemplateVersionAnchoredRoadmapItems_, RoadmapPlans.gs) -- a
+// bare "—" would leave a PM guessing why, so this shows what it's waiting on instead. Local duplicate
+// of roadmapPlans.js's own ROADMAP_ANCHOR_LABELS_ text -- eventDetail.js loads before roadmapPlans.js
+// (see index.html), same reasoning as this file's existing ROADMAP_TAB_ACTION_LABELS_ duplicate.
+var ROADMAP_TAB_ANCHOR_LABELS_ = {
+  templateVersionClose: 'roadmap_anchor_template_version_close', templateVersionOpen: 'roadmap_anchor_template_version_open'
+};
 function roadmapItemPlannedDateCellHtml_(item) {
+  if (!item.dueAt && (item.anchorType === 'templateVersionClose' || item.anchorType === 'templateVersionOpen')) {
+    var anchorLabel = t(ROADMAP_TAB_ANCHOR_LABELS_[item.anchorType]) + ' ' + (Number(item.anchorVersionNumber) || 1);
+    return '<span class="badge badge-medium" title="' + esc(t('roadmap_anchor_waiting_hint')) + '">' + esc(anchorLabel) + '</span>';
+  }
   return '<span class="roadmap-item-date' + (item.overdue ? ' overdue' : '') + '">' + esc(UI.fmtDate(item.dueAt)) +
     (item.overdue ? ' · ' + esc(t('roadmap_overdue_badge')) : '') + '</span>';
 }

@@ -1178,6 +1178,13 @@ function scheduledEscalationCheck() {
   runEscalationCheck(null);
   deactivateEndedEventPlaceAccounts();
   checkTemplateDeadlines();
+  // REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates
+  // Version 1 ... Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." Re-checks
+  // every still-Pending Roadmap item anchored to a documents-deadline round against the CURRENT
+  // TemplateDeadlineVersions data -- run right after checkTemplateDeadlines (which is what actually
+  // creates/locks those rounds) so a newly-created round resolves in this same sweep. See
+  // resyncTemplateVersionAnchoredRoadmapItems_, RoadmapPlans.gs.
+  resyncTemplateVersionAnchoredRoadmapItems_();
   // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" --
   // fires any due-and-not-yet-fired Roadmap item automation (schedule a meeting, auto-send Readiness
   // templates, send a reminder). See runRoadmapItemActions_, RoadmapPlans.gs.

@@ -452,7 +452,19 @@ var SCHEMA = {
   // (resolved against the rolled-out Event's own EMC/Inspection Company at fire time -- see
   // roleCodesToEventUserIds_) for who a meeting/reminder goes to, and docType CODES (resolved against
   // the Event's own Inspection Company library at fire time) for which Readiness templates to send.
-  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status','requiresAttachment','icon','actionType','actionConfig'],
+  // anchorVersionNumber appended at the end -- REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied
+  // to the closing of Readiness Templates Version 1. Doc. Rev. (Pre Opening Doors) is tied to the
+  // initiation of ... Version 2." Only meaningful when anchorType is 'templateVersionClose' or
+  // 'templateVersionOpen' (0 otherwise) -- which round of the Event's own TemplateDeadlineVersions
+  // (Templates.gs) this item's due date tracks. Unlike eventStart/eventEnd/item, these two anchor
+  // types can't be resolved once at rollout time -- Version 1's deadline is set later by a PM
+  // (setTemplatesDeadline), and Version 2+ doesn't even exist until the previous round actually
+  // lapses or a PM manually opens the next one (see the TemplateDeadlineVersions comment block,
+  // Templates.gs) -- so resolveTemplateVersionAnchorMs_/resyncTemplateVersionAnchoredRoadmapItems_
+  // (RoadmapPlans.gs) keep re-checking on the same periodic sweep as the escalation engine until real
+  // data exists, same "self-heals on the next sweep" pattern runRoadmapItemActions_ already uses for
+  // a blocked action.
+  RoadmapPlanItems:       ['id','planId','name','sortOrder','anchorType','anchorItemId','offsetSign','offsetWeeks','offsetDays','offsetHours','status','requiresAttachment','icon','actionType','actionConfig','anchorVersionNumber'],
   // One rolled-out, per-Event instance of a plan item -- REQ: "configure how it will rollout." Created
   // in bulk by rolloutEventRoadmap_ the moment an Event is created with a planTypeId set (or later via
   // the Roadmap tab's manual "Regenerate" action). dueAt is the fully resolved absolute instant (same
@@ -483,7 +495,16 @@ var SCHEMA = {
   // sent", "Reminder sent to 2 recipient(s)") OR, while actionExecutedAt is still blank, the reason
   // it hasn't fired yet ("Waiting for a documents deadline to be set") -- surfaced on the Roadmap tab
   // so a PM isn't left guessing why nothing happened.
-  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon','actionType','actionConfig','actionExecutedAt','actionResult'],
+  // anchorType/anchorVersionNumber appended at the end -- re-synced from the source RoadmapPlanItems
+  // row every rollout, same convention as requiresAttachment/icon/actionType/actionConfig (blank/0 for
+  // an ad hoc item, which never has this kind of anchor). Kept here (not just looked up back through
+  // sourceItemId each time) specifically so resyncTemplateVersionAnchoredRoadmapItems_ (RoadmapPlans.gs)
+  // can find every item that needs its dueAt re-checked on each periodic sweep with one plain query
+  // over this sheet alone -- it never has to touch RoadmapPlanItems, which might have since had that
+  // row edited or deleted from the template entirely. dueAt itself is blank ('', not a placeholder
+  // date) for a 'templateVersionClose'/'templateVersionOpen' item until the targeted
+  // TemplateDeadlineVersions round actually exists -- see resolveTemplateVersionAnchorMs_.
+  EventRoadmapItems:      ['id','eventId','planId','name','sourceItemId','dueAt','status','completedBy','completedAt','sortOrder','createdBy','createdAt','requiresAttachment','attachmentUrl','attachmentName','icon','actionType','actionConfig','actionExecutedAt','actionResult','anchorType','anchorVersionNumber'],
   // REQ (Dashboard): "add another tab to show venue attendance -- first time inspector or user ...
   // attended venue must be inside boundary or no more than 5 meters outside venue boundaries. also
   // the same for last date time user left venue boundaries." One row per (userId, venueId) pair,

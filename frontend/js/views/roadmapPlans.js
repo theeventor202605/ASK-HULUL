@@ -81,12 +81,18 @@ function openRenamePlanModal_(plan) {
 // ---- Single plan editor: ordered item list ---------------------------------
 
 var ROADMAP_ANCHOR_LABELS_ = {
-  eventStart: 'roadmap_anchor_event_start', eventEnd: 'roadmap_anchor_event_end'
+  eventStart: 'roadmap_anchor_event_start', eventEnd: 'roadmap_anchor_event_end',
+  templateVersionClose: 'roadmap_anchor_template_version_close', templateVersionOpen: 'roadmap_anchor_template_version_open'
 };
 
 function roadmapAnchorLabel_(item, itemsById) {
   if (item.anchorType === 'eventStart') return t(ROADMAP_ANCHOR_LABELS_.eventStart, { term: Term('event') });
   if (item.anchorType === 'eventEnd') return t(ROADMAP_ANCHOR_LABELS_.eventEnd, { term: Term('event') });
+  // REQ follow-up: "tied to the closing of Readiness Templates Version 1 ... tied to the initiation
+  // of ... Version 2" -- e.g. "Closing of Readiness Templates Version 1".
+  if (item.anchorType === 'templateVersionClose' || item.anchorType === 'templateVersionOpen') {
+    return t(ROADMAP_ANCHOR_LABELS_[item.anchorType]) + ' ' + (Number(item.anchorVersionNumber) || 1);
+  }
   var anchor = itemsById[item.anchorItemId];
   return anchor ? anchor.name : t('roadmap_anchor_unknown');
 }
@@ -254,26 +260,38 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
   var isEdit = !!existingItem;
   var draft = draftOverride || (existingItem ? {
     name: existingItem.name, anchorType: existingItem.anchorType, anchorItemId: existingItem.anchorItemId,
+    anchorVersionNumber: existingItem.anchorVersionNumber || 1,
     offsetSign: existingItem.offsetSign, offsetWeeks: existingItem.offsetWeeks, offsetDays: existingItem.offsetDays,
     offsetHours: existingItem.offsetHours, requiresAttachment: existingItem.requiresAttachment, icon: existingItem.icon,
     actionType: existingItem.actionType || '', actionConfig: existingItem.actionConfig || {}
-  } : { name: '', anchorType: 'eventStart', anchorItemId: '', offsetSign: 'before', offsetWeeks: 0, offsetDays: 0, offsetHours: 0, requiresAttachment: false, icon: '', actionType: '', actionConfig: {} });
+  } : { name: '', anchorType: 'eventStart', anchorItemId: '', anchorVersionNumber: 1, offsetSign: 'before', offsetWeeks: 0, offsetDays: 0, offsetHours: 0, requiresAttachment: false, icon: '', actionType: '', actionConfig: {} });
 
   var eligibleAnchors = allItems.filter(function (it) {
     return !existingItem || it.sortOrder < existingItem.sortOrder;
   });
   var selectedAnchorValue = draft.anchorType === 'item' ? 'item:' + draft.anchorItemId : draft.anchorType;
+  // REQ follow-up: "Doc. Sub. (Pre Opening Doors) is tied to the closing of Readiness Templates
+  // Version 1. Doc. Rev. (Pre Opening Doors) is tied to the initiation of ... Version 2." Two more
+  // fixed anchor options alongside eventStart/eventEnd -- see ROADMAP_ANCHOR_VERSION_TYPES_,
+  // RoadmapPlans.gs, for exactly which timestamp each one resolves to and why (unlike every other
+  // anchor here) it isn't always known the moment the plan rolls out to an Event.
   var anchorOptions =
     '<option value="eventStart"' + (selectedAnchorValue === 'eventStart' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_event_start', { term: Term('event') })) + '</option>' +
     '<option value="eventEnd"' + (selectedAnchorValue === 'eventEnd' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_event_end', { term: Term('event') })) + '</option>' +
+    '<option value="templateVersionClose"' + (selectedAnchorValue === 'templateVersionClose' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_template_version_close')) + '</option>' +
+    '<option value="templateVersionOpen"' + (selectedAnchorValue === 'templateVersionOpen' ? ' selected' : '') + '>' + esc(t('roadmap_anchor_template_version_open')) + '</option>' +
     eligibleAnchors.map(function (it) {
       var val = 'item:' + it.id;
       return '<option value="' + esc(val) + '"' + (val === selectedAnchorValue ? ' selected' : '') + '>' + esc(it.name) + '</option>';
     }).join('');
+  var isVersionAnchor = selectedAnchorValue === 'templateVersionClose' || selectedAnchorValue === 'templateVersionOpen';
 
   var body =
     UI.field(t('field_item_name'), '<input id="fPiName" class="field-input" maxlength="120" value="' + esc(draft.name) + '" />') +
     UI.field(t('roadmap_anchor_label'), '<select id="fPiAnchor" class="field-input">' + anchorOptions + '</select>') +
+    '<div id="fPiAnchorVersionWrap" style="display:' + (isVersionAnchor ? 'block' : 'none') + ';margin-top:-6px;">' +
+      UI.field(t('roadmap_anchor_version_number_label'), '<input id="fPiAnchorVersionNumber" type="number" min="1" step="1" class="field-input" value="' + (Number(draft.anchorVersionNumber) || 1) + '" />') +
+    '</div>' +
     '<div class="form-row-3" style="margin-top:8px;">' +
       UI.field(t('unit_weeks'), '<input id="fPiWeeks" type="number" min="0" class="field-input" value="' + draft.offsetWeeks + '" />') +
       UI.field(t('unit_days'), '<input id="fPiDays" type="number" min="0" class="field-input" value="' + draft.offsetDays + '" />') +
@@ -355,6 +373,7 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
       name: document.getElementById('fPiName').value,
       anchorType: anchorRaw.indexOf('item:') === 0 ? 'item' : anchorRaw,
       anchorItemId: anchorRaw.indexOf('item:') === 0 ? anchorRaw.slice(5) : '',
+      anchorVersionNumber: document.getElementById('fPiAnchorVersionNumber').value,
       offsetSign: document.getElementById('fPiSign').value,
       offsetWeeks: document.getElementById('fPiWeeks').value,
       offsetDays: document.getElementById('fPiDays').value,
@@ -396,6 +415,13 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     var other = document.getElementById('fPiActionSubjectOther');
     other.style.display = this.value === '__other__' ? '' : 'none';
     if (this.value === '__other__') other.focus();
+  };
+
+  // Show/hide the version-number field alongside the anchor picker -- only meaningful for the two
+  // template-version anchor types (see ROADMAP_ANCHOR_VERSION_TYPES_, RoadmapPlans.gs).
+  document.getElementById('fPiAnchor').onchange = function () {
+    var isVersion = this.value === 'templateVersionClose' || this.value === 'templateVersionOpen';
+    document.getElementById('fPiAnchorVersionWrap').style.display = isVersion ? 'block' : 'none';
   };
 
   document.getElementById('fPiBrowseIconBtn').onclick = async function () {
