@@ -781,10 +781,15 @@ async function renderEscalationsTab_(content) {
     // REQ: "one week (configurable)" -- the gap between a documents deadline version's own deadline
     // passing and the next version auto-opening (maybeAutoCreateVersion2_, Templates.gs).
     // SystemAdmin-only, same gating as this whole tab (CONFIG_MANAGE_ROLES).
-    Api.call('getTemplateDeadlineVersionGapDays', {})
+    Api.call('getTemplateDeadlineVersionGapDays', {}),
+    // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken...' Make this optional in
+    // the settings so admin may want to enforce taking a photo." Own Config key/endpoint (Findings.gs),
+    // same SystemAdmin-only posture as the other two calls above.
+    Api.call('getResolutionEvidenceRequired', {})
   ]);
   var cfg = results[0];
   var versionGapDays = results[1].gapDays;
+  var evidenceRequired = results[2].required;
   content.innerHTML =
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('escalation_alerts_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('escalation_alerts_subtitle')) + '</div></div>' +
@@ -816,6 +821,19 @@ async function renderEscalationsTab_(content) {
     '<div class="card-body">' +
       UI.field(t('version_gap_days_field'), '<input type="number" id="cfgVersionGapDays" class="field-input" min="1" style="max-width:120px;" value="' + esc(String(versionGapDays)) + '" />') +
       '<button class="btn btn-secondary btn-sm" id="saveVersionGapDaysBtn" style="margin-top:10px;">' + esc(t('save')) + '</button>' +
+    '</div></div>' +
+    // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken...' Make this optional in
+    // the settings so admin may want to enforce taking a photo." Off by default matches nothing --
+    // resolutionEvidenceRequired_ (Findings.gs) defaults true, so an org that's never touched this
+    // keeps the exact previous hard-blocking behavior.
+    '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('resolution_evidence_title')) + '</div>' +
+    '<div class="muted" style="font-size:11.5px;">' + esc(t('resolution_evidence_subtitle')) + '</div></div>' +
+    '<div class="card-body">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;">' +
+        '<input type="checkbox" id="cfgResolutionEvidenceRequired"' + (evidenceRequired ? ' checked' : '') + ' /> ' + esc(t('resolution_evidence_toggle_label')) +
+      '</label>' +
+      '<div class="muted" style="font-size:11px;margin-top:6px;">' + esc(t('resolution_evidence_toggle_hint')) + '</div>' +
+      '<button class="btn btn-secondary btn-sm" id="saveResolutionEvidenceRequiredBtn" style="margin-top:10px;">' + esc(t('save')) + '</button>' +
     '</div></div>' +
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('tier1_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('tier1_subtitle')) + '</div></div>' +
@@ -856,6 +874,13 @@ async function renderEscalationsTab_(content) {
     try {
       await Api.call('setTemplateDeadlineVersionGapDays', { gapDays: n });
       UI.toast(t('toast_version_gap_days_saved'), 'success');
+    } catch (err) { UI.error(err); }
+  };
+
+  document.getElementById('saveResolutionEvidenceRequiredBtn').onclick = async function () {
+    try {
+      await Api.call('setResolutionEvidenceRequired', { required: document.getElementById('cfgResolutionEvidenceRequired').checked });
+      UI.toast(t('toast_resolution_evidence_setting_saved'), 'success');
     } catch (err) { UI.error(err); }
   };
 }

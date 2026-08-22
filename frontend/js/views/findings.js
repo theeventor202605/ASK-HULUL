@@ -1307,6 +1307,11 @@ async function renderFindingDetail(params) {
   catch (err) { UI.error(err); root.innerHTML = '<div class="empty-state">' + esc(t('could_not_load_x', { term: Term('finding').toLowerCase() })) + '</div>'; return; }
 
   var finding = data.finding, resolutions = data.resolutions || [];
+  // REQ follow-up: "Make this optional in settings so admin may want to enforce taking a photo" --
+  // viewFinding (Findings.gs) bundles this in so the Resolve action section knows whether to
+  // hard-block or soft-warn on missing evidence without a separate SystemAdmin-gated fetch. Defaults
+  // true if somehow missing (older cached response shape), matching the previous hardcoded behavior.
+  var evidenceRequired = data.evidenceRequired !== false;
   // RBAC pilot: which action section renders is now driven by the same admin-configurable
   // finding.resolve/finding.review permissions the backend enforces (resolveFinding/
   // reviewFindingResolution, Findings.gs), not isParticipantRole_/FINDING_ROLE_REVIEWER_ (those two
@@ -1415,7 +1420,7 @@ async function renderFindingDetail(params) {
 
     assignOperatorSectionHtml_(finding, canAssign, operators) +
 
-    findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending) +
+    findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending, evidenceRequired) +
 
     (resolutions.length
       ? '<div class="card"><div class="card-header"><div class="card-title">' + esc(t('resolution_history')) + '</div>' +
@@ -1425,7 +1430,7 @@ async function renderFindingDetail(params) {
 
   document.getElementById('backFindingBtn').onclick = function () { window.location.hash = '#/events/' + eventId + '?tab=findings'; };
   wireEvidenceThumbDeletes_(root, function () { Router.resolve(); });
-  wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending);
+  wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending, evidenceRequired);
   if (canAssign) {
     document.getElementById('saveAssignOperatorBtn').onclick = async function () {
       var select = document.getElementById('fAssignOperator');
@@ -1471,12 +1476,15 @@ function assignOperatorSectionHtml_(finding, canAssign, operators) {
 // (Participant, status Viewed/ReOpen) or Accept/Reject (Reviewer, status InReview with a pending
 // resolution). Anything else (wrong role for this status, or a terminal/no-action status) renders
 // nothing here -- the read-only card above and the history below are the whole page.
-function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending) {
+function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPending, evidenceRequired) {
   if (isParticipant && (finding.status === 'Viewed' || finding.status === 'ReOpen')) {
     return '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('resolve_this_x', { term: Term('finding').toLowerCase() })) + '</div></div>' +
       '<div class="card-body">' +
         UI.field(t('remarks'), '<textarea id="fResolveRemarks" class="field-input" rows="3"></textarea>') +
-        '<div class="field-label" style="font-size:11.5px;margin-top:8px;">' + esc(t('resolution_evidence_required')) + '</div>' +
+        // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken...'" -- the field hint
+        // itself reflects whichever mode Settings > Escalations currently has configured, so the
+        // Participant isn't told evidence is "required" when it's actually just recommended.
+        '<div class="field-label" style="font-size:11.5px;margin-top:8px;">' + esc(t(evidenceRequired === false ? 'resolution_evidence_recommended' : 'resolution_evidence_required')) + '</div>' +
         // Same camera-only pattern as Record Results' Risk Logging evidence field (eventDetail.js) --
         // the native file input is hidden, a plain camera-icon button triggers it, capture="environment"
         // opens the device camera directly instead of a general file/gallery picker.
@@ -1510,7 +1518,7 @@ function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPen
   return '';
 }
 
-function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending) {
+function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending, evidenceRequired) {
   if (isParticipant && (finding.status === 'Viewed' || finding.status === 'ReOpen')) {
     var pendingFiles = { resolve: [] };
     document.getElementById('fResolveCameraBtn').onclick = function () { document.getElementById('fResolveFile').click(); };
@@ -1526,7 +1534,14 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
         e.target.value = '';
       };
     }
-    document.getElementById('submitResolveBtn').onclick = async function () {
+    var doSubmitResolve_ = async function (remarks, urls) {
+      try {
+        await Api.call('resolveFinding', { findingId: finding.id, remarks: remarks, evidenceUrls: urls });
+        UI.toast(t('toast_resolution_submitted'), 'success');
+        Router.resolve();
+      } catch (err) { UI.error(err); }
+    };
+    document.getElementById('submitResolveBtn').onclick = function () {
       var remarks = document.getElementById('fResolveRemarks').value;
       if (!remarks) { UI.toast(t('toast_remarks_required'), 'error'); return; }
       var files = pendingFiles.resolve || [];
@@ -1534,12 +1549,20 @@ function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, 
         UI.toast(t('toast_evidence_uploading_wait'), 'error'); return;
       }
       var urls = files.filter(function (f) { return f.status === 'done'; }).map(function (f) { return f.url; });
-      if (!urls.length) { UI.toast(t('toast_evidence_required'), 'error'); return; }
-      try {
-        await Api.call('resolveFinding', { findingId: finding.id, remarks: remarks, evidenceUrls: urls });
-        UI.toast(t('toast_resolution_submitted'), 'success');
-        Router.resolve();
-      } catch (err) { UI.error(err); }
+      if (!urls.length) {
+        // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken. Do you want to proceed
+        // with submission?' Make this optional in the settings so admin may want to enforce taking a
+        // photo." evidenceRequired (viewFinding, Findings.gs) mirrors the SystemAdmin-configurable
+        // Config key resolveFinding itself enforces server-side -- true still hard-blocks exactly as
+        // before; false instead offers a one-tap confirm, and resolveFinding accepts the empty array.
+        if (evidenceRequired === false) {
+          UI.confirmModal(t('no_photo_proceed_confirm'), function () { doSubmitResolve_(remarks, urls); }, { confirmClass: 'btn-primary' });
+        } else {
+          UI.toast(t('toast_evidence_required'), 'error');
+        }
+        return;
+      }
+      doSubmitResolve_(remarks, urls);
     };
     return;
   }

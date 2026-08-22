@@ -321,6 +321,10 @@ var ROUTES = {
   resolveFinding: function (u, p) { return resolveFinding(u, p); },
   reviewFindingResolution: function (u, p) { return reviewFindingResolution(u, p); },
   assignFindingParticipant: function (u, p) { return assignFindingParticipant(u, p); },
+  // REQ follow-up: "Make this optional in the settings so admin may want to enforce taking a photo"
+  // -- SystemAdmin-only, same posture as getTemplateDeadlineVersionGapDays/set... above.
+  getResolutionEvidenceRequired: function (u, p) { return getResolutionEvidenceRequired(u); },
+  setResolutionEvidenceRequired: function (u, p) { return setResolutionEvidenceRequired(u, p); },
 
   // Resolutions & escalations (RES) -- submitResolution/reviewResolution removed, superseded by
   // resolveFinding/reviewFindingResolution above (see Resolutions.gs header comment).

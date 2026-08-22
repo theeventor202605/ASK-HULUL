@@ -447,6 +447,10 @@ function viewFinding(user, p) {
   getAll('Users').forEach(function (u) { usersById[u.id] = u; });
   var approvedResolution = resolutions.filter(function (r) { return r.decision === 'Approved'; })[0];
   var enriched = enrichFinding_(finding, participantsById, disciplinesById, checklistItemsById, usersById, approvedResolution);
+  // REQ follow-up: bundled into this same call (rather than a separate getResolutionEvidenceRequired
+  // fetch, which is SystemAdmin-gated anyway) so the Resolve action section always knows whether to
+  // hard-block or soft-warn on missing evidence without an extra round trip.
+  var evidenceRequired = resolutionEvidenceRequired_();
 
   // REQ: "A second rejection lands on Rejected ... but automatically creates a new instance from the
   // rejected log and lands it in Open." Surface BOTH directions of that link on the detail page: the
@@ -462,14 +466,39 @@ function viewFinding(user, p) {
     .sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); })[0];
   if (recreatedInto) enriched.recreatedInto = { id: recreatedInto.id, description: recreatedInto.description, status: recreatedInto.status };
 
-  return { finding: enriched, resolutions: resolutions };
+  return { finding: enriched, resolutions: resolutions, evidenceRequired: evidenceRequired };
 }
 
-// REQ workflow steps 3/7: Participant submits a resolution -- free-text remarks + at least one
-// camera-captured photo/video (evidence requirement enforced here as well as client-side, same
-// pattern as recordInspectionResults). Only valid from Viewed (first attempt) or ReOpen (retry after
-// a first rejection) -- Open (not viewed yet), Submitted/InReview/Resubmitted (already has a pending
-// resolution), and Resolved (terminal) can't be resolved from here.
+// REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken. Do you want to proceed with
+// submission?' Make this optional in settings so admin may want to enforce taking a photo." Default
+// true (matches the previously-hardcoded behavior exactly, so nothing changes for an org that's never
+// touched this setting) -- an admin can relax it to a soft warning from Settings > Escalations, same
+// SystemAdmin-only posture and flat-Config-key pattern as templateDeadlineVersionGapDays_ (Templates.gs).
+var RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_ = 'resolutionEvidenceRequired';
+function resolutionEvidenceRequired_() {
+  var raw = getConfig(RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_, true);
+  return raw === true || raw === 'true' || raw === 1 || raw === '1';
+}
+function getResolutionEvidenceRequired(user) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  return { required: resolutionEvidenceRequired_() };
+}
+function setResolutionEvidenceRequired(user, p) {
+  requireRole(user, [ROLES.SYSTEM_ADMIN]);
+  var required = !!(p && p.required);
+  setConfig(RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_, required);
+  audit(user.id, 'SET_RESOLUTION_EVIDENCE_REQUIRED', 'Config', RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_, { required: required });
+  return { required: required };
+}
+
+// REQ workflow steps 3/7: Participant submits a resolution -- free-text remarks + (by default) at
+// least one camera-captured photo/video (evidence requirement enforced here as well as client-side,
+// same pattern as recordInspectionResults) -- unless resolutionEvidenceRequired_() has been relaxed
+// to a soft warning in Settings, in which case the frontend confirms with the Participant and
+// resubmits with an empty evidenceUrls array rather than blocking submission outright. Only valid
+// from Viewed (first attempt) or ReOpen (retry after a first rejection) -- Open (not viewed yet),
+// Submitted/InReview/Resubmitted (already has a pending resolution), and Resolved (terminal) can't be
+// resolved from here.
 function resolveFinding(user, p) {
   requirePermission(user, 'finding.resolve');
   if (!p || !p.findingId) throw new HululError('BAD_REQUEST', 'findingId is required');
@@ -480,11 +509,13 @@ function resolveFinding(user, p) {
     throw new HululError('BAD_REQUEST', 'This finding cannot be resolved from its current status (' + finding.status + ')');
   }
   if (!p.remarks) throw new HululError('BAD_REQUEST', 'Remarks are required');
-  if (!p.evidenceUrls || !p.evidenceUrls.length) throw new HululError('BAD_REQUEST', 'A photo or video of the resolution is required');
+  if (resolutionEvidenceRequired_() && (!p.evidenceUrls || !p.evidenceUrls.length)) {
+    throw new HululError('BAD_REQUEST', 'A photo or video of the resolution is required');
+  }
 
   var resolution = {
     id: newId('Resolutions'), findingId: p.findingId, participantId: finding.participantId,
-    evidenceUrls: p.evidenceUrls.join(','), remarks: p.remarks, submittedAt: nowIso_(),
+    evidenceUrls: (p.evidenceUrls || []).join(','), remarks: p.remarks, submittedAt: nowIso_(),
     reviewedBy: '', decision: 'Pending', comments: '', reviewedAt: '',
     // REQ follow-up: "know who ... solves a log" -- the literal person who submitted this fix, not
     // just the shared Participant record (see the schema comment on Resolutions, Utils.gs).
