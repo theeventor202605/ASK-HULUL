@@ -436,6 +436,13 @@ window.HULUL_I18N = {
     upload_new_version_title: 'Upload new version', empty_no_templates: 'No templates yet.', new_template_title: 'New template',
     field_initial_file_optional: 'Initial file (optional)', toast_template_created: 'Template created',
     field_new_file: 'New file', toast_choose_file_first: 'Choose a file first', toast_new_version_uploaded: 'New version uploaded',
+    // REQ follow-up: "Template Documents have two versions English and Arabic. But EMC should only
+    // pickup one version either the Arabic or the English version. This must reflect back which
+    // version Event manager picked up."
+    field_arabic_file_optional: 'Arabic file (optional)', field_language: 'Language',
+    lang_option_en: 'English', lang_option_ar: 'Arabic', lang_badge_en: 'EN', lang_badge_ar: 'AR',
+    lang_no_english_file: 'No English file', lang_pick_hint: 'This document is available in English and Arabic -- pick one:',
+    lang_picked_hint: 'Language picked by the Event Manager', lang_pick_required_hint: 'Pick a language for this document in the table below first',
     subevents_nested_subtitle: '{{term}} nested inside a parent {{eventTerm}}', subevents_of_prefix: '{{term}} of ',
     subevents_of_all_events: '{{term}} of All {{eventTerm}}', empty_no_subevents_filtered: 'No {{term}} under the current filters.',
     pick_event_hint: 'Pick a specific {{eventTerm}} on the left to add a new {{subEventTerm}}.',
@@ -1233,6 +1240,10 @@ window.HULUL_I18N = {
     upload_new_version_title: 'رفع نسخة جديدة', empty_no_templates: 'لا توجد قوالب بعد.', new_template_title: 'قالب جديد',
     field_initial_file_optional: 'الملف الأولي (اختياري)', toast_template_created: 'تم إنشاء القالب',
     field_new_file: 'ملف جديد', toast_choose_file_first: 'اختر ملفًا أولاً', toast_new_version_uploaded: 'تم رفع النسخة الجديدة',
+    field_arabic_file_optional: 'الملف العربي (اختياري)', field_language: 'اللغة',
+    lang_option_en: 'الإنجليزية', lang_option_ar: 'العربية', lang_badge_en: 'EN', lang_badge_ar: 'AR',
+    lang_no_english_file: 'لا يوجد ملف إنجليزي', lang_pick_hint: 'هذا المستند متوفر بالإنجليزية والعربية -- اختر إحداهما:',
+    lang_picked_hint: 'اللغة التي اختارها مدير الفعالية', lang_pick_required_hint: 'اختر لغة لهذا المستند من الجدول أدناه أولاً',
     subevents_nested_subtitle: '{{term}} متداخلة ضمن {{eventTerm}} رئيسية', subevents_of_prefix: '{{term}} الخاصة بـ ',
     subevents_of_all_events: '{{term}} لكل {{eventTerm}}', empty_no_subevents_filtered: 'لا توجد {{term}} ضمن عوامل التصفية الحالية.',
     pick_event_hint: 'اختر {{eventTerm}} محددة من القائمة على اليسار لإضافة {{subEventTerm}} جديدة.',

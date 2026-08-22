@@ -78,7 +78,14 @@ async function renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage) {
       // glance which library entries have a structured scoring form behind them (see the Scoring
       // Forms card above for the full catalog list) vs. plain upload+review (blank).
       { key: 'docType', label: t('col_doctype'), render: r => r.docType ? esc(r.docType) : '<span class="muted">' + esc(t('doctype_none_option')) + '</span>' },
-      { key: 'fileName', label: t('col_current_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
+      // REQ follow-up: "Template Documents have two versions English and Arabic." fileUrlAr is blank
+      // for the overwhelming majority of entries (single-language, unchanged behavior); when it's
+      // set, both files show as separate links so an admin can tell at a glance this document is
+      // bilingual and verify each variant independently.
+      { key: 'fileName', label: t('col_current_file'), render: r =>
+        (r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + ' <span class="badge badge-neutral" style="font-size:9px;">' + esc(t('lang_badge_en')) + '</span></a>' : '<span class="muted">' + esc(t('lang_no_english_file')) + '</span>') +
+        (r.fileUrlAr ? '<br/><a href="' + r.fileUrlAr + '" target="_blank" style="color:var(--accent);">' + esc(r.fileNameAr || t('word_view')) + ' <span class="badge badge-neutral" style="font-size:9px;">' + esc(t('lang_badge_ar')) + '</span></a>' : '')
+      },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.uploadedBy ? UI.fmtDate(r.updatedAt) : '—' }
     ].concat(canManage ? [{ key: 'actions', label: t('actions'), render: r => UI.actionsCell(
         '<button class="btn btn-secondary btn-sm btn-icon" title="' + esc(t('action_edit')) + '" data-edit-lib-tpl="' + r.id + '">' + ICON('edit') + '</button> ' +
@@ -196,7 +203,11 @@ function openNewLibraryTemplateModal_(orgId, orgs, isSystemAdmin, canManage, sco
   var body = UI.field(t('col_name'), '<input id="fLibName" class="field-input" placeholder="e.g. ZSMP" />') +
     UI.field(t('col_doctype'), '<select id="fLibDocType" class="field-input">' + templateDocTypeOptionsHtml_('', scoredDocTypes) + '</select>') +
     '<div class="muted" style="font-size:11px;margin:-4px 0 8px;">' + esc(t('doctype_hint')) + '</div>' +
-    UI.field(t('field_initial_file_optional'), '<input type="file" id="fLibFile" class="field-input" />');
+    UI.field(t('field_initial_file_optional'), '<input type="file" id="fLibFile" class="field-input" />') +
+    // REQ follow-up: "Template Documents have two versions English and Arabic." Second, independent
+    // optional file -- leaving this blank keeps the entry single-language exactly as before, no
+    // language picking will ever surface for it on the Templates tab.
+    UI.field(t('field_arabic_file_optional'), '<input type="file" id="fLibFileAr" class="field-input" />');
   UI.openModal(t('new_template_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('create'), className: 'btn-primary', onClick: async function () {
@@ -209,6 +220,12 @@ function openNewLibraryTemplateModal_(orgId, orgs, isSystemAdmin, canManage, sco
             payload.fileBase64 = await fileToBase64(fileInput.files[0]);
             payload.fileName = fileInput.files[0].name;
             payload.mimeType = fileInput.files[0].type;
+          }
+          var fileInputAr = document.getElementById('fLibFileAr');
+          if (fileInputAr.files[0]) {
+            payload.fileBase64Ar = await fileToBase64(fileInputAr.files[0]);
+            payload.fileNameAr = fileInputAr.files[0].name;
+            payload.mimeTypeAr = fileInputAr.files[0].type;
           }
           await Api.call('createLibraryTemplate', payload);
           UI.closeModal(); UI.toast(t('toast_template_created'), 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);
@@ -237,8 +254,17 @@ function openEditLibraryTemplateModal_(lib, orgId, orgs, isSystemAdmin, canManag
   ]);
 }
 
+// REQ follow-up: "Template Documents have two versions English and Arabic." Which language slot this
+// replaces is now a choice, not always the (only) English one -- each slot is replaced independently
+// (see uploadLibraryTemplateVersion, Templates.gs), so picking Arabic here never touches the English
+// file and vice versa.
 function openUploadLibraryVersionModal_(templateLibraryId, orgId, orgs, isSystemAdmin, canManage) {
-  var body = UI.field(t('field_new_file'), '<input type="file" id="fLibVerFile" class="field-input" />');
+  var body =
+    UI.field(t('field_language'), '<select id="fLibVerLang" class="field-input">' +
+      '<option value="en">' + esc(t('lang_option_en')) + '</option>' +
+      '<option value="ar">' + esc(t('lang_option_ar')) + '</option>' +
+    '</select>') +
+    UI.field(t('field_new_file'), '<input type="file" id="fLibVerFile" class="field-input" />');
   UI.openModal(t('upload_new_version_title'), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
     { label: t('save'), className: 'btn-primary', onClick: async function () {
@@ -246,7 +272,8 @@ function openUploadLibraryVersionModal_(templateLibraryId, orgId, orgs, isSystem
         if (!fileInput.files[0]) { UI.toast(t('toast_choose_file_first'), 'error'); return; }
         try {
           await Api.call('uploadLibraryTemplateVersion', {
-            templateLibraryId: templateLibraryId, fileBase64: await fileToBase64(fileInput.files[0]),
+            templateLibraryId: templateLibraryId, lang: document.getElementById('fLibVerLang').value,
+            fileBase64: await fileToBase64(fileInput.files[0]),
             fileName: fileInput.files[0].name, mimeType: fileInput.files[0].type
           });
           UI.closeModal(); UI.toast(t('toast_new_version_uploaded'), 'success'); renderLibraryFor_(orgId, orgs, isSystemAdmin, canManage);

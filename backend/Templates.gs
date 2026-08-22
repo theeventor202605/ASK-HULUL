@@ -82,11 +82,18 @@ function createLibraryTemplate(user, p) {
   if (!orgId) throw new HululError('BAD_REQUEST', 'orgId is required');
   var row = {
     id: newId('TemplateLibrary'), orgId: orgId, name: p.name, fileUrl: '', fileName: '', mimeType: '',
-    uploadedBy: '', createdAt: nowIso_(), updatedAt: nowIso_(), docType: p.docType || ''
+    uploadedBy: '', createdAt: nowIso_(), updatedAt: nowIso_(), docType: p.docType || '',
+    fileUrlAr: '', fileNameAr: '', mimeTypeAr: ''
   };
   if (p.fileBase64) {
     var uploaded = uploadTemplateFile_(orgId, p.fileBase64, p.fileName, p.mimeType);
     row.fileUrl = uploaded.fileUrl; row.fileName = uploaded.fileName; row.mimeType = p.mimeType || ''; row.uploadedBy = user.id;
+  }
+  // REQ follow-up: "Template Documents have two versions English and Arabic." Optional second file at
+  // create time, same shape as the English one above.
+  if (p.fileBase64Ar) {
+    var uploadedAr = uploadTemplateFile_(orgId, p.fileBase64Ar, p.fileNameAr, p.mimeTypeAr);
+    row.fileUrlAr = uploadedAr.fileUrl; row.fileNameAr = uploadedAr.fileName; row.mimeTypeAr = p.mimeTypeAr || '';
   }
   insertRow('TemplateLibrary', row);
   audit(user.id, 'CREATE_LIBRARY_TEMPLATE', 'TemplateLibrary', row.id, {});
@@ -111,19 +118,28 @@ function updateLibraryTemplate(user, p) {
 }
 
 // Replaces the current file on a library template — this IS the versioning: there's only ever one
-// current file per library entry, and uploading a newer one overwrites it. Events already sent the
-// previous version keep their own locked copy (see Templates row snapshot, above).
+// current file per library entry (per language slot), and uploading a newer one overwrites it. Events
+// already sent the previous version keep their own locked copy (see Templates row snapshot, above).
+//
+// p.lang ('en'|'ar', default 'en') -- REQ follow-up: "Template Documents have two versions English
+// and Arabic." Each language slot is replaced independently; replacing the English file never touches
+// a library entry's own Arabic file and vice versa.
 function uploadLibraryTemplateVersion(user, p) {
   requirePermission(user, 'templateLibrary.manage'); // RBAC pilot -- same default roles as before, no behavior change
   var lib = getById('TemplateLibrary', p.templateLibraryId);
   if (!lib) throw new HululError('NOT_FOUND', 'Template not found');
   if (user.role !== ROLES.SYSTEM_ADMIN && lib.orgId !== user.orgId) throw new HululError('FORBIDDEN', 'Not your organization\'s template');
   if (!p.fileBase64) throw new HululError('BAD_REQUEST', 'fileBase64 is required');
+  var lang = p.lang === 'ar' ? 'ar' : 'en';
   var uploaded = uploadTemplateFile_(lib.orgId, p.fileBase64, p.fileName, p.mimeType);
-  var updated = updateRow('TemplateLibrary', lib.id, {
-    fileUrl: uploaded.fileUrl, fileName: uploaded.fileName, mimeType: p.mimeType || '', uploadedBy: user.id, updatedAt: nowIso_()
-  });
-  audit(user.id, 'UPLOAD_LIBRARY_TEMPLATE_VERSION', 'TemplateLibrary', lib.id, {});
+  var patch = { updatedAt: nowIso_() };
+  if (lang === 'ar') {
+    patch.fileUrlAr = uploaded.fileUrl; patch.fileNameAr = uploaded.fileName; patch.mimeTypeAr = p.mimeType || '';
+  } else {
+    patch.fileUrl = uploaded.fileUrl; patch.fileName = uploaded.fileName; patch.mimeType = p.mimeType || ''; patch.uploadedBy = user.id;
+  }
+  var updated = updateRow('TemplateLibrary', lib.id, patch);
+  audit(user.id, 'UPLOAD_LIBRARY_TEMPLATE_VERSION', 'TemplateLibrary', lib.id, { lang: lang });
   return updated;
 }
 
@@ -163,6 +179,7 @@ function getEventTemplates(user, p) {
       id: '', eventId: p.eventId, libraryTemplateId: lib.id, name: lib.name, status: 'Not Sent',
       fileUrl: '', fileName: '', mimeType: '', sentBy: '', sentAt: '', uploadedBy: '', updatedAt: '',
       reviewedBy: '', reviewedAt: '', reviewReason: '', docType: lib.docType || '', versionNumber: '',
+      fileUrlAr: '', fileNameAr: '', mimeTypeAr: '', pickedLanguage: '', pickedBy: '', pickedAt: '',
       libraryFileUrl: lib.fileUrl, libraryFileName: lib.fileName
     };
   });
@@ -197,6 +214,13 @@ function sendTemplates(user, p) {
     // Independent Drive copy, not a reference to the library's own file -- see copyTemplateDriveFile_
     // above for why (this is the actual fix for the cross-event leakage bug).
     var fileCopy = copyTemplateDriveFile_(lib.fileUrl, event.inspectionCoId, lib.fileName);
+    // REQ follow-up: "Template Documents have two versions English and Arabic." Snapshot the Arabic
+    // variant the same independent-copy way, only if the library entry actually has one --
+    // copyTemplateDriveFile_ is already a no-op (returns blanks) when fileUrl is blank, so this is
+    // safe to call unconditionally. fileUrl/fileName/mimeType stay the ACTIVE (English-by-default)
+    // slot; fileUrlAr/etc is the alternate, swapped in by pickTemplateLanguage if the Event Manager
+    // picks Arabic instead -- see the Templates schema comment (Utils.gs).
+    var fileCopyAr = copyTemplateDriveFile_(lib.fileUrlAr, event.inspectionCoId, lib.fileNameAr);
     var row = {
       id: newId('Templates'), eventId: p.eventId, libraryTemplateId: libId, name: lib.name, status: 'Sent',
       fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName, mimeType: lib.mimeType, sentBy: user.id, sentAt: nowIso_(),
@@ -209,7 +233,9 @@ function sendTemplates(user, p) {
       // REQ: "Readiness templates table should [show] which version we are on now" -- which round
       // this row belongs to (sendTemplates only runs once a version already exists, see the
       // deadlineAt check just above, so there's always a current one to stamp it with).
-      versionNumber: currentTemplateVersionNumber_(p.eventId)
+      versionNumber: currentTemplateVersionNumber_(p.eventId),
+      fileUrlAr: fileCopyAr.fileUrl, fileNameAr: fileCopyAr.fileName, mimeTypeAr: lib.fileUrlAr ? (lib.mimeTypeAr || '') : '',
+      pickedLanguage: '', pickedBy: '', pickedAt: ''
     };
     insertRow('Templates', row);
     sent.push(row);
@@ -235,6 +261,40 @@ function openEventTemplate(user, p) {
     updateRow('Templates', tpl.id, { status: 'Under Review', updatedAt: nowIso_() });
   }
   return getById('Templates', tpl.id);
+}
+
+var TEMPLATE_LANGUAGES_ = ['en', 'ar'];
+
+// REQ follow-up: "Template Documents have two versions English and Arabic. But EMC should only
+// pickup one version either the Arabic or the English version. This must reflect back which version
+// Event manager picked up." fileUrl/fileName/mimeType are always the single ACTIVE slot every other
+// action on this row reads/writes (view link, uploadEventTemplateFile, submit, review, scoring, the
+// deadline-version snapshot) -- picking a language SWAPS the active and alternate (fileUrlAr/etc)
+// slots rather than adding a second parallel code path anywhere else, so none of those other actions
+// need to know or care that a document might be bilingual. Only meaningful once fileUrlAr is actually
+// set (a document sent with only one language behaves exactly as it always has -- nothing to pick).
+// Restricted to status 'Sent' -- once the Event Manager has opened/started/uploaded into the active
+// slot (see openEventTemplate below, which flips Sent -> In Progress the moment the link is opened),
+// swapping slots under them would silently relocate whatever they've already done into the alternate
+// slot instead of overwriting it, which is exactly the kind of quiet data loss this app avoids
+// elsewhere too (e.g. isTemplatesLocked_'s hard stop on upload/send once a deadline has passed).
+function pickTemplateLanguage(user, p) {
+  var tpl = getById('Templates', p.templateId);
+  if (!tpl) throw new HululError('NOT_FOUND', 'Template not found');
+  requirePermission(user, 'template.upload');
+  var language = p.language;
+  if (TEMPLATE_LANGUAGES_.indexOf(language) === -1) throw new HululError('BAD_REQUEST', 'language must be \'en\' or \'ar\'');
+  if (!tpl.fileUrlAr) throw new HululError('BAD_REQUEST', 'No Arabic version was sent for this document -- nothing to pick.');
+  if (tpl.status !== 'Sent') throw new HululError('BAD_REQUEST', 'The language can only be picked before work has started on this document.');
+  var currentActive = tpl.pickedLanguage || 'en';
+  var patch = { pickedLanguage: language, pickedBy: user.id, pickedAt: nowIso_() };
+  if (language !== currentActive) {
+    patch.fileUrl = tpl.fileUrlAr; patch.fileName = tpl.fileNameAr; patch.mimeType = tpl.mimeTypeAr;
+    patch.fileUrlAr = tpl.fileUrl; patch.fileNameAr = tpl.fileName; patch.mimeTypeAr = tpl.mimeType;
+  }
+  var updated = updateRow('Templates', tpl.id, patch);
+  audit(user.id, 'PICK_TEMPLATE_LANGUAGE', 'Templates', tpl.id, { language: language });
+  return updated;
 }
 
 // Event Manager replaces the sent copy with their completed version — either they downloaded,

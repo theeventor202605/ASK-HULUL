@@ -123,7 +123,21 @@ var SCHEMA = {
   // case it stays pinned to whichever round it was actually approved in even after later rounds open
   // (REQ follow-up: "those approved [documents]... I wanted them to stay in their current state" --
   // see resetTemplatesForNewVersion_, Templates.gs).
-  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy','versionNumber'],
+  // fileUrlAr/fileNameAr/mimeTypeAr/pickedLanguage/pickedBy/pickedAt appended at the end -- REQ
+  // follow-up: "Template Documents have two versions English and Arabic. But EMC should only pickup
+  // one version either the Arabic or the English version. This must reflect back which version Event
+  // manager picked up." fileUrl/fileName/mimeType stay the single ACTIVE slot every other piece of
+  // this workflow already reads/writes (view link, uploadEventTemplateFile, submit, review, scoring,
+  // the deadline-version snapshot) -- none of them need to become language-aware. fileUrlAr/etc is
+  // just the ALTERNATE language's file, sitting unused unless picked. pickTemplateLanguage
+  // (Templates.gs) SWAPS the two slots when the Event Manager picks the non-active language, so
+  // fileUrl always means "whichever language is active right now" -- and records the choice itself
+  // (pickedLanguage: '' until picked, then 'en'|'ar'; pickedBy/pickedAt: who/when) purely for display
+  // ("which version Event Manager picked up", visible to the Inspection Company/GA through the same
+  // getEventTemplates read every other viewer already uses). Only meaningful once fileUrlAr is
+  // non-blank (i.e. the library entry actually had an Arabic file at send time) -- a document that
+  // was only ever uploaded in one language behaves exactly as it always has, no picking involved.
+  Templates:              ['id','eventId','libraryTemplateId','name','status','fileUrl','fileName','mimeType','sentBy','sentAt','uploadedBy','updatedAt','reviewedBy','reviewedAt','reviewReason','createdAt','docType','scoringFinalizedAt','scoringFinalizedBy','versionNumber','fileUrlAr','fileNameAr','mimeTypeAr','pickedLanguage','pickedBy','pickedAt'],
   // REQ: "When Documents deadline (first version) is reached; Lock all documents no editing allowed
   // no upload allowed, reserve the status of the documents. Then create a second deadline one week
   // (configurable) after first version deadline ... A third or fourth version deadline can be
@@ -350,7 +364,16 @@ var SCHEMA = {
   // library document, e.g. 'ZSMP'/'ZERP' (v1 scope) or '' for a document with no scoring form yet
   // (Traffic & Transport, Crowd Management, Security Management, or any custom entry an org adds --
   // those keep working exactly as a plain upload+review document, same as before this feature).
-  TemplateLibrary:        ['id','orgId','name','fileUrl','fileName','mimeType','uploadedBy','createdAt','updatedAt','docType'],
+  // fileUrlAr/fileNameAr/mimeTypeAr appended at the end -- REQ follow-up: "Template Documents have
+  // two versions English and Arabic." An optional second file per library entry; blank means this
+  // document has no Arabic variant (the overwhelming majority, and every pre-existing entry) and
+  // nothing about picking a language ever surfaces for it. Uploaded/replaced the same way as the
+  // English fileUrl/fileName/mimeType (createLibraryTemplate/uploadLibraryTemplateVersion now take an
+  // optional lang target), and snapshotted onto the per-event Templates row's OWN fileUrlAr at send
+  // time exactly like the English file already is -- see the Templates schema comment above for how
+  // the per-event side actually uses it (active/alternate slot swap on pick, not two parallel copies
+  // read in different places).
+  TemplateLibrary:        ['id','orgId','name','fileUrl','fileName','mimeType','uploadedBy','createdAt','updatedAt','docType','fileUrlAr','fileNameAr','mimeTypeAr'],
   // REQ follow-up: "Can I convert the templates to forms and include evaluation process as per
   // attached file?" -- a reusable, admin-seeded catalog of the scoring items an Inspection Analyst
   // reviews a submitted document against, one row per item (not per section -- section grouping is

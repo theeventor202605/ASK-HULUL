@@ -502,6 +502,27 @@ var TEMPLATE_BOARD_BORDER = {
 // uploaderRoles/reviewerRoles come from getTemplateProcessRoles (see tabTemplates below) --
 // configurable per REQ: "role assignments... Inspection Analyst and Event Manager, where I can
 // change them and allow one or multiple role assignment" (Configuration > Process).
+// REQ follow-up: "Template Documents have two versions English and Arabic. But EMC should only
+// pickup one version either the Arabic or the English version. This must reflect back which version
+// Event manager picked up." fileUrlAr blank (the overwhelming majority, and every pre-existing
+// document) or already picked or past 'Sent' -> behaves exactly like the old single-language link.
+// Only a still-Sent, still-unpicked, genuinely bilingual document shows the picker instead of a
+// direct link (see pickTemplateLanguage, Templates.gs, for why picking is restricted to 'Sent').
+// Once picked, a small badge next to the link is the "reflect back which version" part -- visible to
+// every reader of this same tab (Inspection Company, GA), not just the Event Manager who chose it.
+function templateFileCellHtml_(item) {
+  if (!item.fileUrl) return '—';
+  if (item.fileUrlAr && !item.pickedLanguage && item.status === 'Sent') {
+    return '<div class="muted" style="font-size:11px;margin-bottom:4px;">' + esc(t('lang_pick_hint')) + '</div>' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-pick-template="' + esc(item.id) + '" data-pick-lang="en" style="margin-right:4px;">' + esc(t('lang_option_en')) + '</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-pick-template="' + esc(item.id) + '" data-pick-lang="ar">' + esc(t('lang_option_ar')) + '</button>';
+  }
+  var langBadge = item.pickedLanguage
+    ? ' <span class="badge badge-info" style="font-size:9px;" title="' + esc(t('lang_picked_hint')) + '">' + esc(item.pickedLanguage === 'ar' ? t('lang_badge_ar') : t('lang_badge_en')) + '</span>'
+    : '';
+  return '<a href="' + item.fileUrl + '" target="_blank" data-open-template="' + esc(item.id) + '" style="color:var(--accent);">' + esc(item.fileName || t('word_view')) + '</a>' + langBadge;
+}
+
 function templateActionsHtml_(tpl, uploaderRoles, reviewerRoles, hasDeadline, scoredDocTypes, isLocked) {
   var role = HululState.user.role;
   // RBAC pilot (backend/Permissions.gs): admin-configurable from Settings > Permissions > Templates >
@@ -601,7 +622,7 @@ async function tabTemplates(content, eventId, detail) {
       // the event's current one (e.g. approved in version 1 while everything else is now on
       // version 2), so showing it per document is what actually answers the question for that row.
       { key: 'versionNumber', label: t('col_version'), render: r => r.versionNumber ? esc(t('version_n_badge', { n: r.versionNumber })) : '—' },
-      { key: 'fileName', label: t('col_file'), render: r => r.fileUrl ? '<a href="' + r.fileUrl + '" target="_blank" data-open-template="' + r.id + '" style="color:var(--accent);">' + esc(r.fileName || t('word_view')) + '</a>' : '—' },
+      { key: 'fileName', label: t('col_file'), render: r => templateFileCellHtml_(r) },
       { key: 'completenessPct', label: t('col_completeness'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'completenessPct') },
       { key: 'qualityPct', label: t('col_quality'), render: r => templateScoreCellHtml_(scoringSummaryByTemplateId[r.id], 'qualityPct', true) },
       { key: 'updatedAt', label: t('col_updated'), render: r => r.updatedAt ? UI.fmtDate(r.updatedAt) : '—' },
@@ -612,13 +633,29 @@ async function tabTemplates(content, eventId, detail) {
   UI.wireBoard(content, function (id) {
     if (id.indexOf('lib:') === 0) { UI.toast(t('toast_not_sent_yet'), 'error'); return; }
     var tpl = templates.filter(function (x) { return x.id === id; })[0];
-    if (tpl && tpl.fileUrl) { fireOpenTemplate_(tpl.id); window.open(tpl.fileUrl, '_blank'); }
+    if (!tpl) return;
+    // REQ follow-up: "EMC should only pickup one version either the Arabic or the English version."
+    // The kanban card is a one-click shortcut straight to fileUrl -- block that shortcut for exactly
+    // the bilingual-still-unpicked case so it can't bypass the language picker in the table below.
+    if (tpl.fileUrlAr && !tpl.pickedLanguage && tpl.status === 'Sent') { UI.toast(t('lang_pick_required_hint'), 'error'); return; }
+    if (tpl.fileUrl) { fireOpenTemplate_(tpl.id); window.open(tpl.fileUrl, '_blank'); }
     else UI.toast(t('toast_no_file_yet'), 'error');
   });
   UI.wireBoardPagination(content);
 
   content.querySelectorAll('[data-open-template]').forEach(function (a) {
     a.addEventListener('click', function () { fireOpenTemplate_(a.getAttribute('data-open-template')); });
+  });
+  // REQ follow-up: "Template Documents have two versions English and Arabic ... This must reflect
+  // back which version Event manager picked up." See templateFileCellHtml_ below for when these
+  // buttons actually render.
+  content.querySelectorAll('[data-pick-lang]').forEach(function (btn) {
+    btn.onclick = async function () {
+      try {
+        await Api.call('pickTemplateLanguage', { templateId: btn.getAttribute('data-pick-template'), language: btn.getAttribute('data-pick-lang') });
+        tabTemplates(content, eventId, detail);
+      } catch (err) { UI.error(err); }
+    };
   });
   content.querySelectorAll('[data-send-template]').forEach(function (btn) {
     btn.onclick = async function () {

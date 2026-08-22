@@ -658,11 +658,18 @@ function autoSendRoadmapTemplates_(event, item) {
   var sentCount = 0;
   toSend.forEach(function (lib) {
     var fileCopy = copyTemplateDriveFile_(lib.fileUrl, event.inspectionCoId, lib.fileName);
+    // REQ follow-up: "Template Documents have two versions English and Arabic." Same alternate-slot
+    // snapshot sendTemplates (Templates.gs) does -- see that function's own comment for why this is
+    // safe to call unconditionally, and the Templates schema comment (Utils.gs) for the active/
+    // alternate swap design.
+    var fileCopyAr = copyTemplateDriveFile_(lib.fileUrlAr, event.inspectionCoId, lib.fileNameAr);
     insertRow('Templates', {
       id: newId('Templates'), eventId: event.id, libraryTemplateId: lib.id, name: lib.name, status: 'Sent',
       fileUrl: fileCopy.fileUrl, fileName: fileCopy.fileName, mimeType: lib.mimeType, sentBy: 'system', sentAt: nowIso_(),
       uploadedBy: '', updatedAt: nowIso_(), reviewedBy: '', reviewedAt: '', reviewReason: '', createdAt: nowIso_(),
-      docType: lib.docType || '', versionNumber: currentTemplateVersionNumber_(event.id)
+      docType: lib.docType || '', versionNumber: currentTemplateVersionNumber_(event.id),
+      fileUrlAr: fileCopyAr.fileUrl, fileNameAr: fileCopyAr.fileName, mimeTypeAr: lib.fileUrlAr ? (lib.mimeTypeAr || '') : '',
+      pickedLanguage: '', pickedBy: '', pickedAt: ''
     });
     sentCount++;
   });

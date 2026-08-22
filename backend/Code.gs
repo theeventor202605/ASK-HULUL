@@ -184,6 +184,7 @@ var ROUTES = {
   getEventTemplates: function (u, p) { return getEventTemplates(u, p); },
   sendTemplates: function (u, p) { return sendTemplates(u, p); },
   openEventTemplate: function (u, p) { return openEventTemplate(u, p); },
+  pickTemplateLanguage: function (u, p) { return pickTemplateLanguage(u, p); },
   uploadEventTemplateFile: function (u, p) { return uploadEventTemplateFile(u, p); },
   submitEventTemplate: function (u, p) { return submitEventTemplate(u, p); },
   reviewEventTemplate: function (u, p) { return reviewEventTemplate(u, p); },
