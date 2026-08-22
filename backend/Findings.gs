@@ -470,13 +470,14 @@ function viewFinding(user, p) {
 }
 
 // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken. Do you want to proceed with
-// submission?' Make this optional in settings so admin may want to enforce taking a photo." Default
-// true (matches the previously-hardcoded behavior exactly, so nothing changes for an org that's never
-// touched this setting) -- an admin can relax it to a soft warning from Settings > Escalations, same
-// SystemAdmin-only posture and flat-Config-key pattern as templateDeadlineVersionGapDays_ (Templates.gs).
+// submission?' Make this optional in settings so admin may want to enforce taking a photo." The REQ
+// phrasing puts enforcement itself behind admin opt-in ("admin may want to enforce"), so the default
+// is false -- Participants are never hard-blocked unless a SystemAdmin has explicitly turned this ON
+// from Settings > Escalations, same SystemAdmin-only posture and flat-Config-key pattern as
+// templateDeadlineVersionGapDays_ (Templates.gs).
 var RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_ = 'resolutionEvidenceRequired';
 function resolutionEvidenceRequired_() {
-  var raw = getConfig(RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_, true);
+  var raw = getConfig(RESOLUTION_EVIDENCE_REQUIRED_CONFIG_KEY_, false);
   return raw === true || raw === 'true' || raw === 1 || raw === '1';
 }
 function getResolutionEvidenceRequired(user) {
@@ -491,11 +492,12 @@ function setResolutionEvidenceRequired(user, p) {
   return { required: required };
 }
 
-// REQ workflow steps 3/7: Participant submits a resolution -- free-text remarks + (by default) at
-// least one camera-captured photo/video (evidence requirement enforced here as well as client-side,
-// same pattern as recordInspectionResults) -- unless resolutionEvidenceRequired_() has been relaxed
-// to a soft warning in Settings, in which case the frontend confirms with the Participant and
-// resubmits with an empty evidenceUrls array rather than blocking submission outright. Only valid
+// REQ workflow steps 3/7: Participant submits a resolution -- free-text remarks +, only when a
+// SystemAdmin has opted into resolutionEvidenceRequired_() from Settings > Escalations, at least one
+// camera-captured photo/video (evidence requirement enforced here as well as client-side, same pattern
+// as recordInspectionResults). By default this is NOT enforced -- the frontend instead confirms with
+// the Participant ("No photo was taken. Do you want to proceed?") and resubmits with an empty
+// evidenceUrls array rather than blocking submission outright. Only valid
 // from Viewed (first attempt) or ReOpen (retry after a first rejection) -- Open (not viewed yet),
 // Submitted/InReview/Resubmitted (already has a pending resolution), and Resolved (terminal) can't be
 // resolved from here.

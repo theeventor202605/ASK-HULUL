@@ -823,9 +823,9 @@ async function renderEscalationsTab_(content) {
       '<button class="btn btn-secondary btn-sm" id="saveVersionGapDaysBtn" style="margin-top:10px;">' + esc(t('save')) + '</button>' +
     '</div></div>' +
     // REQ follow-up: "Instead of enforcing photo, say 'No Photo was taken...' Make this optional in
-    // the settings so admin may want to enforce taking a photo." Off by default matches nothing --
-    // resolutionEvidenceRequired_ (Findings.gs) defaults true, so an org that's never touched this
-    // keeps the exact previous hard-blocking behavior.
+    // the settings so admin may want to enforce taking a photo." resolutionEvidenceRequired_
+    // (Findings.gs) defaults false -- Participants are never hard-blocked unless a SystemAdmin
+    // explicitly checks this box, matching "admin may want to enforce" (enforcement is the opt-in).
     '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">' + esc(t('resolution_evidence_title')) + '</div>' +
     '<div class="muted" style="font-size:11.5px;">' + esc(t('resolution_evidence_subtitle')) + '</div></div>' +
     '<div class="card-body">' +
