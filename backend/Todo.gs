@@ -67,11 +67,15 @@ function todoWithinWindow_(iso) {
 // createdByName: REQ follow-up -- "We don't have a column showing who created that log." Resolved
 // name (not raw Users.id) so the frontend table can show a Created By column without its own
 // per-row user lookup; only populated for 'log' (same reasoning as openedByMe above).
+// solvedByName/closedByName: REQ follow-up -- "know who opens (creates) a log, solves a log, and
+// closes a log." Same idea as createdByName, resolved from the Finding's Approved Resolution row (if
+// any) -- see findingResolutionTrail_-equivalent logic in the Logs block below.
 function todoItem_(opts) {
   return {
     id: opts.id, category: opts.category, title: opts.title || '', subtitle: opts.subtitle || '',
     eventId: opts.eventId || '', eventTab: opts.eventTab || '', navPath: opts.navPath || '',
     meetingId: opts.meetingId || '', openedByMe: !!opts.openedByMe, createdByName: opts.createdByName || '',
+    solvedByName: opts.solvedByName || '', closedByName: opts.closedByName || '',
     createdAt: opts.createdAt || '', completed: !!opts.completed, completedAt: opts.completedAt || ''
   };
 }
@@ -96,6 +100,15 @@ function listMyTodoItems(user) {
   listEvents(user, {}).forEach(function (e) { eventById[e.id] = e; });
 
   // ---- Logs (Findings): created by me OR assigned to me as the resolving Operator ----------------
+  // REQ follow-up: "know who ... solves a log and closes a log" -- same approved-resolution
+  // precompute as listFindings (Findings.gs): the Resolutions row with decision:'Approved' (at most
+  // one per finding) carries who submitted the fix that stuck (submittedBy -- "solved") and who
+  // approved it (reviewedBy -- "closed"). One scan up front instead of a query per Finding row.
+  var approvedResolutionByFinding = {};
+  getAll('Resolutions').filter(function (r) { return r.decision === 'Approved'; }).forEach(function (r) {
+    var existing = approvedResolutionByFinding[r.findingId];
+    if (!existing || new Date(r.reviewedAt) > new Date(existing.reviewedAt)) approvedResolutionByFinding[r.findingId] = r;
+  });
   findWhere('Findings', function (f) {
     if (f.createdBy === user.id) return true;
     if (f.participantId) {
@@ -109,17 +122,20 @@ function listMyTodoItems(user) {
     var title = (f.description || '').slice(0, 80) || f.id;
     var openedByMe = f.createdBy === user.id;
     var creatorName = todoUserName_(f.createdBy);
+    var approved = approvedResolutionByFinding[f.id];
+    var solverName = approved ? todoUserName_(approved.submittedBy) : '';
+    var closerName = approved ? todoUserName_(approved.reviewedBy) : '';
     if (FINDING_OPEN_STATUSES.indexOf(f.status) !== -1) {
       items.push(todoItem_({
         id: 'log:' + f.id, category: 'log', title: title, subtitle: evName,
         eventId: f.eventId, eventTab: 'findings', createdAt: f.createdAt, openedByMe: openedByMe,
-        createdByName: creatorName
+        createdByName: creatorName, solvedByName: solverName, closedByName: closerName
       }));
     } else if (f.status === 'Resolved' && todoWithinWindow_(f.resolvedAt)) {
       items.push(todoItem_({
         id: 'log:' + f.id, category: 'log', title: title, subtitle: evName,
         eventId: f.eventId, eventTab: 'findings', createdAt: f.createdAt, openedByMe: openedByMe,
-        createdByName: creatorName,
+        createdByName: creatorName, solvedByName: solverName, closedByName: closerName,
         completed: true, completedAt: f.resolvedAt
       }));
     }

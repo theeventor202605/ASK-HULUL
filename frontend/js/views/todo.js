@@ -101,6 +101,10 @@ function renderTodoInboxBody_() {
     // createdByName (see Todo.gs's todoItem_/todoUserName_) -- every other category shows '—' since
     // there's no per-item creator concept for them (role-scoped, invitee-based, etc.).
     { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || '—') },
+    // REQ follow-up: "know who opens (creates) a log, solves a log, and closes a log." Same idea,
+    // blank until a log's resolution is actually Approved (Todo.gs's approvedResolutionByFinding).
+    { key: 'solvedByName', label: t('col_solved_by'), render: r => esc(r.solvedByName || '—') },
+    { key: 'closedByName', label: t('col_closed_by'), render: r => esc(r.closedByName || '—') },
     { key: 'status', label: t('col_status'),
       exportValue: r => r.completed ? t('todo_status_done') : t('todo_status_pending'),
       render: r => r.completed

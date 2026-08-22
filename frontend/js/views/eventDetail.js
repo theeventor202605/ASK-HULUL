@@ -3912,7 +3912,12 @@ async function tabFindings(content, eventId, detail) {
       { key: 'suggestedAction', label: t('col_suggestion'), render: r => esc(bi_(r.suggestedAction, r.suggestedActionAr) || '—') },
       { key: 'location', label: t('field_log_location'), render: r => esc(r.location || '—') },
       { key: 'createdAt', label: t('col_date_time'), render: r => UI.fmtDate(r.createdAt) },
-      { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || r.createdBy || '—') }
+      { key: 'createdByName', label: t('col_created_by'), render: r => esc(r.createdByName || r.createdBy || '—') },
+      // REQ follow-up: "know who opens (creates) a log, solves a log, and closes a log." Both blank
+      // ('—') until a resolution is actually Approved (Findings.gs's enrichFinding_/listFindings) --
+      // an Open/Viewed/InReview log genuinely has neither yet, that's not a data gap.
+      { key: 'solvedByName', label: t('col_solved_by'), render: r => esc(r.solvedByName || '—') },
+      { key: 'closedByName', label: t('col_closed_by'), render: r => esc(r.closedByName || '—') }
     ], findings, {}) + '</div></div>';
 
   UI.wireBoard(content, function (id) { window.location.hash = '#/events/' + eventId + '/findings/' + id; });

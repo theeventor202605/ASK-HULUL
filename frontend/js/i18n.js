@@ -260,6 +260,11 @@ window.HULUL_I18N = {
     places_title: 'Places — {{venueName}}', places_subtitle: 'Reusable spots at this {{term}} for Vendors, Operators, and Exhibitors',
     detect_places_btn: 'Detect places in boundary', col_type: 'Type', col_location: 'Location', col_accounts: 'Account(s)',
     word_inactive: '(inactive)', col_created_by: 'Created By', empty_places: 'No places yet.', add_place_card_title: 'Add a place',
+    // REQ follow-up: "know who opens (creates) a log, solves a log, and closes a log." col_opened_by
+    // is the Log detail page's meta-chip label (paired with Solved by/Closed by as a verb trio);
+    // col_created_by (above) stays the label everywhere else (Risk Logging table, To-Do Inbox) to
+    // match the app's existing "Created By" column convention.
+    col_opened_by: 'Opened by', col_solved_by: 'Solved By', col_closed_by: 'Closed By',
     view_credentials_label: 'View credentials', add_another_account_label: 'Add another account',
     venue_wide_badge: 'From Venue Places', manage_from_venue_places_hint: 'Manage from Venues > Places',
     field_location_optional: 'Location (optional)', location_placeholder: 'e.g. Near Gate A, north entrance',
@@ -1042,6 +1047,7 @@ window.HULUL_I18N = {
     places_title: 'الأماكن — {{venueName}}', places_subtitle: 'أماكن قابلة لإعادة الاستخدام في {{term}} للبائعين والمشغّلين والعارضين',
     detect_places_btn: 'اكتشاف الأماكن داخل الحدود', col_type: 'النوع', col_location: 'الموقع', col_accounts: 'الحساب (الحسابات)',
     word_inactive: '(غير نشط)', col_created_by: 'أُنشئ بواسطة', empty_places: 'لا توجد أماكن بعد.', add_place_card_title: 'إضافة مكان',
+    col_opened_by: 'فُتح بواسطة', col_solved_by: 'حُلّ بواسطة', col_closed_by: 'أُغلق بواسطة',
     view_credentials_label: 'عرض بيانات الاعتماد', add_another_account_label: 'إضافة حساب آخر',
     venue_wide_badge: 'من أماكن الموقع', manage_from_venue_places_hint: 'يُدار من الموقع > الأماكن',
     field_location_optional: 'الموقع (اختياري)', location_placeholder: 'مثال: بالقرب من البوابة أ، المدخل الشمالي',

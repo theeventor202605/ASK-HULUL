@@ -1371,6 +1371,13 @@ async function renderFindingDetail(params) {
           // Not in the requested list (no Location field going forward -- see createFinding's own
           // header comment) but still shown, tacked onto the end, for older records that have one.
           (finding.location ? findingMetaChipHtml_('🧭', t('location'), esc(finding.location)) : '') +
+          // REQ follow-up: "know who opens (creates) a log, solves a log, and closes a log." Opened by
+          // always shows (every log has a creator); Solved/Closed by only appear once a resolution has
+          // actually been Approved (enrichFinding_/viewFinding, Findings.gs) -- nothing to show before
+          // that, same "no chip if nothing to say" rule Location above already follows.
+          findingMetaChipHtml_('✍️', t('col_opened_by'), esc(finding.createdByName || '—')) +
+          (finding.solvedByName ? findingMetaChipHtml_('🛠️', t('col_solved_by'), esc(finding.solvedByName)) : '') +
+          (finding.closedByName ? findingMetaChipHtml_('✅', t('col_closed_by'), esc(finding.closedByName)) : '') +
         '</div>' +
         // REQ: "Any log created through a checklist must be traceable to that specific item in the
         // checklist." checklistItemDescription (viewFinding enrichment, Findings.gs) is only present

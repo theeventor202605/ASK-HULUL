@@ -55,11 +55,18 @@ function findingVisibleTo_(user, finding) {
 // that specific item in the checklist" -- resolves checklistItemId into a readable description.
 // usersById (optional) -- REQ follow-up (Risk Logging table column reorder): "Created by" needs the
 // user's name, not the raw id audit_/createdBy already carries.
-function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById) {
+// approvedResolution (optional) -- REQ follow-up: "know who opens (creates) a log, solves a log, and
+// closes a log." The Resolutions row (if any) with decision:'Approved' -- there's at most one per
+// finding, since Approved is what actually flips status to Resolved (terminal); rejections go back to
+// ReOpen and leave no Approved row behind. Its submittedBy is who "solved" it (submitted the fix that
+// stuck); its reviewedBy is who "closed" it (the reviewer who approved that fix).
+function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById, approvedResolution) {
   var pt = participantsById[f.participantId];
   var d = disciplinesById[f.disciplineId];
   var item = checklistItemsById && f.checklistItemId ? checklistItemsById[f.checklistItemId] : null;
   var creator = usersById && f.createdBy ? usersById[f.createdBy] : null;
+  var solver = usersById && approvedResolution && approvedResolution.submittedBy ? usersById[approvedResolution.submittedBy] : null;
+  var closer = usersById && approvedResolution && approvedResolution.reviewedBy ? usersById[approvedResolution.reviewedBy] : null;
   // REQ: "When turning platform to Arabic, some information is still in English" -- category/
   // subCategory on Findings are plain-text snapshots (see the Findings schema comment in Utils.gs),
   // not foreign keys, so there's no single row to read an Arabic value off of the way disciplineName
@@ -88,6 +95,8 @@ function enrichFinding_(f, participantsById, disciplinesById, checklistItemsById
     disciplineCode: d ? d.code : '',
     checklistItemDescription: item ? item.description : '',
     createdByName: creator ? creator.name : '',
+    solvedByName: solver ? solver.name : '',
+    closedByName: closer ? closer.name : '',
     evidenceUrls: f.evidenceUrls ? String(f.evidenceUrls).split(',').filter(Boolean) : [],
     // REQ follow-up: "Instead of showing 'OUTSIDE VENUE BOUNDARY' on photos make it a badge also
     // provide distance away from participant in meters." [{url, outsideBoundary, distanceMeters}, ...] --
@@ -122,7 +131,15 @@ function listFindings(user, p) {
   getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
   var usersById = {};
   getAll('Users').forEach(function (u) { usersById[u.id] = u; });
-  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById); });
+  // REQ follow-up: "know who ... solves a log and closes a log." One getAll('Resolutions') scan for
+  // every Finding on this event, not a per-row query -- same "precompute a map, don't query in the
+  // loop" convention the participantsById/disciplinesById/usersById maps above already follow.
+  var approvedResolutionByFinding = {};
+  getAll('Resolutions').filter(function (r) { return r.decision === 'Approved'; }).forEach(function (r) {
+    var existing = approvedResolutionByFinding[r.findingId];
+    if (!existing || new Date(r.reviewedAt) > new Date(existing.reviewedAt)) approvedResolutionByFinding[r.findingId] = r;
+  });
+  all = all.map(function (f) { return enrichFinding_(f, participantsById, disciplinesById, checklistItemsById, usersById, approvedResolutionByFinding[f.id]); });
   return all.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
 }
 
@@ -421,7 +438,15 @@ function viewFinding(user, p) {
 
   var checklistItemsById = {};
   getAll('ChecklistItems').forEach(function (ci) { checklistItemsById[ci.id] = ci; });
-  var enriched = enrichFinding_(finding, participantsById, disciplinesById, checklistItemsById);
+  // BUG FIX (REQ follow-up: "know who opens, solves, and closes a log" surfaced that this call sent
+  // no usersById at all -- createdByName silently stayed blank on the Log detail page ever since it
+  // was added, unlike listFindings below which always passed it). approvedResolution: `resolutions`
+  // is already fetched (and sorted newest-submittedAt-first) just above -- reuse it instead of a
+  // second Resolutions scan.
+  var usersById = {};
+  getAll('Users').forEach(function (u) { usersById[u.id] = u; });
+  var approvedResolution = resolutions.filter(function (r) { return r.decision === 'Approved'; })[0];
+  var enriched = enrichFinding_(finding, participantsById, disciplinesById, checklistItemsById, usersById, approvedResolution);
 
   // REQ: "A second rejection lands on Rejected ... but automatically creates a new instance from the
   // rejected log and lands it in Open." Surface BOTH directions of that link on the detail page: the
@@ -460,7 +485,10 @@ function resolveFinding(user, p) {
   var resolution = {
     id: newId('Resolutions'), findingId: p.findingId, participantId: finding.participantId,
     evidenceUrls: p.evidenceUrls.join(','), remarks: p.remarks, submittedAt: nowIso_(),
-    reviewedBy: '', decision: 'Pending', comments: '', reviewedAt: ''
+    reviewedBy: '', decision: 'Pending', comments: '', reviewedAt: '',
+    // REQ follow-up: "know who ... solves a log" -- the literal person who submitted this fix, not
+    // just the shared Participant record (see the schema comment on Resolutions, Utils.gs).
+    submittedBy: user.id
   };
   insertRow('Resolutions', resolution);
   var newStatus = finding.status === 'ReOpen' ? 'Resubmitted' : 'Submitted';

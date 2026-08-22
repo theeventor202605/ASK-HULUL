@@ -264,7 +264,12 @@ var SCHEMA = {
   // notedUserIds only ever grows from toUserIds. resolvedAt unchanged: still stamped when the
   // parent Finding's resolution is approved (see reviewFindingResolution, Findings.gs).
   Escalations:            ['id','findingId','tier','triggeredAt','toUserIds','ccUserIds','notedUserIds','resolvedAt'],
-  Resolutions:            ['id','findingId','participantId','evidenceUrls','remarks','submittedAt','reviewedBy','decision','comments','reviewedAt'],
+  // submittedBy added at the end (REQ follow-up: "know who opens, solves, and closes a log") -- the
+  // literal caller who clicked Submit, distinct from participantId (the shared Operator/Participant
+  // record the resolution is filed under, which can span multiple individual logins across shifts --
+  // see participantSiblingIds_, Findings.gs). Appended, not inserted, so existing rows' positional
+  // column mapping doesn't shift (same convention as every other schema extension in this file).
+  Resolutions:            ['id','findingId','participantId','evidenceUrls','remarks','submittedAt','reviewedBy','decision','comments','reviewedAt','submittedBy'],
   // lat/lng/disciplineIds appended at the end (established pattern, see Venues above). Empty zoneId
   // means "operates in every zone" for coverage purposes (see participantRelevantToInspection_ in
   // Inspections.gs) -- most Operators have no single zone, unlike Vendors/Exhibitors. disciplineIds
