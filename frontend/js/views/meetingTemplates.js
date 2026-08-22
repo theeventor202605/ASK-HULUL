@@ -29,14 +29,18 @@ async function renderMeetingTemplates() {
     orgs = (await Api.call('listOrganizations', {})).filter(function (o) { return o.type === 'INSPECTION'; });
     orgId = (orgs[0] && orgs[0].id) || '';
   }
-  await renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage);
+  // REQ follow-up: "assign default attendees roles in the To and Cc" -- fetched once here (not
+  // SystemAdmin/org-admin-gated, see listAllRolesPicklist, Roles.gs) and threaded down to the
+  // template editor modal for its role checkbox grids.
+  var allRoles = await Api.call('listAllRolesPicklist', {});
+  await renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage, allRoles);
 }
 
 function isBuiltInMeetingSubject_(subject) {
   return MEETING_TYPES.indexOf(subject) !== -1;
 }
 
-async function renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage) {
+async function renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage, allRoles) {
   var root = document.getElementById('viewRoot');
 
   if (isSystemAdmin && !orgId) {
@@ -74,17 +78,17 @@ async function renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage)
       templates, { emptyText: esc(t('empty_no_templates')) }) + '</div></div>';
 
   if (isSystemAdmin) {
-    document.getElementById('fMtgTplOrg').onchange = function () { renderMeetingTemplatesFor_(this.value, orgs, true, canManage); };
+    document.getElementById('fMtgTplOrg').onchange = function () { renderMeetingTemplatesFor_(this.value, orgs, true, canManage, allRoles); };
   }
   if (canManage) {
-    document.getElementById('newMtgTplBtn').onclick = function () { openMeetingTemplateModal_(null, orgId, orgs, isSystemAdmin, canManage); };
+    document.getElementById('newMtgTplBtn').onclick = function () { openMeetingTemplateModal_(null, orgId, orgs, isSystemAdmin, canManage, allRoles); };
     document.querySelectorAll('[data-edit-mtg-tpl]').forEach(function (btn) {
       btn.onclick = function () {
         var key = btn.getAttribute('data-edit-mtg-tpl');
         var tpl = key.indexOf('subj:') === 0
           ? templates.filter(function (x) { return !x.id && x.subject === key.slice(5); })[0]
           : templates.filter(function (x) { return x.id === key; })[0];
-        if (tpl) openMeetingTemplateModal_(tpl, orgId, orgs, isSystemAdmin, canManage);
+        if (tpl) openMeetingTemplateModal_(tpl, orgId, orgs, isSystemAdmin, canManage, allRoles);
       };
     });
     document.querySelectorAll('[data-delete-mtg-tpl]').forEach(function (btn) {
@@ -93,7 +97,7 @@ async function renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage)
         try {
           await Api.call('deleteMeetingTemplate', { id: btn.getAttribute('data-delete-mtg-tpl') });
           UI.toast(t('toast_deleted'), 'success');
-          renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage);
+          renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage, allRoles);
         } catch (err) { UI.error(err); }
       };
     });
@@ -106,13 +110,24 @@ async function renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage)
 // one-subject-one-template guarantee from silently drifting; for a custom one it's just simpler (a
 // rename is really "make a new one, delete the old", already possible via the two actions
 // separately) and avoids ever accidentally colliding two rows onto the same subject.
-function openMeetingTemplateModal_(tpl, orgId, orgs, isSystemAdmin, canManage) {
+function openMeetingTemplateModal_(tpl, orgId, orgs, isSystemAdmin, canManage, allRoles) {
   var isNew = !tpl;
   var subjectHtml = isNew
     ? UI.field(t('field_meeting_type'), '<input id="fMtgTplSubject" class="field-input" placeholder="' + esc(t('custom_subject_placeholder')) + '" />')
     : '<div style="font-weight:600;font-size:14px;margin-bottom:10px;">' + esc(tpl.subject) +
         (isBuiltInMeetingSubject_(tpl.subject) ? '' : ' <span class="badge badge-neutral" style="font-size:10px;">' + esc(t('custom_badge')) + '</span>') + '</div>';
-  var body = subjectHtml + richTextFieldHtml_('fMtgTplBody', t('col_agenda_template'), isNew ? '' : (tpl.body || ''));
+  // REQ follow-up: "In Meeting Templates I would like to assign default attendees roles in the To
+  // and Cc." Role CODES (not specific Users -- see MeetingTemplates schema comment, Utils.gs),
+  // resolved against the real Users at whichever Event the New Meeting form is actually for (see
+  // applyTemplateToForm_, meetings.js) -- same reasoning/mechanism as the Roadmap Plans item editor's
+  // own scheduleMeeting action (roleChecksHtml_/readRoleChecks_, ui.js).
+  var rolesHtml =
+    '<div class="field-label" style="margin-top:14px;">' + esc(t('field_default_to_roles')) + '</div>' +
+    roleChecksHtml_('fMtgTplToRoles', allRoles, isNew ? [] : tpl.defaultToRoles) +
+    '<div class="field-label">' + esc(t('field_default_cc_roles')) + '</div>' +
+    roleChecksHtml_('fMtgTplCcRoles', allRoles, isNew ? [] : tpl.defaultCcRoles) +
+    '<div class="muted" style="font-size:11px;margin:-6px 0 4px;">' + esc(t('default_roles_hint')) + '</div>';
+  var body = subjectHtml + richTextFieldHtml_('fMtgTplBody', t('col_agenda_template'), isNew ? '' : (tpl.body || '')) + rolesHtml;
 
   UI.openModal(isNew ? t('new_template_title') : t('edit_x', { term: Term('template') }), body, [
     { label: t('cancel'), className: 'btn-secondary', onClick: UI.closeModal },
@@ -120,11 +135,14 @@ function openMeetingTemplateModal_(tpl, orgId, orgs, isSystemAdmin, canManage) {
         var subject = isNew ? document.getElementById('fMtgTplSubject').value.trim() : tpl.subject;
         if (!subject) { UI.toast(t('toast_subject_required'), 'error'); return; }
         try {
-          var payload = { orgId: orgId, subject: subject, body: readRichTextField_('fMtgTplBody') };
+          var payload = {
+            orgId: orgId, subject: subject, body: readRichTextField_('fMtgTplBody'),
+            toRoles: readRoleChecks_('fMtgTplToRoles'), ccRoles: readRoleChecks_('fMtgTplCcRoles')
+          };
           if (!isNew && tpl.id) payload.id = tpl.id;
           await Api.call('saveMeetingTemplate', payload);
           UI.closeModal(); UI.toast(t('toast_template_saved'), 'success');
-          renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage);
+          renderMeetingTemplatesFor_(orgId, orgs, isSystemAdmin, canManage, allRoles);
         } catch (err) { UI.error(err); }
       } }
   ]);

@@ -464,6 +464,33 @@ function readCheckedUserIds_(prefix) {
   return (USER_PICKER_STATE_[prefix] ? USER_PICKER_STATE_[prefix].selected : []).map(function (u) { return u.id; });
 }
 
+// Mirrors roleCodesToEventUserIds_ (RoadmapPlans.gs) client-side -- resolves a role CODE against the
+// actual Users at whichever Event a meeting is being scheduled for, so a Meeting Template's default
+// To/Cc roles (REQ follow-up: "assign default attendees roles in the To and Cc") pre-fill with real
+// people, not just a role name. EventManager is the Event's own single named field, not a role
+// lookup; everything else matches (role, orgId) against the Event's EMC and Inspection Company, then
+// falls back to a plain role-only match for org-agnostic roles (GAAdmin/GAUser/SystemAdmin/etc.) --
+// same "check both sides, then fall back to global" reasoning as the backend version. usersList is
+// already the New Meeting form's own non-participant Users list (see renderMeetingFormPage_) -- no
+// extra round trip needed, everything this needs is already loaded.
+function roleCodesToEventUsers_(roleCodes, event, usersList) {
+  if (!roleCodes || !roleCodes.length || !event) return [];
+  var out = [], seen = {};
+  roleCodes.forEach(function (role) {
+    var matches;
+    if (role === 'EventManager') {
+      matches = usersList.filter(function (u) { return u.id === event.eventManagerId; });
+    } else {
+      var emcMatches = event.emcId ? usersList.filter(function (u) { return u.orgId === event.emcId && u.role === role; }) : [];
+      var inspMatches = event.inspectionCoId ? usersList.filter(function (u) { return u.orgId === event.inspectionCoId && u.role === role; }) : [];
+      matches = emcMatches.concat(inspMatches);
+      if (!matches.length) matches = usersList.filter(function (u) { return u.role === role; });
+    }
+    matches.forEach(function (u) { if (!seen[u.id]) { seen[u.id] = true; out.push(u); } });
+  });
+  return out;
+}
+
 // Subject = MEETING_TYPES picklist + an "Other" option that reveals a free-text input (REQ:
 // "Meeting type as Subject & allow free text as well") -- same dropdown-plus-reveal pattern
 // Checklist Items' own Checklist Type field uses (checklistItems.js openChecklistItemForm_).
@@ -664,27 +691,43 @@ async function renderMeetingFormPage_(mode, params) {
   document.getElementById('backMtgFormBtn').onclick = function () { window.location.hash = backHash; };
 
   // REQ: "create a template for each meeting subject ... Allow admins to modify these templates."
-  // meetingTemplatesBySubject_ is a {subjectLowercase: body} map for whichever Inspection Company
-  // runs the currently-picked Event (getMeetingTemplatesBySubject, Templates.gs) -- refreshed
-  // whenever the Event changes, since a different Event can belong to a different Inspection Company
-  // with its own template set. applyTemplateToNotes_ only ever fills in an EMPTY Notes field, and
-  // only when creating a new meeting (never on Edit) -- it should suggest a starting point, never
-  // silently overwrite something already typed or already saved.
+  // meetingTemplatesBySubject_ is a {subjectLowercase: {body, toRoles, ccRoles}} map for whichever
+  // Inspection Company runs the currently-picked Event (getMeetingTemplatesBySubject, Templates.gs)
+  // -- refreshed whenever the Event changes, since a different Event can belong to a different
+  // Inspection Company with its own template set (and its own actual EMC Manager/Event Manager/etc.
+  // for the role-based To/Cc defaults to resolve against -- see roleCodesToEventUsers_ below).
+  // applyTemplateToForm_ only ever fills in EMPTY fields, and only when creating a new meeting (never
+  // on Edit) -- it should suggest a starting point, never silently overwrite something already typed,
+  // picked, or already saved.
   var meetingTemplatesBySubject_ = {};
   async function refreshMeetingTemplates_(eventId) {
     if (!eventId) { meetingTemplatesBySubject_ = {}; return; }
     try { meetingTemplatesBySubject_ = await Api.call('getMeetingTemplatesBySubject', { eventId: eventId }); }
     catch (e) { meetingTemplatesBySubject_ = {}; }
   }
-  function applyTemplateToNotes_(subject) {
+  function applyTemplateToForm_(subject) {
     if (isEdit || !subject) return;
-    var body = meetingTemplatesBySubject_[subject.toLowerCase()];
-    if (!body) return;
+    var tpl = meetingTemplatesBySubject_[subject.toLowerCase()];
+    if (!tpl) return;
     var notesEl = document.getElementById('fMtgNotes');
-    if (notesEl && !notesEl.innerHTML.trim()) notesEl.innerHTML = body;
+    if (notesEl && tpl.body && !notesEl.innerHTML.trim()) notesEl.innerHTML = tpl.body;
+    // REQ follow-up: "assign default attendees roles in the To and Cc." Only pre-fills a picker
+    // that's still empty -- if the PM already picked someone (by hand, or from an earlier subject
+    // pick), a later subject change never displaces their choice.
+    var event = eventById[eventSel.value];
+    if (event) {
+      if (tpl.toRoles && tpl.toRoles.length && !USER_PICKER_STATE_.fMtgTo.selected.length) {
+        USER_PICKER_STATE_.fMtgTo.selected = roleCodesToEventUsers_(tpl.toRoles, event, users);
+        renderUserPickerChips_('fMtgTo');
+      }
+      if (tpl.ccRoles && tpl.ccRoles.length && !USER_PICKER_STATE_.fMtgCc.selected.length) {
+        USER_PICKER_STATE_.fMtgCc.selected = roleCodesToEventUsers_(tpl.ccRoles, event, users);
+        renderUserPickerChips_('fMtgCc');
+      }
+    }
   }
 
-  wireSubjectField_(applyTemplateToNotes_);
+  wireSubjectField_(applyTemplateToForm_);
   wireUserPickerSearch_('fMtgTo');
   wireUserPickerSearch_('fMtgCc');
   wireRichTextField_('fMtgNotes');
@@ -703,15 +746,15 @@ async function renderMeetingFormPage_(mode, params) {
   var projectSel = document.getElementById('fMtgProject');
   var eventSel = document.getElementById('fMtgEvent');
   syncSubEventOptions(eventSel.value);
-  refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
+  refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToForm_(readSubjectValue_()); });
   eventSel.onchange = function () {
     syncSubEventOptions(eventSel.value);
-    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
+    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToForm_(readSubjectValue_()); });
   };
   projectSel.onchange = function () {
     eventSel.innerHTML = eventOptionsHtml_(events, projectSel.value, '');
     syncSubEventOptions('');
-    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToNotes_(readSubjectValue_()); });
+    refreshMeetingTemplates_(eventSel.value).then(function () { applyTemplateToForm_(readSubjectValue_()); });
   };
 
   document.getElementById('saveMtgFormBtn').onclick = async function () {

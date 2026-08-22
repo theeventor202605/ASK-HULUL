@@ -998,14 +998,23 @@ var MEETING_TYPES = [
 // Meeting form's auto-fill needs this even for a role with no meetingTemplate.manage permission.
 // Returns real + virtual rows, built-ins first in their defined lifecycle order, any custom subjects
 // after (alphabetically) -- same shape/order philosophy as MEETING_TYPES itself.
+// Safe parse for defaultToRoles/defaultCcRoles -- same guarded pattern as every other JSON-in-a-cell
+// field in this app (see parseRoadmapActionConfig_, RoadmapPlans.gs).
+function parseMeetingTemplateRoles_(raw) {
+  if (!raw) return [];
+  try { var parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; }
+  catch (e) { return []; }
+}
+
 function listMeetingTemplates(user, p) {
   var orgId = (user.role === ROLES.SYSTEM_ADMIN && p && p.orgId) ? p.orgId : user.orgId;
   if (!orgId) return [];
-  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted'; });
+  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted'; })
+    .map(function (r) { return Object.assign({}, r, { defaultToRoles: parseMeetingTemplateRoles_(r.defaultToRoles), defaultCcRoles: parseMeetingTemplateRoles_(r.defaultCcRoles) }); });
   var bySubjectLower = {};
   rows.forEach(function (r) { bySubjectLower[String(r.subject).toLowerCase()] = true; });
   var virtual = MEETING_TYPES.filter(function (mt) { return !bySubjectLower[mt.toLowerCase()]; }).map(function (mt) {
-    return { id: '', orgId: orgId, subject: mt, body: '', status: 'Active', createdBy: '', createdAt: '', updatedBy: '', updatedAt: '' };
+    return { id: '', orgId: orgId, subject: mt, body: '', status: 'Active', createdBy: '', createdAt: '', updatedBy: '', updatedAt: '', defaultToRoles: [], defaultCcRoles: [] };
   });
   var builtInIdx = {};
   MEETING_TYPES.forEach(function (mt, i) { builtInIdx[mt.toLowerCase()] = i; });
@@ -1018,19 +1027,26 @@ function listMeetingTemplates(user, p) {
   });
 }
 
-// Lightweight read for the New Meeting/Edit Meeting form's own auto-fill (meetings.js) -- just a
-// {subjectLowercase: body} map for whichever org actually runs this event, not the full admin
-// list/audit-field shape above. Scoped by the EVENT's own inspectionCoId (same resolution
-// getEventTemplates uses) rather than the caller's own orgId, since an EMC-side user scheduling a
-// meeting isn't themselves part of the Inspection Company whose templates should apply.
+// Lightweight read for the New Meeting/Edit Meeting form's own auto-fill (meetings.js) -- a
+// {subjectLowercase: {body, toRoles, ccRoles}} map for whichever org actually runs this event, not
+// the full admin list/audit-field shape above. Scoped by the EVENT's own inspectionCoId (same
+// resolution getEventTemplates uses) rather than the caller's own orgId, since an EMC-side user
+// scheduling a meeting isn't themselves part of the Inspection Company whose templates should apply.
+// REQ follow-up: "assign default attendees roles in the To and Cc" -- toRoles/ccRoles are role CODES
+// (see MeetingTemplates schema comment, Utils.gs); meetings.js resolves them against the actual
+// Users at THIS event's EMC/Inspection Company, same reasoning as RoadmapPlans.gs's
+// roleCodesToEventUserIds_ (duplicated client-side there, since the New Meeting form already has the
+// full Users list and the target Event loaded -- no extra round trip needed).
 function getMeetingTemplatesBySubject(user, p) {
   if (!p || !p.eventId) throw new HululError('BAD_REQUEST', 'eventId is required');
   var event = getById('Events', p.eventId);
   var orgId = event ? event.inspectionCoId : '';
   if (!orgId) return {};
-  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted' && r.body; });
+  var rows = findWhere('MeetingTemplates', function (r) { return r.orgId === orgId && r.status !== 'Deleted' && (r.body || r.defaultToRoles || r.defaultCcRoles); });
   var map = {};
-  rows.forEach(function (r) { map[String(r.subject).toLowerCase()] = r.body; });
+  rows.forEach(function (r) {
+    map[String(r.subject).toLowerCase()] = { body: r.body || '', toRoles: parseMeetingTemplateRoles_(r.defaultToRoles), ccRoles: parseMeetingTemplateRoles_(r.defaultCcRoles) };
+  });
   return map;
 }
 
@@ -1048,6 +1064,12 @@ function saveMeetingTemplate(user, p) {
   if (!p || !p.subject || !String(p.subject).trim()) throw new HululError('BAD_REQUEST', 'subject is required');
   var subject = String(p.subject).trim();
   var body = sanitizeMeetingTemplateBody_(p.body);
+  // REQ follow-up: "In Meeting Templates I would like to assign default attendees roles in the To
+  // and Cc." cleanRoleCodeList_ (Roles.gs) is the same built-in+custom role validator RoadmapPlanItems'
+  // own action config uses -- role CODES, not specific Users, since a template is shared across every
+  // Event this org runs (see MeetingTemplates schema comment, Utils.gs).
+  var defaultToRoles = JSON.stringify(cleanRoleCodeList_(p.toRoles));
+  var defaultCcRoles = JSON.stringify(cleanRoleCodeList_(p.ccRoles));
 
   var existing = p.id ? getById('MeetingTemplates', p.id) : null;
   if (existing && user.role !== ROLES.SYSTEM_ADMIN && existing.orgId !== orgId) {
@@ -1061,18 +1083,20 @@ function saveMeetingTemplate(user, p) {
 
   if (existing) {
     var updated = updateRow('MeetingTemplates', existing.id, {
-      subject: subject, body: body, status: 'Active', updatedBy: user.id, updatedAt: nowIso_()
+      subject: subject, body: body, status: 'Active', updatedBy: user.id, updatedAt: nowIso_(),
+      defaultToRoles: defaultToRoles, defaultCcRoles: defaultCcRoles
     });
     audit(user.id, 'SAVE_MEETING_TEMPLATE', 'MeetingTemplates', existing.id, {});
-    return updated;
+    return Object.assign({}, updated, { defaultToRoles: parseMeetingTemplateRoles_(updated.defaultToRoles), defaultCcRoles: parseMeetingTemplateRoles_(updated.defaultCcRoles) });
   }
   var row = {
     id: newId('MeetingTemplates'), orgId: orgId, subject: subject, body: body, status: 'Active',
-    createdBy: user.id, createdAt: nowIso_(), updatedBy: user.id, updatedAt: nowIso_()
+    createdBy: user.id, createdAt: nowIso_(), updatedBy: user.id, updatedAt: nowIso_(),
+    defaultToRoles: defaultToRoles, defaultCcRoles: defaultCcRoles
   };
   insertRow('MeetingTemplates', row);
   audit(user.id, 'SAVE_MEETING_TEMPLATE', 'MeetingTemplates', row.id, {});
-  return row;
+  return Object.assign({}, row, { defaultToRoles: parseMeetingTemplateRoles_(row.defaultToRoles), defaultCcRoles: parseMeetingTemplateRoles_(row.defaultCcRoles) });
 }
 
 function deleteMeetingTemplate(user, p) {

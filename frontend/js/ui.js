@@ -1802,3 +1802,23 @@ function esc(s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
 }
+
+// Shared checkbox grid for picking role CODES (not specific Users) -- an admin-defined template that
+// applies across many Events/orgs can't reference a specific person, only a role, resolved against
+// whichever Event actually uses it later. Lives here (loaded before every view file, see index.html)
+// rather than in whichever feature needed it first, since it's now used by both the Roadmap Plans
+// item editor's scheduleMeeting/reminder action config (roadmapPlans.js) and the Meeting Templates
+// editor's default To/Cc roles (meetingTemplates.js). allRoles is the {value,label} picklist from
+// listAllRolesPicklist (Roles.gs).
+function roleChecksHtml_(groupId, allRoles, selected) {
+  var sel = {}; (selected || []).forEach(function (r) { sel[r] = true; });
+  return '<div class="roadmap-role-checks" id="' + groupId + '">' +
+    allRoles.map(function (r) {
+      return '<label class="roadmap-role-check-item"><input type="checkbox" value="' + esc(r.value) + '"' + (sel[r.value] ? ' checked' : '') + ' /> ' + esc(r.label) + '</label>';
+    }).join('') +
+  '</div>';
+}
+
+function readRoleChecks_(groupId) {
+  return Array.from(document.querySelectorAll('#' + groupId + ' input:checked')).map(function (cb) { return cb.value; });
+}

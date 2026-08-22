@@ -214,18 +214,8 @@ var ROADMAP_ACTION_TYPES_ORDER_ = ['', 'scheduleMeeting', 'sendTemplates', 'remi
 // closed enum.
 var ROADMAP_DOCTYPE_SUGGESTIONS_ = ['ZSMP', 'ZERP', 'TTP', 'CSM', 'SEC'];
 
-function roadmapRoleChecksHtml_(groupId, allRoles, selected) {
-  var sel = {}; (selected || []).forEach(function (r) { sel[r] = true; });
-  return '<div class="roadmap-role-checks" id="' + groupId + '">' +
-    allRoles.map(function (r) {
-      return '<label class="roadmap-role-check-item"><input type="checkbox" value="' + esc(r.value) + '"' + (sel[r.value] ? ' checked' : '') + ' /> ' + esc(r.label) + '</label>';
-    }).join('') +
-  '</div>';
-}
-
-function readRoadmapRoleChecks_(groupId) {
-  return Array.from(document.querySelectorAll('#' + groupId + ' input:checked')).map(function (cb) { return cb.value; });
-}
+// roleChecksHtml_/readRoleChecks_ (shared To/Cc role checkbox grid) now live in ui.js -- also used by
+// meetingTemplates.js's default To/Cc roles editor.
 
 // draftOverride: UI.openModal fully replaces #modalRoot's contents, so opening the icon picker (its
 // own modal) from inside THIS modal would destroy whatever the admin already typed here. The "Browse
@@ -294,9 +284,9 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     '<div id="fPiActionPanelScheduleMeeting" style="display:' + (draft.actionType === 'scheduleMeeting' ? 'block' : 'none') + ';">' +
       UI.field(t('roadmap_action_meeting_subject_label'), '<input id="fPiActionSubject" class="field-input" maxlength="120" placeholder="' + esc(t('roadmap_action_meeting_subject_placeholder')) + '" value="' + esc(draft.actionConfig.subject || '') + '" />') +
       '<div class="field-label" style="margin-top:8px;">' + esc(t('roadmap_action_to_roles_label')) + '</div>' +
-      roadmapRoleChecksHtml_('fPiActionToRoles', allRoles, draft.actionConfig.toRoles) +
+      roleChecksHtml_('fPiActionToRoles', allRoles, draft.actionConfig.toRoles) +
       '<div class="field-label" style="margin-top:8px;">' + esc(t('roadmap_action_cc_roles_label')) + '</div>' +
-      roadmapRoleChecksHtml_('fPiActionCcRoles', allRoles, draft.actionConfig.ccRoles) +
+      roleChecksHtml_('fPiActionCcRoles', allRoles, draft.actionConfig.ccRoles) +
     '</div>' +
     '<div id="fPiActionPanelSendTemplates" style="display:' + (draft.actionType === 'sendTemplates' ? 'block' : 'none') + ';">' +
       '<div class="field-label">' + esc(t('roadmap_action_doctypes_label')) + '</div>' +
@@ -309,13 +299,13 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     '</div>' +
     '<div id="fPiActionPanelReminder" style="display:' + (draft.actionType === 'reminder' ? 'block' : 'none') + ';">' +
       '<div class="field-label">' + esc(t('roadmap_action_to_roles_label')) + '</div>' +
-      roadmapRoleChecksHtml_('fPiActionReminderRoles', allRoles, draft.actionConfig.toRoles) +
+      roleChecksHtml_('fPiActionReminderRoles', allRoles, draft.actionConfig.toRoles) +
       UI.field(t('roadmap_action_reminder_message_label'), '<textarea id="fPiActionMessage" class="field-input" rows="2" maxlength="500" placeholder="' + esc(t('roadmap_action_reminder_message_placeholder')) + '">' + esc(draft.actionConfig.message || '') + '</textarea>') +
     '</div>';
 
   function readActionConfigFromForm_(actionType) {
     if (actionType === 'scheduleMeeting') {
-      return { subject: document.getElementById('fPiActionSubject').value, toRoles: readRoadmapRoleChecks_('fPiActionToRoles'), ccRoles: readRoadmapRoleChecks_('fPiActionCcRoles') };
+      return { subject: document.getElementById('fPiActionSubject').value, toRoles: readRoleChecks_('fPiActionToRoles'), ccRoles: readRoleChecks_('fPiActionCcRoles') };
     }
     if (actionType === 'sendTemplates') {
       var checked = Array.from(document.querySelectorAll('.roadmap-doctype-cb:checked')).map(function (cb) { return cb.value; });
@@ -323,7 +313,7 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
       return { docTypes: Array.from(new Set(checked.concat(extra))) };
     }
     if (actionType === 'reminder') {
-      return { toRoles: readRoadmapRoleChecks_('fPiActionReminderRoles'), message: document.getElementById('fPiActionMessage').value };
+      return { toRoles: readRoleChecks_('fPiActionReminderRoles'), message: document.getElementById('fPiActionMessage').value };
     }
     return {};
   }

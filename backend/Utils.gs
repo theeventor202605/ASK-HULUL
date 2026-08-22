@@ -551,7 +551,14 @@ var SCHEMA = {
   // custom/"Other" subject their org uses often. body is rich-text HTML (same sanitize-on-read
   // convention as Meetings.notes -- see sanitizeRichText_, meetings.js). status: 'Active'/'Deleted'
   // (soft delete, same convention as ChecklistItems/Roles).
-  MeetingTemplates:       ['id','orgId','subject','body','status','createdBy','createdAt','updatedBy','updatedAt']
+  // defaultToRoles/defaultCcRoles appended at the end -- REQ follow-up: "In Meeting Templates I would
+  // like to assign default attendees roles in the To and Cc." JSON-stringified arrays of role CODES
+  // (built-in or active custom, same convention as RoadmapPlanItems.actionConfig's toRoles/ccRoles --
+  // see that schema comment, Utils.gs) rather than specific Users, since a template is shared across
+  // every Event an org runs, each with its own actual EMC Manager/Event Manager/etc. Resolved against
+  // whichever Event is picked at New Meeting time (see roleCodesToEventUserIds_-equivalent logic,
+  // meetings.js) so the right real people get pre-filled regardless of which Event the meeting is for.
+  MeetingTemplates:       ['id','orgId','subject','body','status','createdBy','createdAt','updatedBy','updatedAt','defaultToRoles','defaultCcRoles']
 };
 
 var ROLES = {

@@ -44,6 +44,25 @@ function allRoleCodes_() {
   return allRolePicklist_().map(function (r) { return r.value; });
 }
 
+// Cleans a raw role-code array down to real, de-duplicated, currently-valid role codes (built-in or
+// active custom) -- silently drops anything blank/unknown instead of hard-failing the whole request,
+// same "don't block a save over one stale reference" posture as meetingRecipientIds_ (Templates.gs).
+// Shared by every feature that stores role CODES rather than specific Users on an admin-defined,
+// org-agnostic template: RoadmapPlanItems' scheduleMeeting/reminder action config
+// (validRoadmapActionInput_, RoadmapPlans.gs) and MeetingTemplates' defaultToRoles/defaultCcRoles
+// (saveMeetingTemplate, Templates.gs).
+function cleanRoleCodeList_(raw) {
+  if (!Array.isArray(raw)) return [];
+  var valid = {}; allRoleCodes_().forEach(function (r) { valid[r] = true; });
+  var seen = {}, out = [];
+  raw.forEach(function (r) {
+    r = String(r || '').trim();
+    if (!r || seen[r] || !valid[r]) return;
+    seen[r] = true; out.push(r);
+  });
+  return out;
+}
+
 // Any authenticated user (not SystemAdmin-only) -- every account-creation form (SystemAdmin's New
 // Account modal, but also an EMCAdmin/InspectionAdmin/etc.'s own, since a custom role's creatableBy
 // might name any of them) needs to know which custom roles it's allowed to offer, and role codes/

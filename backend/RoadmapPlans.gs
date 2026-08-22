@@ -108,22 +108,6 @@ var ROADMAP_OFFSET_SIGNS_ = ['before', 'after'];
 // reference role CODES and docType CODES rather than specific Users/TemplateLibrary rows.
 var ROADMAP_ACTION_TYPES_ = ['', 'scheduleMeeting', 'sendTemplates', 'reminder'];
 
-// Cleans a raw role-code array down to real, de-duplicated, currently-valid role codes (built-in or
-// active custom) -- same "silently drop anything bad instead of hard-failing" posture as
-// meetingRecipientIds_ (Templates.gs), since a role retired after a plan item was configured to use
-// it shouldn't block every future save of that item.
-function validRoadmapRoleList_(raw) {
-  if (!Array.isArray(raw)) return [];
-  var valid = {}; allRoleCodes_().forEach(function (r) { valid[r] = true; });
-  var seen = {}, out = [];
-  raw.forEach(function (r) {
-    r = String(r || '').trim();
-    if (!r || seen[r] || !valid[r]) return;
-    seen[r] = true; out.push(r);
-  });
-  return out;
-}
-
 // Validates actionType + builds the type-specific actionConfig object, returned pre-serialized
 // (actionConfig: a JSON string, '' when actionType is '') ready to spread straight into the
 // RoadmapPlanItems insert/update row -- mirrors how validRoadmapItemInput_ already hands back
@@ -140,7 +124,7 @@ function validRoadmapActionInput_(p) {
     // later still flows through to a not-yet-fired meeting's subject.
     config = {
       subject: String(raw.subject || '').trim().slice(0, 120),
-      toRoles: validRoadmapRoleList_(raw.toRoles), ccRoles: validRoadmapRoleList_(raw.ccRoles)
+      toRoles: cleanRoleCodeList_(raw.toRoles), ccRoles: cleanRoleCodeList_(raw.ccRoles)
     };
   } else if (actionType === 'sendTemplates') {
     // Empty docTypes means "every Readiness template currently in the event's Inspection Company
@@ -149,7 +133,7 @@ function validRoadmapActionInput_(p) {
     // docType, so anything selectable here is guaranteed to be able to actually match one.
     config = { docTypes: (Array.isArray(raw.docTypes) ? raw.docTypes : []).filter(function (d) { return isValidDocTypeCode_(d); }) };
   } else { // reminder
-    config = { toRoles: validRoadmapRoleList_(raw.toRoles), message: String(raw.message || '').trim().slice(0, 500) };
+    config = { toRoles: cleanRoleCodeList_(raw.toRoles), message: String(raw.message || '').trim().slice(0, 500) };
   }
   return { actionType: actionType, actionConfig: JSON.stringify(config) };
 }

@@ -446,6 +446,11 @@ window.HULUL_I18N = {
     meeting_templates_subtitle: 'Reusable agenda templates for each meeting subject, for your Inspection Company.',
     col_agenda_template: 'Agenda template', template_empty_hint: 'No content yet', custom_badge: 'Custom',
     custom_subject_placeholder: 'e.g. Site Safety Walkthrough', toast_template_saved: 'Template saved',
+    // REQ follow-up: "In Meeting Templates I would like to assign default attendees roles in the To
+    // and Cc." Roles picked here pre-fill (never overwrite) the New Meeting form's own To/Cc pickers
+    // whenever this subject is chosen -- see roleCodesToEventUsers_, meetings.js.
+    field_default_to_roles: 'Default To (roles)', field_default_cc_roles: 'Default Cc (roles)',
+    default_roles_hint: 'Pre-fills the New Meeting form\'s To/Cc with whoever holds these roles at the event -- never overwrites a field already filled in.',
     confirm_delete_template: 'Delete this template? It can be re-created later.',
     col_when: 'When', col_notes: 'Notes', meetings_of_prefix: '{{term}} of ', meetings_of_all_events: '{{term}} of All {{eventTerm}}',
     empty_no_meetings_filtered: 'No {{term}} under the current filters.',
@@ -1235,6 +1240,8 @@ window.HULUL_I18N = {
     meeting_templates_subtitle: 'قوالب أجندة قابلة لإعادة الاستخدام لكل موضوع اجتماع، لشركة التفتيش الخاصة بك.',
     col_agenda_template: 'قالب الأجندة', template_empty_hint: 'لا يوجد محتوى بعد', custom_badge: 'مخصص',
     custom_subject_placeholder: 'مثال: جولة السلامة في الموقع', toast_template_saved: 'تم حفظ القالب',
+    field_default_to_roles: 'إلى افتراضيًا (أدوار)', field_default_cc_roles: 'نسخة إلى افتراضيًا (أدوار)',
+    default_roles_hint: 'يملأ نموذج اجتماع جديد مسبقًا بحقلي إلى/نسخة إلى بمن يشغل هذه الأدوار في الفعالية -- لا يستبدل حقلاً تم تعبئته مسبقًا أبدًا.',
     confirm_delete_template: 'هل تريد حذف هذا القالب؟ يمكن إعادة إنشائه لاحقًا.',
     col_when: 'الموعد', col_notes: 'ملاحظات', meetings_of_prefix: '{{term}} الخاصة بـ ', meetings_of_all_events: '{{term}} لكل {{eventTerm}}',
     empty_no_meetings_filtered: 'لا توجد {{term}} ضمن عوامل التصفية الحالية.',
