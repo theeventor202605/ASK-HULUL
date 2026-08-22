@@ -3390,13 +3390,11 @@ function recordResultRowHtml_(it, existing) {
         '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_suggested_action')) + '</div>' +
         '<input class="field-input result-action" data-item="' + it.id + '" style="margin-bottom:6px;" />') +
       '<div class="field-label" style="font-size:11.5px;">' + esc(t('field_evidence_required')) + '</div>' +
-      // capture="environment" opens the device camera directly (rear camera) on mobile instead of
-      // the general file/gallery picker -- REQ: evidence must be captured on the spot, not uploaded
-      // from an existing file. The native input is kept but visually hidden (its own "Choose
-      // file / No file chosen" chrome looks like a generic upload control); a plain camera-icon
-      // button -- same plain-icon styling as every other icon button in the app -- triggers it via
-      // .click(), so the only affordance the user sees is "take a photo", not "pick a file".
-      '<input type="file" class="result-evidence hidden" data-item="' + it.id + '" accept="image/*,video/*" capture="environment" style="display:none;" />' +
+      // REQ follow-up: "Users logged in can still upload photos from their local machine!" -- was a
+      // hidden file input + capture="environment", which desktop browsers ignore outright (capture is
+      // a mobile-only hint, so it never actually blocked a desktop file picker there). A plain
+      // camera-icon button now opens a real live camera view instead (EvidenceCapture.openCameraModal,
+      // evidence.js, wired per-item below) -- works identically on desktop and mobile.
       '<button type="button" class="btn btn-secondary btn-icon result-evidence-trigger" data-item="' + it.id + '" title="' + esc(t('title_take_photo')) + '" aria-label="' + esc(t('aria_take_photo')) + '">' + ICON('capture_photo') + '</button>' +
       // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from device,
       // unless permission is set for that specific role." A second, non-capture file input + button --
@@ -3426,18 +3424,13 @@ function wireRecordResultRows_(eventId, filteredItems, pendingFiles) {
       updateRecordResultsProgress_();
     };
   });
-  document.querySelectorAll('.result-evidence').forEach(function (input) {
-    input.onchange = function () {
-      var itemId = input.getAttribute('data-item');
-      Array.from(input.files).forEach(function (file) { uploadEvidenceFile_(eventId, itemId, file, pendingFiles); });
-      input.value = '';
-    };
-  });
   document.querySelectorAll('.result-evidence-trigger').forEach(function (btn) {
     btn.onclick = function () {
       var itemId = btn.getAttribute('data-item');
-      var input = document.querySelector('.result-evidence[data-item="' + itemId + '"]');
-      if (input) input.click();
+      EvidenceCapture.openCameraModal({
+        allowVideo: true,
+        onFile: function (file) { uploadEvidenceFile_(eventId, itemId, file, pendingFiles); }
+      });
     };
   });
   // evidence.uploadFromDevice bypass -- same wiring shape as the camera pair above, just pointed at

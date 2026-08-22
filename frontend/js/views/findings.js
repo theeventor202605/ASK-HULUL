@@ -648,9 +648,10 @@ async function renderNewFinding(params) {
           UI.field(t('resolution_window_hours'), '<input id="fWindow" type="number" class="field-input" value="24" />') +
         '</div>' +
         '<div class="field-label" style="margin-top:8px;">' + esc(t('evidence_photo_video')) + '</div>' +
-        // Same camera-only pattern (hidden file input + capture="environment") as the Resolve
-        // section further down this file -- opens the device camera directly, no gallery/file picker.
-        '<input type="file" id="fFindingFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
+        // REQ follow-up: "Users logged in can still upload photos from their local machine!" -- was a
+        // hidden file input + capture="environment", which desktop browsers ignore outright (capture
+        // is a mobile-only hint). Opens a real live camera view instead (EvidenceCapture.openCameraModal,
+        // evidence.js), same pattern as the Resolve section further down this file.
         '<button type="button" class="btn btn-secondary btn-icon" id="fFindingCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button> ' +
         // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
         // device, unless permission is set for that specific role." evidence.uploadFromDevice bypass.
@@ -819,14 +820,17 @@ async function renderNewFinding(params) {
 
   /* ---- Evidence: photo or video, camera capture only ---- */
   var pendingFiles = { newFinding: [] };
-  document.getElementById('fFindingCameraBtn').onclick = function () { document.getElementById('fFindingFile').click(); };
-  document.getElementById('fFindingFile').onchange = function (e) {
-    // REQ follow-up: "provide distance away from participant in meters." Only meaningful once a
-    // Participant has actually been picked (selectedParticipant, above) -- a photo taken before that
-    // simply gets no distance figure (still gets the plain outside-boundary flag either way).
-    var participantPos = selectedParticipant ? { lat: selectedParticipant.lat, lng: selectedParticipant.lng } : null;
-    Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles, false, participantPos); });
-    e.target.value = '';
+  document.getElementById('fFindingCameraBtn').onclick = function () {
+    EvidenceCapture.openCameraModal({
+      allowVideo: true,
+      onFile: function (file) {
+        // REQ follow-up: "provide distance away from participant in meters." Only meaningful once a
+        // Participant has actually been picked (selectedParticipant, above) -- a photo taken before
+        // that simply gets no distance figure (still gets the plain outside-boundary flag either way).
+        var participantPos = selectedParticipant ? { lat: selectedParticipant.lat, lng: selectedParticipant.lng } : null;
+        uploadEvidenceFile_(eventId, 'newFinding', file, pendingFiles, false, participantPos);
+      }
+    });
   };
   var fFindingUploadBtn = document.getElementById('fFindingUploadBtn');
   if (fFindingUploadBtn) {
@@ -1506,10 +1510,9 @@ function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPen
         // itself reflects whichever mode Settings > Escalations currently has configured, so the
         // Participant isn't told evidence is "required" when it's actually just recommended.
         '<div class="field-label" style="font-size:11.5px;margin-top:8px;">' + esc(t(evidenceRequired === false ? 'resolution_evidence_recommended' : 'resolution_evidence_required')) + '</div>' +
-        // Same camera-only pattern as Record Results' Risk Logging evidence field (eventDetail.js) --
-        // the native file input is hidden, a plain camera-icon button triggers it, capture="environment"
-        // opens the device camera directly instead of a general file/gallery picker.
-        '<input type="file" id="fResolveFile" accept="image/*,video/*" capture="environment" style="display:none;" />' +
+        // REQ follow-up: "Users logged in can still upload photos from their local machine!" -- opens
+        // a real live camera view (EvidenceCapture.openCameraModal, evidence.js) instead of the old
+        // hidden file input + capture="environment", which desktop browsers ignore outright.
         '<button type="button" class="btn btn-secondary btn-icon" id="fResolveCameraBtn" title="' + esc(t('take_photo_video')) + '" aria-label="' + esc(t('take_photo_video')) + '">' + ICON('capture_photo') + '</button> ' +
         // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
         // device, unless permission is set for that specific role." evidence.uploadFromDevice bypass.
@@ -1542,10 +1545,11 @@ function findingActionSectionHtml_(finding, isParticipant, isReviewer, latestPen
 function wireFindingActionSection_(eventId, finding, isParticipant, isReviewer, latestPending, evidenceRequired) {
   if (isParticipant && (finding.status === 'Viewed' || finding.status === 'ReOpen')) {
     var pendingFiles = { resolve: [] };
-    document.getElementById('fResolveCameraBtn').onclick = function () { document.getElementById('fResolveFile').click(); };
-    document.getElementById('fResolveFile').onchange = function (e) {
-      Array.from(e.target.files).forEach(function (file) { uploadEvidenceFile_(eventId, 'resolve', file, pendingFiles); });
-      e.target.value = '';
+    document.getElementById('fResolveCameraBtn').onclick = function () {
+      EvidenceCapture.openCameraModal({
+        allowVideo: true,
+        onFile: function (file) { uploadEvidenceFile_(eventId, 'resolve', file, pendingFiles); }
+      });
     };
     var fResolveUploadBtn = document.getElementById('fResolveUploadBtn');
     if (fResolveUploadBtn) {

@@ -371,8 +371,149 @@ function evidenceComposite_(file, meta) {
   });
 }
 
+/* ---------------- Live in-browser camera capture (getUserMedia) ----------------
+ * REQ follow-up: "Users logged in can still upload photos from their local machine! haven't we
+ * disabled this action?" The previous camera-only enforcement relied entirely on
+ * <input type=file capture="environment">. capture is a mobile-only hint -- every desktop browser
+ * (Chrome/Edge/Firefox/Safari on Windows/Mac/Linux) silently ignores it and just opens the normal OS
+ * file picker, so a desktop user could always browse and attach any file from disk no matter their
+ * role or permissions. There is no way to close that from the file-input side; capture is simply
+ * unenforceable there. This replaces it everywhere evidence is camera-captured (New Log, Resolve Log,
+ * Record Results, Log Photos tab) with a real live camera view via getUserMedia, which behaves
+ * identically on desktop and mobile and never exposes a file-system picker. The one remaining
+ * sanctioned way to attach a file from disk is still the separate evidence.uploadFromDevice-gated
+ * "Upload from device" button/input next to this one at each of those 4 call sites -- unchanged, still
+ * permission-gated, still opt-in per role from Settings > Permissions.
+ */
+var evidenceCameraStream_ = null;
+var evidenceCameraRecorder_ = null;
+
+function evidenceStopCameraStream_() {
+  if (evidenceCameraRecorder_ && evidenceCameraRecorder_.state !== 'inactive') {
+    try { evidenceCameraRecorder_.stop(); } catch (e) { /* already stopped */ }
+  }
+  evidenceCameraRecorder_ = null;
+  if (evidenceCameraStream_) {
+    evidenceCameraStream_.getTracks().forEach(function (t) { t.stop(); });
+    evidenceCameraStream_ = null;
+  }
+}
+
+// opts: { allowVideo: bool, onFile: function(file) }. onFile fires once per captured photo or
+// finished video recording -- the modal stays open afterward so the caller can take several shots in
+// one session (mirrors how the old capture="environment" flow let someone tap the camera button again
+// for a second photo, just without reopening the OS camera app each time). Every produced File flows
+// into the exact same handler each call site already had for its old hidden file input's onchange --
+// this only changes how the File is obtained, not anything downstream (still goes through
+// EvidenceCapture.prepare/saveAndUpload, still respects resolutionEvidenceRequired/background-upload,
+// etc).
+function evidenceOpenCameraModal_(opts) {
+  var allowVideo = !!(opts && opts.allowVideo);
+  var onFile = (opts && opts.onFile) || function () {};
+  var bodyHtml =
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">' +
+      '<div id="evCamStatus" class="muted" style="font-size:12.5px;text-align:center;"></div>' +
+      '<video id="evCamVideo" autoplay playsinline muted style="width:100%;max-width:480px;border-radius:var(--radius-sm);background:#000;display:none;"></video>' +
+      '<canvas id="evCamCanvas" style="display:none;"></canvas>' +
+      '<div id="evCamRecordTimer" class="muted" style="font-size:12.5px;display:none;"></div>' +
+    '</div>';
+  var footerButtons = [
+    { label: ICON('capture_photo') + ' ' + t('camera_take_photo'), className: 'btn-primary', onClick: function () { evidenceCameraSnapPhoto_(onFile); } }
+  ];
+  if (allowVideo && window.MediaRecorder) {
+    footerButtons.push({ label: ICON('capture_photo') + ' ' + t('camera_record_video'), className: 'btn-secondary', id: 'evCamRecordBtn', onClick: function () { evidenceCameraToggleRecording_(onFile); } });
+  }
+  footerButtons.push({ label: t('close'), className: 'btn-secondary', onClick: function () { evidenceStopCameraStream_(); UI.closeModal(); } });
+  UI.openModal(t('camera_capture_title'), bodyHtml, footerButtons);
+  // UI.openModal's own X button just wipes the DOM -- override it to release the camera first (same
+  // reasoning as the explicit Close button above), otherwise the device's camera-in-use indicator
+  // stays lit until the whole page is reloaded.
+  var xBtn = document.getElementById('modalCloseBtn');
+  if (xBtn) xBtn.onclick = function () { evidenceStopCameraStream_(); UI.closeModal(); };
+
+  var statusEl = document.getElementById('evCamStatus');
+  var videoEl = document.getElementById('evCamVideo');
+  statusEl.textContent = t('camera_starting');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    statusEl.textContent = t('camera_unsupported');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: allowVideo })
+    .then(function (stream) {
+      evidenceCameraStream_ = stream;
+      videoEl.srcObject = stream;
+      videoEl.style.display = '';
+      statusEl.textContent = '';
+    })
+    .catch(function () {
+      statusEl.textContent = t('camera_access_denied');
+    });
+}
+
+function evidenceCameraSnapPhoto_(onFile) {
+  var videoEl = document.getElementById('evCamVideo');
+  var canvas = document.getElementById('evCamCanvas');
+  if (!videoEl || !evidenceCameraStream_ || !videoEl.videoWidth) return;
+  canvas.width = videoEl.videoWidth;
+  canvas.height = videoEl.videoHeight;
+  canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(function (blob) {
+    if (!blob) return;
+    var file = new File([blob], 'camera-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    onFile(file);
+    var statusEl = document.getElementById('evCamStatus');
+    if (statusEl) {
+      statusEl.textContent = t('camera_photo_captured');
+      setTimeout(function () { if (statusEl) statusEl.textContent = ''; }, 1500);
+    }
+  }, 'image/jpeg', 0.9);
+}
+
+function evidenceCameraToggleRecording_(onFile) {
+  var timerEl = document.getElementById('evCamRecordTimer');
+  var recordBtn = document.getElementById('evCamRecordBtn');
+  if (evidenceCameraRecorder_ && evidenceCameraRecorder_.state === 'recording') {
+    evidenceCameraRecorder_.stop();
+    return;
+  }
+  if (!evidenceCameraStream_) return;
+  var mimeType = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].filter(function (m) {
+    return window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(m);
+  })[0] || '';
+  var chunks = [];
+  var recorder;
+  try {
+    recorder = mimeType ? new MediaRecorder(evidenceCameraStream_, { mimeType: mimeType }) : new MediaRecorder(evidenceCameraStream_);
+  } catch (e) { return; }
+  evidenceCameraRecorder_ = recorder;
+  // innerHTML (not textContent) -- ICON() returns raw SVG markup, same reasoning as UI.openModal's
+  // own footer-button rendering (ui.js).
+  if (recordBtn) recordBtn.innerHTML = ICON('capture_photo') + ' ' + t('camera_stop_recording');
+  var startedAt = Date.now();
+  var tick = setInterval(function () {
+    if (!timerEl) return;
+    var secs = Math.floor((Date.now() - startedAt) / 1000);
+    timerEl.style.display = '';
+    timerEl.textContent = t('camera_recording_seconds', { count: secs });
+  }, 500);
+  recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onstop = function () {
+    clearInterval(tick);
+    if (timerEl) timerEl.style.display = 'none';
+    if (recordBtn) recordBtn.innerHTML = ICON('capture_photo') + ' ' + t('camera_record_video');
+    evidenceCameraRecorder_ = null;
+    if (!chunks.length) return;
+    var blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+    var ext = (recorder.mimeType || '').indexOf('mp4') !== -1 ? 'mp4' : 'webm';
+    var file = new File([blob], 'camera-' + Date.now() + '.' + ext, { type: blob.type });
+    onFile(file);
+  };
+  recorder.start();
+}
+
 /* ---------------- Public API ---------------- */
 window.EvidenceCapture = {
+  openCameraModal: evidenceOpenCameraModal_,
   // Full pipeline for one captured file: GPS -> Arabic reverse-geocode -> QR (Google Maps link) ->
   // branding logos -> composite onto a downscaled JPEG. Videos (and anything that isn't an image)
   // pass through untouched -- a watermark overlay doesn't apply to video the same way, and

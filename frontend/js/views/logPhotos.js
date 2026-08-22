@@ -100,7 +100,10 @@ async function tabLogPhotos(content, eventId, detail) {
     '<div class="card" style="margin-bottom:16px;"><div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">' +
       '<div class="muted" style="font-size:13px;max-width:520px;">' + esc(t('log_photos_intro')) + '</div>' +
       '<div>' +
-        '<input type="file" id="logPhotoFile" accept="image/*" capture="environment" style="display:none;" multiple />' +
+        // REQ follow-up: "Users logged in can still upload photos from their local machine!" -- was a
+        // hidden file input + capture="environment", which desktop browsers ignore outright (capture
+        // is a mobile-only hint). Opens a real live camera view instead (EvidenceCapture.openCameraModal,
+        // evidence.js) -- works identically on desktop and mobile, no file-system picker ever appears.
         '<button type="button" class="btn btn-primary btn-icon" id="logPhotoCameraBtn" title="' + esc(t('take_photo_btn')) + '">' + ICON('capture_photo') + ' ' + esc(t('take_photo_btn')) + '</button> ' +
         // REQ: "Throughout the platform Do not allow Log Photos in any section to upload from
         // device, unless permission is set for that specific role." Same evidence.uploadFromDevice
@@ -121,15 +124,19 @@ async function tabLogPhotos(content, eventId, detail) {
     // empty (no card at all) when there's nothing trashed -- see renderLogPhotoTrash_.
     '<div id="logPhotoTrash"></div>';
 
-  document.getElementById('logPhotoCameraBtn').onclick = function () { document.getElementById('logPhotoFile').click(); };
-  document.getElementById('logPhotoFile').onchange = async function (e) {
-    var files = Array.from(e.target.files);
-    e.target.value = '';
-    // Sequential, not parallel -- each capture does its own GPS fix + reverse-geocode; running them
-    // one at a time avoids hammering Nominatim with concurrent requests (same care evidence.js's own
-    // pipeline already takes per-photo).
-    for (var i = 0; i < files.length; i++) { await captureLogPhoto_(eventId, files[i]); }
-    await renderLogPhotoGroups_(eventId, participants, selected);
+  document.getElementById('logPhotoCameraBtn').onclick = function () {
+    // Photo-only (allowVideo omitted/false) -- Log Photos never accepted video, same as the old input's
+    // accept="image/*". The modal stays open across multiple shots, same as the old multiple-file
+    // capture input let someone tap the camera button again for a second photo.
+    EvidenceCapture.openCameraModal({
+      onFile: async function (file) {
+        // Sequential-safe -- each capture does its own GPS fix + reverse-geocode; captureLogPhoto_
+        // await-ing here (rather than firing several in parallel) avoids hammering Nominatim with
+        // concurrent requests (same care evidence.js's own pipeline already takes per-photo).
+        await captureLogPhoto_(eventId, file);
+        await renderLogPhotoGroups_(eventId, participants, selected);
+      }
+    });
   };
   var uploadBtn = document.getElementById('logPhotoUploadBtn');
   if (uploadBtn) {

@@ -594,6 +594,16 @@ window.HULUL_I18N = {
     // unless permission is set for that specific role." Label for the second, permission-gated button
     // shown next to every camera-capture button (evidence.uploadFromDevice).
     upload_from_device_btn: 'Upload from device',
+    // REQ follow-up: "Users logged in can still upload photos from their local machine! haven't we
+    // disabled this action?" -- capture="environment" on a file input is a mobile-only hint that
+    // desktop browsers ignore outright, so it never actually enforced camera-only there. Labels for
+    // the live in-browser camera capture modal (evidenceOpenCameraModal_, evidence.js) that replaces
+    // it everywhere -- works identically on desktop and mobile, no file-system picker ever appears.
+    camera_capture_title: 'Camera', camera_take_photo: 'Take photo', camera_record_video: 'Record video',
+    camera_stop_recording: 'Stop recording', camera_starting: 'Starting camera…',
+    camera_unsupported: 'Camera capture isn\'t supported in this browser.',
+    camera_access_denied: 'Could not access the camera. Check your browser\'s camera permission and try again.',
+    camera_photo_captured: 'Photo captured', camera_recording_seconds: 'Recording… {{count}}s',
 
     // ---- Event workspace tabs (eventDetail.js) ----
     and_join: '{{a}} & {{b}}', readiness_x_label: 'Readiness {{term}}', tab_log_photos: 'Log Photos',
@@ -1384,6 +1394,11 @@ window.HULUL_I18N = {
     delete_evidence_confirm: 'نقل هذه الصورة إلى سلة محذوفات صور السجلات؟ ستبقى هناك لمدة 30 يومًا ويمكن استعادتها.',
     trash_section_not_yet_logged: 'لم تُسجَّل بعد', trash_section_deleted_from_logs: 'محذوفة من السجلات',
     upload_from_device_btn: 'رفع من الجهاز',
+    camera_capture_title: 'الكاميرا', camera_take_photo: 'التقاط صورة', camera_record_video: 'تسجيل فيديو',
+    camera_stop_recording: 'إيقاف التسجيل', camera_starting: 'جارٍ تشغيل الكاميرا…',
+    camera_unsupported: 'التقاط الصور بالكاميرا غير مدعوم في هذا المتصفح.',
+    camera_access_denied: 'تعذّر الوصول إلى الكاميرا. تحقق من إذن الكاميرا في المتصفح وحاول مرة أخرى.',
+    camera_photo_captured: 'تم التقاط الصورة', camera_recording_seconds: 'جارٍ التسجيل… {{count}} ث',
 
     // ---- Event workspace tabs (eventDetail.js) ----
     and_join: '{{a}} و{{b}}', readiness_x_label: '{{term}} الجاهزية', tab_log_photos: 'صور السجل',

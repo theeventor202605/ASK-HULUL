@@ -118,6 +118,9 @@ window.UI = {
       // developer-authored (t()/ICON()/static strings), never raw user input, so this is safe.
       btn.innerHTML = b.label;
       btn.onclick = b.onClick;
+      // Optional -- lets a caller find and update its own footer button afterward (e.g. the camera
+      // capture modal's Record/Stop toggle, evidence.js) without keeping a separate DOM reference.
+      if (b.id) btn.id = b.id;
       footer.appendChild(btn);
     });
     return root;
