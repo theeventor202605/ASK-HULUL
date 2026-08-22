@@ -313,11 +313,15 @@ function openRoadmapPlanItemModal_(planId, existingItem, allItems, allRoles, dra
     // REQ: "Allow to change dot to icon per item" -- reuses the same curated grid the app's own icon
     // customization (Settings > Icons) uses, see openIconPickerModal_ (settings.js).
     '<div class="field-label">' + esc(t('roadmap_icon_label')) + '</div>' +
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">' +
-      '<div id="fPiIconPreview" style="width:34px;height:34px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;">' + (draft.icon || '<span class="muted" style="font-size:10px;">' + esc(t('roadmap_icon_none')) + '</span>') + '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">' +
+      // Fixed-size preview box only ever holds a single glyph -- the explanatory "no icon set" text
+      // used to be crammed in here too and would overflow the 34px box, spilling down over the
+      // buttons and the field below it. That caption now lives on its own line underneath instead.
+      '<div id="fPiIconPreview" style="width:34px;height:34px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;overflow:hidden;">' + (draft.icon || '<span class="muted" style="font-size:16px;line-height:1;">&middot;</span>') + '</div>' +
       '<button type="button" class="btn btn-secondary btn-sm" id="fPiBrowseIconBtn">' + esc(t('roadmap_browse_icons_btn')) + '</button>' +
       (draft.icon ? '<button type="button" class="btn btn-secondary btn-sm" id="fPiClearIconBtn">' + esc(t('roadmap_clear_icon_btn')) + '</button>' : '') +
     '</div>' +
+    (!draft.icon ? '<div class="muted" style="font-size:11px;margin:0 0 14px;">' + esc(t('roadmap_icon_none')) + '</div>' : '<div style="margin-bottom:14px;"></div>') +
     // REQ follow-up: "connect roadmap plans items to actionable items or items with date time" -- one
     // of three automations fires automatically the moment this item's own resolved due date arrives
     // (see runRoadmapItemActions_, RoadmapPlans.gs); the panel below the select just changes to match.
