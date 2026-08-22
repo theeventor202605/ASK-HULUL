@@ -5,6 +5,10 @@
 // (Term()), so a rename like Events -> Projects shows up in the nav without touching i18n.js.
 var NAV_ITEMS = [
   { path: '/dashboard', icon: LUCIDE_ICONS['layout-dashboard'], label: 'nav_dashboard', section: 'section_main' },
+  // REQ: "Add to do inbox where it will show all pending items on a user." Open to every signed-in
+  // user (no `roles` restriction) -- same as Dashboard/Notifications/Support just above/below: it's
+  // entirely self-scoped server-side (listMyTodoItems, Todo.gs), not a permission-gated admin page.
+  { path: '/todo', icon: LUCIDE_ICONS['clipboard-check'], label: 'nav_todo', section: 'section_main' },
   { path: '/projects', icon: LUCIDE_ICONS['folder'], label: 'nav_projects', entityLabel: 'project_plural', section: 'section_main' },
   { path: '/events', icon: LUCIDE_ICONS['calendar-days'], label: 'nav_events', entityLabel: 'event_plural', section: 'section_main' },
   { path: '/sub-events', icon: LUCIDE_ICONS['puzzle'], label: 'nav_subevents', entityLabel: 'subEvent_plural', section: 'section_main',
@@ -91,6 +95,7 @@ var NAV_ITEMS = [
 // redundant one-item dropdown -- same convention as EVENT_TAB_GROUPS_.
 var NAV_GROUPS_ = [
   { section: 'section_main', paths: ['/dashboard'] },
+  { section: 'section_main', paths: ['/todo'] },
   { section: 'section_main', key: 'eventsGroup', labelKey: 'nav_group_events', paths: ['/projects', '/events', '/sub-events', '/meetings'] },
   // REQ: "Move Venues to Main section above Notifications."
   { section: 'section_main', paths: ['/venues'] },

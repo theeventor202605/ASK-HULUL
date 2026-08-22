@@ -398,7 +398,7 @@ function viewFinding(user, p) {
   // checked before the isParticipant/isReviewer branches below) closes it straight to Resolved -- no
   // Viewed/Submitted/InReview stop along the way, no resolution evidence required.
   if (finding.status === 'Open' && finding.riskLevel === 'Info') {
-    finding = updateRow('Findings', p.findingId, { status: 'Resolved' });
+    finding = updateRow('Findings', p.findingId, { status: 'Resolved', resolvedAt: nowIso_() });
     audit(user.id, 'AUTO_RESOLVE_INFO_FINDING', 'Findings', p.findingId, { status: 'Resolved' });
     findWhere('Escalations', function (e) { return e.findingId === p.findingId && !e.resolvedAt; })
       .forEach(function (e) { updateRow('Escalations', e.id, { resolvedAt: nowIso_() }); });
@@ -525,13 +525,17 @@ function reviewFindingResolution(user, p) {
 
   var reopenCount = Number(finding.reopenCount) || 0;
   var newStatus;
+  var patch = { reopenCount: reopenCount };
   if (p.decision === 'Approved') {
     newStatus = 'Resolved';
+    patch.resolvedAt = nowIso_(); // To-Do Inbox needs a real timestamp for when this finding closed
   } else {
     newStatus = 'ReOpen';
     reopenCount++;
+    patch.reopenCount = reopenCount;
   }
-  updateRow('Findings', p.findingId, { status: newStatus, reopenCount: reopenCount });
+  patch.status = newStatus;
+  updateRow('Findings', p.findingId, patch);
 
   if (newStatus === 'Resolved') {
     // Clear any open escalation recipients tracking (resolvedAt on escalations) -- terminal outcome

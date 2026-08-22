@@ -79,6 +79,7 @@ window.Router = {
 
   init() {
     this.add('/dashboard', renderDashboard);
+    this.add('/todo', renderTodoInbox);
     this.add('/events', renderEventsList);
     this.add('/events/:id', renderEventDetail);
     // REQ follow-up: "Clicking on a row opens the full checklist on new page list layout not popup"

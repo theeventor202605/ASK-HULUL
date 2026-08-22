@@ -1214,3 +1214,28 @@ function listMeetings(user, p) {
   if (p && p.subEventId) all = all.filter(function (m) { return m.subEventId === p.subEventId; });
   return all;
 }
+
+// REQ (To-Do Inbox): "Any upcoming meetings not yet attended." Self-service -- a recipient (To or Cc)
+// marks themselves attended; no separate 'meeting.manage' permission needed since this only ever
+// writes a MeetingAttendance row for the CALLER's own userId, never anyone else's (mirrors
+// resolveFinding's "the participant acts for themselves" posture, not an admin/reviewer action).
+// Upserts rather than erroring on a repeat call -- clicking "Mark attended" twice (e.g. a slow
+// double-click, or re-confirming from the inbox after already marking it from the Meetings page) just
+// refreshes attendedAt instead of throwing.
+function markMeetingAttended(user, p) {
+  if (!user) throw new HululError('UNAUTHENTICATED', 'Login required');
+  if (!p || !p.meetingId) throw new HululError('BAD_REQUEST', 'meetingId is required');
+  var meeting = getById('Meetings', p.meetingId);
+  if (!meeting || meeting.status === 'Deleted') throw new HululError('NOT_FOUND', 'Meeting not found');
+  var to = JSON.parse(meeting.toJson || '[]') || [];
+  var cc = JSON.parse(meeting.ccJson || '[]') || [];
+  if (to.indexOf(user.id) === -1 && cc.indexOf(user.id) === -1) {
+    throw new HululError('FORBIDDEN', 'You are not invited to this meeting');
+  }
+  var existing = findWhere('MeetingAttendance', function (a) { return a.meetingId === p.meetingId && a.userId === user.id; })[0];
+  var attendedAt = nowIso_();
+  if (existing) { updateRow('MeetingAttendance', existing.id, { attendedAt: attendedAt, markedBy: user.id }); }
+  else { insertRow('MeetingAttendance', { id: newId('MeetingAttendance'), meetingId: p.meetingId, userId: user.id, attendedAt: attendedAt, markedBy: user.id }); }
+  audit(user.id, 'MARK_MEETING_ATTENDED', 'Meetings', p.meetingId, {});
+  return { meetingId: p.meetingId, userId: user.id, attendedAt: attendedAt };
+}

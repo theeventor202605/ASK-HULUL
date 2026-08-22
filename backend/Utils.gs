@@ -130,6 +130,13 @@ var SCHEMA = {
   // status: 'Scheduled' (default) or 'Deleted' (soft delete -- see deleteMeeting in Templates.gs,
   // same pattern as ChecklistItems' status:'Deleted').
   Meetings:               ['id','eventId','subEventId','type','scheduledAt','toJson','ccJson','meetingLink','notes','status','createdBy','createdAt','updatedBy','updatedAt'],
+  // REQ (To-Do Inbox): "Any upcoming meetings not yet attended." Meetings itself has no per-person
+  // attendance concept (toJson/ccJson is just who's invited) -- one row per (meeting, user) who has
+  // explicitly marked themselves attended, same many-to-many-via-its-own-sheet shape as VenueAttendance
+  // below, but written by an explicit self-service action (markMeetingAttended, Meetings.gs) rather
+  // than a passive geofence ping. markedBy is almost always the same as userId (self-mark) but kept
+  // separate in case an organizer ever marks attendance on someone else's behalf later.
+  MeetingAttendance:      ['id','meetingId','userId','attendedAt','markedBy'],
   // catRef appended at the end (established pattern, see Venues above) -- REQ: "Add new column
   // name it 'Cat Ref.' This holds reference number for this specific category but should be
   // displayed in Roman values." Stored as a plain whole number; the Roman-numeral conversion is
@@ -210,7 +217,12 @@ var SCHEMA = {
   // fields (Disciplines.nameAr etc.), these are filled in by whoever logs/edits the Finding itself,
   // not a separate admin -- see the Arabic textareas next to Description/Suggested Action on the New
   // Log and Edit Finding forms (findings.js).
-  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId','evidenceMeta','descriptionAr','suggestedActionAr'],
+  // resolvedAt appended at the end -- REQ (To-Do Inbox): "All logs that have been created but not yet
+  // resolved" needed a real timestamp for the moment a Finding reaches its terminal 'Resolved' status,
+  // so a completed inbox item can be dated/sorted -- blank until then, set alongside status:'Resolved'
+  // at both places that transition happens (the auto-resolve-Info path and reviewFindingResolution's
+  // Approved branch, Findings.gs). Never read anywhere else in the app besides the inbox.
+  Findings:               ['id','eventId','inspectionId','disciplineId','category','subCategory','description','suggestedAction','riskLevel','resolutionWindowAt','nextInspectionAt','participantId','subZone','location','status','evidenceUrls','lat','lng','createdBy','createdAt','reopenCount','checklistItemId','recreatedFromId','evidenceMeta','descriptionAr','suggestedActionAr','resolvedAt'],
   // REQ: "Some inspectors are junior level and could use help. We have created a guide which should
   // give them a list of descriptions once they select the category and sub-category." A reference
   // catalogue (seeded once from the user's "Log Assistance Guide" spreadsheet, see
@@ -772,7 +784,7 @@ var ID_PREFIX = {
   RoadmapPlans: 'RMP', RoadmapPlanItems: 'RMI', EventRoadmapItems: 'ERI', VenueAttendance: 'VAT',
   FindingGuide: 'FGD', TemplateDeadlineVersions: 'TDV', TemplateVersionSnapshots: 'TVS',
   AnnexCategories: 'ANC', AnnexEventCategories: 'AEC', AnnexDocuments: 'AND',
-  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT'
+  FindingEvidenceTrash: 'FET', MeetingTemplates: 'MTT', MeetingAttendance: 'MAT'
 };
 
 // QuickLoginTokens' primary key is its own random token string (see mintQuickLoginToken_ in

@@ -218,6 +218,10 @@ var ROUTES = {
   listMeetings: function (u, p) { return listMeetings(u, p); },
   updateMeeting: function (u, p) { return updateMeeting(u, p); },
   deleteMeeting: function (u, p) { return deleteMeeting(u, p); },
+  markMeetingAttended: function (u, p) { return markMeetingAttended(u, p); },
+  // To-Do Inbox (Todo.gs) -- open to every signed-in user, self-scoped internally (no permission
+  // gate needed, same as Dashboard/Notifications/Support -- see NAV_ITEMS' own comment, app.js).
+  listMyTodoItems: function (u, p) { return listMyTodoItems(u); },
   listMeetingTemplates: function (u, p) { return listMeetingTemplates(u, p); },
   getMeetingTemplatesBySubject: function (u, p) { return getMeetingTemplatesBySubject(u, p); },
   saveMeetingTemplate: function (u, p) { return saveMeetingTemplate(u, p); },
